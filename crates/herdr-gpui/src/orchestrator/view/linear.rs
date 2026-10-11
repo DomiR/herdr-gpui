@@ -15,8 +15,8 @@ use secrecy::SecretString;
 const SETTINGS: &str = "https://linear.app/settings/account/security";
 
 pub(crate) struct Dialog {
-    key: Entity<SearchInput>,
-    problem: Option<&'static str>,
+    pub(super) key: Entity<SearchInput>,
+    pub(super) problem: Option<&'static str>,
 }
 
 impl OrchestratorView {

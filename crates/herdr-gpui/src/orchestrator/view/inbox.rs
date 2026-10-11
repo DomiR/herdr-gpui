@@ -105,6 +105,7 @@ impl OrchestratorView {
                 };
                 div()
                     .id(("orchestrator-source", index))
+                    .debug_selector(|| format!("orchestrator-source-{}", provider.as_str()))
                     .flex_none()
                     .flex()
                     .items_center()

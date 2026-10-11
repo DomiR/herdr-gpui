@@ -10,6 +10,7 @@ mod clicks;
 mod conversation;
 mod dialog;
 mod linear;
+mod linear_dialog;
 mod markdown;
 mod rows;
 mod sessions;
