@@ -24,6 +24,15 @@ impl Provider {
             Self::Beads => "beads",
         }
     }
+
+    /// What the user reads, such as "GitHub".
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Self::Github => "GitHub",
+            Self::Gitlab => "GitLab",
+            Self::Beads => "Beads",
+        }
+    }
 }
 
 impl FromStr for Provider {
@@ -145,6 +154,11 @@ impl Item {
             pull_request: None,
             activity: None,
         }
+    }
+
+    /// The priority as the user reads it, such as `P1`.
+    pub(crate) fn priority_label(&self) -> Option<String> {
+        self.priority.map(|priority| format!("P{priority}"))
     }
 }
 

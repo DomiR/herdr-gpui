@@ -4,7 +4,7 @@
 
 use super::{
     Event, OrchestratorView, PREVIEW_MAX_SHARE, PREVIEW_MIN, PreviewDrag,
-    look::{BLUE, GREEN, Look, MAGENTA, RED, YELLOW, age},
+    look::{BLUE, GREEN, Look, RED, YELLOW, age},
     rows::{Runs, Sort, Tab},
 };
 use crate::{
@@ -112,18 +112,8 @@ impl OrchestratorView {
                     .border_1()
                     .border_color(rgb(theme.active))
                     .text_size(look.small())
-                    .child(match provider {
-                        Provider::Github => look
-                            .icon("icons/github.svg", 12., theme.subtext())
-                            .into_any_element(),
-                        Provider::Beads => look.badge("bd", MAGENTA).into_any_element(),
-                        Provider::Gitlab => look.badge("gl", RED).into_any_element(),
-                    })
-                    .child(match provider {
-                        Provider::Github => "GitHub",
-                        Provider::Beads => "Beads",
-                        Provider::Gitlab => "GitLab",
-                    })
+                    .child(super::list::source_mark(look, provider))
+                    .child(provider.name())
                     .child(look.dot(color, 6.))
                     .child(div().text_color(rgb(theme.muted)).child(text))
                     .when(sign_in, |el| {
@@ -440,11 +430,11 @@ impl OrchestratorView {
         for status in &self.snapshot.sources {
             let text = match &status.state {
                 SyncState::Failed(error) => {
-                    format!("{}: {error}", provider_name(status.key.provider))
+                    format!("{}: {error}", status.key.provider.name())
                 }
                 SyncState::Capped { count } => format!(
                     "{} has more than {count} items; the newest are shown and not cached.",
-                    provider_name(status.key.provider)
+                    status.key.provider.name()
                 ),
                 _ => continue,
             };
@@ -474,14 +464,6 @@ fn synced(at: chrono::DateTime<chrono::Utc>) -> String {
     match age(Some(at), chrono::Utc::now()).as_str() {
         "now" => "synced now".into(),
         ago => format!("synced {ago} ago"),
-    }
-}
-
-fn provider_name(provider: Provider) -> &'static str {
-    match provider {
-        Provider::Github => "GitHub",
-        Provider::Beads => "Beads",
-        Provider::Gitlab => "GitLab",
     }
 }
 

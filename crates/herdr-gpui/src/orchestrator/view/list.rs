@@ -219,9 +219,7 @@ impl OrchestratorView {
                         .flex_none()
                         .text_color(rgb(theme.muted)),
                 )
-                .when_some(item.priority, |el, priority| {
-                    el.child(look.badge(format!("P{priority}"), look.priority_hue(priority)))
-                })
+                .children(look.priority_badge(item))
                 .child(div().min_w_0().truncate().child(item.title.clone()))
                 .children(
                     item.labels

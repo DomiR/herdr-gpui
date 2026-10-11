@@ -121,9 +121,7 @@ impl OrchestratorView {
                             .text_color(rgb(theme.muted)),
                     )
                     .child(look.badge(item.state.replace('_', " "), look.state_hue(&item.state)))
-                    .when_some(item.priority, |el, priority| {
-                        el.child(look.badge(format!("P{priority}"), look.priority_hue(priority)))
-                    })
+                    .children(look.priority_badge(item))
                     .children(
                         item.labels
                             .iter()

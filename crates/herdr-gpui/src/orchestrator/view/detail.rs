@@ -12,7 +12,7 @@ use super::{
 use crate::{
     config::{corners, mix},
     fonts::StyledFont,
-    orchestrator::{Access, Item, Owner},
+    orchestrator::{Access, Item, Owner, Provider},
     release_notes,
 };
 use gpui::{prelude::*, *};
@@ -155,9 +155,7 @@ impl OrchestratorView {
                     .gap_2()
                     .child(source_mark(look, item.key.source.provider))
                     .child(look.badge(item.state.replace('_', " "), look.state_hue(&item.state)))
-                    .when_some(item.priority, |el, priority| {
-                        el.child(look.badge(format!("P{priority}"), look.priority_hue(priority)))
-                    })
+                    .children(look.priority_badge(item))
                     .when_some(item.pull_request.as_ref(), |el, pr| {
                         el.child(
                             look.mono(pr.head_ref.clone())
@@ -325,14 +323,16 @@ impl OrchestratorView {
         };
         let text = |value: String| div().min_w_0().truncate().child(value).into_any_element();
         let now = chrono::Utc::now();
-        let source = match item.key.source.provider {
-            crate::orchestrator::Provider::Github => {
-                format!("GitHub \u{00b7} {}", item.key.source.repository)
+        let provider = item.key.source.provider;
+        let source = match provider {
+            Provider::Github | Provider::Gitlab => {
+                format!(
+                    "{} \u{00b7} {}",
+                    provider.name(),
+                    item.key.source.repository
+                )
             }
-            crate::orchestrator::Provider::Beads => "Beads".to_owned(),
-            crate::orchestrator::Provider::Gitlab => {
-                format!("GitLab \u{00b7} {}", item.key.source.repository)
-            }
+            Provider::Beads => provider.name().to_owned(),
         };
         div()
             .id("orchestrator-overview")
@@ -352,12 +352,8 @@ impl OrchestratorView {
                 look.badge(item.state.replace('_', " "), look.state_hue(&item.state))
                     .into_any_element(),
             ))
-            .when_some(item.priority, |el, priority| {
-                el.child(row(
-                    "Priority",
-                    look.badge(format!("P{priority}"), look.priority_hue(priority))
-                        .into_any_element(),
-                ))
+            .when_some(look.priority_badge(item), |el, badge| {
+                el.child(row("Priority", badge.into_any_element()))
             })
             .when_some(item.parent_id.clone(), |el, parent| {
                 el.child(row("Parent", look.mono(parent).into_any_element()))
@@ -550,7 +546,7 @@ impl OrchestratorView {
         let time = |value: Option<chrono::DateTime<chrono::Utc>>| {
             value.map_or_else(|| "\u{2014}".to_owned(), |value| value.to_rfc3339())
         };
-        let deletable = item.key.source.provider == crate::orchestrator::Provider::Beads
+        let deletable = item.key.source.provider == Provider::Beads
             && self.snapshot.access == Some(Access::ReadWrite);
         let (source, id) = (item.key.source.clone(), item.key.native_id.clone());
         rows.push(("Created", time(item.created_at)));
