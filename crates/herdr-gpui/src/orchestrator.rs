@@ -32,8 +32,8 @@ pub(crate) use model::Backend;
 #[cfg(test)]
 pub(crate) use model::Workspace;
 pub(crate) use model::{
-    Activity, Checkpoint, HerdrSession, Item, ItemKey, Owner, Provider, PullRequest, Run, RunState,
-    SourceKey,
+    Activity, Checkpoint, Cycle, HerdrSession, Item, ItemKey, Owner, Provider, PullRequest, Run,
+    RunState, SourceKey, Tracker,
 };
 pub(crate) use naming::LiveBranch;
 #[cfg(test)]

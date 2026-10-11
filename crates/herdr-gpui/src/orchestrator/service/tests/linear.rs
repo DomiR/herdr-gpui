@@ -11,7 +11,7 @@ fn issue(identifier: &str) -> Value {
         "url": format!("https://linear.app/team/issue/{identifier}"),
         "priority": 3, "branchName": "", "createdAt": "2026-10-01T00:00:00.000Z",
         "updatedAt": "2026-10-02T00:00:00.000Z", "state": { "name": "Todo" },
-        "creator": null, "parent": null,
+        "creator": null, "assignee": null, "cycle": null, "parent": null,
         "labels": { "nodes": [] }, "inverseRelations": { "nodes": [] },
     })
 }
@@ -19,10 +19,10 @@ fn issue(identifier: &str) -> Value {
 fn listing(workspace: &str, issues: &[&str]) -> Value {
     json!({ "data": {
         "organization": { "urlKey": workspace },
-        "viewer": { "assignedIssues": {
+        "issues": {
             "pageInfo": { "hasNextPage": false, "endCursor": null },
             "nodes": issues.iter().map(|id| issue(id)).collect::<Vec<_>>(),
-        } },
+        },
     } })
 }
 

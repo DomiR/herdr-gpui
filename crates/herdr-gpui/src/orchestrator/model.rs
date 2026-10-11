@@ -159,7 +159,7 @@ impl Item {
             updated_at: None,
             pull_request: None,
             activity: None,
-            branch: None,
+            tracker: None,
         }
     }
 
@@ -205,9 +205,41 @@ pub(crate) struct Item {
     pub(crate) updated_at: Option<DateTime<Utc>>,
     pub(crate) pull_request: Option<PullRequest>,
     pub(crate) activity: Option<Activity>,
+    /// What a tracker the shared database does not hold, such as Linear,
+    /// says about the item. Never stored, so rows read from it have none.
+    pub(crate) tracker: Option<Tracker>,
+}
+
+/// An item's details from a tracker the shared database does not hold.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Tracker {
     /// The branch the tracker names for work on the item, such as Linear's
-    /// `branchName`; not in the shared database, so rows read from it have none.
+    /// `branchName`.
     pub(crate) branch: Option<String>,
+    /// The assignee's display name.
+    pub(crate) assignee: Option<String>,
+    /// Assigned to the account the tracker is read as.
+    pub(crate) mine: bool,
+    pub(crate) cycle: Option<Cycle>,
+}
+
+/// A Linear cycle, the team's sprint.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Cycle {
+    pub(crate) number: u64,
+    /// Most cycles have none.
+    pub(crate) name: Option<String>,
+    pub(crate) active: bool,
+}
+
+impl Cycle {
+    /// What the user reads: the cycle's name, else `Cycle <number>`.
+    pub(crate) fn label(&self) -> String {
+        match &self.name {
+            Some(name) => name.clone(),
+            None => format!("Cycle {}", self.number),
+        }
+    }
 }
 
 /// A source's sync position. `pr_details` holds agent-launcher's opaque PR

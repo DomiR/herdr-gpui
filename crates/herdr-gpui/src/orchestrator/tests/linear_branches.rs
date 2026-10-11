@@ -15,11 +15,17 @@ fn eng12() -> Item {
 #[test]
 fn dispatch_uses_the_branch_linear_names() {
     let mut issue = eng12();
-    issue.branch = Some("dominique/eng-12-fix-login".into());
+    issue.tracker = Some(Tracker {
+        branch: Some("dominique/eng-12-fix-login".into()),
+        ..Tracker::default()
+    });
     assert_eq!(branch(&issue), "dominique/eng-12-fix-login");
-    issue.branch = Some("bad branch..name".into());
+    issue.tracker = Some(Tracker {
+        branch: Some("bad branch..name".into()),
+        ..Tracker::default()
+    });
     assert_eq!(branch(&issue), "agent/eng-12-fix-login-fc657f77");
-    issue.branch = None;
+    issue.tracker = Some(Tracker::default());
     assert_eq!(branch(&issue), "agent/eng-12-fix-login-fc657f77");
 }
 

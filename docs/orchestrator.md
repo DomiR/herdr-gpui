@@ -70,9 +70,22 @@ it has no Stop, Send, or Remove, since no application owns it.
 
 ## Linear
 
-Linear lists the open issues assigned to whoever owns the API key, across one
-workspace, keyed `linear:linear.app:<workspace urlKey>`. The worker's Linear
-parts are in `service/linear.rs`; the Connect Linear dialog is `view/linear.rs`.
+Linear lists open issues across one workspace, keyed
+`linear:linear.app:<workspace urlKey>`. The worker's Linear parts are in
+`service/linear.rs`; the Connect Linear dialog is `view/linear.rs`.
+
+- A sync runs one query per `linear::Scope`: `Mine` (assigned to whoever owns
+  the key) and `Cycles` (the active cycle of any team that person belongs to),
+  both open issues only, at most 500 each, deduped by identifier. One query
+  with an `or` filter would be cheaper, but Linear answered it with rows
+  matching neither side. A sync costs about five requests against Linear's
+  limit of 2,500 an hour.
+- What Linear says that the shared schema cannot hold (the branch name, the
+  assignee and whether it is the key's owner, the cycle) is the item's
+  `Tracker`, never stored; rows read from the database have none. The Issues
+  tab's Mine and Current cycle filters read it, so they never pass a GitHub
+  issue or a bead. `rows::linear_defaults` turns both on the first time
+  tracked items arrive, once per view and never after a filter click.
 
 - Linear items are never written to the shared `issues` table or
   `source_checkpoints`. agent-launcher's `load_issues` reads every row and its

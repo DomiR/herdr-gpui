@@ -146,7 +146,9 @@ pub(crate) struct OrchestratorView {
     sort: Sort,
     sort_open: bool,
     filters: Filters,
-    mine: bool,
+    /// A filter was clicked, or the Linear default already applied: the
+    /// default never overrides a choice and applies at most once.
+    filters_set: bool,
     active_runs: bool,
     collapsed: HashSet<String>,
     search: Entity<SearchInput>,
@@ -240,7 +242,7 @@ impl OrchestratorView {
             sort: Sort::default(),
             sort_open: false,
             filters: Filters::default(),
-            mine: false,
+            filters_set: false,
             active_runs: false,
             collapsed: HashSet::new(),
             search,
@@ -292,6 +294,7 @@ impl OrchestratorView {
         if let Some(snapshot) = self.service.as_ref().and_then(Service::poll) {
             self.recorded_runs = snapshot.runs.clone();
             self.snapshot = snapshot;
+            self.default_filters();
             self.reconcile_agents();
             self.refresh_rows();
             self.follow_pull_request();
@@ -308,6 +311,17 @@ impl OrchestratorView {
         if changed {
             cx.notify();
         }
+    }
+
+    /// Turns on Mine and Current cycle the first time a tracker's items
+    /// arrive, unless the user already chose filters.
+    fn default_filters(&mut self) {
+        if self.filters_set {
+            return;
+        }
+        let defaults = rows::linear_defaults(self.filters, &self.snapshot.items);
+        self.filters_set = defaults != self.filters;
+        self.filters = defaults;
     }
 
     /// Asks the worker for the open pull request's status.
@@ -484,7 +498,6 @@ impl OrchestratorView {
             &self.query,
             self.filters,
             self.login.as_deref(),
-            self.mine,
             self.sort,
         );
         let listed: Vec<Item>;

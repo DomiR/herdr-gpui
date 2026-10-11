@@ -28,7 +28,11 @@ const MAX_BRANCHES: usize = 500;
 /// The branch for a new checkout of `item`: the one its tracker names when
 /// git accepts it, else agent-launcher's.
 pub(crate) fn branch(item: &Item) -> String {
-    match &item.branch {
+    match item
+        .tracker
+        .as_ref()
+        .and_then(|tracker| tracker.branch.as_ref())
+    {
         Some(branch) if prompt::valid_branch(branch) => branch.clone(),
         _ => launcher_branch(item),
     }

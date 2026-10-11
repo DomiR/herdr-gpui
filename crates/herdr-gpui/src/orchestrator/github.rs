@@ -263,7 +263,7 @@ impl IssueNode {
                 comments: self.comments.map(|count| count.total_count),
                 ..Activity::default()
             }),
-            branch: None,
+            tracker: None,
         }
     }
 }

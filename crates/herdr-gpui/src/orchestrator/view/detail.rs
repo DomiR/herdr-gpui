@@ -356,6 +356,21 @@ impl OrchestratorView {
             .when_some(look.priority_badge(item), |el, badge| {
                 el.child(row("Priority", badge.into_any_element()))
             })
+            .when_some(
+                item.tracker.as_ref().and_then(|t| t.assignee.clone()),
+                |el, assignee| el.child(row("Assignee", text(assignee))),
+            )
+            .when_some(
+                item.tracker.as_ref().and_then(|t| t.cycle.as_ref()),
+                |el, cycle| {
+                    let label = if cycle.active {
+                        format!("{} (current)", cycle.label())
+                    } else {
+                        cycle.label()
+                    };
+                    el.child(row("Cycle", text(label)))
+                },
+            )
             .when_some(item.parent_id.clone(), |el, parent| {
                 el.child(row("Parent", look.mono(parent).into_any_element()))
             })

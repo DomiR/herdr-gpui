@@ -2,7 +2,7 @@
 //! Beads children under their parents, pull requests, and runs grouped by
 //! what needs the user first. Pure, so it is tested without a window.
 
-use crate::orchestrator::{Backend, HerdrSession, Item, Provider, Run, RunState};
+use crate::orchestrator::{Backend, Cycle, HerdrSession, Item, Provider, Run, RunState};
 use herdr_client::protocol::AgentStatus;
 use std::{
     cmp::Ordering,
@@ -86,6 +86,26 @@ pub(crate) struct Filters {
     pub(crate) blocked: bool,
     /// Pull requests: only open and draft ones.
     pub(crate) open_only: bool,
+    /// Issues assigned to the account their tracker is read as; pull
+    /// requests authored by the signed-in GitHub login.
+    pub(crate) mine: bool,
+    /// Issues in their team's active cycle.
+    pub(crate) cycle: bool,
+}
+
+/// `filters` with Mine and Current cycle on once `items` has an item a
+/// tracker describes, such as a Linear issue: the user's sprint work. The
+/// view applies it once, and never after the user picks a filter.
+pub(crate) fn linear_defaults(filters: Filters, items: &[Item]) -> Filters {
+    if items.iter().any(|item| item.tracker.is_some()) {
+        Filters {
+            mine: true,
+            cycle: true,
+            ..filters
+        }
+    } else {
+        filters
+    }
 }
 
 /// What a run is doing, from Herdr's snapshot when its agent is there, else
@@ -324,10 +344,19 @@ pub(crate) fn matches(item: &Item, query: &str) -> bool {
         item.description.as_deref(),
         Some(item.key.native_id.as_str()),
         item.pull_request.as_ref().map(|pr| pr.head_ref.as_str()),
+        item.tracker
+            .as_ref()
+            .and_then(|tracker| tracker.assignee.as_deref()),
     ];
+    let cycle = item
+        .tracker
+        .as_ref()
+        .and_then(|tracker| tracker.cycle.as_ref())
+        .map(Cycle::label);
     let text: String = fields
         .into_iter()
         .flatten()
+        .chain(cycle.as_deref())
         .chain(item.labels.iter().map(String::as_str))
         .collect::<Vec<_>>()
         .join("\n");
@@ -389,6 +418,14 @@ pub(crate) fn issue_rows(
                 .is_none_or(|provider| item.key.source.provider == provider)
             && (!filters.has_run || run.is_some())
             && (!filters.blocked || !item.blocked_by.is_empty() || item.state == "blocked")
+            // Only a tracker says whose an issue is or what cycle it is in.
+            && (!filters.mine || item.tracker.as_ref().is_some_and(|tracker| tracker.mine))
+            && (!filters.cycle
+                || item
+                    .tracker
+                    .as_ref()
+                    .and_then(|tracker| tracker.cycle.as_ref())
+                    .is_some_and(|cycle| cycle.active))
     };
     // Matches, plus every ancestor of one, so a matching child keeps its place.
     let mut shown: HashSet<usize> = HashSet::new();
@@ -451,7 +488,6 @@ pub(crate) fn pull_request_rows(
     query: &str,
     filters: Filters,
     login: Option<&str>,
-    mine: bool,
     sort: Sort,
 ) -> Vec<ItemRow> {
     let latest = runs.latest();
@@ -461,7 +497,7 @@ pub(crate) fn pull_request_rows(
         .filter(|(_, item)| item.pull_request.is_some())
         .filter(|(_, item)| !filters.open_only || matches!(item.state.as_str(), "open" | "draft"))
         .filter(|(_, item)| {
-            !mine || login.is_some_and(|login| item.author.as_deref() == Some(login))
+            !filters.mine || login.is_some_and(|login| item.author.as_deref() == Some(login))
         })
         .filter(|(_, item)| matches(item, query))
         .map(|(index, item)| ItemRow {

@@ -233,31 +233,25 @@ fn pull_requests_list_in_every_state_unless_narrowed() {
     merged.author = Some("someone".into());
     let items = vec![open, merged];
     let runs = Runs::new(&[], &[], &[]);
-    let all = pull_request_rows(
-        &items,
-        &runs,
-        "",
-        Filters::default(),
-        None,
-        false,
-        Sort::Updated,
-    );
+    let all = pull_request_rows(&items, &runs, "", Filters::default(), None, Sort::Updated);
     assert_eq!(all.iter().map(|row| row.item).collect::<Vec<_>>(), [1, 0]);
     let open_only = Filters {
         open_only: true,
         ..Filters::default()
     };
     assert_eq!(
-        pull_request_rows(&items, &runs, "", open_only, None, false, Sort::Updated).len(),
+        pull_request_rows(&items, &runs, "", open_only, None, Sort::Updated).len(),
         1
     );
     let mine = pull_request_rows(
         &items,
         &runs,
         "",
-        Filters::default(),
+        Filters {
+            mine: true,
+            ..Filters::default()
+        },
         Some("penso"),
-        true,
         Sort::Updated,
     );
     assert_eq!(mine.iter().map(|row| row.item).collect::<Vec<_>>(), [0]);

@@ -497,7 +497,7 @@ fn item_from_row(row: &Row<'_>) -> Result<Item> {
         updated_at: optional_time(row, "updated_at")?,
         pull_request: optional_json::<PullRequest>(row, "pull_request_json")?,
         activity: optional_json::<Activity>(row, "activity_json")?,
-        branch: None,
+        tracker: None,
     })
 }
 

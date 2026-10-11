@@ -239,17 +239,18 @@ impl OrchestratorView {
             look.toggle(id, label, on)
                 .on_click(cx.listener(move |this, _, _, cx| {
                     flip(this);
+                    this.filters_set = true;
                     this.refresh_rows();
                     cx.notify();
                 }))
         };
-        // Kept while on, so a filter whose items went can still be turned off.
+        // Pills stay while on, so a filter whose items went can be turned off.
+        let items = &self.snapshot.items;
         let linear = filters.provider == Some(Provider::Linear)
-            || self
-                .snapshot
-                .items
+            || items
                 .iter()
                 .any(|item| item.key.source.provider == Provider::Linear);
+        let tracked = items.iter().any(|item| item.tracker.is_some());
         match self.tab {
             Tab::Issues => {
                 row = row
@@ -268,6 +269,22 @@ impl OrchestratorView {
                                 this.filters.provider =
                                     only(this.filters.provider, Provider::Linear);
                             },
+                        ))
+                    })
+                    .when(tracked || filters.mine, |row| {
+                        row.child(toggle(
+                            "orchestrator-issues-mine",
+                            "Mine",
+                            filters.mine,
+                            |this| this.filters.mine = !this.filters.mine,
+                        ))
+                    })
+                    .when(tracked || filters.cycle, |row| {
+                        row.child(toggle(
+                            "orchestrator-cycle",
+                            "Current cycle",
+                            filters.cycle,
+                            |this| this.filters.cycle = !this.filters.cycle,
                         ))
                     })
                     .child(toggle(
@@ -297,9 +314,10 @@ impl OrchestratorView {
                             this.filters.open_only = !this.filters.open_only;
                         },
                     ))
-                    .when(self.login.is_some(), |row| {
-                        row.child(toggle("orchestrator-mine", "Mine", self.mine, |this| {
-                            this.mine = !this.mine;
+                    // Shown while on, as the Linear default can turn it on.
+                    .when(self.login.is_some() || filters.mine, |row| {
+                        row.child(toggle("orchestrator-mine", "Mine", filters.mine, |this| {
+                            this.filters.mine = !this.filters.mine;
                         }))
                     })
                     .child(toggle(

@@ -1,5 +1,5 @@
 use super::*;
-use crate::orchestrator::linear::{self, LIMIT, Listing, interpret, resolve, valid};
+use crate::orchestrator::linear::{self, CAP, LIMIT, Listing, Scope, interpret, resolve, valid};
 use secrecy::{ExposeSecret, SecretString};
 use serde_json::{Value, json};
 use std::{cell::Cell, ffi::OsString};
@@ -16,10 +16,10 @@ fn acme() -> SourceKey {
 fn page(nodes: Vec<Value>, next: Option<&str>) -> Value {
     json!({ "data": {
         "organization": { "urlKey": "acme" },
-        "viewer": { "assignedIssues": {
+        "issues": {
             "pageInfo": { "hasNextPage": next.is_some(), "endCursor": next },
             "nodes": nodes,
-        } },
+        },
     } })
 }
 
@@ -29,9 +29,14 @@ fn node(identifier: &str) -> Value {
         "url": format!("https://linear.app/acme/issue/{identifier}"),
         "priority": 0, "branchName": "", "createdAt": "2026-10-01T00:00:00.000Z",
         "updatedAt": "2026-10-02T00:00:00.000Z", "state": { "name": "Todo" },
-        "creator": null, "parent": null,
+        "creator": null, "assignee": null, "cycle": null, "parent": null,
         "labels": { "nodes": [] }, "inverseRelations": { "nodes": [] },
     })
+}
+
+/// No issues, the answer for a scope a test leaves empty.
+fn empty() -> Value {
+    page(Vec::new(), None)
 }
 
 fn listing(pages: Vec<Value>) -> (Listing, Vec<Value>) {
@@ -39,7 +44,7 @@ fn listing(pages: Vec<Value>) -> (Listing, Vec<Value>) {
     let mut seen = Vec::new();
     let listing = linear::sync(
         |variables| {
-            seen.push(variables["after"].clone());
+            seen.push(variables);
             Ok(pages.next().unwrap())
         },
         || false,
@@ -57,6 +62,8 @@ fn an_issue_reads_as_an_item() {
         "createdAt": "2026-10-01T09:00:00.000Z", "updatedAt": "2026-10-03T10:30:00.000Z",
         "state": { "name": "In Progress" },
         "creator": { "displayName": "dominique" },
+        "assignee": { "displayName": "Dominique Rau", "isMe": true },
+        "cycle": { "number": 42.0, "name": null, "isActive": true },
         "parent": { "identifier": "ENG-1" },
         "labels": { "nodes": [{ "name": "Bug" }, { "name": "Auth" }] },
         "inverseRelations": { "nodes": [
@@ -67,7 +74,7 @@ fn an_issue_reads_as_an_item() {
             { "type": "blocks", "issue": { "identifier": "ENG-7" } },
         ] },
     });
-    let (listing, _) = listing(vec![page(vec![issue, node("ENG-13")], None)]);
+    let (listing, _) = listing(vec![page(vec![issue, node("ENG-13")], None), empty()]);
     assert_eq!(listing.workspace, "acme");
     assert!(listing.complete);
     assert_eq!(listing.items.len(), 2);
@@ -92,7 +99,16 @@ fn an_issue_reads_as_an_item() {
             updated_at: Some(at("2026-10-03T10:30:00Z")),
             pull_request: None,
             activity: None,
-            branch: Some("dominique/eng-12-fix-login".into()),
+            tracker: Some(Tracker {
+                branch: Some("dominique/eng-12-fix-login".into()),
+                assignee: Some("Dominique Rau".into()),
+                mine: true,
+                cycle: Some(Cycle {
+                    number: 42,
+                    name: None,
+                    active: true,
+                }),
+            }),
         }
     );
     assert_eq!(
@@ -104,51 +120,76 @@ fn an_issue_reads_as_an_item() {
         (
             bare.priority,
             bare.description.clone(),
-            bare.branch.clone(),
+            bare.tracker.clone(),
             bare.state.as_str()
         ),
-        (None, None, None, "todo")
+        (None, None, Some(Tracker::default()), "todo")
     );
 }
 
 #[test]
-fn listing_pages_through_the_cursor() {
+fn listing_reads_each_scope_and_lists_an_issue_once() {
     let (listing, seen) = listing(vec![
         page(vec![node("ENG-1"), node("ENG-2")], Some("c1")),
         page(vec![node("ENG-3")], None),
+        page(vec![node("ENG-2"), node("ENG-9")], None),
     ]);
-    assert_eq!(seen, [Value::Null, json!("c1")]);
+    let open = json!({ "type": { "nin": ["completed", "canceled"] } });
+    let mine = json!({ "assignee": { "isMe": { "eq": true } }, "state": open });
+    let cycles = json!({
+        "cycle": { "isActive": { "eq": true } },
+        "team": { "members": { "some": { "isMe": { "eq": true } } } },
+        "state": open,
+    });
+    assert_eq!(Scope::ALL, [Scope::Mine, Scope::Cycles]);
+    assert_eq!(
+        seen,
+        [
+            json!({ "filter": mine, "after": null }),
+            json!({ "filter": mine, "after": "c1" }),
+            json!({ "filter": cycles, "after": null }),
+        ]
+    );
     let ids: Vec<&str> = listing
         .items
         .iter()
         .map(|item| item.identifier.as_str())
         .collect();
-    assert_eq!(ids, ["ENG-1", "ENG-2", "ENG-3"]);
+    assert_eq!(ids, ["ENG-1", "ENG-2", "ENG-3", "ENG-9"]);
     assert!(listing.complete);
 }
 
 #[test]
-fn listing_stops_at_its_cap() {
-    let full = |start: usize| {
-        page(
-            (start..start + 50)
-                .map(|n| node(&format!("ENG-{n}")))
-                .collect(),
-            Some("more"),
-        )
-    };
+fn each_scope_stops_at_its_cap() {
     let fetched = Cell::new(0);
     let listing = linear::sync(
-        |_| {
+        |variables| {
             fetched.set(fetched.get() + 1);
-            Ok(full(fetched.get() * 50))
+            let start = fetched.get() * 100;
+            let nodes = (start..start + 100)
+                .map(|n| node(&format!("ENG-{n}")))
+                .collect();
+            // Mine always has more; Cycles ends on its fifth page.
+            let more = variables["filter"].get("assignee").is_some() || fetched.get() < 10;
+            Ok(page(nodes, more.then_some("more")))
         },
         || false,
     )
     .unwrap();
-    assert_eq!(fetched.get(), 5);
-    assert_eq!(listing.items.len(), linear::MAX);
+    assert_eq!(fetched.get(), 10);
+    assert_eq!(listing.items.len(), 2 * CAP);
     assert!(!listing.complete);
+}
+
+#[test]
+fn a_cycle_reads_as_its_name_or_number() {
+    let cycle = |name: Option<&str>| Cycle {
+        number: 7,
+        name: name.map(str::to_owned),
+        active: true,
+    };
+    assert_eq!(cycle(None).label(), "Cycle 7");
+    assert_eq!(cycle(Some("Launch week")).label(), "Launch week");
 }
 
 #[test]
