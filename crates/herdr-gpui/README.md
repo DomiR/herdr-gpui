@@ -1501,7 +1501,8 @@ workspace shows. These runs open their workspace but have no controls.
 Click the Linear chip in the tab's header to connect: paste a personal API key,
 which you create in Linear under Settings, Security & access. The key is saved
 like the GitHub sign-in (the macOS Keychain, the Linux Secret Service, or with
-`allow_plaintext_credentials` a private file), and the same dialog removes it.
+`[github] allow_plaintext_credentials = true` a private file), and the same
+dialog removes it.
 When `LINEAR_API_KEY` is set, it is used instead of a saved key. The key is read
 when the tab opens and on refresh, not on every sync.
 

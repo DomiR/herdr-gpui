@@ -227,7 +227,6 @@ impl Look {
         }
     }
 
-    /// The color of a Beads priority, P0 hottest.
     /// The item's priority as a badge, when it has one.
     pub(crate) fn priority_badge(&self, item: &Item) -> Option<Div> {
         let priority = item.priority?;
@@ -235,6 +234,7 @@ impl Look {
         Some(self.badge(label, self.priority_hue(priority)))
     }
 
+    /// The color of a Beads priority, P0 hottest.
     pub(crate) fn priority_hue(&self, priority: i64) -> usize {
         match priority {
             0 | 1 => RED,
