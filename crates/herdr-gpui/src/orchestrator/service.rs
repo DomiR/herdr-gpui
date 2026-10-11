@@ -17,6 +17,7 @@ use chrono::{DateTime, Utc};
 use herdr_client::ConnectTarget;
 use linear::LinearKey;
 use secrecy::SecretString;
+use serde_json::Value;
 use std::{
     collections::{HashMap, VecDeque},
     path::PathBuf,
@@ -167,27 +168,12 @@ impl Service {
     }
     pub(crate) fn start(request: Request) -> std::io::Result<Self> {
         let (commands, receiver) = mpsc::sync_channel(COMMANDS);
-        let mailbox = Arc::new(Mutex::new(None));
-        let notices = Arc::new(Mutex::new(VecDeque::new()));
-        let cancelled = Arc::new(AtomicBool::new(false));
-        let worker = Worker {
-            request,
-            mailbox: mailbox.clone(),
-            notices: notices.clone(),
-            commands: commands.clone(),
-            actions: Arc::new(AtomicUsize::new(0)),
-            site: None,
-            cancelled: cancelled.clone(),
-            snapshot: Snapshot::default(),
-            store: None,
-            host: None,
-            data_version: None,
-            retry: Vec::new(),
-            uncached: HashMap::new(),
-            cooldown: None,
-            linear_key: LinearKey::Missing,
-            linear_workspace: None,
-        };
+        let worker = Worker::new(request, commands.clone());
+        let (mailbox, notices, cancelled) = (
+            worker.mailbox.clone(),
+            worker.notices.clone(),
+            worker.cancelled.clone(),
+        );
         std::thread::Builder::new()
             .name("herdr-orchestrator".into())
             .spawn(move || worker.run(receiver))?;
@@ -269,9 +255,33 @@ struct Worker {
     linear_key: LinearKey,
     /// The Linear workspace's `urlKey`, once a sync has read it.
     linear_workspace: Option<String>,
+    /// Sends Linear's listing query; tests answer without a network.
+    linear_fetch: fn(&SecretString, Value) -> Result<Value>,
 }
 
 impl Worker {
+    fn new(request: Request, commands: SyncSender<Command>) -> Self {
+        Self {
+            request,
+            mailbox: Arc::default(),
+            notices: Arc::default(),
+            commands,
+            actions: Arc::new(AtomicUsize::new(0)),
+            site: None,
+            cancelled: Arc::new(AtomicBool::new(false)),
+            snapshot: Snapshot::default(),
+            store: None,
+            host: None,
+            data_version: None,
+            retry: Vec::new(),
+            uncached: HashMap::new(),
+            cooldown: None,
+            linear_key: LinearKey::Missing,
+            linear_workspace: None,
+            linear_fetch: super::linear::post,
+        }
+    }
+
     fn run(mut self, commands: mpsc::Receiver<Command>) {
         if let Err(error) = self.open() {
             self.snapshot.error = Some(Arc::new(error));

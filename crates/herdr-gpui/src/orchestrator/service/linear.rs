@@ -29,11 +29,19 @@ impl Worker {
         let Some(store) = self.request.linear else {
             return;
         };
-        self.linear_key = match linear::read_key(store) {
+        self.set_linear_key(match linear::read_key(store) {
             Ok(Some(key)) => LinearKey::Found(key),
             Ok(None) => LinearKey::Missing,
             Err(error) => LinearKey::Unreadable(Arc::new(error)),
-        };
+        });
+    }
+
+    /// Takes `key` as the Linear key: Linear syncs at the next chance even
+    /// after a failure, and without a key its listing goes.
+    pub(super) fn set_linear_key(&mut self, key: LinearKey) {
+        self.retry
+            .retain(|(source, _)| source.provider != Provider::Linear);
+        self.linear_key = key;
         if matches!(self.linear_key, LinearKey::Missing) {
             let before = self.uncached.len();
             self.uncached
@@ -60,8 +68,6 @@ impl Worker {
             })
             .map_err(Arc::new);
         push(&self.notices, Notice { outcome });
-        self.retry
-            .retain(|(source, _)| source.provider != Provider::Linear);
         self.read_linear_key();
     }
 
@@ -71,9 +77,9 @@ impl Worker {
             LinearKey::Unreadable(error) => return Ok(SyncState::Failed(error.clone())),
             LinearKey::Found(key) => key,
         };
-        let cancelled = &self.cancelled;
+        let (fetch, cancelled) = (self.linear_fetch, &self.cancelled);
         let listing = linear::sync(
-            |variables| linear::post(key, variables),
+            |variables| fetch(key, variables),
             || cancelled.load(Ordering::Relaxed),
         )?;
         let count = listing.items.len();

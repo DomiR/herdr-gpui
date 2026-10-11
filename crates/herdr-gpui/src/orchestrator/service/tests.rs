@@ -2,6 +2,9 @@
 
 use super::*;
 
+#[cfg(unix)]
+mod linear;
+
 #[test]
 fn closing_the_view_does_not_cancel_an_accepted_action() {
     let (commands, _receiver) = mpsc::sync_channel(COMMANDS);
