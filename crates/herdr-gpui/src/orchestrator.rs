@@ -36,7 +36,7 @@ pub(crate) use model::{
     SourceKey,
 };
 pub(crate) use naming::LiveBranch;
-#[cfg(all(test, unix))]
+#[cfg(test)]
 pub(crate) use service::SourceStatus;
 pub(crate) use service::{Notice, Request, Service, Snapshot, SyncState, Timing};
 pub(crate) use store::{Access, SCHEMA_VERSION, Store};

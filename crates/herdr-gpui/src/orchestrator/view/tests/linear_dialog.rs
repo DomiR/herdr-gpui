@@ -1,6 +1,5 @@
 //! The Connect Linear dialog in a real window: the chip opens it, a key that
 //! is not one keeps it open with the reason, and Escape closes it.
-use super::*;
 use crate::orchestrator::{
     Request, SourceStatus, SyncState, Timing,
     view::{Look, OrchestratorView},
