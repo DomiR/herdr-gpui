@@ -11,6 +11,7 @@ mod detail;
 mod dispatch;
 mod hosts;
 mod inbox;
+mod linear;
 mod list;
 mod look;
 mod markdown;
@@ -169,6 +170,8 @@ pub(crate) struct OrchestratorView {
     preview_markdown: markdown::Markdown,
     dialog: Option<dispatch::Dialog>,
     confirm: Option<dispatch::Confirm>,
+    /// The Connect Linear dialog, while open.
+    linear: Option<linear::Dialog>,
     /// The newest action's outcome, until dismissed or replaced.
     notice: Option<Notice>,
     /// What to type to the open item's newest run.
@@ -256,6 +259,7 @@ impl OrchestratorView {
             preview_markdown: markdown::Markdown::default(),
             dialog: None,
             confirm: None,
+            linear: None,
             notice: None,
             message,
             pr: crate::pr_actions::Actions::default(),
@@ -665,13 +669,13 @@ impl OrchestratorView {
     }
 
     fn on_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        if (self.dialog.is_some() || self.confirm.is_some())
+        if (self.dialog.is_some() || self.confirm.is_some() || self.linear.is_some())
             && self.dialog_key(&event.keystroke.key, window, cx)
         {
             cx.stop_propagation();
             return;
         }
-        if self.dialog.is_some() {
+        if self.dialog.is_some() || self.linear.is_some() {
             return;
         }
         if self.comment.read(cx).focus.is_focused(window) {

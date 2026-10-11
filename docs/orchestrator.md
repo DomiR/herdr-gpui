@@ -35,6 +35,7 @@ agent-launcher wrote it and check that migration keeps its rows.
 | `model.rs`, `location.rs`, `store.rs` | Records in the database's shapes, its path, and SQLite access. |
 | `repo.rs` | Finding a checkout's repository, main checkout, Beads, and remote on its host. |
 | `github.rs`, `beads.rs` | The sources: one full listing each. |
+| `linear.rs` | The Linear source: its API key (`linear/key.rs`), GraphQL transport (`linear/http.rs`), and listing. |
 | `service.rs` | The worker thread per open view: sync, reload, and the action queue. |
 | `actions.rs` | Dispatch, stop, send, remove, delete: each on its own thread. |
 | `prompt.rs` | Prompt profiles, agent-launcher's built-in and review prompts. |
@@ -66,6 +67,34 @@ The hash makes the branch the item's own, so work is found without a database:
 Each becomes a run owned by `branch`, shown like any other but never written,
 and only when no recorded run already has that branch. It opens its workspace;
 it has no Stop, Send, or Remove, since no application owns it.
+
+## Linear
+
+Linear lists the open issues assigned to whoever owns the API key, across one
+workspace, keyed `linear:linear.app:<workspace urlKey>`. The worker's Linear
+parts are in `service/linear.rs`; the Connect Linear dialog is `view/linear.rs`.
+
+- Linear items are never written to the shared `issues` table or
+  `source_checkpoints`. agent-launcher's `load_issues` reads every row and its
+  `issue_from_row` fails on a provider other than GitHub, GitLab, or Beads, so
+  one `linear` row would break its inbox for the repository; it also prunes
+  sources it does not sync. Every listing stays in `Worker::uncached`. Runs on
+  Linear issues are written, since agent-launcher treats `runs.issue_key` as
+  opaque text.
+- `native_id` is the issue's identifier (`ENG-12`), not its UUID, so a run
+  whose issue left the listing (done, or unassigned) still shows a readable
+  stand-in. Moving an issue to another team changes its identifier and orphans
+  such runs.
+- The key is read when the view opens, on Refresh, and after a save, never on
+  the periodic sync: a locked macOS Keychain would ask every minute in every
+  open view. `LINEAR_API_KEY` wins over the saved key.
+- Dispatch uses the issue's `branchName` when git accepts it. Such a branch has
+  no hash, so a branch also names a Linear issue when it holds the issue's
+  identifier as a token: a letter, letters or digits, a dash, and all the digits
+  after it, not preceded by a letter or digit. `dominique/eng-12-fix` names
+  `ENG-12`; `eng-123-x` and `xeng-12` do not. A hash match wins. Besides the
+  `refs/heads/agent/` read, each sync reads the 500 most recently committed
+  branches and keeps those that could name an item.
 
 ## Adding GitLab
 

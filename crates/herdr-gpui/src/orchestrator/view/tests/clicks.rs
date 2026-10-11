@@ -17,6 +17,7 @@ fn the_run_arrow_asks_to_open_the_run(cx: &mut TestAppContext) {
         token: None,
         data_root: Some(dir.path().join("data")),
         timing: Timing::default(),
+        linear: None,
     };
     let config = crate::config::Config::default();
     let look = Look {

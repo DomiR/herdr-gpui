@@ -325,7 +325,8 @@ impl OrchestratorView {
         let now = chrono::Utc::now();
         let provider = item.key.source.provider;
         let source = match provider {
-            Provider::Github | Provider::Gitlab => {
+            // A Linear source's repository is its workspace.
+            Provider::Github | Provider::Gitlab | Provider::Linear => {
                 format!(
                     "{} \u{00b7} {}",
                     provider.name(),

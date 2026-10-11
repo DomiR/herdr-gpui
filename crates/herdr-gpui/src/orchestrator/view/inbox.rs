@@ -85,6 +85,7 @@ impl OrchestratorView {
             .iter()
             .enumerate()
             .map(|(index, status)| {
+                let provider = status.key.provider;
                 let (text, color, sign_in) = match &status.state {
                     SyncState::Syncing => ("syncing\u{2026}".to_owned(), look.hue(BLUE), false),
                     SyncState::Synced { count, at } => (
@@ -95,11 +96,13 @@ impl OrchestratorView {
                     SyncState::Capped { count } => {
                         (format!("first {count}"), look.hue(YELLOW), false)
                     }
+                    SyncState::SignIn if provider == Provider::Linear => {
+                        ("connect".to_owned(), theme.muted, false)
+                    }
                     SyncState::SignIn => ("sign in".to_owned(), look.hue(YELLOW), true),
                     SyncState::Unsupported => ("not supported yet".to_owned(), theme.muted, false),
                     SyncState::Failed(_) => ("failed".to_owned(), look.hue(RED), false),
                 };
-                let provider = status.key.provider;
                 div()
                     .id(("orchestrator-source", index))
                     .flex_none()
@@ -119,6 +122,11 @@ impl OrchestratorView {
                     .when(sign_in, |el| {
                         el.cursor_pointer()
                             .on_click(cx.listener(|_, _, _, cx| cx.emit(Event::SignIn)))
+                    })
+                    .when(provider == Provider::Linear, |el| {
+                        el.cursor_pointer().on_click(
+                            cx.listener(|this, _, window, cx| this.open_linear(window, cx)),
+                        )
                     })
             });
         let dispatchable = self.tab != Tab::Runs
@@ -234,6 +242,13 @@ impl OrchestratorView {
                     cx.notify();
                 }))
         };
+        // Kept while on, so a filter whose items went can still be turned off.
+        let linear = filters.provider == Some(Provider::Linear)
+            || self
+                .snapshot
+                .items
+                .iter()
+                .any(|item| item.key.source.provider == Provider::Linear);
         match self.tab {
             Tab::Issues => {
                 row = row
@@ -241,13 +256,19 @@ impl OrchestratorView {
                         "orchestrator-beads",
                         "Beads",
                         filters.provider == Some(Provider::Beads),
-                        |this| {
-                            this.filters.provider = match this.filters.provider {
-                                Some(Provider::Beads) => None,
-                                _ => Some(Provider::Beads),
-                            };
-                        },
+                        |this| this.filters.provider = only(this.filters.provider, Provider::Beads),
                     ))
+                    .when(linear, |row| {
+                        row.child(toggle(
+                            "orchestrator-linear",
+                            "Linear",
+                            filters.provider == Some(Provider::Linear),
+                            |this| {
+                                this.filters.provider =
+                                    only(this.filters.provider, Provider::Linear);
+                            },
+                        ))
+                    })
                     .child(toggle(
                         "orchestrator-has-run",
                         "Has agent",
@@ -457,6 +478,11 @@ impl OrchestratorView {
             })
             .collect()
     }
+}
+
+/// The provider filter after its toggle for `provider` is clicked.
+fn only(current: Option<Provider>, provider: Provider) -> Option<Provider> {
+    (current != Some(provider)).then_some(provider)
 }
 
 /// "synced now", "synced 4m ago": when a source last finished a sync.

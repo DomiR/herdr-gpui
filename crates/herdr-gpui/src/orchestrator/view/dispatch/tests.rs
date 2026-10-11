@@ -16,6 +16,7 @@ fn destination_inventory_reconciles_selection_and_ignores_other_hosts(cx: &mut T
         token: None,
         data_root: Some(dir.path().join("data")),
         timing: Timing::default(),
+        linear: None,
     };
     let config = crate::config::Config::default();
     let look = Look {

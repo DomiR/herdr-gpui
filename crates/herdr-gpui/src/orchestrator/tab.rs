@@ -217,6 +217,8 @@ impl HerdrWindow {
             token,
             data_root: None,
             timing: Timing::default(),
+            // The same store as the GitHub sign-in.
+            linear: Some(crate::github::Store::select(&self.config)),
         };
         let look = self.look();
         let view = cx.new(|cx| {

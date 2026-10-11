@@ -506,6 +506,7 @@ pub(super) fn source_mark(look: &Look, provider: Provider) -> AnyElement {
             .into_any_element(),
         Provider::Beads => look.badge("bd", MAGENTA).into_any_element(),
         Provider::Gitlab => look.badge("gl", RED).into_any_element(),
+        Provider::Linear => look.badge("ln", BLUE).into_any_element(),
     }
 }
 

@@ -19,8 +19,7 @@ pub(crate) use {
     http::{graphql, mutation},
     store::{Account, Note, Store},
 };
-// Cloud providers keep their own secrets in the same store.
-#[cfg(feature = "cloud")]
+// Other features keep their own secrets in the same store.
 pub(crate) use store::{Entry, read_entry, save_entry};
 
 use crate::Result;

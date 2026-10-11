@@ -9,6 +9,7 @@ use herdr_client::protocol::AgentStatus;
 mod clicks;
 mod conversation;
 mod dialog;
+mod linear;
 mod markdown;
 mod rows;
 mod sessions;
@@ -52,6 +53,7 @@ fn item(provider: Provider, id: &str, title: &str, updated: &str) -> Item {
         updated_at: Some(at(updated)),
         pull_request: None,
         activity: Some(Activity::default()),
+        branch: None,
     }
 }
 

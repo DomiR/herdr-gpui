@@ -13,6 +13,7 @@ mod actions;
 mod beads;
 mod error;
 mod github;
+mod linear;
 mod location;
 mod model;
 mod naming;

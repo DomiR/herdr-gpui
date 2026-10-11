@@ -211,7 +211,6 @@ fn keyring_save(_: Option<&SecretString>, _: &Account) -> Result<()> {
 /// the keyring service, account and label, the private file beside the GUI
 /// config, and the record check every read and write must pass (which must
 /// also bound its size).
-#[cfg(feature = "cloud")]
 pub(crate) struct Entry {
     // Only the macOS Keychain and Linux Secret Service address entries by these.
     #[cfg_attr(not(any(target_os = "macos", target_os = "linux")), allow(dead_code))]
@@ -257,7 +256,6 @@ fn keychain_save(service: &str, account: &str, token: Option<&SecretString>) -> 
 }
 
 /// Read `entry` from `store`. Callers run on a background worker.
-#[cfg(feature = "cloud")]
 pub(crate) fn read_entry(store: Store, entry: &Entry) -> Result<Option<SecretString>> {
     match store {
         Store::Environment => Ok(None),
@@ -274,7 +272,6 @@ pub(crate) fn read_entry(store: Store, entry: &Entry) -> Result<Option<SecretStr
 }
 
 /// Write or remove `entry` in `store`. Callers run on a background worker.
-#[cfg(feature = "cloud")]
 pub(crate) fn save_entry(store: Store, entry: &Entry, token: Option<&SecretString>) -> Result<()> {
     if let Some(token) = token {
         (entry.validate)(token)?;

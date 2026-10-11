@@ -94,6 +94,33 @@ pub(crate) enum Error {
     Teleport(#[source] crate::teleport::Error),
     #[error("The pull request changed since you confirmed; look at it again before merging")]
     PullRequestChanged,
+    #[error("Could not read or save the Linear API key: {0}")]
+    LinearKey(#[source] Box<crate::Error>),
+    #[error("LINEAR_API_KEY is set but is not a valid Linear API key")]
+    LinearVariable,
+    #[error("That is not a Linear API key")]
+    LinearKeyFormat,
+    #[error("Linear did not accept the API key; connect Linear with a new one")]
+    LinearKeyRejected,
+    #[error("Linear is limiting requests; the list syncs again later")]
+    LinearRateLimited,
+    #[error(
+        "Linear request failed with HTTP {status}{}",
+        .message.as_deref().map(|message| format!(": {message}")).unwrap_or_default()
+    )]
+    LinearStatus {
+        status: u16,
+        /// Linear's own reason, cleaned and bounded.
+        message: Option<String>,
+    },
+    #[error("Could not reach Linear: {0}")]
+    LinearNetwork(#[source] Box<ureq::Error>),
+    #[error("Could not read Linear's response: {0}")]
+    LinearRead(#[source] std::io::Error),
+    #[error("Linear's response was larger than this app reads")]
+    LinearSize,
+    #[error("The Linear API key cannot be sent in a request header")]
+    LinearHeader(#[source] ureq::http::header::InvalidHeaderValue),
 }
 
 /// `map_err` adapter naming the host script that failed.

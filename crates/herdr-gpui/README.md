@@ -1449,11 +1449,13 @@ The Orchestrator row of a group's "…" menu, the Open Orchestrator command, or
 the Orchestrator row of a workspace's popover opens a tab listing that
 workspace's repository: its GitHub issues and pull requests, its
 [Beads](https://github.com/steveyegge/beads) issues when the main checkout has
-a `.beads` folder, and the agent runs dispatched for them. It works for the
-local session and saved SSH hosts.
+a `.beads` folder, the open Linear issues assigned to you once Linear is
+connected, and the agent runs dispatched for them. It works for the local
+session and saved SSH hosts.
 
-- **Issues** lists open GitHub issues and beads together. A bead's children sit
-  under it; filters narrow to Beads, items with a run, or blocked ones; five
+- **Issues** lists open GitHub issues, beads, and Linear issues together. A
+  bead's or Linear issue's children sit under it; filters narrow to Beads,
+  Linear, items with a run, or blocked ones; five
   sorts are offered. Search matches every word you type across title, id,
   author, labels, state, and body, case-insensitively unless a word has a
   capital, and keeps a match's parents in view.
@@ -1493,6 +1495,23 @@ finds work without its database, such as on another machine: a Herdr workspace
 on an item's branch shows as that item's run, working or stopped by whether an
 agent is in it, and so does an `agent/…` branch in the repository that no
 workspace shows. These runs open their workspace but have no controls.
+
+### Linear
+
+Click the Linear chip in the tab's header to connect: paste a personal API key,
+which you create in Linear under Settings, Security & access. The key is saved
+like the GitHub sign-in (the macOS Keychain, the Linux Secret Service, or with
+`allow_plaintext_credentials` a private file), and the same dialog removes it.
+When `LINEAR_API_KEY` is set, it is used instead of a saved key. The key is read
+when the tab opens and on refresh, not on every sync.
+
+The Orchestrator then lists the open Linear issues assigned to you, at most
+250, the most recently updated first. Dispatch uses the branch name Linear
+gives the issue. Any branch or Herdr workspace whose name holds an issue's
+identifier as a word, such as `dominique/eng-12-fix` for `ENG-12`, is found as
+that issue's run. Linear issues are not written to the database agent-launcher
+shares, since agent-launcher could not read them; runs on them are, so
+agent-launcher lists those runs without their issue.
 
 The tab shares its data with agent-launcher,
 so both can be open on one repository at once: each lists the other's runs,

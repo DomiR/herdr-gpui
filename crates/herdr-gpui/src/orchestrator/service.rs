@@ -15,6 +15,7 @@ use super::{
 use crate::teleport::{AgentKind, Host};
 use chrono::{DateTime, Utc};
 use herdr_client::ConnectTarget;
+use linear::LinearKey;
 use secrecy::SecretString;
 use std::{
     collections::{HashMap, VecDeque},
@@ -68,6 +69,8 @@ pub(crate) struct Request {
     /// agent-launcher's data directory parent; `None` for the platform's.
     pub(crate) data_root: Option<PathBuf>,
     pub(crate) timing: Timing,
+    /// Where the Linear API key is saved; `None` leaves Linear out entirely.
+    pub(crate) linear: Option<crate::github::Store>,
 }
 
 enum Command {
@@ -84,6 +87,8 @@ enum Command {
         endpoint: Option<String>,
         target: ConnectTarget,
     },
+    /// Save the Linear API key, or with `None` remove it, then sync.
+    SaveLinearKey(Option<SecretString>),
 }
 
 /// A pull request looked up for the open item.
@@ -111,7 +116,7 @@ pub(crate) enum SyncState {
     Capped {
         count: usize,
     },
-    /// GitHub needs a signed-in account.
+    /// GitHub needs a signed-in account, or Linear an API key.
     SignIn,
     /// A provider or host this build cannot read yet, such as GitLab.
     Unsupported,
@@ -180,6 +185,8 @@ impl Service {
             retry: Vec::new(),
             uncached: HashMap::new(),
             cooldown: None,
+            linear_key: LinearKey::Missing,
+            linear_workspace: None,
         };
         std::thread::Builder::new()
             .name("herdr-orchestrator".into())
@@ -196,6 +203,12 @@ impl Service {
     /// is told, and nothing is queued silently.
     pub(crate) fn act(&self, action: Action) -> bool {
         self.commands.try_send(Command::Act(action)).is_ok()
+    }
+
+    /// Asks for the Linear API key to be saved, or with `None` removed.
+    /// `false` means the worker is behind and nothing was queued.
+    pub(crate) fn save_linear_key(&self, key: Option<SecretString>) -> bool {
+        self.commands.try_send(Command::SaveLinearKey(key)).is_ok()
     }
 
     /// Asks for pull request `number`'s status; a full queue drops it.
@@ -249,9 +262,13 @@ struct Worker {
     data_version: Option<i64>,
     /// Sources waiting out a failure, and until when.
     retry: Vec<(SourceKey, Instant)>,
-    /// Listings shown but not written: capped, or the database is newer.
+    /// Listings shown but not written: capped, the database is newer, or
+    /// Linear's, which is never written.
     uncached: HashMap<SourceKey, Vec<Item>>,
     cooldown: Option<Duration>,
+    linear_key: LinearKey,
+    /// The Linear workspace's `urlKey`, once a sync has read it.
+    linear_workspace: Option<String>,
 }
 
 impl Worker {
@@ -261,6 +278,7 @@ impl Worker {
             self.publish();
             return;
         }
+        self.read_linear_key();
         let token = self.request.token.clone();
         self.sync(token.as_deref());
         let Timing { reload, sync } = self.request.timing;
@@ -271,11 +289,18 @@ impl Worker {
                 Ok(Command::Refresh(token)) => {
                     self.request.token = token;
                     self.retry.clear();
+                    self.read_linear_key();
                     let token = self.request.token.clone();
                     self.sync(token.as_deref());
                     next_sync = Instant::now() + sync;
                 }
                 Ok(Command::Act(action)) => self.act(action),
+                Ok(Command::SaveLinearKey(key)) => {
+                    self.save_linear_key(key.as_ref());
+                    let token = self.request.token.clone();
+                    self.sync(token.as_deref());
+                    next_sync = Instant::now() + sync;
+                }
                 Ok(Command::LoadPullRequest(number)) => self.load_pull_request(number),
                 Ok(Command::LoadAgents { endpoint, target }) => {
                     self.snapshot.installed_endpoint = endpoint;
@@ -408,7 +433,7 @@ impl Worker {
         };
         let store = Store::open(&path)?;
         self.snapshot.access = Some(store.access());
-        self.snapshot.sources = sources(&info)
+        self.snapshot.sources = sources(&info, self.linear_source())
             .into_iter()
             .map(|(key, supported)| SourceStatus {
                 key,
@@ -483,7 +508,7 @@ impl Worker {
         {
             self.snapshot.branches = Arc::new(branches);
         }
-        for (key, supported) in sources(&info) {
+        for (key, supported) in sources(&info, self.linear_source()) {
             if self.cancelled() {
                 return;
             }
@@ -494,7 +519,15 @@ impl Worker {
             }
             self.set_state(&key, SyncState::Syncing);
             self.publish();
-            let state = match self.sync_source(&key, token) {
+            let result = self.sync_source(&key, token);
+            // A Linear sync learns its workspace, which keys the source.
+            let key = match key.provider {
+                Provider::Linear => {
+                    super::linear::source(self.linear_workspace.as_deref().unwrap_or(""))
+                }
+                _ => key,
+            };
+            let state = match result {
                 Ok(state) => state,
                 Err(Error::Cancelled) => return,
                 Err(error) => {
@@ -563,6 +596,7 @@ impl Worker {
                 })
             }
             Provider::Gitlab => Ok(SyncState::Unsupported),
+            Provider::Linear => self.sync_linear(),
         }
     }
 
@@ -582,6 +616,7 @@ fn spawn_action(
         .spawn(move || action(&AtomicBool::new(false)))
 }
 
+mod linear;
 #[cfg(test)]
 mod tests;
 
@@ -608,8 +643,9 @@ fn installed(host: Option<&Host>, cancelled: &AtomicBool) -> Result<Vec<AgentKin
         .collect())
 }
 
-/// The sources a repository has, and whether this build can read each.
-pub(super) fn sources(info: &RepoInfo) -> Vec<(SourceKey, bool)> {
+/// The sources a repository has, and whether this build can read each:
+/// Linear's, keyed by `linear` as its workspace, when the view lists it.
+pub(super) fn sources(info: &RepoInfo, linear: Option<&str>) -> Vec<(SourceKey, bool)> {
     let remote = info.remote.as_ref().map(|remote| {
         let supported =
             remote.source.provider == Provider::Github && remote.source.host == "github.com";
@@ -618,5 +654,6 @@ pub(super) fn sources(info: &RepoInfo) -> Vec<(SourceKey, bool)> {
     remote
         .into_iter()
         .chain(info.beads_source().map(|key| (key, true)))
+        .chain(linear.map(|workspace| (super::linear::source(workspace), true)))
         .collect()
 }

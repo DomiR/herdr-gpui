@@ -8,12 +8,14 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::PathBuf, str::FromStr};
 
 /// Where an item comes from. GitLab has no source yet; its rows written by
-/// agent-launcher still decode.
+/// agent-launcher still decode. Linear items are never in the shared
+/// database: agent-launcher cannot read a `linear` row.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum Provider {
     Github,
     Gitlab,
     Beads,
+    Linear,
 }
 
 impl Provider {
@@ -22,6 +24,7 @@ impl Provider {
             Self::Github => "github",
             Self::Gitlab => "gitlab",
             Self::Beads => "beads",
+            Self::Linear => "linear",
         }
     }
 
@@ -31,6 +34,7 @@ impl Provider {
             Self::Github => "GitHub",
             Self::Gitlab => "GitLab",
             Self::Beads => "Beads",
+            Self::Linear => "Linear",
         }
     }
 }
@@ -43,6 +47,7 @@ impl FromStr for Provider {
             "github" => Ok(Self::Github),
             "gitlab" => Ok(Self::Gitlab),
             "beads" => Ok(Self::Beads),
+            "linear" => Ok(Self::Linear),
             other => Err(Error::Provider(other.to_owned())),
         }
     }
@@ -82,7 +87,8 @@ impl SourceKey {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct ItemKey {
     pub(crate) source: SourceKey,
-    /// A GitHub issue's number, `pr/<number>` for a pull request, or a Beads id.
+    /// A GitHub issue's number, `pr/<number>` for a pull request, a Beads id,
+    /// or a Linear identifier such as `ENG-12`.
     pub(crate) native_id: String,
 }
 
@@ -134,7 +140,7 @@ impl Item {
     pub(crate) fn stand_in(key: ItemKey) -> Self {
         let number = key.native_id.strip_prefix("pr/").unwrap_or(&key.native_id);
         let identifier = match key.source.provider {
-            Provider::Beads => key.native_id.clone(),
+            Provider::Beads | Provider::Linear => key.native_id.clone(),
             _ => format!("#{number}"),
         };
         Self {
@@ -153,12 +159,21 @@ impl Item {
             updated_at: None,
             pull_request: None,
             activity: None,
+            branch: None,
         }
     }
 
-    /// The priority as the user reads it, such as `P1`.
+    /// The priority as the user reads it: `P1`, or Linear's own words.
     pub(crate) fn priority_label(&self) -> Option<String> {
-        self.priority.map(|priority| format!("P{priority}"))
+        let priority = self.priority?;
+        let word = match (self.key.source.provider, priority) {
+            (Provider::Linear, 1) => "Urgent",
+            (Provider::Linear, 2) => "High",
+            (Provider::Linear, 3) => "Medium",
+            (Provider::Linear, 4) => "Low",
+            _ => return Some(format!("P{priority}")),
+        };
+        Some(word.to_owned())
     }
 }
 
@@ -174,7 +189,7 @@ pub(crate) struct Activity {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Item {
     pub(crate) key: ItemKey,
-    /// What the user reads: `#377`, or a Beads id.
+    /// What the user reads: `#377`, a Beads id, or a Linear identifier.
     pub(crate) identifier: String,
     pub(crate) title: String,
     pub(crate) description: Option<String>,
@@ -190,6 +205,9 @@ pub(crate) struct Item {
     pub(crate) updated_at: Option<DateTime<Utc>>,
     pub(crate) pull_request: Option<PullRequest>,
     pub(crate) activity: Option<Activity>,
+    /// The branch the tracker names for work on the item, such as Linear's
+    /// `branchName`; not in the shared database, so rows read from it have none.
+    pub(crate) branch: Option<String>,
 }
 
 /// A source's sync position. `pr_details` holds agent-launcher's opaque PR

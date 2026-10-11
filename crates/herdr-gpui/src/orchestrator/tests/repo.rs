@@ -128,7 +128,7 @@ fn a_folder_outside_git_is_reported() {
 fn only_github_dot_com_and_beads_are_synced() {
     let gitlab = "common\t/r/.git\nmain\t/r\nbeads\t1\nremote\torigin\tgit@gitlab.com:g/app.git\n";
     let info = parse(&ConnectTarget::Local, gitlab).unwrap();
-    let found: Vec<_> = sources(&info)
+    let found: Vec<_> = sources(&info, None)
         .into_iter()
         .map(|(key, supported)| (key.provider, supported))
         .collect();
@@ -136,5 +136,5 @@ fn only_github_dot_com_and_beads_are_synced() {
 
     let enterprise = "common\t/r/.git\nmain\t/r\nremote\torigin\tgit@github.acme.com:g/app.git\n";
     let info = parse(&ConnectTarget::Local, enterprise).unwrap();
-    assert!(!sources(&info)[0].1);
+    assert!(!sources(&info, None)[0].1);
 }

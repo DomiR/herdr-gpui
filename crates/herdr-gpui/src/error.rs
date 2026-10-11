@@ -360,6 +360,8 @@ pub enum Error {
     #[cfg(feature = "cloud")]
     #[error(transparent)]
     Cloud(#[from] crate::cloud::Error),
+    #[error("Saved Linear API key is not valid. Connect Linear again.")]
+    LinearKeyRecord,
     #[error("{0}")]
     Config(#[source] config_loader::ConfigError),
     #[error("{source}")]

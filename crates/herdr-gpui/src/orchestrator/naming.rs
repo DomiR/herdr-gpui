@@ -4,12 +4,19 @@
 //! work on an item is found from its branch alone: a Herdr workspace on the
 //! branch, with or without an agent, or the branch in the repository, even
 //! when no database recorded the run, as on a machine that never had one.
+//!
+//! A tracker may name the branch itself, as Linear's `branchName` does. Such
+//! a branch has no hash, so a Linear issue's branch is found by the issue's
+//! identifier in it instead, as in `dominique/eng-12-fix`.
 
-use super::{Backend, Item, Owner, Run, RunState, model::Workspace};
+use super::{Backend, Item, Owner, Provider, Run, RunState, model::Workspace, prompt};
 use crate::{orchestrator::view::LiveAgent, teleport::Host};
 use chrono::{DateTime, Utc};
 use herdr_client::{protocol::AgentStatus, shell_quote};
-use std::{collections::HashMap, sync::atomic::AtomicBool};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::atomic::AtomicBool,
+};
 
 /// The prefix every branch named here has.
 const PREFIX: &str = "agent/";
@@ -18,8 +25,17 @@ const HASH: usize = 8;
 /// The most branches read from a repository.
 const MAX_BRANCHES: usize = 500;
 
-/// agent-launcher's branch for a new checkout of `item`.
+/// The branch for a new checkout of `item`: the one its tracker names when
+/// git accepts it, else agent-launcher's.
 pub(crate) fn branch(item: &Item) -> String {
+    match &item.branch {
+        Some(branch) if prompt::valid_branch(branch) => branch.clone(),
+        _ => launcher_branch(item),
+    }
+}
+
+/// agent-launcher's branch for a new checkout of `item`.
+fn launcher_branch(item: &Item) -> String {
     let name = workspace_name(&format!("{}-{}", item.identifier, item.title));
     format!(
         "{PREFIX}{name}-{}",
@@ -30,7 +46,7 @@ pub(crate) fn branch(item: &Item) -> String {
 /// The branch for a read-only review of pull request `item`: its own
 /// branch with `review-` before the name, so it is found as the PR's too.
 pub(crate) fn review_branch(item: &Item) -> String {
-    branch(item).replacen(PREFIX, &format!("{PREFIX}review-"), 1)
+    launcher_branch(item).replacen(PREFIX, &format!("{PREFIX}review-"), 1)
 }
 
 /// agent-launcher's `stable_hash`: a UUIDv5 of `key`, as 32 hex digits.
@@ -77,6 +93,47 @@ fn branch_hash(branch: &str) -> Option<&str> {
     .then_some(hash)
 }
 
+/// The issue identifiers `branch` holds as tokens, uppercased: a letter and
+/// letters or digits, a dash, and every digit after it, not preceded by a
+/// letter or digit. `dominique/eng-12-fix` holds `ENG-12`; `xeng-12` and
+/// `eng-123` do not.
+fn identifiers(branch: &str) -> impl Iterator<Item = String> + '_ {
+    let bytes = branch.as_bytes();
+    let mut at = 0;
+    std::iter::from_fn(move || {
+        while at < bytes.len() {
+            let start = at;
+            let boundary = start == 0 || !bytes[start - 1].is_ascii_alphanumeric();
+            at += 1;
+            if !boundary || !bytes[start].is_ascii_alphabetic() {
+                continue;
+            }
+            while at < bytes.len() && bytes[at].is_ascii_alphanumeric() {
+                at += 1;
+            }
+            if bytes.get(at) != Some(&b'-') {
+                continue;
+            }
+            let digits = at + 1;
+            let mut end = digits;
+            while end < bytes.len() && bytes[end].is_ascii_digit() {
+                end += 1;
+            }
+            if end == digits {
+                continue;
+            }
+            at = end;
+            return Some(branch[start..end].to_ascii_uppercase());
+        }
+        None
+    })
+}
+
+/// Whether `branch` could name an item: by its hash, or by an identifier.
+fn names_item(branch: &str) -> bool {
+    branch_hash(branch).is_some() || identifiers(branch).next().is_some()
+}
+
 /// A Herdr workspace on some branch, on a connected host.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct LiveBranch {
@@ -110,7 +167,17 @@ pub(crate) fn found_runs(
         .iter()
         .map(|item| (key_hash(&item.key.canonical())[..HASH].to_owned(), item))
         .collect();
-    let item_of = |branch: &str| by_hash.get(branch_hash(branch)?).copied();
+    let by_identifier: HashMap<&str, &Item> = items
+        .iter()
+        .filter(|item| item.key.source.provider == Provider::Linear)
+        .map(|item| (item.identifier.as_str(), item))
+        .collect();
+    // The hash names an item outright, so it wins over an identifier.
+    let item_of = |branch: &str| {
+        branch_hash(branch)
+            .and_then(|hash| by_hash.get(hash).copied())
+            .or_else(|| identifiers(branch).find_map(|id| by_identifier.get(id.as_str()).copied()))
+    };
     let known = |branch: &str| {
         recorded.iter().any(|run| {
             run.workspace
@@ -199,22 +266,26 @@ fn run(item: &Item, id: String, workspace: Workspace, agent: Option<AgentStatus>
     }
 }
 
-/// The repository's branches named here, read on its host.
+/// The repository's branches that could name an item, read on its host:
+/// those named here first, then the most recently committed to that hold an
+/// identifier, such as a Linear issue's own branch.
 pub(crate) fn local_branches(
     host: &Host,
     main_root: &str,
     cancelled: &AtomicBool,
 ) -> Option<Vec<String>> {
+    let root = shell_quote(main_root);
     let body = format!(
-        "git -C {} for-each-ref --count={MAX_BRANCHES} --format='%(refname:short)' refs/heads/{PREFIX}\n",
-        shell_quote(main_root),
+        "git -C {root} for-each-ref --count={MAX_BRANCHES} --format='%(refname:short)' refs/heads/{PREFIX}\n\
+         git -C {root} for-each-ref --count={MAX_BRANCHES} --sort=-committerdate --format='%(refname:short)' refs/heads/\n",
     );
     let output = host.capture(&body, cancelled).ok()?;
+    let text = String::from_utf8_lossy(&output);
+    let mut seen = HashSet::new();
     Some(
-        String::from_utf8_lossy(&output)
-            .lines()
+        text.lines()
             .map(str::trim)
-            .filter(|branch| branch_hash(branch).is_some())
+            .filter(|branch| names_item(branch) && seen.insert(*branch))
             .map(str::to_owned)
             .collect(),
     )

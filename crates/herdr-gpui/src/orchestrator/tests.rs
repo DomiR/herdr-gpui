@@ -6,6 +6,8 @@ mod actions;
 mod beads;
 mod github;
 mod keys;
+mod linear;
+mod linear_branches;
 mod location;
 mod naming;
 mod prompt;
@@ -63,6 +65,7 @@ fn item(source: &SourceKey, native_id: &str, title: &str) -> Item {
             comments: Some(2),
             ..Activity::default()
         }),
+        branch: None,
     }
 }
 

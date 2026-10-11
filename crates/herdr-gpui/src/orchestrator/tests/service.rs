@@ -35,6 +35,7 @@ fn start(dir: &std::path::Path, checkout: String) -> Service {
             reload: Duration::from_millis(20),
             sync: Duration::from_secs(3600),
         },
+        linear: None,
     })
     .unwrap()
 }
