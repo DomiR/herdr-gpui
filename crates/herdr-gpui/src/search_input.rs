@@ -3,9 +3,9 @@ use std::ops::Range;
 
 use gpui::{
     App, Bounds, ClipboardItem, ContentMask, Context, CursorStyle, EntityInputHandler,
-    EventEmitter, FocusHandle, Focusable, KeyDownEvent, MouseButton, Pixels, Point, ShapedLine,
-    TextAlign, TextRun, UTF16Selection, UnderlineStyle, Window, canvas, div, fill, point,
-    prelude::*, px, rgb, size,
+    EventEmitter, FocusHandle, Focusable, Hsla, KeyDownEvent, MouseButton, Pixels, Point,
+    ShapedLine, TextAlign, TextRun, UTF16Selection, UnderlineStyle, Window, canvas, div, fill,
+    point, prelude::*, px, rgb, size,
 };
 
 use crate::config::{Config, FontConfig, Theme};
@@ -30,6 +30,12 @@ pub struct SearchInput {
     /// Whether it draws its own border, background, and padding. A field
     /// set inside a frame its owner draws turns this off.
     framed: bool,
+    /// The framed field's fill, when its owner paints it translucent; the
+    /// theme's background otherwise.
+    fill: Option<Hsla>,
+    /// Text drawn dimmed after the caret, which the owner offers to complete
+    /// what is typed; shown only while the caret ends the text.
+    completion: Option<String>,
 }
 
 // Internal offsets are UTF-8 boundaries; only the platform input API uses UTF-16.
@@ -150,6 +156,8 @@ impl SearchInput {
             selecting: false,
             framed: true,
             masked: false,
+            fill: None,
+            completion: None,
         }
     }
 
@@ -211,6 +219,35 @@ impl SearchInput {
 
     /// Restyles the field. An unchanged look is a no-op, so a parent may
     /// call this from its own render without redrawing the field each frame.
+    pub(crate) fn set_fill(&mut self, fill: Hsla, cx: &mut Context<Self>) {
+        if self.fill != Some(fill) {
+            self.fill = Some(fill);
+            cx.notify();
+        }
+    }
+
+    /// Offers `completion` after the typed text. Unchanged is a no-op, so the
+    /// owner may set it from its own render.
+    pub(crate) fn set_completion(&mut self, completion: Option<String>, cx: &mut Context<Self>) {
+        if self.completion != completion {
+            self.completion = completion;
+            self.layout = None;
+            cx.notify();
+        }
+    }
+
+    /// The completion to draw now: never on a secret, during composition,
+    /// or with the caret anywhere but the end of the text.
+    fn shown_completion(&self) -> Option<&str> {
+        let selection = self.edit.selection();
+        (!self.masked
+            && !self.is_composing()
+            && selection.is_empty()
+            && selection.end == self.edit.text.len())
+        .then_some(self.completion.as_deref())
+        .flatten()
+    }
+
     pub fn set_appearance(&mut self, font: FontConfig, theme: Theme, cx: &mut Context<Self>) {
         if self.font == font && self.theme == theme {
             return;
@@ -232,7 +269,9 @@ impl SearchInput {
     fn mouse_index(&self, position: Point<Pixels>) -> usize {
         match (&self.layout, self.bounds) {
             (Some(line), Some(bounds)) if !self.edit.text.is_empty() => {
-                let index = line.closest_index_for_x(position.x - bounds.left() + self.scroll);
+                let index = line
+                    .closest_index_for_x(position.x - bounds.left() + self.scroll)
+                    .min(self.shown(self.edit.text.len()));
                 if self.masked {
                     unmasked_offset(&self.edit.text, index)
                 } else {
@@ -253,7 +292,8 @@ impl SearchInput {
         if matches!(key, "up" | "down" | "enter" | "escape") {
             return;
         }
-        if modifiers.platform && !modifiers.control && !modifiers.alt {
+        let edit = actions::edit_modifiers(modifiers) && matches!(key, "a" | "c" | "v" | "x");
+        if edit || (modifiers.platform && !modifiers.control && !modifiers.alt) {
             match key {
                 // As in every macOS text field: Cmd-Left and Cmd-Right go to
                 // the line's ends, Cmd-Backspace and Cmd-Delete delete to them.
@@ -276,7 +316,7 @@ impl SearchInput {
                     }
                     self.replace_text_in_range(None, "", window, cx);
                 }
-                _ if modifiers.shift => return,
+                _ if modifiers.shift && !edit => return,
                 "a" => {
                     self.edit.anchor = 0;
                     self.edit.cursor = self.edit.text.len();
@@ -458,7 +498,9 @@ impl Render for SearchInput {
                     .rounded(px(crate::config::corners::CONTROL))
                     .border_1()
                     .border_color(rgb(self.theme.active))
-                    .bg(rgb(self.theme.background))
+                    .bg(self
+                        .fill
+                        .unwrap_or_else(|| rgb(self.theme.background).into()))
             })
             .text_color(rgb(self.theme.foreground))
             .text_font(&self.font)
@@ -521,6 +563,9 @@ impl Render for SearchInput {
                     move |_, window, cx| {
                         let input = input.read(cx);
                         let placeholder = input.text().is_empty();
+                        let completion = input
+                            .shown_completion()
+                            .filter(|_| !placeholder && input.focus.is_focused(window));
                         let text: gpui::SharedString = if placeholder {
                             input.placeholder.clone().into()
                         } else if input.masked {
@@ -541,6 +586,14 @@ impl Render for SearchInput {
                             underline: None,
                             strikethrough: None,
                         };
+                        let completion = completion.map(|completion| {
+                            let run = TextRun {
+                                len: completion.len(),
+                                color: rgb(input.theme.muted).into(),
+                                ..run.clone()
+                            };
+                            (completion, run)
+                        });
                         let marked = input
                             .edit
                             .marked
@@ -571,6 +624,14 @@ impl Render for SearchInput {
                             .collect()
                         } else {
                             vec![run]
+                        };
+                        let (text, runs) = match completion {
+                            Some((completion, ghost)) => {
+                                let mut runs = runs;
+                                runs.push(ghost);
+                                (format!("{text}{completion}").into(), runs)
+                            }
+                            None => (text, runs),
                         };
                         window
                             .text_system()
@@ -640,6 +701,8 @@ impl Render for SearchInput {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    mod completion;
 
     #[test]
     fn masked_offsets_count_characters_both_ways() {

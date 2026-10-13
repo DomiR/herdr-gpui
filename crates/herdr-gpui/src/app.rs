@@ -170,17 +170,30 @@ pub(crate) fn run() -> std::process::ExitCode {
     if let Some(exit) = updater::run_helper(&args) {
         return exit;
     }
+    #[cfg(unix)]
+    if let Some(exit) = crate::setup_relay::run_helper(&args) {
+        return exit;
+    }
+    // A control command asked for JSON gets its usage errors as JSON too.
+    let json_errors = cli::control::wants_json(&args);
     let LaunchOptions { target, mode } = match LaunchOptions::parse(args) {
         Ok(options) => options,
+        Err(error) if json_errors => {
+            println!(
+                "{}",
+                serde_json::json!({ "error": { "code": "usage", "message": error.to_string() } })
+            );
+            return std::process::ExitCode::from(2);
+        }
         Err(error) => {
             eprintln!(
-                "{error}\nUsage: herdr-gpui [--socket CLIENT_SOCKET | --session NAME [--dev]]\n       herdr-gpui browser open URL [--workspace ID] [--no-focus]"
+                "{error}\nUsage: herdr-gpui [--socket CLIENT_SOCKET | --session NAME [--dev]]\n       herdr-gpui browser open URL [--workspace ID] [--no-focus]\n       herdr-gpui COMMAND ... (see herdr-gpui --help)"
             );
             return std::process::ExitCode::from(2);
         }
     };
-    if let LaunchMode::Browser(command) = mode {
-        return crate::control::run(command);
+    if let LaunchMode::Control(invocation) = mode {
+        return crate::control::run(invocation);
     }
     // A separate app of its own: no daemon, control socket, stores, or updater.
     #[cfg(feature = "mockup")]
@@ -201,6 +214,10 @@ pub(crate) fn run() -> std::process::ExitCode {
         println!(
             "  browser open URL    Show URL in a browser tab of the running app (see browser --help)"
         );
+        println!("\nCommands for the running app (each with --help):");
+        for (name, summary) in cli::control::FAMILIES {
+            println!("  {name:<18}{summary}");
+        }
         #[cfg(feature = "integration-test")]
         println!(
             "  --integration-test  Run native GUI checks (requires explicit --socket)\n  --sidebar-test      Run native sidebar fixtures without connecting to a daemon\n  --performance-test  Measure native dense-terminal hover/scroll without a daemon (macOS)"
@@ -226,6 +243,9 @@ pub(crate) fn run() -> std::process::ExitCode {
         eprintln!("Unable to initialize diagnostics: {error}");
         return std::process::ExitCode::FAILURE;
     }
+    // SSH children use the login shell's `ssh` and agent, as the daemon does:
+    // launchd's would miss keys such as a security key held by another agent.
+    herdr_client::set_command_environment(crate::login_env::apply);
     tracing::info!(
         version = APP_VERSION,
         os = std::env::consts::OS,
@@ -308,6 +328,7 @@ pub(crate) fn run() -> std::process::ExitCode {
             }
             cx.set_global(appearance.select(light_appearance(cx)));
             app_icon::install();
+            crate::caffeine::install(cx);
             #[cfg(target_os = "macos")]
             crate::app_badge::install(cx);
             cx.on_action(|_: &Quit, cx| cx.quit());

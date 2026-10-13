@@ -2,15 +2,18 @@
 //! the latest projection only: it never queries the daemon, touches disk, or
 //! starts a process.
 
-use super::{HerdrWindow, PressedLink};
+use super::{
+    HerdrWindow, PressedLink,
+    tab_strip::{Reach, native_page},
+};
 use crate::{
     CheckForUpdates, Minimize, PlaySound, RunCommand, ShowHerdrNotDetected, ShowUpdatePreview,
     actions::{RingBellPreview, ShowToastPreview},
-    browser::{Pick, Shown, Slot},
+    browser::{Shown, Slot},
     config::ClipboardToastPosition,
     fonts::StyledFont,
     terminal::*,
-    terminal_painter::{self, ImageTarget, PlacedImages},
+    terminal_painter::{self, Ground, ImageTarget, PlacedImages},
 };
 use gpui::{prelude::*, *};
 use herdr_client::ConnectOptions;
@@ -55,6 +58,9 @@ impl HerdrWindow {
 impl Render for HerdrWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.restore_menu_focus(window, cx);
+        self.sync_backdrop(window, cx);
+        let fill = self.fill();
+        let ground = self.ground();
         self.viewport_width = f32::from(window.viewport_size().width);
         let font = self.config.terminal.font();
         // Parked groups paint with the same face as the window's terminal.
@@ -151,6 +157,7 @@ impl Render for HerdrWindow {
             cell_width,
             cell_height,
             theme: self.theme.clone(),
+            ground,
         };
         if !self.slides_allowed() {
             self.presentation.scroll.clear();
@@ -194,7 +201,9 @@ impl Render for HerdrWindow {
         } else {
             0.
         };
-        // Only the first group meets the sidebar, so only it takes the gap.
+        // Only the first group meets the sidebar, so only it takes the gap,
+        // and only where it draws a terminal or stands in for one: every
+        // other kind of tab pads its own content.
         self.ensure_layout();
         self.forget_gone_strips();
         let slots = self.group_slots();
@@ -203,6 +212,13 @@ impl Render for HerdrWindow {
             .map(|slot| self.group_shown(slot.id, cx))
             .collect();
         let slot_gap = |slot: Slot| if slot.index == 0 { sidebar_gap } else { 0. };
+        // A divider's grip keeps off a native page, which would cover it. A
+        // folding group stands between two groups without a divider.
+        let pages: Vec<bool> = if self.folding_groups().is_empty() {
+            shown.iter().map(|shown| native_page(shown, cx)).collect()
+        } else {
+            Vec::new()
+        };
         // The window's own terminal, with its input, goes to the group holding
         // its connection; other terminal groups paint parked connections.
         let primary = self.primary_group();
@@ -216,7 +232,7 @@ impl Render for HerdrWindow {
         let terminal_gap = terminal_slot.map_or(sidebar_gap, slot_gap);
         let find_bar = self.render_find_bar(surface.as_deref(), terminal_gap, cx);
         let terminal_note = self.render_terminal_note(surface.as_deref(), terminal_gap, cx);
-        let copy_badge = self.render_copy_mode_badge(surface.as_deref(), terminal_gap);
+        let copy_badge = self.render_copy_mode_badge(surface.as_deref(), terminal_gap, cx);
         let terminal = div()
             .id("terminal")
             .debug_selector(|| "terminal".into())
@@ -262,7 +278,7 @@ impl Render for HerdrWindow {
             .min_h_0()
             .min_w_0()
             .overflow_hidden()
-            .bg(rgb(self.theme.background))
+            .bg(fill.base(self.theme.background))
             .track_focus(&self.focus)
             // Screen readers and selection tools read the rows on screen and
             // the selection among them. The rows are built while GPUI
@@ -335,7 +351,12 @@ impl Render for HerdrWindow {
                     // A press on a link may still turn into a drag across it,
                     // so the selection starts either way; the click that opens
                     // the link is the one that never left its half-cell.
-                    this.begin_selection(event.position, event.click_count, cx);
+                    this.begin_selection(
+                        event.position,
+                        event.click_count,
+                        event.modifiers.shift,
+                        cx,
+                    );
                     if this.pressed_terminal_link.is_some() {
                         cx.stop_propagation();
                         return;
@@ -454,6 +475,7 @@ impl Render for HerdrWindow {
                                         &surface.frame,
                                         bounds.origin,
                                         Some(bounds.size),
+                                        ground,
                                         cell_width,
                                         &font,
                                         &highlights,
@@ -504,6 +526,7 @@ impl Render for HerdrWindow {
                                         &popup.frame,
                                         bounds.origin + offset,
                                         None,
+                                        Ground::Opaque,
                                         cell_width,
                                         &font,
                                         &popup_highlights,
@@ -632,7 +655,7 @@ impl Render for HerdrWindow {
                         Some(crate::browser::Location::Orchestrator { .. })
                     ) =>
                 {
-                    self.render_orchestrator_tab(slot, &tab, gap)
+                    self.render_orchestrator_tab(slot, &tab)
                 }
                 (Shown::Page(_), Some(tab))
                     if tab
@@ -642,34 +665,31 @@ impl Render for HerdrWindow {
                 {
                     match tab.location {
                         Some(crate::browser::Location::Code { .. }) => {
-                            self.render_code_tab(slot, &tab, gap, cx)
+                            self.render_code_tab(slot, &tab, cx)
                         }
                         Some(crate::browser::Location::Devices) => {
-                            self.render_devices_tab(slot, &tab, gap, cx)
+                            self.render_devices_tab(slot, &tab, cx)
                         }
-                        _ => self.render_review_tab(slot, &tab, gap, cx),
+                        _ => self.render_review_tab(slot, &tab, cx),
                     }
                 }
-                (Shown::Page(_), Some(tab)) => {
-                    self.render_browser(slot, &tab, gap, owns_keyboard, cx)
-                }
-                (Shown::Elsewhere(Pick::Herdr(tab)), _) => {
-                    match self.live_frame_of(tab, window_frame.clone()) {
-                        Some(frame) => self.render_terminal_mirror(
-                            slot,
-                            gap,
-                            Some(frame),
-                            parked_font.clone(),
-                            cell_height,
-                            cx,
-                        ),
-                        None => self.render_stand_in(slot, &shown, gap, owns_keyboard, cx),
-                    }
-                }
+                (Shown::Page(_), Some(tab)) => self.render_browser(slot, &tab, owns_keyboard, cx),
+                (Shown::Elsewhere(tab), _) => match self.live_frame_of(tab, window_frame.clone()) {
+                    Some(frame) => self.render_terminal_mirror(
+                        slot,
+                        gap,
+                        Some(frame),
+                        parked_font.clone(),
+                        cell_height,
+                        cx,
+                    ),
+                    None => self.render_stand_in(slot, &shown, gap, owns_keyboard, cx),
+                },
                 _ => self.render_stand_in(slot, &shown, gap, owns_keyboard, cx),
             };
             let ends = merged.then(|| crate::titlebar::Ends::of(slot.index, count));
-            groups.push(self.render_group(slot, body, ends, window, cx));
+            let reach = Reach::of(&pages, slot.index);
+            groups.push(self.render_group(slot, body, ends, reach, window, cx));
         }
         let content = self.render_groups(groups, cx);
         // Not `||`: asking forgets group motion that has finished.
@@ -784,7 +804,7 @@ impl Render for HerdrWindow {
             .relative()
             .flex()
             .flex_col()
-            .bg(rgb(self.theme.background))
+            .map(|root| self.with_backdrop(root))
             .text_color(rgb(self.theme.foreground))
             .text_font(&self.config.ui)
             .text_size(px(self.config.ui.size))

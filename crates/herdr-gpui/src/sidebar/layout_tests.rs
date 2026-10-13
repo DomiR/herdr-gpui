@@ -45,9 +45,10 @@ mod palette;
 #[cfg(test)]
 mod picker_scroll;
 #[cfg(test)]
-mod preferences_panel;
 #[cfg(test)]
 mod probes;
+#[cfg(test)]
+mod repository_icons;
 #[cfg(test)]
 mod row_drag;
 #[cfg(test)]
@@ -64,6 +65,8 @@ mod split_pane;
 mod status_bar;
 #[cfg(test)]
 mod sticky_hosts;
+#[cfg(test)]
+mod superset_badges;
 #[cfg(test)]
 mod superset_dots;
 #[cfg(test)]
@@ -288,7 +291,7 @@ impl ProbeText {
             && bounds.bottom() <= mask.bottom()
             // The expected column assumes the window leaves the default
             // sidebar width alone. A frame painted mid-resize, such as the
-            // return from the 320px Preferences check, can narrow it.
+            // return from a 320px check, can narrow it.
             && super::sidebar_width(None, f32::from(window.viewport_size().width))
                 == super::SIDEBAR_WIDTH
         {
@@ -454,6 +457,7 @@ pub(crate) fn fixture_window(window: &mut Window, cx: &mut Context<HerdrWindow>)
         app_update_notes: Default::default(),
         app_update_notes_scroll: gpui::ScrollHandle::new(),
         removal: None,
+        merged_cleanup: Default::default(),
         worktree_script: None,
         editor_open: None,
         editor_panes: Vec::new(),
@@ -484,7 +488,6 @@ pub(crate) fn fixture_window(window: &mut Window, cx: &mut Context<HerdrWindow>)
         theme: Default::default(),
         theme_light: crate::app::light_appearance(cx),
         config_load: None,
-        font_size_saves: Default::default(),
         config_watch: None,
         config_load_revision: 0,
         git: Default::default(),
@@ -559,6 +562,8 @@ pub(crate) fn fixture_window(window: &mut Window, cx: &mut Context<HerdrWindow>)
         pending_images: Vec::new(),
         pending_input: Default::default(),
         held_keys: Default::default(),
+        // No AppKit event to read; a test that needs one supplies its own.
+        key_press: || None,
         file_transfer: None,
         presentation: Default::default(),
         wake: crate::endpoint::WakeClock::new(
@@ -566,6 +571,7 @@ pub(crate) fn fixture_window(window: &mut Window, cx: &mut Context<HerdrWindow>)
             std::time::SystemTime::now(),
         ),
         painter: Default::default(),
+        backdrop: Default::default(),
         regions: Vec::new(),
         marked: String::new(),
         marked_selection: None,

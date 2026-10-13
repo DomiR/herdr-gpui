@@ -411,15 +411,13 @@ impl SettingsWindow {
             .debug_selector(|| "cloud-coder-devices".into());
         if cloud.devices.is_empty() {
             devices =
-                devices.child(self.control_note(
-                    "None yet. Add one with Add Coder Workspace… in the device picker.",
-                ));
+                devices.child(self.control_note("None yet. Add one from Coder in Add Device…."));
         }
         for (index, device) in cloud.devices.iter().enumerate() {
             devices = devices.child(self.cloud_device_row(
-                crate::cloud::CloudProvider::Coder,
                 index,
                 device,
+                format!("{} · {}", device.machine, device.session),
                 ready,
                 Self::cloud_forget,
                 cx,

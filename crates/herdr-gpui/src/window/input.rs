@@ -82,11 +82,13 @@ impl HerdrWindow {
         web || (modifiers.secondary() && self.file_link_at(position).is_some())
     }
 
-    /// Whether wheel scrolling may draw panes between rows. Images paint with
-    /// the whole grid, which never slides, a dragged thumb places the content
-    /// exactly where the pointer put it, and a popup stays on its rows.
+    /// Whether wheel scrolling may draw panes between rows. Off in settings,
+    /// it never does. Images paint with the whole grid, which never slides,
+    /// a dragged thumb places the content exactly where the pointer put it,
+    /// and a popup stays on its rows.
     pub(crate) fn slides_allowed(&self) -> bool {
-        self.scrollbar_drag.is_none()
+        self.config.smooth_scroll
+            && self.scrollbar_drag.is_none()
             && (self.live.surface.as_ref()).is_none_or(|surface| {
                 surface.graphics.placements.is_empty() && surface.popup.is_none()
             })
@@ -170,6 +172,15 @@ impl HerdrWindow {
         )
     }
 
+    /// Herdr's shared `ui.mouse_scroll_lines`, its default until the shared
+    /// config loads.
+    fn mouse_scroll_lines(&self) -> std::num::NonZeroU16 {
+        self.settings.shared.as_ref().map_or(
+            crate::herdr_settings::DEFAULT_MOUSE_SCROLL_LINES,
+            |shared| shared.mouse_scroll_lines,
+        )
+    }
+
     pub(crate) fn scroll_wheel(
         &mut self,
         event: &ScrollWheelEvent,
@@ -194,15 +205,16 @@ impl HerdrWindow {
             self.wheel = WheelAccumulator::default();
             return;
         };
+        let notch_lines = self.mouse_scroll_lines();
         let mut steps = self
             .wheel
-            .steps(&target, event, self.cell_width, cell_height);
+            .steps(&target, event, self.cell_width, cell_height, notch_lines);
         // Scrollback follows the OS's motion exactly; anything else, such as an
         // application reading the wheel, gets whole steps as they accumulate.
         let smooth = match &target.target {
-            InputTarget::Pane(id) if self.slides_allowed() => {
-                self.presentation.wheel(id, wheel_rows(event, cell_height))
-            }
+            InputTarget::Pane(id) if self.slides_allowed() => self
+                .presentation
+                .wheel(id, wheel_rows(event, cell_height, notch_lines)),
             InputTarget::Pane(_) | InputTarget::Popup(_) => None,
         };
         if let Some(lines) = smooth {
@@ -249,17 +261,31 @@ impl HerdrWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // A remapped function key has its name from here on, so the pane key
+        // looked up, the key sent, and the key held for its release agree.
+        let named =
+            super::function_keys::named(&event.keystroke, self.key_press).map(|keystroke| {
+                KeyDownEvent {
+                    keystroke,
+                    ..event.clone()
+                }
+            });
+        let event = named.as_ref().unwrap_or(event);
         // A new press goes wherever this decides; only the pane branch at the
         // end holds it again for its release.
         self.held_keys.forget(&event.keystroke.key);
-        // A keystroke bubbling out of the find field is the field's: an
-        // unhandled one is still on its way to the field's IME.
-        if self.find_focused(window, cx) || self.terminal_note_focused(window, cx) {
+        // A keystroke bubbling out of the find field, the terminal note field,
+        // or the copy-mode search prompt is the field's: an unhandled one is
+        // still on its way to the field's IME.
+        if self.find_focused(window, cx)
+            || self.terminal_note_focused(window, cx)
+            || self.copy_search_focused(window, cx)
+        {
             return;
         }
         // Copy mode owns the keyboard: its keys run and nothing else is typed.
         if self.copy_mode_active() {
-            self.copy_mode_key(event, cx);
+            self.copy_mode_key(event, window, cx);
             if !event.keystroke.modifiers.platform {
                 cx.stop_propagation();
                 window.prevent_default();
@@ -342,7 +368,10 @@ impl HerdrWindow {
     /// terminal to report all keys. Text stays with the input handler, so
     /// only keys sent as key events are released.
     pub(crate) fn key_up(&mut self, event: &KeyUpEvent, _: &mut Window, cx: &mut Context<Self>) {
-        let Some(release) = self.held_keys.release(&event.keystroke.key) else {
+        // Held under the name `key_down` gave it.
+        let named = super::function_keys::named(&event.keystroke, self.key_press);
+        let key = &named.as_ref().unwrap_or(&event.keystroke).key;
+        let Some(release) = self.held_keys.release(key) else {
             return;
         };
         if self.live.keyboard_report_all && self.marked.is_empty() {

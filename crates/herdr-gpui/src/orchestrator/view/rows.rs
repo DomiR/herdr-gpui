@@ -78,7 +78,7 @@ impl Sort {
 }
 
 /// Narrowing beyond the search text.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Filters {
     /// Only one provider's items.
     pub(crate) provider: Option<Provider>,
@@ -105,6 +105,20 @@ pub(crate) fn linear_defaults(filters: Filters, items: &[Item]) -> Filters {
         }
     } else {
         filters
+    }
+}
+
+/// Merged and closed pull requests are hidden until asked for, as on GitHub.
+impl Default for Filters {
+    fn default() -> Self {
+        Self {
+            provider: None,
+            has_run: false,
+            blocked: false,
+            open_only: true,
+            mine: false,
+            cycle: false,
+        }
     }
 }
 
@@ -481,7 +495,7 @@ pub(crate) fn issue_rows(
     rows
 }
 
-/// The Pull requests tab, in every state unless `open_only`.
+/// The Pull requests tab: open and draft ones unless `open_only` is off.
 pub(crate) fn pull_request_rows(
     items: &[Item],
     runs: &Runs<'_>,

@@ -4,7 +4,8 @@
 
 use super::{Candidate, Source, valid_host};
 use crate::{Error, Result};
-use mdns_sd::ServiceDaemon;
+use herdr_client::LocalNetworkAccess;
+use mdns_sd::{RecvTimeoutError, ServiceDaemon};
 use std::{
     collections::HashSet,
     net::IpAddr,
@@ -12,24 +13,71 @@ use std::{
 };
 
 const SERVICE: &str = "_ssh._tcp.local.";
+/// How often the query is sent again while nothing has answered.
+const REQUERY: Duration = Duration::from_secs(1);
 
 /// Listen for `duration`, reporting each resolved announcement that is not
 /// this machine until `found` returns `false`. Blocks: call it from the
 /// background executor.
-pub(super) fn browse(duration: Duration, mut found: impl FnMut(Candidate) -> bool) -> Result<()> {
+///
+/// On macOS the browse first needs Local Network permission. When the
+/// system refuses it, which it also does while its alert waits for the
+/// user's answer, `waiting(true)` is reported and the permission is checked
+/// again for up to `permission_wait`, until `waiting` returns `false`. Once
+/// allowed, `waiting(false)` is reported and the full `duration` follows.
+/// The first queries of a fresh permission can still go unanswered: the
+/// library backs off to queries 1, 3 and 7 seconds in, so until something
+/// answers, the browse restarts every second, which sends a new query.
+pub(super) fn browse(
+    duration: Duration,
+    permission_wait: Duration,
+    mut waiting: impl FnMut(bool) -> bool,
+    mut found: impl FnMut(Candidate) -> bool,
+) -> Result<()> {
     let local: HashSet<IpAddr> = if_addrs::get_if_addrs()
         .map_err(Error::LocalAddresses)?
         .into_iter()
         .map(|interface| interface.ip())
         .collect();
+    if cfg!(target_os = "macos") && local.iter().any(|ip| ip.is_ipv4() && !ip.is_loopback()) {
+        let access = permitted(
+            herdr_client::local_network_access,
+            |keep_waiting| herdr_client::wait_for_local_network(permission_wait, keep_waiting),
+            &mut waiting,
+        );
+        match access {
+            Permission::Granted => {}
+            Permission::Cancelled => return Ok(()),
+            Permission::Refused => return Err(Error::LocalNetworkDenied),
+        }
+    }
     let daemon = ServiceDaemon::new()?;
-    let events = daemon.browse(SERVICE)?;
+    let mut events = daemon.browse(SERVICE)?;
     let deadline = Instant::now() + duration;
-    // Times out, or the daemon stopped on its own.
-    while let Ok(event) = events.recv_deadline(deadline) {
+    let mut answered = false;
+    loop {
+        let wake = if answered {
+            deadline
+        } else {
+            deadline.min(Instant::now() + REQUERY)
+        };
+        let event = match events.recv_deadline(wake) {
+            Ok(event) => event,
+            Err(RecvTimeoutError::Timeout) if !answered && Instant::now() < deadline => {
+                // Replaces the listener, so the old receiver gets nothing more.
+                let Ok(again) = daemon.browse(SERVICE) else {
+                    break;
+                };
+                events = again;
+                continue;
+            }
+            // Timed out, or the daemon stopped on its own.
+            Err(_) => break,
+        };
         let mdns_sd::ServiceEvent::ServiceResolved(service) = event else {
             continue;
         };
+        answered = true;
         let addresses: Vec<IpAddr> = service
             .get_addresses()
             .iter()
@@ -52,6 +100,46 @@ pub(super) fn browse(duration: Duration, mut found: impl FnMut(Candidate) -> boo
     // cleanly; it exits with this process either way.
     let _ = daemon.shutdown();
     Ok(())
+}
+
+/// Where the Local Network permission left the browse.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Permission {
+    Granted,
+    /// Still refused when the wait ran out.
+    Refused,
+    /// The form went away while waiting.
+    Cancelled,
+}
+
+/// Check the permission, waiting for the user while it is refused. The mDNS
+/// daemon only logs a refused send, so without this the browse would find
+/// nothing and look like an empty network. An `Unknown` answer is left to
+/// the browse.
+pub(super) fn permitted(
+    check: impl FnOnce() -> LocalNetworkAccess,
+    wait: impl FnOnce(&mut dyn FnMut() -> bool) -> LocalNetworkAccess,
+    waiting: &mut impl FnMut(bool) -> bool,
+) -> Permission {
+    if check() != LocalNetworkAccess::Denied {
+        return Permission::Granted;
+    }
+    let mut open = waiting(true);
+    let access = wait(&mut || {
+        open = open && waiting(true);
+        open
+    });
+    if !open {
+        return Permission::Cancelled;
+    }
+    if access == LocalNetworkAccess::Denied {
+        return Permission::Refused;
+    }
+    if waiting(false) {
+        Permission::Granted
+    } else {
+        Permission::Cancelled
+    }
 }
 
 /// The suggestion for one announcement, or `None` for this machine or a host

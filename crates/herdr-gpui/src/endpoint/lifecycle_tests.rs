@@ -17,13 +17,18 @@ use std::{
 };
 
 mod close_pane;
+mod close_sequence;
 mod dead_keys;
 mod endpoint_switch;
 mod focus_fences;
+mod function_keys;
+mod group_navigation_choices;
+mod group_page_move;
 mod horizontal_wheel;
 mod image_paste;
 mod image_paste_native;
 mod input_gap;
+mod input_settings;
 mod install_prompt;
 mod keyboard;
 mod mouse_cell_motion;
@@ -35,6 +40,7 @@ mod prompts;
 mod reconnect_backoff;
 mod remote_drop;
 mod scrollbar_drag;
+mod smooth_scroll_off;
 mod sounds;
 mod split_drag;
 mod toast_handoff;

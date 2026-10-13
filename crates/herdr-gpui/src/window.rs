@@ -5,6 +5,7 @@
 
 mod annotate;
 mod announcement;
+mod backdrop;
 mod clipboard;
 mod commands;
 mod config_diagnostic;
@@ -16,6 +17,7 @@ mod find;
 mod flash;
 pub(crate) use commands::run_window_command;
 pub(crate) use flash::Flash;
+mod function_keys;
 mod image_source;
 mod images;
 mod input;
@@ -40,6 +42,8 @@ mod transfers;
 #[cfg(test)]
 pub(crate) use transfers::tests::Peer as MockPeer;
 
+#[cfg(test)]
+mod agent_model_tests;
 #[cfg(test)]
 mod font_size_tests;
 #[cfg(test)]
@@ -103,7 +107,6 @@ pub(crate) struct HerdrWindow {
     pub(crate) config_load: Option<Task<()>>,
     pub(crate) settings: crate::settings_panel::SettingsPanel,
     pub(crate) integrations: crate::integrations::Integrations,
-    pub(crate) font_size_saves: crate::font_sizes::FontSizeSaves,
     pub(crate) config_watch: Option<Task<()>>,
     pub(crate) config_load_revision: u64,
     pub(crate) endpoints: Vec<endpoint::Endpoint>,
@@ -146,6 +149,9 @@ pub(crate) struct HerdrWindow {
     pub(crate) pending_images: Vec<images::PendingImage>,
     pub(crate) pending_input: pending_input::PendingInput,
     pub(crate) held_keys: crate::terminal::HeldKeys,
+    /// The key code, and Shift, of the key being handled: AppKit's current
+    /// event, which names a function key macOS delivered without its name.
+    pub(crate) key_press: fn() -> Option<(u16, bool)>,
     pub(crate) file_transfer: Option<transfers::FileTransfer>,
     /// The terminal cells the pointer is choosing. A release copies them and
     /// clears this, so a highlight only ever belongs to a drag in progress.
@@ -164,6 +170,8 @@ pub(crate) struct HerdrWindow {
     /// Tells a sleep from the clocks, so connections are checked on waking.
     pub(crate) wake: endpoint::WakeClock,
     pub(crate) painter: std::rc::Rc<std::cell::RefCell<terminal_painter::TerminalPainter>>,
+    /// The picture and platform appearance `[backdrop]` asks for.
+    pub(crate) backdrop: backdrop::State,
     /// The terminal grid's cached regions; see `regions`.
     pub(crate) regions: Vec<regions::RegionLayers>,
     pub(crate) marked: String,
@@ -178,6 +186,8 @@ pub(crate) struct HerdrWindow {
     pub(crate) menu: menu::MenuState,
     /// A `worktree.remove` queued after its dialog closed.
     pub(crate) removal: Option<menu::Removal>,
+    /// Removing worktrees whose pull request is merged, when enabled.
+    pub(crate) merged_cleanup: crate::merged_cleanup::Cleanup,
     /// The worktree script being located, read, trusted, or opened.
     pub(crate) worktree_script: Option<crate::worktree_scripts::Job>,
     /// The editor pane being opened, if any.
@@ -489,9 +499,10 @@ impl HerdrWindow {
         self.poll_find(window, cx);
         self.follow_terminal_note(window, cx);
         self.follow_selection(cx);
-        self.poll_copy_mode(cx);
+        self.poll_copy_mode(window, cx);
         #[cfg(target_os = "macos")]
         crate::app_badge::sync(window.window_handle().window_id(), &self.endpoints, cx);
+        self.observe_agent_work(window, cx);
         self.cancel_stale_image();
         self.poll_file_transfer(cx);
         self.update_workspace_dialog(window, cx);
@@ -522,6 +533,7 @@ impl HerdrWindow {
         if self.update_workspace_pr() {
             cx.notify();
         }
+        self.update_merged_cleanup(window, cx);
         if self.update_git() {
             cx.notify();
         }
@@ -592,16 +604,18 @@ impl HerdrWindow {
     /// Listening ports are scanned on the same hosts as CPU and memory.
     fn update_listening_ports(&mut self) -> bool {
         if !self.config.show_listening_ports {
-            self.tunnels = Default::default();
+            self.tunnels.close_all();
             return self.listening_ports.poll(Vec::new());
         }
         let hosts = self.watched_hosts();
         let changed = self.listening_ports.poll(hosts);
-        // A tunnel lives as long as its remote port is listed.
+        // A tunnel lives as long as its remote port is listed and its SSH
+        // child runs; either ending removes its close button.
         let ports = &self.listening_ports;
-        self.tunnels
+        let closed = self
+            .tunnels
             .retain(|key| ports.listening(&crate::usage::Host::Ssh(key.target.clone()), key.port));
-        changed
+        changed || closed
     }
 
     /// The machines background monitors watch: this one always, a remote
@@ -773,7 +787,6 @@ impl HerdrWindow {
             config_load: None,
             settings: Default::default(),
             integrations: Default::default(),
-            font_size_saves: Default::default(),
             config_watch: None,
             config_load_revision: 0,
             catalog: endpoint::Catalog::new(&target),
@@ -814,6 +827,7 @@ impl HerdrWindow {
             pending_images: Vec::new(),
             pending_input: Default::default(),
             held_keys: Default::default(),
+            key_press: function_keys::current_press,
             file_transfer: None,
             selection: None,
             selection_follow: Default::default(),
@@ -824,6 +838,7 @@ impl HerdrWindow {
             presentation: Default::default(),
             wake: endpoint::WakeClock::new(std::time::Instant::now(), std::time::SystemTime::now()),
             painter: Default::default(),
+            backdrop: Default::default(),
             regions: Vec::new(),
             marked: String::new(),
             marked_selection: None,
@@ -832,6 +847,7 @@ impl HerdrWindow {
             local_error: error,
             menu: menu::MenuState::new(cx),
             removal: None,
+            merged_cleanup: Default::default(),
             worktree_script: None,
             editor_open: None,
             editor_panes: Vec::new(),
@@ -927,10 +943,12 @@ impl HerdrWindow {
                 cx.notify();
             }),
         };
-        // Quitting need not drop this window, so its SSH children are killed
-        // here rather than left forwarding after the app is gone.
+        // Quitting need not drop this window, so its SSH children (port
+        // forwards and listening-port tunnels) are killed here rather than
+        // left forwarding after the app is gone.
         cx.on_app_quit(|this, _| {
             this.port_forwards.stop_all();
+            this.tunnels.close_all();
             async {}
         })
         .detach();

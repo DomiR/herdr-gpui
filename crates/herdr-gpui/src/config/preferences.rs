@@ -6,10 +6,14 @@ use herdr_client::protocol::ToastHerdrPosition;
 pub(crate) enum Preference {
     ConfirmCloseTab(bool),
     ConfirmClosePane(bool),
+    ConfirmCloseWorkspace(bool),
+    RemoveMergedWorktrees(bool),
     ShowSystemLoad(bool),
     AgentCheckpoints(bool),
     ShowListeningPorts(bool),
     ShowSidebarSearch(bool),
+    ShowRepositoryIcons(bool),
+    SmoothScroll(bool),
     NotificationEnabled(Option<bool>),
     NotificationDelay(Option<u64>),
     NotificationPosition(Option<ToastHerdrPosition>),
@@ -44,6 +48,12 @@ impl Config {
                 Preference::ConfirmClosePane(value) => {
                     (None, "confirm_close_pane", Some(value.into()))
                 }
+                Preference::ConfirmCloseWorkspace(value) => {
+                    (None, "confirm_close_workspace", Some(value.into()))
+                }
+                Preference::RemoveMergedWorktrees(value) => {
+                    (None, "remove_merged_worktrees", Some(value.into()))
+                }
                 Preference::ShowSystemLoad(value) => (None, "show_system_load", Some(value.into())),
                 Preference::AgentCheckpoints(value) => {
                     (None, "agent_checkpoints", Some(value.into()))
@@ -54,6 +64,10 @@ impl Config {
                 Preference::ShowSidebarSearch(value) => {
                     (None, "show_sidebar_search", Some(value.into()))
                 }
+                Preference::ShowRepositoryIcons(value) => {
+                    (None, "show_repository_icons", Some(value.into()))
+                }
+                Preference::SmoothScroll(value) => (None, "smooth_scroll", Some(value.into())),
                 Preference::NotificationEnabled(value) => {
                     (Some("notifications"), "enabled", value.map(Into::into))
                 }
@@ -164,10 +178,14 @@ mod tests {
         for edit in [
             Preference::ConfirmCloseTab(false),
             Preference::ConfirmClosePane(false),
+            Preference::ConfirmCloseWorkspace(false),
+            Preference::RemoveMergedWorktrees(true),
             Preference::ShowSystemLoad(false),
             Preference::AgentCheckpoints(false),
             Preference::ShowListeningPorts(false),
             Preference::ShowSidebarSearch(false),
+            Preference::ShowRepositoryIcons(false),
+            Preference::SmoothScroll(false),
             Preference::NotificationEnabled(Some(true)),
             Preference::NotificationDelay(Some(3600)),
             Preference::NotificationPosition(Some(ToastHerdrPosition::TopLeft)),
@@ -187,10 +205,14 @@ mod tests {
         assert_eq!(table["notifications"]["future"].as_integer(), Some(42));
         assert_eq!(table["confirm_close_tab"].as_bool(), Some(false));
         assert_eq!(table["confirm_close_pane"].as_bool(), Some(false));
+        assert_eq!(table["confirm_close_workspace"].as_bool(), Some(false));
+        assert_eq!(table["remove_merged_worktrees"].as_bool(), Some(true));
         assert_eq!(table["show_system_load"].as_bool(), Some(false));
         assert_eq!(table["agent_checkpoints"].as_bool(), Some(false));
         assert_eq!(table["show_listening_ports"].as_bool(), Some(false));
         assert_eq!(table["show_sidebar_search"].as_bool(), Some(false));
+        assert_eq!(table["show_repository_icons"].as_bool(), Some(false));
+        assert_eq!(table["smooth_scroll"].as_bool(), Some(false));
         assert_eq!(table["layout"]["mode"].as_str(), Some("orca"));
         assert_eq!(table["updates"]["channel"].as_str(), Some("beta"));
         assert_eq!(table["layout"]["sidebar_gap"].as_float(), Some(7.5));

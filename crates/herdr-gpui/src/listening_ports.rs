@@ -20,7 +20,9 @@ use crate::{
     usage::{Host, Shell},
 };
 use herdr_client::ConnectTarget;
-pub(crate) use render::chips;
+pub(crate) use render::{chips, close_button};
+#[cfg(all(test, unix))]
+pub(crate) use scan::{Bind, Owner};
 pub(crate) use scan::{Link, Origin, Port, Ports, parse};
 use std::{
     collections::HashMap,
@@ -30,6 +32,8 @@ use std::{
     time::{Duration, Instant},
 };
 pub(crate) use tunnel::Tunnels;
+#[cfg(all(test, unix))]
+pub(crate) use tunnel::{Key, Tunnel};
 
 /// Ports open and close at human pace; `lsof` is not free on a busy machine.
 const INTERVAL: Duration = Duration::from_secs(5);
