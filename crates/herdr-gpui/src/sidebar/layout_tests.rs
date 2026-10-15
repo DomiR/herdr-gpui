@@ -19,6 +19,8 @@ use herdr_client::{ConnectOptions, ConnectTarget};
 use std::sync::Arc;
 
 #[cfg(test)]
+mod agent_menu;
+#[cfg(test)]
 mod agent_rows;
 #[cfg(all(test, feature = "coder"))]
 mod coder_dialog;
@@ -26,6 +28,8 @@ mod coder_dialog;
 mod configured_rows;
 #[cfg(test)]
 mod device_footer;
+#[cfg(test)]
+mod device_footer_setting;
 #[cfg(test)]
 mod devices_layout;
 #[cfg(test)]
@@ -35,6 +39,8 @@ mod host_groups;
 #[cfg(test)]
 mod host_nesting;
 #[cfg(test)]
+mod host_origin;
+#[cfg(test)]
 mod host_wash;
 #[cfg(test)]
 mod layouts;
@@ -42,6 +48,8 @@ mod layouts;
 mod listening_ports;
 #[cfg(test)]
 mod palette;
+#[cfg(test)]
+mod palette_header;
 #[cfg(test)]
 mod picker_scroll;
 #[cfg(test)]
@@ -63,6 +71,8 @@ mod spacing_overrides;
 mod split_pane;
 #[cfg(test)]
 mod status_bar;
+#[cfg(test)]
+mod status_icons;
 #[cfg(test)]
 mod sticky_hosts;
 #[cfg(test)]
@@ -464,6 +474,7 @@ pub(crate) fn fixture_window(window: &mut Window, cx: &mut Context<HerdrWindow>)
         teleport: None,
         teleport_marks: crate::teleport::Marks::detached(),
         teleport_follow: None,
+        pane_carry: None,
         dispatch_job: None,
         dispatch_setups: Default::default(),
         fan_out: None,
@@ -510,6 +521,7 @@ pub(crate) fn fixture_window(window: &mut Window, cx: &mut Context<HerdrWindow>)
         devices_overview: Default::default(),
         checkpoints: Default::default(),
         port_forwards: Default::default(),
+        remote_browser: Vec::new(),
         #[cfg(feature = "cloud")]
         cloud_jobs: Default::default(),
         listening_ports: Default::default(),
@@ -517,6 +529,7 @@ pub(crate) fn fixture_window(window: &mut Window, cx: &mut Context<HerdrWindow>)
         sidebar_visible: true,
         sidebar_start_pending: true,
         status_bar_visible: true,
+        zen: Default::default(),
         device_filter: None,
         endpoints: vec![crate::endpoint::Endpoint::new(
             crate::endpoint::LOCAL.into(),
@@ -533,6 +546,7 @@ pub(crate) fn fixture_window(window: &mut Window, cx: &mut Context<HerdrWindow>)
         sessions_anchor: Default::default(),
         activation_deadline: None,
         pending_navigation: None,
+        arrival: None,
         strip_navigation_fits: true,
         pending_toast: None,
         toasts_hidden: false,
@@ -572,6 +586,7 @@ pub(crate) fn fixture_window(window: &mut Window, cx: &mut Context<HerdrWindow>)
         ),
         painter: Default::default(),
         backdrop: Default::default(),
+        device_themes: Default::default(),
         regions: Vec::new(),
         marked: String::new(),
         marked_selection: None,
@@ -613,7 +628,12 @@ pub(crate) fn fixture_window(window: &mut Window, cx: &mut Context<HerdrWindow>)
             cx.new(|_| {
                 crate::sidebar::SidebarView::new(
                     weak,
-                    super::agents::Indicators::new(None, false, &crate::config::Theme::default()),
+                    super::agents::Indicators::new(
+                        None,
+                        None,
+                        false,
+                        &crate::config::Theme::default(),
+                    ),
                 )
             })
         },

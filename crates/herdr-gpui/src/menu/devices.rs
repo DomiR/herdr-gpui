@@ -78,7 +78,7 @@ impl HerdrWindow {
     #[cfg(feature = "cloud")]
     // Providers that need no setting never read the environment.
     #[cfg_attr(
-        not(any(feature = "coder", feature = "daytona")),
+        not(any(feature = "boat", feature = "coder", feature = "daytona")),
         allow(unused_variables)
     )]
     fn cloud_providers_with_env(
@@ -92,6 +92,10 @@ impl HerdrWindow {
             .iter()
             .copied()
             .filter(|provider| match provider {
+                #[cfg(feature = "boat")]
+                crate::cloud::CloudProvider::Boat => {
+                    self.config.boat.api_url.is_some() || var("HERDR_BOAT_API_URL").is_some()
+                }
                 #[cfg(feature = "coder")]
                 crate::cloud::CloudProvider::Coder => {
                     self.config.coder.url.is_some() || var("HERDR_CODER_URL").is_some()
@@ -172,6 +176,30 @@ impl HerdrWindow {
     pub(super) fn ssh_setup_unavailable(&self) -> Option<&'static str> {
         self.device_setup_unavailable()
             .or_else(|| cfg!(windows).then_some("Saved SSH devices are unavailable on Windows."))
+    }
+
+    /// Whether the sidebar draws the device footer, per `[sidebar]
+    /// device_footer`.
+    pub(crate) fn device_footer_shown(&self) -> bool {
+        self.config
+            .sidebar_style
+            .device_footer
+            .shown(self.endpoints.len(), self.cloud_jobs_pending())
+    }
+
+    /// Where the Sessions list opens while the footer is hidden: the sidebar's
+    /// bottom-left corner, where the footer's button would sit.
+    pub(crate) fn render_sessions_anchor(&self) -> impl IntoElement {
+        let anchor = self.sessions_anchor.clone();
+        canvas(
+            |_, _, _| (),
+            move |bounds, _, _, _| {
+                anchor.set(point(bounds.left() + px(8.), bounds.bottom()));
+            },
+        )
+        .absolute()
+        .inset_0()
+        .size_full()
     }
 
     pub(crate) fn render_device_footer(&self, cx: &mut Context<Self>) -> impl IntoElement {

@@ -273,6 +273,8 @@ struct SettingsWindow {
     /// The main window's finished cloud jobs when the cards last read them.
     #[cfg(feature = "cloud")]
     cloud_jobs_seen: u64,
+    #[cfg(feature = "boat")]
+    boat_card: Option<cloud_devices::BoatCard>,
     #[cfg(feature = "coder")]
     coder_card: Option<cloud_devices::CoderCard>,
     #[cfg(feature = "daytona")]
@@ -369,6 +371,8 @@ impl SettingsWindow {
             cloud_tab: cloud_devices::first_tab(),
             #[cfg(feature = "cloud")]
             cloud_jobs_seen: 0,
+            #[cfg(feature = "boat")]
+            boat_card: None,
             #[cfg(feature = "coder")]
             coder_card: None,
             #[cfg(feature = "daytona")]
@@ -758,6 +762,8 @@ impl Render for SettingsWindow {
             .track_focus(&self.focus)
             .on_action(cx.listener(|this, action: &crate::RunCommand, window, cx| {
                 match action.command {
+                    // Its own close path, which saves pending edits first.
+                    crate::controls::Command::CloseWindow => this.close(window, cx),
                     command if crate::window::run_window_command(command, window, cx) => {}
                     crate::controls::Command::Settings => window.activate_window(),
                     crate::controls::Command::NewWindow => {

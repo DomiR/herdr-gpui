@@ -210,6 +210,12 @@ pub(crate) fn menus(layout: Layout) -> Vec<Menu> {
                         command: Command::ToggleFullScreen,
                     },
                 ),
+                MenuItem::action(
+                    "Toggle Zen Mode",
+                    RunCommand {
+                        command: Command::ToggleZenMode,
+                    },
+                ),
             ],
         },
         Menu {
@@ -348,6 +354,12 @@ pub(crate) fn menus(layout: Layout) -> Vec<Menu> {
                     "Cycle Through Windows",
                     RunCommand {
                         command: Command::CycleWindows,
+                    },
+                ),
+                MenuItem::action(
+                    "Close Window",
+                    RunCommand {
+                        command: Command::CloseWindow,
                     },
                 ),
                 MenuItem::separator(),

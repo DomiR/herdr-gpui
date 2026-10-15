@@ -12,6 +12,7 @@ workspace = true
 [dependencies]
 url.workspace = true
 aes.workspace                  = true
+ammonia.workspace              = true
 anyhow.workspace               = true
 cbc.workspace                  = true
 base64                         = { optional = true, workspace = true }
@@ -32,6 +33,7 @@ mdns-sd.workspace              = true
 nucleo-matcher.workspace       = true
 pbkdf2.workspace               = true
 percent-encoding.workspace     = true
+pulldown-cmark.workspace       = true
 rodio.workspace                = true
 rusqlite.workspace             = true
 secrecy.workspace              = true
@@ -61,10 +63,12 @@ zeroize.workspace              = true
 gpui = { features = ["test-support"], workspace = true }
 
 [features]
-default = ["coder", "daytona", "railway"]
+default = ["boat", "coder", "daytona", "railway"]
 # Machines from cloud providers as devices: the shared device list, background
 # jobs, and connector. Turned on by each provider below; not useful alone.
 cloud = ["herdr-client/cloud"]
+# Boat sandboxes as devices, with an API key and per-machine SSH key setup.
+boat = ["cloud", "herdr-client/boat"]
 # Coder workspaces as devices, with OAuth2 sign-in.
 coder = ["cloud", "herdr-client/coder", "dep:base64"]
 # Daytona sandboxes as devices, with an API key and its SSH gateway.

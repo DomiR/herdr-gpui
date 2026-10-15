@@ -7,7 +7,7 @@ use secrecy::SecretString;
 use std::{ffi::CStr, path::Path};
 
 #[cfg(unix)]
-use super::token::{Credential, LIMIT};
+use super::token::{LIMIT, Saved};
 #[cfg(unix)]
 use rustix::fs::{AtFlags, Mode, OFlags, open, openat, renameat, unlinkat};
 #[cfg(unix)]
@@ -35,13 +35,39 @@ pub(super) fn read(_path: &Path, _name: &CStr) -> Result<Option<SecretString>> {
     Ok(None)
 }
 
+#[cfg(unix)]
+pub(super) fn read(path: &Path, name: &CStr) -> Result<Option<SecretString>> {
+    read_checked(path, name, github_record)
+}
+
 #[cfg(not(unix))]
-pub(super) fn read_checked(
+pub(crate) fn read_checked(
     _path: &Path,
     _name: &CStr,
     _validate: fn(&SecretString) -> Result<()>,
 ) -> Result<Option<SecretString>> {
     Ok(None)
+}
+
+/// `read` for a record another feature owns; `validate` must bound its size.
+#[cfg(unix)]
+pub(crate) fn read_checked(
+    path: &Path,
+    name: &CStr,
+    validate: fn(&SecretString) -> Result<()>,
+) -> Result<Option<SecretString>> {
+    let dir = directory(path)?;
+    let Some(file) = existing(&dir, name)? else {
+        return Ok(None);
+    };
+    let mut bytes = Zeroizing::new(Vec::with_capacity(LIMIT + 1));
+    file.take((LIMIT + 1) as u64)
+        .read_to_end(&mut bytes)
+        .map_err(Error::CredentialIo)?;
+    let text = std::str::from_utf8(&bytes).map_err(Error::GitHubEncoding)?;
+    let value = SecretString::from(text);
+    validate(&value)?;
+    Ok(Some(value))
 }
 
 #[cfg(not(unix))]
@@ -55,6 +81,21 @@ pub(super) fn store_checked(
     store(path, name, token, plaintext)
 }
 
+/// `store` for a record another feature owns; `validate` must bound its size.
+#[cfg(unix)]
+pub(super) fn store_checked(
+    path: &Path,
+    name: &CStr,
+    token: Option<&SecretString>,
+    plaintext: bool,
+    validate: fn(&SecretString) -> Result<()>,
+) -> Result<()> {
+    if token.is_some() && !plaintext {
+        return Err(Error::CredentialPolicy);
+    }
+    write_checked(path, name, token, validate)
+}
+
 #[cfg(not(unix))]
 pub(super) fn store(
     _path: &Path,
@@ -66,6 +107,20 @@ pub(super) fn store(
         return Err(Error::CredentialUnsupported);
     }
     Ok(())
+}
+
+#[cfg(unix)]
+pub(super) fn store(
+    path: &Path,
+    name: &CStr,
+    token: Option<&SecretString>,
+    plaintext: bool,
+) -> Result<()> {
+    if token.is_some() && !plaintext {
+        return Err(Error::CredentialPolicy);
+    }
+    // Explicit removal is allowed even after opting out of plaintext storage.
+    write(path, name, token)
 }
 
 #[cfg(unix)]
@@ -111,63 +166,8 @@ fn existing(dir: &File, name: &CStr) -> Result<Option<File>> {
 }
 
 #[cfg(unix)]
-pub(super) fn read(path: &Path, name: &CStr) -> Result<Option<SecretString>> {
-    read_checked(path, name, github_record)
-}
-
-#[cfg(unix)]
 fn github_record(value: &SecretString) -> Result<()> {
-    Credential::decode(value).map(drop)
-}
-
-/// `read` for a record another feature owns; `validate` must bound its size.
-#[cfg(unix)]
-pub(super) fn read_checked(
-    path: &Path,
-    name: &CStr,
-    validate: fn(&SecretString) -> Result<()>,
-) -> Result<Option<SecretString>> {
-    let dir = directory(path)?;
-    let Some(file) = existing(&dir, name)? else {
-        return Ok(None);
-    };
-    let mut bytes = Zeroizing::new(Vec::with_capacity(LIMIT + 1));
-    file.take((LIMIT + 1) as u64)
-        .read_to_end(&mut bytes)
-        .map_err(Error::CredentialIo)?;
-    let text = std::str::from_utf8(&bytes).map_err(Error::GitHubEncoding)?;
-    let value = SecretString::from(text);
-    validate(&value)?;
-    Ok(Some(value))
-}
-
-#[cfg(unix)]
-pub(super) fn store(
-    path: &Path,
-    name: &CStr,
-    token: Option<&SecretString>,
-    plaintext: bool,
-) -> Result<()> {
-    if token.is_some() && !plaintext {
-        return Err(Error::CredentialPolicy);
-    }
-    // Explicit removal is allowed even after opting out of plaintext storage.
-    write(path, name, token)
-}
-
-/// `store` for a record another feature owns; `validate` must bound its size.
-#[cfg(unix)]
-pub(super) fn store_checked(
-    path: &Path,
-    name: &CStr,
-    token: Option<&SecretString>,
-    plaintext: bool,
-    validate: fn(&SecretString) -> Result<()>,
-) -> Result<()> {
-    if token.is_some() && !plaintext {
-        return Err(Error::CredentialPolicy);
-    }
-    write_checked(path, name, token, validate)
+    Saved::decode(value).map(drop)
 }
 
 #[cfg(unix)]

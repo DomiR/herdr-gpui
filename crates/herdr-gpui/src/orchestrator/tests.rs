@@ -4,7 +4,25 @@ use chrono::{DateTime, Utc};
 #[cfg(unix)]
 mod actions;
 mod beads;
+
+fn beads() -> SourceKey {
+    SourceKey {
+        provider: Provider::Beads,
+        host: "local".into(),
+        repository: "/Users/me/src/herdr-gpui".into(),
+    }
+}
+mod full_listing;
 mod github;
+
+fn github() -> SourceKey {
+    SourceKey {
+        provider: Provider::Github,
+        host: "github.com".into(),
+        repository: "penso/herdr-gpui".into(),
+    }
+}
+mod incremental;
 mod keys;
 mod linear;
 mod linear_branches;
@@ -12,6 +30,7 @@ mod location;
 mod naming;
 mod prompt;
 mod repo;
+mod retry;
 /// The worker reads the repository through a host script, which only Unix
 /// hosts run; Windows reports `ScriptUnsupported`, as the app does there.
 #[cfg(unix)]
@@ -22,22 +41,6 @@ fn at(value: &str) -> DateTime<Utc> {
     DateTime::parse_from_rfc3339(value)
         .unwrap()
         .with_timezone(&Utc)
-}
-
-fn github() -> SourceKey {
-    SourceKey {
-        provider: Provider::Github,
-        host: "github.com".into(),
-        repository: "penso/herdr-gpui".into(),
-    }
-}
-
-fn beads() -> SourceKey {
-    SourceKey {
-        provider: Provider::Beads,
-        host: "local".into(),
-        repository: "/Users/me/src/herdr-gpui".into(),
-    }
 }
 
 fn item(source: &SourceKey, native_id: &str, title: &str) -> Item {

@@ -51,7 +51,25 @@ impl Default for Timing {
 }
 /// After a failure, a source waits this long before trying again.
 const BACKOFF: Duration = Duration::from_secs(300);
+/// A repository GitHub would not show this sign-in waits for the user to
+/// install the App or change token; Refresh asks sooner.
+const HIDDEN_BACKOFF: Duration = Duration::from_secs(1800);
 const COMMANDS: usize = 8;
+
+/// How long a failed source waits. A rate limit or refused token pauses as
+/// long as GitHub asked; a repository the sign-in cannot see waits for a user
+/// action. GitHub's `cooldown` applies only to GitHub's own failures, so a
+/// Beads failure never inherits a pause a GitHub request left behind.
+pub(super) fn retry_wait(error: &Error, cooldown: Option<Duration>) -> Duration {
+    let Error::Github(source) = error else {
+        return BACKOFF;
+    };
+    let floor = match **source {
+        crate::Error::GitHubRepositoryHidden { .. } => HIDDEN_BACKOFF,
+        _ => BACKOFF,
+    };
+    cooldown.map_or(floor, |wait| wait.max(floor))
+}
 /// Actions running at once; more wait for the user to try again.
 const MAX_ACTIONS: usize = 4;
 /// Outcomes kept for the view between its polls.
@@ -251,6 +269,8 @@ struct Worker {
     /// Listings shown but not written: capped, the database is newer, or
     /// Linear's, which is never written.
     uncached: HashMap<SourceKey, Vec<Item>>,
+    /// Where each GitHub source's next incremental sync continues.
+    resume: HashMap<SourceKey, github::Resume>,
     cooldown: Option<Duration>,
     linear_key: LinearKey,
     /// The Linear workspace's `urlKey`, once a sync has read it.
@@ -275,6 +295,7 @@ impl Worker {
             data_version: None,
             retry: Vec::new(),
             uncached: HashMap::new(),
+            resume: HashMap::new(),
             cooldown: None,
             linear_key: LinearKey::Missing,
             linear_workspace: None,
@@ -529,6 +550,9 @@ impl Worker {
             }
             self.set_state(&key, SyncState::Syncing);
             self.publish();
+            // Only this source's own GitHub reply may set its pause: a delay
+            // left by a pull request lookup or another source must not apply.
+            self.cooldown = None;
             let result = self.sync_source(&key, token);
             // A Linear sync learns its workspace, which keys the source.
             let key = match key.provider {
@@ -541,7 +565,17 @@ impl Worker {
                 Ok(state) => state,
                 Err(Error::Cancelled) => return,
                 Err(error) => {
-                    self.retry.push((key.clone(), Instant::now() + BACKOFF));
+                    let wait = retry_wait(&error, self.cooldown.take());
+                    tracing::warn!(
+                        category = "orchestrator_sync",
+                        provider = ?key.provider,
+                        host = key.host.as_str(),
+                        repository = key.repository.as_str(),
+                        retry_in_secs = wait.as_secs(),
+                        error = %error,
+                        "Orchestrator source sync failed"
+                    );
+                    self.retry.push((key.clone(), Instant::now() + wait));
                     SyncState::Failed(Arc::new(error))
                 }
             };
@@ -578,15 +612,39 @@ impl Worker {
                     return Ok(SyncState::SignIn);
                 };
                 let previous = store.checkpoint(key)?;
+                // What the last complete sync stored, for reading only the
+                // changes since; a read-only store keeps none.
+                let cached = match (&previous, writable) {
+                    (Some(_), true) => Some(
+                        store
+                            .items()?
+                            .into_iter()
+                            .filter(|item| item.key.source == *key)
+                            .collect(),
+                    ),
+                    _ => None,
+                };
+                // Only while the stored checkpoint is still the one this
+                // worker wrote: agent-launcher shares the database and may
+                // have stored an older listing since.
+                let resume = self.resume.get(key).copied().filter(|resume| {
+                    previous
+                        .as_ref()
+                        .and_then(|checkpoint| checkpoint.updated_at)
+                        == Some(resume.oldest())
+                });
                 let cancelled = &self.cancelled;
                 let listing = github::sync(
                     key,
                     token,
                     previous.as_ref(),
+                    (cached, resume),
                     &|| cancelled.load(Ordering::Relaxed),
                     &mut self.cooldown,
                 )?;
                 let count = listing.items.len();
+                // A listing that is not stored is no place to resume from.
+                self.resume.remove(key);
                 if !listing.complete || !writable {
                     self.uncached.insert(key.clone(), listing.items);
                     return Ok(if listing.complete {
@@ -599,6 +657,7 @@ impl Worker {
                     });
                 }
                 store.replace_items(key, &listing.items, &listing.checkpoint)?;
+                self.resume.insert(key.clone(), listing.resume);
                 self.uncached.remove(key);
                 Ok(SyncState::Synced {
                     at: Utc::now(),

@@ -42,6 +42,8 @@ pub enum Command {
     TabNumber(u8),
     ToggleSidebar,
     ToggleStatusBar,
+    /// Hides the window's chrome and every group but the one in use.
+    ToggleZenMode,
     DevicesOverview,
     IncreaseFontSize,
     DecreaseFontSize,
@@ -52,6 +54,8 @@ pub enum Command {
     Themes,
     WorkspacePicker,
     Palette,
+    /// Reopen the palette as it was last left: query, filters, and selection.
+    ResumePalette,
     /// Go to a definition in the focused pane's checkout.
     GoToSymbol,
     /// Go to a file in the focused pane's checkout.
@@ -70,6 +74,8 @@ pub enum Command {
     OpenCode,
     ToggleFullScreen,
     CycleWindows,
+    /// Closes the window it runs in, leaving the daemon and its terminals.
+    CloseWindow,
     MoveTabPrevious,
     MoveTabNext,
     RenameTab,
@@ -518,6 +524,11 @@ pub const COMMANDS: &[CommandInfo] = &[
         label: "Toggle Status Bar",
     },
     CommandInfo {
+        command: Command::ToggleZenMode,
+        name: "toggle_zen_mode",
+        label: "Toggle Zen Mode",
+    },
+    CommandInfo {
         command: Command::DevicesOverview,
         name: "devices_overview",
         label: "Devices Overview",
@@ -571,6 +582,11 @@ pub const COMMANDS: &[CommandInfo] = &[
         command: Command::Palette,
         name: "command_palette",
         label: "Command Palette",
+    },
+    CommandInfo {
+        command: Command::ResumePalette,
+        name: "resume_palette",
+        label: "Resume Palette",
     },
     CommandInfo {
         command: Command::GoToSymbol,
@@ -636,6 +652,11 @@ pub const COMMANDS: &[CommandInfo] = &[
         command: Command::CycleWindows,
         name: "cycle_windows",
         label: "Cycle Through Windows",
+    },
+    CommandInfo {
+        command: Command::CloseWindow,
+        name: "close_window",
+        label: "Close Window",
     },
 ];
 
@@ -786,6 +807,7 @@ pub fn request(command: Command, snapshot: &ClientShellSnapshot) -> Option<(Meth
         | Command::AnnotateSelection
         | Command::ToggleSidebar
         | Command::ToggleStatusBar
+        | Command::ToggleZenMode
         | Command::DevicesOverview
         | Command::IncreaseFontSize
         | Command::DecreaseFontSize
@@ -796,6 +818,7 @@ pub fn request(command: Command, snapshot: &ClientShellSnapshot) -> Option<(Meth
         | Command::Themes
         | Command::WorkspacePicker
         | Command::Palette
+        | Command::ResumePalette
         | Command::GoToSymbol
         | Command::GoToFile
         | Command::Detach
@@ -811,6 +834,7 @@ pub fn request(command: Command, snapshot: &ClientShellSnapshot) -> Option<(Meth
         | Command::OpenCode
         | Command::ToggleFullScreen
         | Command::CycleWindows
+        | Command::CloseWindow
         // These need state beyond the snapshot, such as the sidebar's order
         // or a dialog, so the window runs them.
         | Command::RenameTab

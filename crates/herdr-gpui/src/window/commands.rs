@@ -292,6 +292,10 @@ impl HerdrWindow {
                 );
                 return;
             }
+            Command::ResumePalette => {
+                self.resume_palette(window, cx);
+                return;
+            }
             Command::GoToSymbol | Command::GoToFile => {
                 let mode = if command == Command::GoToFile {
                     crate::code_search::Mode::Files
@@ -376,7 +380,7 @@ impl HerdrWindow {
                 }
                 return;
             }
-            Command::ToggleFullScreen | Command::CycleWindows => {
+            Command::ToggleFullScreen | Command::CycleWindows | Command::CloseWindow => {
                 run_window_command(command, window, cx);
                 return;
             }
@@ -401,6 +405,10 @@ impl HerdrWindow {
                 self.status_bar_visible = !self.status_bar_visible;
                 window.focus(&self.focus, cx);
                 cx.notify();
+                return;
+            }
+            Command::ToggleZenMode => {
+                self.toggle_zen(window, cx);
                 return;
             }
             Command::DevicesOverview => {
@@ -674,6 +682,7 @@ pub(crate) fn run_window_command(
     match command {
         Command::ToggleFullScreen => window.toggle_fullscreen(),
         Command::CycleWindows => cycle_windows(window, cx),
+        Command::CloseWindow => window.remove_window(),
         _ => return false,
     }
     true

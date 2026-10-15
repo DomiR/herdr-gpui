@@ -223,6 +223,13 @@ impl HerdrWindow {
         self.browser.appear.animating()
     }
 
+    /// Makes groups open and fold, held where their motion starts.
+    #[cfg(test)]
+    pub(crate) fn hold_group_motion(&mut self) {
+        self.browser.group_motion.enable();
+        self.browser.group_motion.freeze(std::time::Duration::ZERO);
+    }
+
     /// Ends every tab's growing and shrinking at once, as a moment later.
     #[cfg(test)]
     pub(crate) fn settle_tabs(&mut self) {
@@ -306,17 +313,46 @@ impl HerdrWindow {
         if !shown {
             return;
         }
-        match neighbour(&before, &pick, |_| true) {
-            Some(next) => {
-                if let Some(layout) = self.ensure_layout() {
-                    layout.show(source, next);
-                }
-                self.reconcile_group_terminals(cx);
-                self.steer_primary_group(source, cx);
-            }
-            None => self.close_group(source, window, cx),
+        if !self.show_neighbour(source, &before, &pick, cx) {
+            self.close_group(source, window, cx);
         }
         cx.notify();
+    }
+
+    /// Moves the group showing `pick` on to the tab after it in its strip,
+    /// or before it, as when the tab is carried off to another window. A
+    /// group with no other tab keeps showing it.
+    pub(crate) fn leave_tab(&mut self, pick: &Pick, cx: &mut Context<Self>) {
+        let Some(source) = self.ensure_layout().map(|layout| layout.owner(pick)) else {
+            return;
+        };
+        if self.group_pick(source).as_ref() != Some(pick) {
+            return;
+        }
+        let before = self.group_tabs(source, cx);
+        if self.show_neighbour(source, &before, pick, cx) {
+            cx.notify();
+        }
+    }
+
+    /// Shows in `source` the neighbour of `pick` among `before`, its strip
+    /// as it was; whether it had one.
+    fn show_neighbour(
+        &mut self,
+        source: GroupId,
+        before: &[Pick],
+        pick: &Pick,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(next) = neighbour(before, pick, |_| true) else {
+            return false;
+        };
+        if let Some(layout) = self.ensure_layout() {
+            layout.show(source, next);
+        }
+        self.reconcile_group_terminals(cx);
+        self.steer_primary_group(source, cx);
+        true
     }
 
     /// Shows `pick` in `group`, which owns it.
@@ -390,7 +426,7 @@ impl HerdrWindow {
     /// The pages live in some group, which the window presents.
     #[cfg(any(target_os = "macos", windows))]
     pub(crate) fn live_pages(&self, cx: &App) -> Vec<TabId> {
-        self.group_slots()
+        self.drawn_group_slots()
             .into_iter()
             .filter_map(|slot| match self.group_shown(slot.id, cx) {
                 Shown::Page(id) => Some(id),

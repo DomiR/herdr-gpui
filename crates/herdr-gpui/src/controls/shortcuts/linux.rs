@@ -43,6 +43,7 @@ pub(super) fn defaults(command: Command) -> &'static [&'static str] {
         TabNumber(8) => &["ctrl-shift-8"],
         TabNumber(9) => &["ctrl-shift-9"],
         ToggleSidebar => &["ctrl-shift-b"],
+        ToggleZenMode => &["ctrl-alt-z"],
         IncreaseFontSize => &["ctrl-shift-=", "ctrl-shift-+"],
         DecreaseFontSize => &["ctrl-shift--"],
         ResetFontSize => &["ctrl-shift-0"],
@@ -51,6 +52,7 @@ pub(super) fn defaults(command: Command) -> &'static [&'static str] {
         Sessions => &["ctrl-shift-s"],
         WorkspacePicker => &["ctrl-alt-shift-p"],
         Palette => &["ctrl-shift-p"],
+        ResumePalette => &["ctrl-alt-shift-r"],
         GoToSymbol => &["ctrl-alt-shift-o"],
         GoToFile => &["ctrl-shift-o"],
         Quit => &["ctrl-shift-q"],
@@ -58,6 +60,8 @@ pub(super) fn defaults(command: Command) -> &'static [&'static str] {
         SplitEditor => &["ctrl-shift-\\"],
         ToggleFullScreen => &["f11"],
         CycleWindows => &["ctrl-shift-`"],
+        // Tiling compositors such as Hyprland draw no close button.
+        CloseWindow => &["ctrl-alt-w"],
         _ => &[],
     }
 }
