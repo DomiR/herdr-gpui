@@ -17,6 +17,7 @@ use crate::teleport::{AgentKind, Host};
 use chrono::{DateTime, Utc};
 use herdr_client::ConnectTarget;
 use linear::LinearKey;
+use secrecy::SecretString;
 use serde_json::Value;
 use std::{
     collections::{HashMap, VecDeque},
@@ -331,7 +332,7 @@ impl Worker {
                 Ok(Command::SaveLinearKey(key)) => {
                     self.save_linear_key(key.as_ref());
                     let token = self.request.token.clone();
-                    self.sync(token.as_deref());
+                    self.sync(token.as_ref());
                     next_sync = Instant::now() + sync;
                 }
                 Ok(Command::LoadPullRequest(number)) => self.load_pull_request(number),

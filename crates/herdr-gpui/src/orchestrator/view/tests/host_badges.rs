@@ -21,6 +21,7 @@ fn run_host_badges_stay_inside_their_column(cx: &mut TestAppContext) {
                 checkout: dir.path().to_string_lossy().into_owned(),
                 workspace_id: "w1".into(),
                 token: None,
+                linear: None,
                 data_root: Some(dir.path().join("data")),
                 timing: Timing::default(),
             };
