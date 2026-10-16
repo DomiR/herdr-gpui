@@ -12,11 +12,11 @@ use super::{
     prompt::{self, Profile},
     repo::{self, RepoInfo},
 };
+use crate::github::Tokens;
 use crate::teleport::{AgentKind, Host};
 use chrono::{DateTime, Utc};
 use herdr_client::ConnectTarget;
 use linear::LinearKey;
-use secrecy::SecretString;
 use serde_json::Value;
 use std::{
     collections::{HashMap, VecDeque},
@@ -84,7 +84,9 @@ pub(crate) struct Request {
     /// The Herdr workspace the view was opened from, whose repository new
     /// worktrees are created in.
     pub(crate) workspace_id: String,
-    pub(crate) token: Option<Arc<SecretString>>,
+    /// The accounts GitHub is read with; each source uses the one that
+    /// reads its repository's owner.
+    pub(crate) token: Option<Tokens>,
     /// agent-launcher's data directory parent; `None` for the platform's.
     pub(crate) data_root: Option<PathBuf>,
     pub(crate) timing: Timing,
@@ -94,7 +96,7 @@ pub(crate) struct Request {
 
 enum Command {
     /// Sync every source now, reading GitHub as `token`.
-    Refresh(Option<Arc<SecretString>>),
+    Refresh(Option<Tokens>),
     /// Do what the user asked, on a thread of its own.
     Act(Action),
     /// An action finished: read the database again, and sync when it changed
@@ -229,7 +231,7 @@ impl Service {
     }
 
     /// Asks for a sync now. A full queue already holds one, so it is dropped.
-    pub(crate) fn refresh(&self, token: Option<Arc<SecretString>>) {
+    pub(crate) fn refresh(&self, token: Option<Tokens>) {
         match self.commands.try_send(Command::Refresh(token)) {
             Ok(()) | Err(TrySendError::Full(_) | TrySendError::Disconnected(_)) => {}
         }
@@ -311,7 +313,7 @@ impl Worker {
         }
         self.read_linear_key();
         let token = self.request.token.clone();
-        self.sync(token.as_deref());
+        self.sync(token.as_ref());
         let Timing { reload, sync } = self.request.timing;
         let mut next_sync = Instant::now() + sync;
         while !self.cancelled() {
@@ -322,7 +324,7 @@ impl Worker {
                     self.retry.clear();
                     self.read_linear_key();
                     let token = self.request.token.clone();
-                    self.sync(token.as_deref());
+                    self.sync(token.as_ref());
                     next_sync = Instant::now() + sync;
                 }
                 Ok(Command::Act(action)) => self.act(action),
@@ -350,14 +352,14 @@ impl Worker {
                 Ok(Command::Acted { resync }) => {
                     if resync {
                         let token = self.request.token.clone();
-                        self.sync(token.as_deref());
+                        self.sync(token.as_ref());
                     } else {
                         self.reload_if_changed();
                     }
                 }
                 Err(RecvTimeoutError::Timeout) if Instant::now() >= next_sync => {
                     let token = self.request.token.clone();
-                    self.sync(token.as_deref());
+                    self.sync(token.as_ref());
                     next_sync = Instant::now() + sync;
                 }
                 Err(RecvTimeoutError::Timeout) => self.reload_if_changed(),
@@ -424,7 +426,7 @@ impl Worker {
             owner,
             repo,
             number,
-            &token,
+            token.for_owner(owner),
             || cancelled.load(Ordering::Relaxed),
             &mut self.cooldown,
         );
@@ -530,7 +532,7 @@ impl Worker {
         }
     }
 
-    fn sync(&mut self, token: Option<&SecretString>) {
+    fn sync(&mut self, token: Option<&Tokens>) {
         let Some(info) = self.snapshot.repo.clone() else {
             return;
         };
@@ -587,7 +589,7 @@ impl Worker {
         }
     }
 
-    fn sync_source(&mut self, key: &SourceKey, token: Option<&SecretString>) -> Result<SyncState> {
+    fn sync_source(&mut self, key: &SourceKey, token: Option<&Tokens>) -> Result<SyncState> {
         let (Some(store), Some(host)) = (self.store.as_mut(), self.host.as_ref()) else {
             return Ok(SyncState::Unsupported);
         };
@@ -608,9 +610,14 @@ impl Worker {
                 })
             }
             Provider::Github => {
-                let Some(token) = token else {
+                let Some(tokens) = token else {
                     return Ok(SyncState::SignIn);
                 };
+                let owner = key
+                    .repository
+                    .split_once('/')
+                    .map_or(key.repository.as_str(), |(owner, _)| owner);
+                let token = tokens.for_owner(owner);
                 let previous = store.checkpoint(key)?;
                 // What the last complete sync stored, for reading only the
                 // changes since; a read-only store keeps none.

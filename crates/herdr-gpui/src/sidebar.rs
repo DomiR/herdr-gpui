@@ -3,6 +3,7 @@
 
 mod agents;
 mod cell;
+mod device_drag;
 mod host_row;
 mod hover;
 mod layout;
@@ -10,7 +11,6 @@ mod layouts;
 mod metrics;
 mod note_line;
 mod order;
-pub(crate) mod preview;
 mod rail;
 mod render;
 mod reorder;
@@ -33,6 +33,7 @@ pub(crate) mod native_tests;
 
 pub(crate) use {
     agents::{Indicators, agent_name, state_label, status_indicator, status_text},
+    device_drag::DeviceDrag,
     hover::{HoverMenu, HoverRest},
     metrics::{ARROW_RESERVE, HOST_ARROW_WIDTH, HOST_GAP, ICON_RESERVE, LABEL_GAP, STATUS_WIDTH},
     rail::SidebarMode,
@@ -43,6 +44,7 @@ pub(crate) use {
     workspaces::workspace_label,
 };
 
+pub(crate) use layout::SidebarMetrics;
 pub(crate) use order::step as sidebar_step;
 
 #[cfg(any(test, feature = "integration-test"))]

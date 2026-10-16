@@ -90,6 +90,8 @@ mod update_panel;
 #[cfg(test)]
 mod workspace_menu;
 #[cfg(test)]
+mod worktree_note_trunk;
+#[cfg(test)]
 mod worktree_notes;
 #[cfg(test)]
 mod worktree_rows;
@@ -518,6 +520,7 @@ pub(crate) fn fixture_window(window: &mut Window, cx: &mut Context<HerdrWindow>)
         pr_actions: Default::default(),
         usage: Default::default(),
         system_load: Default::default(),
+        network_quality_seen: 0,
         devices_overview: Default::default(),
         checkpoints: Default::default(),
         port_forwards: Default::default(),
@@ -578,6 +581,7 @@ pub(crate) fn fixture_window(window: &mut Window, cx: &mut Context<HerdrWindow>)
         held_keys: Default::default(),
         // No AppKit event to read; a test that needs one supplies its own.
         key_press: || None,
+        key_layout: |_| None,
         file_transfer: None,
         presentation: Default::default(),
         wake: crate::endpoint::WakeClock::new(
@@ -603,6 +607,8 @@ pub(crate) fn fixture_window(window: &mut Window, cx: &mut Context<HerdrWindow>)
         sidebar_width: None,
         sidebar_drag: None,
         workspace_drag: None,
+        device_drag: None,
+        device_order: Vec::new(),
         tab_drag: None,
         sidebar_split: None,
         sidebar_split_modified: false,
@@ -616,9 +622,11 @@ pub(crate) fn fixture_window(window: &mut Window, cx: &mut Context<HerdrWindow>)
         sidebar_scroll: Default::default(),
         sidebar_revealed: Default::default(),
         sidebar_pin_reveal: Default::default(),
+        sidebar_folded: Default::default(),
         sidebar_search: crate::sidebar::SidebarSearch::new(cx),
         _poll: Task::ready(()),
         _activation: cx.observe_window_activation(window, |_, _, _| {}),
+        _window_closed: HerdrWindow::give_back_torn_tabs(cx),
         _appearance: cx.observe_window_appearance(window, |this, _, cx| {
             this.apply_shared_theme(cx);
             cx.notify();

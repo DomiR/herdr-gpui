@@ -12,6 +12,7 @@ mod dialog;
 mod linear;
 mod linear_dialog;
 mod linear_filters;
+mod host_badges;
 mod markdown;
 mod rows;
 mod sessions;
