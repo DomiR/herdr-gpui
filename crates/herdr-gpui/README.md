@@ -1841,16 +1841,16 @@ or macOS client and the local session or a saved SSH host on both ends.
 
 The Orchestrator row of a group's "…" menu, the Open Orchestrator command, or
 the Orchestrator row of a workspace's popover opens a tab listing that
-workspace's repository: its GitHub issues and pull requests, its
+workspace's repository: its GitHub issues and pull requests or GitLab issues, its
 [Beads](https://github.com/steveyegge/beads) issues when the main checkout has
 a `.beads` folder, your open Linear issues and those of your teams' current
 cycles once Linear is connected, and the agent runs dispatched for them. It works for the local
 session and saved SSH hosts.
 
-- **Issues** lists open GitHub issues, beads, and Linear issues together. A
-  bead's or Linear issue's children sit under it; filters narrow to Beads,
-  Linear, your Linear issues, the current cycle, items with a run, or blocked
-  ones; five
+- **Issues** lists open GitHub or GitLab issues, beads, and Linear issues
+  together. A bead's or Linear issue's children sit under it; filters narrow to
+  Beads, Linear, your Linear issues, the current cycle, items with a run, or
+  blocked ones; five
   sorts are offered. Search matches every word you type across title, id,
   author, labels, state, and body, case-insensitively unless a word has a
   capital, and keeps a match's parents in view.
@@ -1924,8 +1924,13 @@ updates only its own, and uses agent-launcher's prompt profiles from
 `~/.config/agent-launcher/agents/<name>/prompt.md` (the built-in prompt when
 none is chosen). Issues and runs are kept in agent-launcher's per-repository
 database under the platform data directory. GitHub is read as the account used
-for pull requests on that host; GitLab remotes and GitHub Enterprise are listed
-as not supported yet. The window button in the tab's header moves the view into
+for pull requests on that host. A GitLab remote, on gitlab.com or a
+self-managed host, lists its open issues (not yet its merge requests), read
+with `GITLAB_TOKEN` or `GITLAB_ACCESS_TOKEN` when `GITLAB_HOST` names that host
+(gitlab.com by default), else with the GitLab CLI's sign-in (`glab auth
+login`), and sent only over HTTPS; public projects need neither, and an
+`http://` remote is read without one. GitHub Enterprise is listed as not
+supported yet. The window button in the tab's header moves the view into
 a window of its own.
 
 ## Images
@@ -2353,15 +2358,20 @@ come back after a restart; closing a workspace in Herdr removes its tabs.
   only its own scripts in pages. On
   Windows, a frame inside a page that links to an application's URL scheme
   gets WebView2's own confirmation prompt rather than being refused outright.
-- Pages are native web views (WebKit on macOS, WebView2 on Windows) layered
-  above the window, so a page steps aside for a menu or popover that would
-  fall over it, and for a dialog, which dims the whole window. A page the menu
-  does not reach keeps showing. On macOS a page that steps aside leaves a
-  picture of itself, taken as the menu opens; on Windows its place is empty
-  until the menu closes. A page also steps aside while a toast or the
-  file-transfer card falls over it, as when a page or VS Code fills the
-  right-hand group or the whole editor area, so they stay visible and
-  clickable; a page they do not reach keeps showing.
+- Pages are native web views (WebKit on macOS, WebView2 on Windows). On
+  macOS a page lies beneath the window's own drawing. Menus, popovers,
+  dialogs, tooltips, toasts, and the file-transfer card show over it, and
+  the page stays live around them. The grip between two groups keeps its
+  full width over a page. While a menu or dialog is open, a file dropped on
+  the window never reaches a page. A file dropped on a toast or the
+  file-transfer card still reaches the page beneath.
+- On Windows a page is layered above the window, so it steps aside for a
+  menu, popover, or status bar tooltip that would fall over it, and for a
+  dialog, which dims the whole window. Its place is empty until the menu
+  closes. A page also steps aside while a toast or the file-transfer card
+  falls over it, as when a page or VS Code fills the right-hand group or the
+  whole editor area, so they stay visible and clickable. A page that none of
+  these reach keeps showing.
 - Linux has no embedded pages yet: browser tab requests open the system
   browser, and local files and annotations are unavailable.
 
@@ -2786,8 +2796,7 @@ the page's storage, which belongs to one address.
 - VS Code fills its tab, without a browser tab's address bar, back,
   forward, reload, or **Annotate**: it is an editor, not a page to browse.
   Its page is otherwise a [browser tab](#browser-tabs)'s, so the same rules
-  apply: `http` and `https` only, native web views drawn above the window,
-  and no pages on Linux.
+  apply: `http` and `https` only, native web views, and no pages on Linux.
 - The keyboard goes to whatever has focus. While a page has it, this one or a
   browser tab's, the page's own shortcuts win, as a terminal program's do
   while its pane has focus. On macOS, Cut, Copy, and Paste act on the page,
@@ -3720,10 +3729,23 @@ and CLI tests. The release workflow builds and CLI-tests the optimized
 executable natively for each architecture and publishes
 `Herdr-VERSION-x86_64-pc-windows-msvc.zip` and
 `Herdr-VERSION-aarch64-pc-windows-msvc.zip`; native window, rendering, input, and
-live-daemon behavior remain unproven. Local connections use the named pipe the Windows
+live-daemon behavior remain unproven. Each zip also holds
+`herdr-gpui-launcher.exe` (`crates/herdr-gpui-launcher`), a windowed program
+that starts the console-subsystem `herdr-gpui.exe` from its own directory with
+`CREATE_NO_WINDOW` and exits. The GUI then shows no console window, and console
+programs it starts (git, gh, `wsl.exe`) share its hidden console instead of
+each opening one. `herdr-gpui.exe` stays a console program so the command line
+keeps its output, exit codes, and a shell that waits for it. When the GUI
+cannot be started, the launcher shows the error in a message box. When the
+launcher sits beside it, every Herdr window carries the AppUserModelID
+`so.pen.herdr-gpui` and relaunch properties naming the launcher
+(`src/taskbar.rs`), so pinning a running window to the taskbar pins
+`herdr-gpui-launcher.exe` as **Herdr UI**, and the pin and the running window
+share one taskbar button. The properties are cleared as each window closes. Local
+connections use the named pipe the Windows
 daemon binds, derived from the same socket path string upstream uses, so
 discovery and framing are the same code as on Unix. Receive deadlines are
-emulated with `PeekNamedPipe`, the one `unsafe` call in the workspace, because a
+emulated with `PeekNamedPipe`, an `unsafe` call, because a
 named pipe has no receive timeout; send timeouts cannot be enforced at all
 there. Configuration and state
 follow upstream's Windows layout: `%APPDATA%\herdr` and `%LOCALAPPDATA%\herdr`,
@@ -3770,9 +3792,15 @@ Starting a local `herdr server` looks for `herdr.exe` and uses
 `CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW` in place of `process_group(0)`, so
 the daemon survives the GUI and no console window appears.
 
+The build script embeds the Herdr icon as icon resource 1, which GPUI loads for
+its windows, and version information that Explorer and Task Manager show as
+**Herdr UI** with the release version, or `dev` for a local build. See
+[the icon README](../../assets/icons/README.md#windows).
+
 Cross type-check it from a Mac or Linux machine with `just lint-windows`, which
 targets `x86_64-pc-windows-gnu` because those hosts cannot supply the MSVC C
-toolchain; CI lints the MSVC target on a Windows runner. `just lint-linux` is
+toolchain; it needs mingw's `x86_64-w64-mingw32-windres` on `PATH` to compile
+the icon resource. CI lints the MSVC target on a Windows runner. `just lint-linux` is
 the matching check for Linux, in the Ubuntu 24.04 container CI uses, because a
 `cfg` gate that is wrong only on Linux is invisible from both macOS and the
 Windows cross-check.

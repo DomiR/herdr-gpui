@@ -7,8 +7,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::PathBuf, str::FromStr};
 
-/// Where an item comes from. GitLab has no source yet; its rows written by
-/// agent-launcher still decode. Linear items are never in the shared
+/// Where an item comes from. Linear items are never in the shared
 /// database: agent-launcher cannot read a `linear` row.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum Provider {

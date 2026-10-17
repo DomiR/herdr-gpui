@@ -8,11 +8,12 @@ use herdr_client::protocol::AgentStatus;
 
 mod clicks;
 mod conversation;
+mod conversation_list;
 mod dialog;
+mod host_badges;
 mod linear;
 mod linear_dialog;
 mod linear_filters;
-mod host_badges;
 mod markdown;
 mod rows;
 mod sessions;

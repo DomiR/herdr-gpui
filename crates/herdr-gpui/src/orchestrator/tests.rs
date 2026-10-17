@@ -36,12 +36,12 @@ mod retry;
 #[cfg(unix)]
 mod service;
 mod store;
-
 fn at(value: &str) -> DateTime<Utc> {
     DateTime::parse_from_rfc3339(value)
         .unwrap()
         .with_timezone(&Utc)
 }
+mod gitlab;
 
 fn item(source: &SourceKey, native_id: &str, title: &str) -> Item {
     Item {
