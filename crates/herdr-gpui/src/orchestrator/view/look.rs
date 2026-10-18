@@ -143,8 +143,15 @@ impl Look {
             theme.surface
         };
         let hover = mix(fill, theme.foreground, 8);
+        let label = label.into();
         div()
             .id(id)
+            .role(if primary {
+                Role::DefaultButton
+            } else {
+                Role::Button
+            })
+            .aria_label(label.clone())
             .flex_none()
             .flex()
             .items_center()
@@ -163,17 +170,21 @@ impl Look {
             }))
             .text_size(self.small())
             .whitespace_nowrap()
-            .child(label.into())
+            .child(label)
     }
 
+    /// An icon alone, so `label` is only what a screen reader says.
     pub(crate) fn icon_button(
         &self,
         id: impl Into<ElementId>,
         path: &'static str,
+        label: &'static str,
     ) -> Stateful<Div> {
         let hover = self.theme.active;
         div()
             .id(id)
+            .role(Role::Button)
+            .aria_label(label)
             .flex_none()
             .size(px(24.))
             .flex()
@@ -195,6 +206,9 @@ impl Look {
         let theme = &self.theme;
         div()
             .id(id)
+            .role(Role::Switch)
+            .aria_label(label)
+            .aria_toggled(if on { Toggled::True } else { Toggled::False })
             .flex_none()
             .px_3()
             .py(px(3.))

@@ -20,6 +20,12 @@ pub(crate) struct Dialog {
 }
 
 impl OrchestratorView {
+    /// The one repository whose worker syncs Linear: Linear is the user's,
+    /// not a project's, so it is listed once however many projects are.
+    fn linear_repo(&self) -> Option<&super::Repo> {
+        self.repos.iter().find(|repo| repo.request.linear.is_some())
+    }
+
     pub(super) fn open_linear(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let (ui, theme) = (self.look.ui.clone(), self.look.theme.clone());
         let key = cx.new(|cx| {
@@ -57,9 +63,12 @@ impl OrchestratorView {
             Some(SecretString::from(text))
         };
         let sent = self
-            .service
-            .as_ref()
+            .linear_repo()
+            .and_then(|repo| repo.service.as_ref())
             .is_some_and(|service| service.save_linear_key(key));
+        let Some(dialog) = &mut self.linear else {
+            return;
+        };
         if !sent {
             dialog.problem = Some("The Orchestrator is busy. Try again in a moment.");
             cx.notify();
@@ -72,7 +81,8 @@ impl OrchestratorView {
     pub(super) fn render_linear(&self, dialog: &Dialog, cx: &mut Context<Self>) -> AnyElement {
         let look = &self.look;
         let theme = &look.theme;
-        let connected = self.snapshot.sources.iter().any(|status| {
+        let sources = self.linear_repo().map(|repo| &repo.snapshot.sources);
+        let connected = sources.into_iter().flatten().any(|status| {
             status.key.provider == Provider::Linear && !matches!(status.state, SyncState::SignIn)
         });
         // A cheap read of this process's environment, as the worker's is.

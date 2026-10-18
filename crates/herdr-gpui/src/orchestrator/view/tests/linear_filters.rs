@@ -122,7 +122,7 @@ fn view(cx: &mut TestAppContext) -> gpui::Entity<OrchestratorView> {
         ui: config.ui.clone(),
         mono: config.terminal.clone(),
     };
-    cx.add_window_view(|_, cx| OrchestratorView::new(request, look, cx))
+    cx.add_window_view(|_, cx| OrchestratorView::with_repo(request, look, cx))
         .0
 }
 
@@ -133,7 +133,7 @@ fn the_default_applies_once_and_never_over_a_choice(cx: &mut TestAppContext) {
         fresh.update(cx, |view, _| {
             view.default_filters();
             let before = view.filters;
-            view.snapshot.items = Arc::new(listing());
+            view.repo_mut().snapshot.items = Arc::new(listing());
             view.default_filters();
             let defaulted = view.filters;
             view.filters.mine = false;
@@ -153,7 +153,7 @@ fn the_default_applies_once_and_never_over_a_choice(cx: &mut TestAppContext) {
     let filters = cx.update(|cx| {
         chosen.update(cx, |view, _| {
             view.filters_set = true;
-            view.snapshot.items = Arc::new(listing());
+            view.repo_mut().snapshot.items = Arc::new(listing());
             view.default_filters();
             view.filters
         })

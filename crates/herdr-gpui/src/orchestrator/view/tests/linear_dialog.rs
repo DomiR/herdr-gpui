@@ -24,10 +24,10 @@ fn the_linear_chip_opens_a_dialog_that_refuses_a_non_key(cx: &mut TestAppContext
         ui: config.ui.clone(),
         mono: config.terminal.clone(),
     };
-    let (view, cx) = cx.add_window_view(|_, cx| OrchestratorView::new(request, look, cx));
+    let (view, cx) = cx.add_window_view(|_, cx| OrchestratorView::with_repo(request, look, cx));
     cx.update(|_, cx| {
         view.update(cx, |view, cx| {
-            view.snapshot.sources = vec![SourceStatus {
+            view.repo_mut().snapshot.sources = vec![SourceStatus {
                 key: crate::orchestrator::linear::source(""),
                 state: SyncState::SignIn,
             }];

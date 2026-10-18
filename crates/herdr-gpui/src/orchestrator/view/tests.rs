@@ -10,11 +10,15 @@ mod clicks;
 mod conversation;
 mod conversation_list;
 mod dialog;
-mod host_badges;
+mod groups;
 mod linear;
 mod linear_dialog;
+mod linear_facets;
 mod linear_filters;
+mod linear_repos;
 mod markdown;
+mod pills;
+mod refresh;
 mod rows;
 mod sessions;
 

@@ -1,13 +1,14 @@
 # Orchestrator
 
-The Orchestrator tab (`crates/herdr-gpui/src/orchestrator/`) lists a
-repository's issues, pull requests, and the agent runs dispatched for them,
-and dispatches new ones through the Herdr CLI. User-facing behavior is in the
-crate README's "Orchestrator" section; this page is for working on it.
+The orchestrator (`crates/herdr-gpui/src/orchestrator/`) lists a repository's
+issues, pull requests, and the agent runs dispatched for them in the activity
+bar's Pull requests and Issues sections, and dispatches new ones through the
+Herdr CLI. User-facing behavior is in the crate README's "Orchestrator"
+section; this page is for working on it.
 
 ## Shared state with agent-launcher
 
-The tab reads and writes agent-launcher's per-repository SQLite database, so
+The orchestrator reads and writes agent-launcher's per-repository SQLite database, so
 both applications can run against one repository at once. agent-launcher's
 `docs/shared-state.md` is the contract: the file's location, the schema
 version (`PRAGMA user_version`, currently 1), key formats, JSON column shapes,
@@ -36,17 +37,18 @@ agent-launcher wrote it and check that migration keeps its rows.
 | `repo.rs` | Finding a checkout's repository, main checkout, Beads, and remote on its host. |
 | `github.rs`, `gitlab.rs`, `beads.rs` | The sources: a full listing each. GitHub reads only what changed since the last sync, with a full listing again every 30 minutes; GitLab lists its open issues in full on every sync. |
 | `linear.rs` | The Linear source: its API key (`linear/key.rs`), GraphQL transport (`linear/http.rs`), and listing. |
+| `review.rs` | Each open pull request's review decision, review requests, and checks, read after every GitHub sync and kept in the snapshot only: they change with every CI run, and the database's rows are agent-launcher's contract. |
 | `service.rs` | The worker thread per open view: sync, reload, and the action queue. |
 | `actions.rs` | Dispatch, stop, send, remove, delete: each on its own thread. |
 | `prompt.rs` | Prompt profiles, agent-launcher's built-in and review prompts. |
 | `naming.rs` | agent-launcher's branch names, and runs found from branches. |
-| `view/` | The view entity: inbox, preview, item pages, dialogs. Pure row logic is in `view/rows.rs`. |
-| `tab.rs` | Hosting the view in a tab: opening, restoring, the tick, and events. |
-| `window.rs` | Hosting the same view in a window of its own, still fed from the main window's tick. |
+| `view/` | The view entity: the list of every repository (`view/repo.rs` keeps each one's worker, snapshot, and rows; an item's page and actions go to its own), the backend and project pills, filters, the item pane, dialogs. Pure row, merge, and grouping logic is in `view/rows.rs`. |
+| `host.rs` | The window's one view and the repositories it lists, one per Git common directory per host across every connected host's workspaces: the tick that feeds it, and its events. |
+| `section.rs` | The Pull requests and Issues sections, and the commands that open them narrowed to a project. |
 
 The view is a GPUI entity that talks to its host only through `Event`s and
-setters (`set_look`, `set_live`, `set_github`, `set_hosts`), so a tab or a
-window of its own can host it. Nothing in it blocks: the worker does every disk, network, and host
+setters (`set_look`, `set_live`, `set_github`, `set_hosts`). Tabs hosted it
+before the activity bar; tabs saved by those builds are dropped on load. Nothing in it blocks: the worker does every disk, network, and host
 script call, and the UI reads the newest `Snapshot` from a coalescing mailbox.
 
 Live agent status comes from each connected host's Herdr snapshot, matched to
@@ -90,10 +92,15 @@ Linear lists open issues across one workspace, keyed
 - What Linear says that the shared schema cannot hold (the branch name, the
   assignee and whether it is the key's owner, the cycle) is the item's
   `Tracker`, never stored; rows read from the database have none. The Issues
-  tab's Mine and Current cycle filters read it, so they never pass a GitHub
+  filters column's Mine and Current cycle read it, so they never pass a GitHub
   issue or a bead. `rows::linear_defaults` turns both on the first time
   tracked items arrive, once per view and never after a filter click.
-
+- A view runs one worker per project, but Linear belongs to the user, so only
+  one worker's `Request::linear` is set and Linear is listed once.
+  `OrchestratorView::set_repos` keeps it on a kept worker that already lists
+  Linear, else gives it to the first project, restarting that worker when the
+  project that listed Linear is gone. Dispatching on a Linear issue therefore
+  starts the agent in that project's repository.
 - Linear items are never written to the shared `issues` table or
   `source_checkpoints`. agent-launcher's `load_issues` reads every row and its
   `issue_from_row` fails on a provider other than GitHub, GitLab, or Beads, so
