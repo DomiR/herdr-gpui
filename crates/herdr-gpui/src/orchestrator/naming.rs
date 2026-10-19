@@ -12,7 +12,7 @@
 use super::{Backend, Item, Owner, Provider, Run, RunState, model::Workspace, prompt};
 use crate::{orchestrator::view::LiveAgent, teleport::Host};
 use chrono::{DateTime, Utc};
-use herdr_client::{protocol::AgentStatus, shell_quote};
+use herdr_client::protocol::AgentStatus;
 use std::{
     collections::{HashMap, HashSet},
     sync::atomic::AtomicBool,
@@ -278,13 +278,37 @@ pub(crate) fn local_branches(
     main_root: &str,
     cancelled: &AtomicBool,
 ) -> Option<Vec<String>> {
-    let root = shell_quote(main_root);
-    let body = format!(
-        "git -C {root} for-each-ref --count={MAX_BRANCHES} --format='%(refname:short)' refs/heads/{PREFIX}\n\
-         git -C {root} for-each-ref --count={MAX_BRANCHES} --sort=-committerdate --format='%(refname:short)' refs/heads/\n",
-    );
-    let output = host.capture(&body, cancelled).ok()?;
-    let text = String::from_utf8_lossy(&output);
+    let text = if host.is_local() {
+        let root = std::path::Path::new(main_root);
+        let mut branches = super::git::branches(root, PREFIX, MAX_BRANCHES).ok()?;
+        branches.extend(super::git::recent_branches(root, MAX_BRANCHES).ok()?);
+        branches.join("\n")
+    } else {
+        let list = |order: &str, pattern: &str| {
+            host.exec(
+                "git",
+                &[
+                    "-C",
+                    main_root,
+                    "for-each-ref",
+                    &format!("--count={MAX_BRANCHES}"),
+                    order,
+                    "--format=%(refname:short)",
+                    pattern,
+                ],
+                Host::QUERY_IDLE,
+                cancelled,
+            )
+            .ok()
+        };
+        let named = list("--sort=refname", &format!("refs/heads/{PREFIX}"))?;
+        let recent = list("--sort=-committerdate", "refs/heads/")?;
+        format!(
+            "{}\n{}",
+            String::from_utf8_lossy(&named),
+            String::from_utf8_lossy(&recent)
+        )
+    };
     let mut seen = HashSet::new();
     Some(
         text.lines()

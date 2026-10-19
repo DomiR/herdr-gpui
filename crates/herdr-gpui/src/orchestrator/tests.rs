@@ -1,7 +1,6 @@
 use super::*;
 use chrono::{DateTime, Utc};
 
-#[cfg(unix)]
 mod actions;
 mod beads;
 
@@ -31,9 +30,6 @@ mod naming;
 mod prompt;
 mod repo;
 mod retry;
-/// The worker reads the repository through a host script, which only Unix
-/// hosts run; Windows reports `ScriptUnsupported`, as the app does there.
-#[cfg(unix)]
 mod service;
 mod store;
 fn at(value: &str) -> DateTime<Utc> {
@@ -41,6 +37,10 @@ fn at(value: &str) -> DateTime<Utc> {
         .unwrap()
         .with_timezone(&Utc)
 }
+mod e2e;
+mod fake_github;
+mod git;
+mod git_recent;
 mod gitlab;
 
 fn item(source: &SourceKey, native_id: &str, title: &str) -> Item {
