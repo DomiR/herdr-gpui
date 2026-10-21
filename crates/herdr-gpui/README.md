@@ -294,13 +294,16 @@ edits only the local catalog: the host's own Herdr keeps running. When the
 device has its own GitHub sign-in, the confirmation also offers to delete it,
 since its account panel goes away with the device. Local has no such menu.
 
-A cloud device's header (Coder, Daytona, or Railway) has a menu too:
-**Rename…** changes the name the sidebar shows, falling back to the machine's
-name when left empty; **Cloud device settings…** opens its provider under
-Settings > Cloud devices; and **Remove device…** forgets it on this computer,
-leaving the workspace, sandbox, or VM as it is at the provider. Port forwards
-and server keybindings need a saved SSH host, so a cloud device does not offer
-them.
+A cloud device's header (Azure, Boat, Coder, Daytona, or Railway) has a menu
+too: **Rename…** changes the name the sidebar shows, falling back to the
+machine's name when left empty; **Cloud device settings…** opens its provider
+under Settings > Cloud devices; and **Remove device…** removes it from this
+computer. For an Azure machine, a Boat or Daytona sandbox, or a Coder
+workspace, it deletes the machine at the provider by default, with **Remove
+from Herdr only** beside it; a Railway VM is left as it is and expires on its
+own. `herdr-gpui cloud destroy` asks the same for several devices at once,
+and `herdr-gpui cloud create` asks to make several (see `docs/cli.md`). Port forwards and server keybindings need a saved SSH
+host, so a cloud device does not offer them.
 
 **Forward port…** in the same menu forwards one of the host's ports, such as a
 dev server an agent started there, to this computer. Each forward has its own
@@ -325,7 +328,9 @@ saved SSH device.
 
 The label is optional: an empty one names the device after its SSH target as
 typed, such as `user@host` or an address. Once the device is saved, the dialog
-closes by itself.
+closes by itself unless there is recovery advice to read. That warning wraps
+inside the scrollable dialog and stays until you choose **Done**, close the
+dialog, or press Enter or Escape; the device is already saved.
 
 **Add device** first checks the host over non-interactive SSH, using
 the same executable search and compatibility rules as the connection bridge, and
@@ -334,6 +339,10 @@ never installs or starts anything while checking:
 - Herdr running, or installed but stopped: the installed `herdr machine add`
   runs without a terminal and saves the device. It starts a stopped server
   itself. Any approval it would need fails instead of waiting for input.
+  If it refuses to save because the existing server needs a restart, the app
+  checks the host again. A still-running host that passes the app's compatibility
+  probe is saved locally with a warning about version/startup differences and
+  SSH recovery. Adding it does not require restarting the server or its panes.
 - Herdr missing: the dialog asks "Herdr was not detected on the host. Should we
   install it?" An outdated Herdr asks to update it instead.
 - SSH needs a prompt (unknown host key, password, passphrase), the check failed,
@@ -2005,15 +2014,18 @@ hold: their GitHub issues and pull requests or GitLab issues, their
 [Beads](https://github.com/steveyegge/beads) issues when a main checkout has a
 `.beads` folder, your open Linear issues and those of your teams' current
 cycles once Linear is connected, and the agent runs dispatched for them.
-Worktrees of one repository count once, and each repository syncs on its own,
-so up to 32 are listed. Linear is yours rather than a project's, so it is
-listed once, with the first project's. A row shows its project while several
-are listed. Under the search, a row of pills picks backends (GitHub, GitLab,
-Beads, Linear) and projects, each with its count; none picked lists all. The
-Issues row of a group's "…" menu or of a workspace's popover, the Show Issues
-command, and `herdr-gpui orchestrator` open the Issues section narrowed to that
-workspace's project. A repository without a GitHub remote has no GitHub
-source; the header says "no GitHub remote" when none of them has one.
+Folders outside Git are quietly skipped unless they have a `.beads` folder;
+**Refresh** checks skipped folders again. Git and SSH discovery failures still
+show their errors. Worktrees of one repository count once, and each repository
+syncs on its own, so up to 32 are listed. Linear is yours rather than a
+project's, so it is listed once, with the first project's. A row shows its
+project while several are listed. Under the search, a row of pills picks
+backends (GitHub, GitLab, Beads, Linear) and projects, each with its count;
+none picked lists all. The Issues row of a group's "…" menu or of a
+workspace's popover, the Show Issues command, and `herdr-gpui orchestrator`
+open the Issues section narrowed to that workspace's project. A repository
+without a GitHub remote has no GitHub source; the header says "no GitHub
+remote" when none of them has one.
 
 - **Issues** lists open GitHub or GitLab issues, beads, and Linear issues
   together, grouped by priority. A bead's or Linear issue's children sit under
@@ -2096,12 +2108,12 @@ that issue's run. Linear issues are not written to the database agent-launcher
 shares, since agent-launcher could not read them; runs on them are, so
 agent-launcher lists those runs without their issue.
 
-The tab shares its data with agent-launcher,
-so both can be open on one repository at once: each lists the other's runs,
-updates only its own, and uses agent-launcher's prompt profiles from
-`~/.config/agent-launcher/agents/<name>/prompt.md` (the built-in prompt when
-none is chosen). Issues and runs are kept in agent-launcher's per-repository
-database under the platform data directory. GitHub is read as the account used
+Issues, pull requests with their reviews and checks, and runs are kept in a
+per-repository database in Herdr UI's state directory, so a restart lists them
+at once and syncs after. The first time a repository opens, agent-launcher's
+database for it is copied in, with its runs. The tab uses agent-launcher's
+prompt profiles from `~/.config/agent-launcher/agents/<name>/prompt.md` (the
+built-in prompt when none is chosen). GitHub is read as the account used
 for pull requests on that host. A GitLab remote, on gitlab.com or a
 self-managed host, lists its open issues (not yet its merge requests), read
 with `GITLAB_TOKEN` or `GITLAB_ACCESS_TOKEN` when `GITLAB_HOST` names that host
@@ -3021,6 +3033,48 @@ the page's storage, which belongs to one address.
   workspace or agent, as a web browser keeps its tab keys from its pages,
   and the keys bound to the font size commands, which zoom the page. Click a
   terminal to take the keyboard back.
+
+## px0
+
+**Open px0** in the Terminal menu or command palette, or **px0** in an editor
+group's **…** menu, opens [px0](https://px0.ai/) on the local workspace's
+starting directory. Each workspace has one px0 tab; opening it again moves it
+to the group in use. Split it beside terminals to browse, edit, and review code.
+The tab shows px0's own web UI without the browser toolbar, and keeps its page
+alive when another tab is selected. `open_px0` is available in keybindings with
+no default shortcut.
+
+Install a px0 build with the review workbench (`/api/wb/ping` and `?open=`).
+Herdr UI discovers a running workbench from px0's `workbench.lock`, or looks
+for `px0` (`px0.exe` on Windows) on the login shell's PATH and starts it when
+a tab first needs it. It passes `-no-open -no-update -no-color -host 127.0.0.1
+-port 0 -base-path /` with no target, then reads the actual assigned address.
+It never installs or updates px0. An owned workbench keeps its registry and
+workspace sessions under `<Herdr UI state>/px0-state/px0`; px0's normal settings
+still apply. A discovered workbench keeps its existing state.
+
+**Settings > Code > px0** accepts the address of a workbench you run yourself;
+leave it empty for automatic discovery/start and press **Apply px0 address**.
+The same setting can be written in `config-gpui.local.toml`:
+
+```toml
+[px0]
+url = "http://127.0.0.1:7777/"
+```
+
+Only loopback HTTP addresses are accepted, including a base path when needed.
+The app checks that the address answers as a workbench before loading a page.
+Startup failures appear in the tab with **Retry**. Quitting stops the workbench
+the app started and its children; attaching to an existing workbench never gives
+Herdr UI ownership of it. Closing a tab leaves the workbench available for other
+tabs. px0 manages its own per-checkout children and idle cleanup.
+
+Agents can use `herdr-gpui px0 open --json` to open or focus their workspace's
+tab. Success reports the tab ID and workspace; it means the tab opened, while
+server startup continues in the tab. The existing `--window` targeting applies.
+This integration currently supports local workspaces on macOS and Windows;
+remote workspaces and Linux embedded pages report unsupported. px0's own agent
+harnesses are separate from Herdr's running terminal agents.
 
 ## System Notifications
 

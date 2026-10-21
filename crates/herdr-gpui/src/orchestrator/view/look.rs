@@ -5,7 +5,6 @@ use super::rows::Status;
 use crate::{
     config::{FontConfig, Theme, corners, mix},
     fonts::StyledFont,
-    orchestrator::Item,
 };
 use gpui::{prelude::*, *};
 
@@ -90,6 +89,21 @@ impl Look {
             .bg(rgb(self.wash(index)))
             .text_color(rgb(self.hue(index)))
             .text_size(self.tiny())
+            .child(text.into())
+    }
+
+    /// A colored word that leads a page, such as a state or severity.
+    pub(crate) fn tag(&self, text: impl Into<SharedString>, color: u32) -> Div {
+        div()
+            .flex_none()
+            .whitespace_nowrap()
+            .px(px(6.))
+            .py(px(1.))
+            .rounded(px(corners::SMALL))
+            .bg(rgb(mix(self.theme.background, color, 18)))
+            .text_color(rgb(color))
+            .text_size(self.small())
+            .font_weight(FontWeight::SEMIBOLD)
             .child(text.into())
     }
 
@@ -229,6 +243,88 @@ impl Look {
             .child(label)
     }
 
+    /// A pill under a section's search that narrows its list: outlined,
+    /// the accent's outline and wash while picked.
+    pub(crate) fn pill(&self, id: impl Into<SharedString>, on: bool) -> Stateful<Div> {
+        let theme = &self.theme;
+        let id = id.into();
+        let hover = theme.active;
+        div()
+            .id(id.clone())
+            .debug_selector(move || id.to_string())
+            .flex_none()
+            .flex()
+            .items_center()
+            .gap_1()
+            .px_2()
+            .py(px(2.))
+            .rounded_full()
+            .border_1()
+            .border_color(rgb(if on { theme.primary() } else { theme.active }))
+            .when(on, |el| el.bg(rgb(theme.primary_wash())))
+            .when(!on, |el| el.hover(move |style| style.bg(rgb(hover))))
+            .cursor_pointer()
+            .text_size(self.small())
+    }
+
+    /// A row's own small action, such as Start agent.
+    pub(crate) fn compact_button(
+        &self,
+        id: impl Into<ElementId>,
+        label: &'static str,
+    ) -> Stateful<Div> {
+        let theme = &self.theme;
+        let hover = theme.active;
+        div()
+            .id(id)
+            .role(Role::Button)
+            .aria_label(label)
+            .flex_none()
+            .px_2()
+            .py(px(1.))
+            .rounded(px(corners::SMALL))
+            .border_1()
+            .border_color(rgb(theme.active))
+            .bg(rgb(theme.surface))
+            .hover(move |style| style.bg(rgb(hover)))
+            .cursor_pointer()
+            .text_size(self.tiny())
+            .whitespace_nowrap()
+            .child(label)
+    }
+
+    /// A search field's outline, the magnifier inside, for the input and
+    /// its clear button: the outline turns accent while it has the keyboard.
+    pub(crate) fn search_frame(&self, id: impl Into<ElementId>, focused: bool) -> Stateful<Div> {
+        let theme = &self.theme;
+        div()
+            .id(id)
+            .flex_1()
+            .min_w_0()
+            .h(px(self.ui.line_height() + 12.))
+            .flex()
+            .items_center()
+            .gap_2()
+            .px_3()
+            .rounded(px(corners::CONTROL))
+            .border_1()
+            .border_color(rgb(if focused {
+                theme.primary()
+            } else {
+                theme.active
+            }))
+            .bg(rgb(theme.background))
+            .child(self.icon(
+                "icons/search.svg",
+                13.,
+                if focused {
+                    theme.foreground
+                } else {
+                    theme.muted
+                },
+            ))
+    }
+
     /// The color of an item's state word.
     pub(crate) fn state_hue(&self, state: &str) -> usize {
         match state {
@@ -239,13 +335,6 @@ impl Look {
             "closed" | "tombstone" => RED,
             _ => CYAN,
         }
-    }
-
-    /// The item's priority as a badge, when it has one.
-    pub(crate) fn priority_badge(&self, item: &Item) -> Option<Div> {
-        let priority = item.priority?;
-        let label = item.priority_label()?;
-        Some(self.badge(label, self.priority_hue(priority)))
     }
 
     /// The color of a Beads priority, P0 hottest.

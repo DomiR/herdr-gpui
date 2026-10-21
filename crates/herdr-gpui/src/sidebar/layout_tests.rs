@@ -55,6 +55,8 @@ mod local_counts_chip;
 #[cfg(test)]
 mod nested_agents;
 #[cfg(test)]
+mod other_device_prs;
+#[cfg(test)]
 mod palette;
 #[cfg(test)]
 mod palette_header;
@@ -106,6 +108,8 @@ mod update_panel;
 mod workspace_click_hover;
 #[cfg(test)]
 mod workspace_menu;
+#[cfg(test)]
+mod workspace_menu_name;
 #[cfg(test)]
 mod worktree_note_trunk;
 #[cfg(test)]
@@ -369,13 +373,16 @@ impl PaintedText {
         let layout = look.density;
         // Menu labels share text keys, and retained paint probes can still
         // describe the previous layout. Compute the sidebar column directly.
+        // The child row draws no fold chevron, so its label also takes the
+        // chevron's column.
         let left =
             px(bar + look.content_x() + layout.child_indent() + super::STATUS_WIDTH + layout.gap());
+        // A worktree group's member draws no chevron, so its name also
+        // takes the arrow column.
         let width = px(look.content_width(super::SIDEBAR_WIDTH)
             - super::STATUS_WIDTH
             - layout.gap()
-            - layout.child_indent()
-            - super::ARROW_RESERVE);
+            - layout.child_indent());
         ensure!(
             near(self.bounds.left(), left),
             "child label left: actual {:?}, expected {left:?}",
@@ -662,6 +669,7 @@ pub(crate) fn fixture_window(window: &mut Window, cx: &mut Context<HerdrWindow>)
         terminal_mouse: None,
         scrollbar_drag: None,
         security: Default::default(),
+        security_search: crate::security::SecuritySearch::new(cx),
         split_drag: None,
         split_cursor: None,
         pending_images: Vec::new(),

@@ -17,12 +17,19 @@ mod linear_dialog;
 mod linear_facets;
 mod linear_filters;
 mod linear_repos;
+mod list_switch;
 mod markdown;
+mod non_projects;
+mod outside_git;
 mod pills;
 mod pr_empty;
 mod refresh;
+mod row_start;
 mod rows;
 mod sessions;
+mod status;
+mod twin_text;
+mod twins;
 
 fn at(value: &str) -> DateTime<Utc> {
     DateTime::parse_from_rfc3339(value)

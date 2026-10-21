@@ -37,11 +37,17 @@ fn at(value: &str) -> DateTime<Utc> {
         .unwrap()
         .with_timezone(&Utc)
 }
+mod beads_only;
 mod e2e;
 mod fake_github;
 mod git;
 mod git_recent;
 mod gitlab;
+mod project_fixtures;
+mod repo_output;
+#[cfg(unix)]
+mod repo_script;
+mod restart;
 
 fn item(source: &SourceKey, native_id: &str, title: &str) -> Item {
     Item {

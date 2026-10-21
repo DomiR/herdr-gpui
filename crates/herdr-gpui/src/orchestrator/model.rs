@@ -9,7 +9,7 @@ use std::{collections::HashMap, path::PathBuf, str::FromStr};
 
 /// Where an item comes from. Linear items are never in the shared
 /// database: agent-launcher cannot read a `linear` row.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(crate) enum Provider {
     Github,
     Gitlab,
@@ -63,7 +63,7 @@ fn uncomponent(value: &str) -> String {
 }
 
 /// One synced source: a provider's view of one repository.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(crate) struct SourceKey {
     pub(crate) provider: Provider,
     pub(crate) host: String,
