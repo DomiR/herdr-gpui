@@ -8,6 +8,10 @@ mod announcement;
 mod backdrop;
 pub(crate) mod chrome_focus;
 mod clipboard;
+#[cfg(target_os = "macos")]
+pub(crate) use clipboard::macos::{
+    Error as ClipboardHelperError, run_helper as run_clipboard_helper,
+};
 mod commands;
 mod config_diagnostic;
 mod construct;
@@ -24,6 +28,7 @@ mod function_keys;
 mod image_source;
 mod images;
 mod input;
+mod layout_save;
 mod lifecycle;
 pub(crate) use lifecycle::reasserts;
 mod links;
@@ -37,6 +42,7 @@ mod reconnecting;
 mod regions;
 mod render;
 mod report_issue;
+mod select_hint;
 mod selection;
 mod server_keys;
 mod sound;
@@ -120,6 +126,9 @@ pub(crate) struct HerdrWindow {
     pub(crate) app_update_notes_scroll: ScrollHandle,
     /// A tab torn off another window, waiting for its host to be listed.
     pub(crate) arrival: Option<tab_tear::TornTab>,
+    /// The activity bar's Automations section: every host's
+    /// `herdr-automate` scripts and runs.
+    pub(crate) automations: crate::automations::Automations,
     pub(crate) avatars: Option<avatars::Avatars>,
     /// The picture and platform appearance `[backdrop]` asks for.
     pub(crate) backdrop: backdrop::State,
@@ -129,6 +138,8 @@ pub(crate) struct HerdrWindow {
     pub(crate) browser: crate::browser::Browser,
     pub(crate) catalog: endpoint::Catalog,
     pub(crate) cell_width: f32,
+    /// Native views of the `herdr-acp` chats in this daemon's panes.
+    pub(crate) chats: crate::chat::Chats,
     /// Snapshots of checkouts taken at agent turns, and the dialog listing them.
     pub(crate) checkpoints: crate::checkpoint::Checkpoints,
     /// The chrome region whose controls take Tab; see `chrome_focus`.
@@ -190,6 +201,9 @@ pub(crate) struct HerdrWindow {
     pub(crate) flash: Option<(Flash, std::time::Instant)>,
     pub(crate) focus: FocusHandle,
     pub(crate) git: git::Git,
+    /// Where the titlebar's Git button last painted. The window owns it so a
+    /// shortcut and a click open the Git menu at the same place.
+    pub(crate) git_anchor: std::rc::Rc<std::cell::Cell<Point<Pixels>>>,
     /// Unknown keys in the GUI config, ignored but reported; follows `config`.
     pub(crate) gui_config_diagnostic: crate::config_diagnostic::ConfigDiagnostic,
     pub(crate) held_keys: crate::terminal::HeldKeys,
@@ -236,6 +250,8 @@ pub(crate) struct HerdrWindow {
     /// The last orchestrator view id handed out.
     pub(crate) next_orchestrator: u64,
     pub(crate) notes_width: crate::panel_resize::PanelWidth,
+    /// Which notice cards had lines too long for their row when last laid out.
+    pub(crate) notice_overflow: std::rc::Rc<config_diagnostic::Overflow>,
     pub(crate) options: ConnectOptions,
     /// Orchestrator views' requests, acted on at the next tick.
     pub(crate) orchestrator_events: Vec<(crate::orchestrator::ViewId, crate::orchestrator::Event)>,
@@ -278,6 +294,9 @@ pub(crate) struct HerdrWindow {
     pub(crate) review_files_width: crate::panel_resize::PanelWidth,
     /// Each review tab's state, by its tab.
     pub(crate) reviews: std::collections::HashMap<crate::browser::TabId, crate::review::Review>,
+    /// Sandbox images this window was asked to build ahead of a dispatch.
+    #[cfg(feature = "cloud")]
+    pub(crate) sandbox_image_builds: crate::cloud::image::Prebuilds,
     pub(crate) scrollbar_drag: Option<mouse::ScrollbarDrag>,
     /// The activity bar's Security section: Dependabot alerts.
     pub(crate) security: crate::security::Security,
@@ -511,7 +530,11 @@ impl HerdrWindow {
             }
             cx.notify();
         }
-        if self.avatars.as_mut().is_some_and(|avatars| avatars.poll()) {
+        if self
+            .avatars
+            .as_mut()
+            .is_some_and(|avatars| avatars.poll(std::time::Instant::now()))
+        {
             cx.notify();
         }
         if let Some(chrome) = self.sidebar_preferences.as_mut().and_then(|p| p.loaded()) {
@@ -572,6 +595,7 @@ impl HerdrWindow {
         self.save_group_layouts(cx);
         self.poll_browser(window, cx);
         self.poll_remote_browser(window, cx);
+        self.poll_chats(window, cx);
         self.offer_browser_skill(window, cx);
         self.poll_sessions(cx);
         self.flush_scrollbar(cx);
@@ -639,6 +663,7 @@ impl HerdrWindow {
         self.poll_devices_overview(cx);
         self.poll_overview(cx);
         self.poll_security(cx);
+        self.poll_automations(cx);
         if self.update_system_load() {
             cx.notify();
         }

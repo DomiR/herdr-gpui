@@ -68,7 +68,7 @@ Every command accepts:
 | `window detach\|reconnect` | Detach from, or reconnect to, the selected host |
 | `ui sidebar\|statusbar [on\|off\|toggle]` | For this window and session |
 | `ui font-size +\|-\|reset\|POINTS` | The terminal font size for this session |
-| `ui panel workspaces\|overview\|pull-requests\|issues\|security\|usage` | Show an activity bar section: Workspaces with the sidebar expanded, Overview of what needs you on every host, the focused workspace's pull requests or issues across the window, the vulnerability reports and Dependabot alerts of your repositories, or every host's plan usage |
+| `ui panel workspaces\|overview\|pull-requests\|issues\|security\|automations\|usage` | Show an activity bar section: Workspaces with the sidebar expanded, Overview of what needs you on every host, the focused workspace's pull requests or issues across the window, the vulnerability reports and Dependabot alerts of your repositories, every host's automation scripts and runs, or every host's plan usage |
 | `run COMMAND` | Any app command by its `[keybindings]` name, as the palette runs it |
 | `commands` | The names `run` accepts (no app needed) |
 | `open DIR` | Open a folder as **Open Project** in the palette does, starting the app if needed (below) |
@@ -132,6 +132,9 @@ and builds without embedded pages return exit 8. See [px0](../crates/herdr-gpui/
 | `scripts setup\|run` | Run one in a new tab; an unseen script still asks first. Archive removes the worktree, so it stays behind the app's delete dialog |
 | `teleport --to HOST` | Open the teleport dialog for your linked worktree, reviewing HOST; you confirm there |
 | `fan-out PROMPT [--agent KIND[:N]]...` | Open the fan-out dialog prefilled; you start it there |
+| `chat [status]` | The `herdr-acp` chat panes of the window's host, this machine or an SSH host: agent, status, model, context window use, and whether the chat view or the terminal shows |
+| `chat show\|hide\|toggle [--pane ID]` | Show the native chat view over your pane (or ID, else the focused one), or its terminal |
+| `chat new AGENT [--pane ID]` | Open a tab running a `herdr-acp` chat with a built-in agent (`claude`, `codex`, `copilot`, `gemini`, `opencode`, `pi`) in the workspace and folder of your pane (or ID). On an SSH host the tab runs that host's `herdr-acp` (see [Chats on SSH hosts](#chats-on-ssh-hosts)). Exits 8 when `herdr-acp` is missing here, the host cannot be reached, or the agent is not installed on it (`herdr-acp agents` lists those that are) |
 
 ### Hosts
 
@@ -145,8 +148,11 @@ and builds without embedded pages return exit 8. See [px0](../crates/herdr-gpui/
 | `usage`, `system` | Plan usage and load of the selected host |
 | `security` | Private vulnerability reports in triage (titles and metadata only, never their descriptions) and open Dependabot alerts of the github.com repositories the window's workspaces hold, most severe first, as the Security section last read them. Exits 4 when there are none |
 | `security open REPOSITORY ALERT\|GHSA` | Show alert `ALERT` (its number) or private report `GHSA` (its GHSA ID) of `REPOSITORY` (`owner/name`) in the Security section, beside its list: the fix, the advisory, and the dependency for an alert; the report, its advisory draft, and its conversation for a report. Only items the section lists open; nothing on GitHub changes |
+| `automation approve FILE [--host ID]` | Open the approval of the automation script `FILE` in the app: its plan, caps, and content hash, for the user to approve or cancel. The command approves nothing. `FILE` is the script's path on the host as `herdr-automate status` lists it, resolved here when it exists; `--host` names the host by ID or label (default: your workspace's host). Exits 5 when the host does not list the script, 6 while a dialog is open or the host was not read yet |
 | `cloud [list]` | Saved cloud machines (no app needed) |
 | `cloud add` | Open the settings that add one |
+| `cloud images [list]` | Sandbox images built from projects' recipes (no app needed) |
+| `cloud images build [PROVIDER]` | Build the current repository's sandbox images ahead of a dispatch |
 | `cloud setup ID` | Run the `[cloud]` setup script on a saved machine again, in a new tab once the window shows it. `ID` is the machine ID from `cloud list`, its host ID, or its label |
 | `cloud create PROVIDER [--count N] [--template T] [--preset P] [--sandbox] [--no-install] [--no-setup]` | Ask in the window to create up to 16 machines; the user confirms there, once for all of them. Prints the batch to follow (below) |
 | `cloud exec ID [--timeout S] [--cwd DIR] -- COMMAND...` | Run a command on a saved machine through the app's connection to it, and print its output (below) |
@@ -222,8 +228,8 @@ destroy it like any other. Coder takes `--template` and `--preset` by name
 (without them, the deployment's only template and its default preset);
 Azure makes a Container Apps sandbox with `--sandbox`. Boat and Railway make
 their machines one at a time. Providers are named by key or name: azure,
-boat, coder, daytona, railway. The device list keeps at most 64 cloud
-devices, counting those being made.
+boat, coder, container, daytona, opensandbox, railway, sprites. The device
+list keeps at most 64 cloud devices, counting those being made.
 
 `cloud exec` runs one command on a saved cloud machine, named as for
 `cloud setup`, through the same authenticated command the app connects with
@@ -248,8 +254,9 @@ herdr-gpui cloud exec herdr-tidy-lark-aa --cwd ~/code/app -- sh -c 'git switch -
 An agent that worked on cloud machines removes them with `cloud destroy`,
 naming each by its machine ID, host ID, or label (a label two machines share
 is refused), or with `--batch` every machine a batch named. The window asks
-once, listing each machine and what happens to it: Azure, Boat, Coder, and
-Daytona delete the machine with what goes with it and then forget it here;
+once, listing each machine and what happens to it: Azure, Boat, Coder,
+Container, Daytona, OpenSandbox, and Sprites delete the machine with what
+goes with it and then forget it here;
 Railway VMs cannot be deleted from this app, so they are only forgotten and
 expire on their own. A dialog already open refuses the request (exit 6).
 
@@ -362,3 +369,28 @@ A pipe has no receive or send timeout. Reads poll with `PeekNamedPipe`, as
 the daemon client does; writes have no deadline, so the app's out buffer
 holds a whole answer and the connection bound limits what a stalled caller
 can hold.
+
+## Chats on SSH hosts
+
+Native chat views are opt-in: turn on **ACP chats** in Settings > General
+(`acp_chats = true` under `[features]`). While it is off, chat panes show
+their terminal and `chat new` exits 8.
+
+A chat on an SSH host shows in the native chat view like a local one. Herdr UI
+runs `herdr-acp connect ID` on the host over the same SSH connection it uses
+for Herdr, and the program there sees an ordinary client on its own socket.
+Starting a chat there (`chat new`, or the workspace menu) runs the host's own
+`herdr-acp`, looked for in `~/.herdr/bin`, `~/.cargo/bin`, `~/.local/bin`, and
+then the remote `PATH`. Install it on the host with:
+
+```sh
+cargo install --locked --git https://github.com/penso/herdr-gpui herdr-acp --root ~/.herdr
+```
+
+The workspace menu offers only the agents whose own ACP command is installed
+on the host, as `herdr-acp agents` lists them; an agent `npx` would have to
+download first is left out.
+
+Files dropped on a remote chat are copied to the host first, into private
+temporary files under its `${TMPDIR:-/tmp}`, and the copies are attached.
+

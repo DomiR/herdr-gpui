@@ -12,6 +12,7 @@ mod app;
 #[cfg(any(target_os = "macos", windows, test))]
 mod app_badge;
 mod app_icon;
+mod automations;
 mod avatars;
 #[cfg(feature = "azure")]
 mod azure;
@@ -23,6 +24,7 @@ mod browser;
 mod cache;
 mod caffeine;
 mod caption;
+mod chat;
 mod checkpoint;
 mod cli;
 mod close_modal;
@@ -33,12 +35,15 @@ mod close_modal;
         feature = "azure",
         feature = "boat",
         feature = "coder",
+        feature = "container",
         feature = "daytona",
-        feature = "railway"
+        feature = "opensandbox",
+        feature = "railway",
+        feature = "sprites"
     ))
 ))]
 compile_error!(
-    "the `cloud` feature is enabled through a provider feature, such as `azure`, `boat`, `coder`, `daytona`, or `railway`"
+    "the `cloud` feature is enabled through a provider feature, such as `azure`, `boat`, `coder`, `container`, `daytona`, `opensandbox`, `railway`, or `sprites`"
 );
 #[cfg(feature = "cloud")]
 mod cloud;
@@ -53,6 +58,8 @@ mod config;
 mod config_diagnostic;
 mod connection;
 mod constants;
+#[cfg(feature = "container")]
+mod container;
 mod contrast;
 mod control;
 mod controls;
@@ -103,6 +110,8 @@ mod motion;
 mod navigation;
 mod network_quality;
 mod notifications;
+#[cfg(feature = "opensandbox")]
+mod opensandbox;
 mod orchestrator;
 mod osc52;
 mod overview;
@@ -140,10 +149,13 @@ mod setup_relay;
 mod sidebar;
 mod smooth_scroll;
 mod sound;
+#[cfg(feature = "sprites")]
+mod sprites;
 mod state;
 mod state_file;
 mod storage_warning;
 mod system_load;
+mod tab_layout;
 mod tab_menu;
 mod taskbar;
 mod teleport;
@@ -161,6 +173,7 @@ mod window_state;
 mod words;
 mod worktree;
 mod worktree_banner;
+mod worktree_identity;
 mod worktree_notes;
 mod worktree_scripts;
 

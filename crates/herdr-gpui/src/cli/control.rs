@@ -5,6 +5,7 @@
 mod app;
 mod batch;
 mod browser;
+mod chat;
 mod exec;
 mod hosts;
 mod settings;
@@ -17,8 +18,11 @@ pub use crate::control::{Cursor, EventKind, FontSize, Script, Size, Sound, Switc
 pub use app::{AppCommand, UiCommand, WindowCommand};
 pub use batch::BatchCommand;
 pub use browser::{BrowserCommand, Placement};
+pub use chat::ChatCommand;
 pub use exec::ExecCommand;
-pub use hosts::{CloudCommand, HostCommand, PortsCommand, PrCommand, SecurityCommand};
+pub use hosts::{
+    AutomationCommand, CloudCommand, HostCommand, PortsCommand, PrCommand, SecurityCommand,
+};
 pub use settings::{
     CaffeineCommand, ConfigCommand, IntegrationsCommand, KeybindsCommand, SoundCommand,
     ThemeCommand, UpdateCommand,
@@ -58,6 +62,7 @@ pub enum ControlCommand {
     Devices,
     Orchestrator(OrchestratorCommand),
     Review,
+    Chat(ChatCommand),
     Px0,
     Notes(NotesCommand),
     /// Every kind of note the user sent this pane: page, review, terminal.
@@ -84,6 +89,7 @@ pub enum ControlCommand {
     Usage,
     System,
     Security(SecurityCommand),
+    Automation(AutomationCommand),
     Search {
         files: bool,
         query: String,
@@ -155,6 +161,10 @@ pub const FAMILIES: &[(&str, &str)] = &[
         "A repository's issues, pull requests, and runs",
     ),
     ("review", "Open the review of the uncommitted changes"),
+    (
+        "chat",
+        "Native views of herdr-acp chats: start one, list them, show or hide one",
+    ),
     ("px0", "Open px0 on the caller's local checkout"),
     ("notes", "Notes kept on worktrees"),
     (
@@ -190,6 +200,10 @@ pub const FAMILIES: &[(&str, &str)] = &[
     (
         "security",
         "Vulnerability reports and Dependabot alerts of your repositories",
+    ),
+    (
+        "automation",
+        "Open an automation script's approval in Herdr UI; the user approves",
     ),
     ("search", "Find a symbol or a file in the focused checkout"),
     ("config", "Herdr UI settings: path, get, set, reload, check"),
@@ -312,6 +326,7 @@ fn command(family: &'static str, args: &mut Args) -> Result<ControlCommand, CliE
             tabs::open_only(args)?;
             ControlCommand::Review
         }
+        "chat" => ControlCommand::Chat(chat::chat(args)?),
         "px0" => {
             tabs::open_only(args)?;
             ControlCommand::Px0
@@ -341,6 +356,7 @@ fn command(family: &'static str, args: &mut Args) -> Result<ControlCommand, CliE
         "usage" => ControlCommand::Usage,
         "system" => ControlCommand::System,
         "security" => ControlCommand::Security(hosts::security(args)?),
+        "automation" => ControlCommand::Automation(hosts::automation(args)?),
         "search" => {
             let files = match args.verb().as_ref().and_then(|verb| verb.to_str()) {
                 Some("symbol" | "symbols") => false,

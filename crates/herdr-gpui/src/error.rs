@@ -1,5 +1,6 @@
 //! Internal failures retain their categories and sources until presentation.
 pub use crate::updater::UpdateError;
+pub use clipboard::ClipboardError;
 use daemon::daemon_error_message;
 pub use github::{GitHubAccountsError, GitHubJsonError};
 use std::{io, path::PathBuf};
@@ -19,14 +20,10 @@ pub enum Error {
         #[source]
         source: io::Error,
     },
-    #[cfg(feature = "azure")]
     #[error(transparent)]
-    Azure(#[from] crate::azure::Error),
+    Automations(#[from] crate::automations::Error),
     #[error(transparent)]
     Backdrop(#[from] crate::backdrop::Error),
-    #[cfg(feature = "boat")]
-    #[error(transparent)]
-    Boat(#[from] crate::boat::Error),
     #[error("Searching the local network failed: {0}")]
     Bonjour(#[from] mdns_sd::Error),
     #[error("{} already exists; choose a new file name", path.display())]
@@ -37,14 +34,10 @@ pub enum Error {
         #[source]
         source: io::Error,
     },
-    #[error("Could not keep the machine awake: {0}")]
-    Caffeine(#[source] keepawake::Error),
-    #[error("No agent is working, so there is nothing to stay awake for")]
-    CaffeineNoWorkingAgents,
-    #[error("Could not start the keep-awake thread")]
-    CaffeineThread(#[source] io::Error),
-    #[error("The keep-awake thread stopped; the display may sleep")]
-    CaffeineWorkerStopped,
+    #[error(transparent)]
+    Caffeine(#[from] crate::caffeine::Failure),
+    #[error(transparent)]
+    Chat(#[from] crate::chat::Error),
     #[error("That checkpoint was taken on another branch. Check that branch out to restore it.")]
     CheckpointBranch,
     #[error("A merge, rebase, cherry-pick, or revert is in progress. Finish or abort it first.")]
@@ -74,18 +67,8 @@ pub enum Error {
     Client(#[from] herdr_client::Error),
     #[error("HERDR_GITHUB_OAUTH_CLIENT_ID must be UTF-8")]
     ClientIdEncoding,
-    #[error("The clipboard changed while reading. Try pasting again.")]
-    ClipboardChanged,
-    #[error("Clipboard text is not valid UTF-8.")]
-    ClipboardEncoding(#[source] std::str::Utf8Error),
-    #[error("Could not read the clipboard; on Linux, install wl-paste or xclip.")]
-    ClipboardProcess(#[source] io::Error),
-    #[error("Clipboard content exceeds the {limit}-byte limit.")]
-    ClipboardSize { limit: usize },
-    #[error("Clipboard acquisition timed out.")]
-    ClipboardTimeout,
-    #[error("Remote clipboard acquisition is not supported on this platform.")]
-    ClipboardUnsupported,
+    #[error(transparent)]
+    Clipboard(#[from] ClipboardError),
     #[cfg(feature = "cloud")]
     #[error(transparent)]
     Cloud(#[from] crate::cloud::Error),
@@ -106,9 +89,6 @@ pub enum Error {
     CodeIndexCancelled,
     #[error("Only a local Git checkout can be searched for files and symbols")]
     CodeIndexRoot,
-    #[cfg(feature = "coder")]
-    #[error(transparent)]
-    Coder(#[from] crate::coder::Error),
     #[error("{0}")]
     Config(#[source] config_loader::ConfigError),
     #[error("{source}")]
@@ -178,9 +158,6 @@ pub enum Error {
     },
     #[error("Timed out waiting for herdr server at {}. Check the Herdr server log and use Terminal > Reconnect.", .0.display())]
     DaemonTimeout(PathBuf),
-    #[cfg(feature = "daytona")]
-    #[error(transparent)]
-    Daytona(#[from] crate::daytona::Error),
     #[error("Checkout lookup failed. Dismiss and reopen the menu.")]
     DeletionLookup,
     #[error("HEAD is detached. Check a branch out first.")]
@@ -685,24 +662,14 @@ pub enum Error {
     PrMetadata,
     #[error("No local worktree matches the daemon branch.")]
     PrMissingWorktree,
-    #[error("Herdr's answer about the pane's process was not understood.")]
-    ProcessesAnswer(#[source] serde_json::Error),
-    #[error("Still ending the last processes. Try again in a moment.")]
-    ProcessesBusy,
-    #[error("The herdr executable's path is not valid UTF-8.")]
-    ProcessesExecutable,
-    #[error("Herdr did not name a process for this pane.")]
-    ProcessesNoRoot,
-    #[error("Could not ask Herdr which process the pane runs.")]
-    ProcessesQuery(#[source] herdr_client::Error),
-    #[error("The pane's process has exited.")]
-    ProcessesRootExited,
-    #[error("The process list stopped updating. Reopen it to try again.")]
-    ProcessesStopped,
-    #[error("Could not start watching the pane's processes.")]
-    ProcessesWorker(#[source] io::Error),
+    #[error(transparent)]
+    Processes(#[from] crate::processes::Error),
     #[error("PR lookup supports GitHub.com origins only.")]
     PrOrigin,
+    /// A cloud provider's own failure; see `cloud::ProviderError`.
+    #[cfg(feature = "cloud")]
+    #[error(transparent)]
+    Provider(#[from] crate::cloud::ProviderError),
     #[error("Could not {operation} for Git PR lookup.")]
     PrProcess {
         operation: &'static str,
@@ -727,9 +694,6 @@ pub enum Error {
     PrWorktreeLookup,
     #[error(transparent)]
     Px0(#[from] crate::px0::Error),
-    #[cfg(feature = "railway")]
-    #[error(transparent)]
-    Railway(#[from] crate::railway::Error),
     #[error("XDG_CONFIG_HOME must be an absolute path")]
     RelativeConfigRoot,
     #[error("Could not install the agent tools on the SSH host: {0}")]
@@ -746,6 +710,9 @@ pub enum Error {
     ReviewNoBase,
     #[error("These changes are too large to review here, even leaving out the largest files.")]
     ReviewTooLarge,
+    #[cfg(feature = "cloud")]
+    #[error(transparent)]
+    SandboxImage(#[from] crate::cloud::image::Error),
     #[error("The page's picture could not be turned into a PNG")]
     ScreenshotImage,
     #[error("Could not write the screenshot to {}: {source}", path.display())]
@@ -831,6 +798,8 @@ pub enum Error {
     /// The host's `uname -s`, bounded, so the message names what it is.
     #[error("CPU and memory cannot be read on {0:?} hosts.")]
     SystemLoadUnsupported(String),
+    #[error(transparent)]
+    TabLayout(#[from] crate::config::tab_layout::Error),
     #[error("Tailscale returned an unreadable status: {0}")]
     TailscaleJson(#[source] serde_json::Error),
     #[error("Tailscale did not answer in time")]
@@ -928,6 +897,8 @@ pub enum Error {
     WorkspaceGroupChanged,
     #[error("Repository changed. Dismiss and reopen the menu.")]
     WorkspaceRepositoryChanged,
+    #[error(transparent)]
+    WorktreeIdentity(#[from] crate::worktree_identity::Error),
     #[error("Invalid or oversized worktree list. Dismiss and reopen the menu.")]
     WorktreeList,
     #[error("Malformed worktree list. Dismiss and reopen the menu.")]
@@ -958,8 +929,7 @@ pub enum Error {
     WorktreeScriptsUnsupportedHost,
     #[error("Select a checkout from the daemon's worktree list.")]
     WorktreeSelection,
-    /// A shell into a WSL distribution starts through `wsl.exe`, which only a
-    /// Windows client has.
+    /// WSL shells start through `wsl.exe`, which only a Windows client has.
     #[error("WSL distributions can only be reached from Windows.")]
     WslHostUnsupported,
     #[error("Another drop's paths are still being mapped in WSL. Try again in a moment.")]
@@ -969,6 +939,7 @@ pub enum Error {
     // keep-sorted end
 }
 
+mod clipboard;
 mod config;
 mod daemon;
 mod github;
