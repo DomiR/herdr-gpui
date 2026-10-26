@@ -564,6 +564,12 @@ pub(crate) enum Heading {
     Next(Next),
     /// An issue's priority; None for none.
     Priority(Option<i64>),
+    /// Pull requests by one author, named by this first row's item.
+    Creator(ItemRow),
+    /// Linear's issues assigned to one person, or to nobody.
+    Assignee(super::linear_groups::Group),
+    /// One assignee's Linear issues in one workflow state.
+    State(super::linear_groups::Group),
 }
 
 /// One line of a section's list: a heading, or an item's row.

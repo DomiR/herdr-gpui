@@ -22,7 +22,7 @@ pub(crate) struct Dialog {
 impl OrchestratorView {
     /// The one repository whose worker syncs Linear: Linear is the user's,
     /// not a project's, so it is listed once however many projects are.
-    fn linear_repo(&self) -> Option<&super::Repo> {
+    pub(super) fn linear_repo(&self) -> Option<&super::Repo> {
         self.repos.iter().find(|repo| repo.request.linear.is_some())
     }
 

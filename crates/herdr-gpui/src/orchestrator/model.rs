@@ -5,7 +5,7 @@
 use super::{Error, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, path::PathBuf, str::FromStr};
+use std::{collections::HashMap, path::PathBuf, str::FromStr, sync::Arc};
 
 /// Where an item comes from. Linear items are never in the shared
 /// database: agent-launcher cannot read a `linear` row.
@@ -220,6 +220,141 @@ pub(crate) struct Tracker {
     /// Assigned to the account the tracker is read as.
     pub(crate) mine: bool,
     pub(crate) cycle: Option<Cycle>,
+    /// The workflow state the item is in, such as Linear's "In Progress".
+    pub(crate) status: Option<Status>,
+    /// The tracker's own id for the item, such as Linear's issue UUID,
+    /// which its API changes the item by.
+    pub(crate) id: Option<String>,
+    /// The workflow states the item can move to: its team's, in board
+    /// order, shared by every item of the team. Empty when the tracker's
+    /// states could not be read, so the item cannot move.
+    pub(crate) states: Arc<Vec<Status>>,
+    /// Where the item sits among its state's when ordered by hand, such as
+    /// Linear's `sortOrder`.
+    pub(crate) sort_order: Option<SortOrder>,
+    /// The address of the assignee's picture, when they set one.
+    pub(crate) avatar: Option<String>,
+    /// The item's estimate, such as Linear's points.
+    pub(crate) estimate: Option<u32>,
+    /// The tracker's project the item belongs to.
+    pub(crate) project: Option<Project>,
+    /// The parent item's title, for a sub-issue.
+    pub(crate) parent: Option<String>,
+    /// The pull requests linked to the item, in the tracker's order.
+    pub(crate) pull_requests: Vec<LinkedPullRequest>,
+    /// How many of its sub-items are done, when it has any.
+    pub(crate) progress: Option<Progress>,
+}
+
+/// How many of an item's sub-items are done. Canceled ones count in
+/// neither.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Progress {
+    pub(crate) done: u32,
+    pub(crate) total: u32,
+    /// The item has more sub-items than were read.
+    pub(crate) more: bool,
+}
+
+/// A tracker's project, such as a Linear project.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Project {
+    pub(crate) name: String,
+    /// `0xRRGGBB`, when the tracker gives one.
+    pub(crate) color: Option<u32>,
+}
+
+/// A pull request a tracker links to an item, such as a GitHub pull
+/// request attached to a Linear issue.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct LinkedPullRequest {
+    pub(crate) url: String,
+    pub(crate) number: u64,
+    /// `None` when the tracker does not say.
+    pub(crate) state: Option<LinkState>,
+}
+
+/// Where a linked pull request stands, the liveliest first.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum LinkState {
+    Open,
+    Draft,
+    Merged,
+    Closed,
+}
+
+/// A tracker's manual order of an item, such as Linear's `sortOrder`: a
+/// float, ascending down a board's lane. Compared by its total order, so
+/// a tracker stays `Eq`.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct SortOrder(pub(crate) f64);
+
+impl PartialEq for SortOrder {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other).is_eq()
+    }
+}
+
+impl Eq for SortOrder {}
+
+impl PartialOrd for SortOrder {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for SortOrder {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.total_cmp(&other.0)
+    }
+}
+
+/// A tracker's workflow state: its name, what kind of state it is, where
+/// its team orders it, and its color.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Status {
+    pub(crate) name: String,
+    pub(crate) kind: StatusKind,
+    /// The team's order of its states within a kind, in thousandths.
+    pub(crate) rank: i64,
+    /// `0xRRGGBB`, when the tracker gives one.
+    pub(crate) color: Option<u32>,
+    /// The tracker's id for the state, which moving an item to it names.
+    pub(crate) id: Option<String>,
+}
+
+/// What kind of workflow state a status is, in the order a board shows
+/// them, as Linear's `WorkflowState.type` names them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) enum StatusKind {
+    Triage,
+    Backlog,
+    Unstarted,
+    Started,
+    Completed,
+    Canceled,
+    Other,
+}
+
+impl StatusKind {
+    pub(crate) fn parse(kind: &str) -> Self {
+        match kind {
+            "triage" => Self::Triage,
+            "backlog" => Self::Backlog,
+            "unstarted" => Self::Unstarted,
+            "started" => Self::Started,
+            "completed" => Self::Completed,
+            "canceled" => Self::Canceled,
+            _ => Self::Other,
+        }
+    }
+}
+
+impl Status {
+    /// Board order: by kind, then the team's own order, then name.
+    pub(crate) fn order(&self) -> (StatusKind, i64, &str) {
+        (self.kind, self.rank, &self.name)
+    }
 }
 
 /// A Linear cycle, the team's sprint.

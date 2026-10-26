@@ -1,10 +1,12 @@
-//! The activity bar's Pull requests and Issues sections: one orchestrator
-//! view the window owns, listing every repository the connected hosts'
-//! workspaces hold, drawn across the window in place of its terminals on the
-//! list the section names. The menus and `herdr-gpui orchestrator` open it
-//! narrowed to one workspace's project.
+//! The activity bar's Pull requests, Issues, and Linear sections: one
+//! orchestrator view the window owns, listing every repository the connected
+//! hosts' workspaces hold, drawn across the window in place of its terminals
+//! on the list and issue source the section names. Linear's issues are the
+//! user's, not a repository's, so they list only in their own section. The
+//! menus and `herdr-gpui orchestrator` open it narrowed to one workspace's
+//! project.
 
-use super::{List, OrchestratorView, ViewId};
+use super::{IssueSource, List, OrchestratorView, ViewId};
 use crate::{HerdrWindow, browser::OrchestratorRepo, sidebar::ActivityPanel};
 use gpui::{prelude::*, *};
 
@@ -14,12 +16,12 @@ impl HerdrWindow {
     /// orchestrator's scripts. Called from the tick and when a section is
     /// picked; a new view, or a new section, gets its list picked here.
     pub(crate) fn sync_activity_section(&mut self, cx: &mut Context<Self>) {
-        let Some(list) = self.activity_section().and_then(list_of) else {
+        let Some((list, source)) = self.activity_section().and_then(list_of) else {
             return;
         };
         let id = self.sections_view(cx);
-        let changed =
-            Some(id) != self.activity.section_view || self.activity.section_list != Some(list);
+        let changed = Some(id) != self.activity.section_view
+            || self.activity.section_list != Some((list, source));
         self.activity.section_view = Some(id);
         let project = self.activity.section_project.take();
         if !changed && project.is_none() {
@@ -32,13 +34,14 @@ impl HerdrWindow {
         view.update(cx, |view, cx| {
             view.set_repos(specs, cx);
             if changed {
+                view.set_issue_source(source, cx);
                 view.show_list(list, cx);
             }
             if let Some(key) = project {
                 view.only_project(key, cx);
             }
         });
-        self.activity.section_list = Some(list);
+        self.activity.section_list = Some((list, source));
         cx.notify();
     }
 
@@ -131,6 +134,32 @@ impl HerdrWindow {
         cx.notify();
     }
 
+    /// Back, and Cmd-B, right after a Linear issue's run was opened from
+    /// the Linear section: that section again, with the issue's page open.
+    /// Cmd-B toggles the sidebar otherwise. Picking a section from the bar
+    /// clears `return_to`, so Cmd-B goes back to toggling then, as it does
+    /// once used here. Whether it went back.
+    pub(crate) fn return_to_linear_issue(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if self.activity_section().is_some()
+            || self.activity.return_to != Some(ActivityPanel::Linear)
+        {
+            return false;
+        }
+        let Some(view) = self.section_view() else {
+            return false;
+        };
+        if view.read(cx).worktree_issue().is_none() {
+            return false;
+        }
+        self.show_activity_panel(ActivityPanel::Linear, window, cx);
+        view.update(cx, |view, cx| view.return_to_worktree_issue(cx));
+        true
+    }
+
     fn section_view(&self) -> Option<Entity<OrchestratorView>> {
         self.orchestrator_view(self.activity.section_view?).cloned()
     }
@@ -187,14 +216,18 @@ impl HerdrWindow {
     }
 }
 
-/// The list a section shows, for the sections that show one.
-pub(crate) fn list_of(section: ActivityPanel) -> Option<List> {
+/// The list a section shows, and whose issues, for the sections that show
+/// one.
+pub(crate) fn list_of(section: ActivityPanel) -> Option<(List, IssueSource)> {
     match section {
-        ActivityPanel::Issues => Some(List::Issues),
-        ActivityPanel::PullRequests => Some(List::PullRequests),
+        ActivityPanel::Issues => Some((List::Issues, IssueSource::Repositories)),
+        ActivityPanel::Linear => Some((List::Issues, IssueSource::Linear)),
+        ActivityPanel::PullRequests => Some((List::PullRequests, IssueSource::Repositories)),
         ActivityPanel::Overview
         | ActivityPanel::Security
         | ActivityPanel::Automations
+        | ActivityPanel::Tickets
+        | ActivityPanel::TicketsNative
         | ActivityPanel::Workspaces
         | ActivityPanel::Usage => None,
     }

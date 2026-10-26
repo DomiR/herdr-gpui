@@ -1,7 +1,8 @@
 //! The Connect Linear dialog in a real window: the chip opens it, a key that
-//! is not one keeps it open with the reason, and Escape closes it.
+//! is not one keeps it open with the reason, and Escape closes it. Only the
+//! Linear section shows the chip; Issues leaves Linear out.
 use crate::orchestrator::{
-    Request, SourceStatus, SyncState, Timing,
+    IssueSource, Request, SourceStatus, SyncState, Timing,
     view::{Look, OrchestratorView},
 };
 use gpui::{Modifiers, TestAppContext};
@@ -27,6 +28,8 @@ fn the_linear_chip_opens_a_dialog_that_refuses_a_non_key(cx: &mut TestAppContext
     let (view, cx) = cx.add_window_view(|_, cx| OrchestratorView::with_repo(request, look, cx));
     cx.update(|_, cx| {
         view.update(cx, |view, cx| {
+            // Linear connects from its own section.
+            view.set_issue_source(IssueSource::Linear, cx);
             view.repo_mut().snapshot.sources = vec![SourceStatus {
                 key: crate::orchestrator::linear::source(""),
                 state: SyncState::SignIn,
@@ -61,4 +64,36 @@ fn the_linear_chip_opens_a_dialog_that_refuses_a_non_key(cx: &mut TestAppContext
     });
     assert_eq!((open, focused), (false, true));
     assert!(cx.debug_bounds("orchestrator-overlay-card").is_none());
+}
+
+#[gpui::test]
+fn the_issues_section_shows_no_linear_chip(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let request = Request {
+        target: herdr_client::ConnectTarget::Local,
+        checkout: dir.path().to_string_lossy().into_owned(),
+        workspace_id: "w1".into(),
+        token: None,
+        data_root: Some(dir.path().join("data")),
+        timing: Timing::default(),
+        linear: None,
+    };
+    let config = crate::config::Config::default();
+    let look = Look {
+        theme: crate::config::Theme::default(),
+        ui: config.ui.clone(),
+        mono: config.terminal.clone(),
+    };
+    let (view, cx) = cx.add_window_view(|_, cx| OrchestratorView::with_repo(request, look, cx));
+    cx.update(|_, cx| {
+        view.update(cx, |view, cx| {
+            view.repo_mut().snapshot.sources = vec![SourceStatus {
+                key: crate::orchestrator::linear::source(""),
+                state: SyncState::SignIn,
+            }];
+            cx.notify();
+        })
+    });
+    cx.run_until_parked();
+    assert!(cx.debug_bounds("orchestrator-source-linear").is_none());
 }

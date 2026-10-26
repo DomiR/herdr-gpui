@@ -123,6 +123,23 @@ pub enum Error {
     LinearSize,
     #[error("The Linear API key cannot be sent in a request header")]
     LinearHeader(#[source] ureq::http::header::InvalidHeaderValue),
+    #[error("Connect Linear first")]
+    LinearKeyMissing,
+    /// A card dropped in another lane that Linear did not move; the view
+    /// puts it back.
+    #[error("Could not move {issue}: {source}")]
+    LinearMove {
+        issue: String,
+        #[source]
+        source: std::sync::Arc<Error>,
+    },
+    /// The new issue dialog's choices could not be read; it says so.
+    #[error("Could not read your Linear teams: {0}")]
+    LinearOptions(#[source] std::sync::Arc<Error>),
+    /// An issue the new issue dialog asked for that Linear did not create;
+    /// the dialog keeps what was written.
+    #[error("Could not create the issue: {0}")]
+    LinearCreate(#[source] std::sync::Arc<Error>),
 }
 
 /// `map_err` adapter naming the host script that failed.

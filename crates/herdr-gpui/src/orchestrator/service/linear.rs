@@ -1,5 +1,6 @@
-//! The worker's Linear source: its API key and workspace, and its listing,
-//! which is kept in memory and never written to the shared database.
+//! The worker's Linear source: its API key and workspace, its listing,
+//! which is kept in memory and never written to the shared database, and
+//! moving an issue to another workflow state.
 
 use super::{Notice, SyncState, Worker, push};
 use crate::orchestrator::{Error, Provider, Result, linear};
@@ -56,11 +57,14 @@ impl Worker {
     }
 
     /// Saves `key`, or with `None` removes it, then reads the key again.
-    /// Saving needs no writable database: the key is not stored there.
+    /// Saving needs no writable database: the key is not stored there. The
+    /// new issue dialog's choices, which another key may not see, are read
+    /// again when it next opens.
     pub(super) fn save_linear_key(&mut self, key: Option<&SecretString>) {
         let Some(store) = self.request.linear else {
             return;
         };
+        self.snapshot.linear_create.options = None;
         let outcome = linear::save_key(store, key)
             .map(|()| match key {
                 Some(_) => "Linear connected",
@@ -79,7 +83,7 @@ impl Worker {
         };
         let (fetch, cancelled) = (self.linear_fetch, &self.cancelled);
         let listing = linear::sync(
-            |variables| fetch(key, variables),
+            |query, variables| fetch(key, query, variables),
             || cancelled.load(Ordering::Relaxed),
         )?;
         let count = listing.items.len();
@@ -105,5 +109,59 @@ impl Worker {
         } else {
             SyncState::Capped { count }
         })
+    }
+
+    /// Moves an issue as `change` asks. Moved, the listing shows the state
+    /// and place Linear answered with at once, before the sync that follows, so a
+    /// sync Linear refuses never puts the card back; refused, the notice
+    /// says why. Either way the snapshot then echoes `change`'s sequence,
+    /// and the view stops showing the move ahead of Linear. Whether it
+    /// moved.
+    pub(super) fn move_linear_issue(&mut self, change: &linear::Move) -> bool {
+        let fetch = self.linear_fetch;
+        let result = match &self.linear_key {
+            LinearKey::Found(key) => {
+                linear::move_issue(|query, variables| fetch(key, query, variables), change)
+                    .map_err(Arc::new)
+            }
+            LinearKey::Missing => Err(Arc::new(Error::LinearKeyMissing)),
+            LinearKey::Unreadable(error) => Err(error.clone()),
+        };
+        let moved = match result {
+            Ok(placed) => {
+                for item in self
+                    .uncached
+                    .iter_mut()
+                    .filter(|(source, _)| source.provider == Provider::Linear)
+                    .flat_map(|(_, items)| items.iter_mut())
+                    .filter(|item| item.key.native_id == change.identifier)
+                {
+                    if let Some(tracker) = item.tracker.as_mut() {
+                        item.state = placed.status.name.to_lowercase();
+                        tracker.status = Some(placed.status.clone());
+                        tracker.sort_order = placed.sort_order.or(tracker.sort_order);
+                    }
+                }
+                if let Err(error) = self.reload() {
+                    self.snapshot.error = Some(Arc::new(error));
+                }
+                true
+            }
+            Err(source) => {
+                push(
+                    &self.notices,
+                    Notice {
+                        outcome: Err(Arc::new(Error::LinearMove {
+                            issue: change.identifier.clone(),
+                            source,
+                        })),
+                    },
+                );
+                false
+            }
+        };
+        self.snapshot.linear_moved = change.sequence;
+        self.publish();
+        moved
     }
 }

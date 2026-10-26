@@ -107,6 +107,56 @@ Linear lists open issues across one workspace, keyed
   Linear, else gives it to the first project, restarting that worker when the
   project that listed Linear is gone. Dispatching on a Linear issue therefore
   starts the agent in that project's repository.
+- Linear items list only in the activity bar's Linear section. The one
+  orchestrator view the sections share has an `IssueSource`: Issues sets
+  `Repositories`, Linear `Linear`, and `listing.rs` keeps each source's
+  providers. Each source keeps its own `Filters`, swapped as the source
+  changes, and `default_filters` turns Mine and Current cycle on in Linear's
+  only, since they hide every issue without a tracker. The header's source
+  chips follow the source, so Linear connects from its own section.
+- Moving a card between lanes sends `issueUpdate(id, input: { stateId })`
+  through the worker that lists Linear, so the key stays there. Each sync
+  also reads every team's workflow states (their ids), and each issue its
+  UUID and team, kept on its `Tracker`; a failed states query only leaves
+  the cards unmovable. The view shows the move at once and keeps it until
+  the worker's snapshot reports that move's sequence number done; a failure
+  puts the card back with a notice, and a sync published before the move
+  finished never undoes it (`view/moves.rs`).
+- Each issue's `sortOrder` (Linear's manual order) is kept as
+  `Tracker::sort_order`; board lanes sort by it, and a drop between two
+  cards sends the midpoint of their orders (one past an end), with the
+  state when the lane changes, in the same `issueUpdate`. The board's scroll
+  handles (lane row and each lane, by status name) live on the view
+  (`board::Scrolls`), since element state is dropped while the section is
+  not drawn. Hidden statuses (`view/hidden.rs`) are a set of status names
+  that drops those issues from the list and those lanes from the board.
+- New issue (the header button, or C while the list has focus) opens a
+  dialog like Linear's (`view/create.rs`). The worker that lists Linear reads
+  the pickers' choices with one query the first time it opens
+  (`linear/create.rs`), keeps them until a read fails or the key changes,
+  and sends `issueCreate` with only the fields that are set
+  (`service/linear_create.rs`), so the key never leaves the worker. A new
+  issue starts in the team's default state (else its first unstarted or
+  backlog state), assigned to the key's owner, in the active cycle; a
+  created issue syncs the list, and its page opens once the list shows it.
+- The List layout reads as Linear's own list (`view/linear_groups.rs`,
+  `view/linear_rows.rs`): by assignee, you first and unassigned last, then
+  by state in board order, folding through the view's `collapsed` set
+  (`group:` keys). Board cards are drawn as Linear's (`view/linear_card.rs`),
+  sharing their parts with the rows (`view/linear_parts.rs`); a lane's head
+  goes through `kanban::Lane::render_with`. The query also reads `estimate`,
+  the assignee's `avatarUrl`, `parent`, `project`, GitHub pull request
+  `attachments`, and the first ten `children` states for sub-issue progress
+  (marked `+` past ten), all kept on the `Tracker`, never stored.
+- **Go to worktree** opens an issue's newest run the way a run's Open does
+  (`view/worktree.rs`), and remembers the issue: while the window is on
+  Workspaces with it pending, Toggle Sidebar (Cmd-B) and Back return to the
+  Linear section with its page open, once.
+- A Linear issue's `Tracker::status` is its workflow state (`state { name
+  type position color }`), never stored. The view's `status` narrows to one
+  state, like `label`; `view/board.rs` lays the listed rows out in a lane
+  per state, ordered by `StatusKind` then position, with the shared lanes
+  and cards in `crate::kanban` that Tickets (native) also draws.
 - Linear items are never written to the shared `issues` table or
   `source_checkpoints`. agent-launcher's `load_issues` reads every row and its
   `issue_from_row` fails on a provider other than GitHub, GitLab, or Beads, so
@@ -118,6 +168,10 @@ Linear lists open issues across one workspace, keyed
   whose issue left the listing (done, or unassigned) still shows a readable
   stand-in. Moving an issue to another team changes its identifier and orphans
   such runs.
+- The listing asks Linear to sign the file links in its answer
+  (`public-file-urls-expire-in`, an hour), so images in a description load
+  from `uploads.linear.app` without the key, which never leaves the worker.
+  `crate::markdown_view` caches them by address without the signature.
 - The key is read when the view opens, on Refresh, and after a save, never on
   the periodic sync: a locked macOS Keychain would ask every minute in every
   open view. `LINEAR_API_KEY` wins over the saved key.

@@ -25,6 +25,8 @@ mod incremental;
 mod keys;
 mod linear;
 mod linear_branches;
+mod linear_create;
+mod linear_move;
 mod location;
 mod naming;
 mod prompt;

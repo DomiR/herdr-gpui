@@ -5,7 +5,7 @@
 //! beads cost only the rows on screen.
 
 use super::{
-    Event, OrchestratorView, PaneDrag, Resize,
+    Event, IssueSource, OrchestratorView, PaneDrag, Resize,
     look::{BLUE, GREEN, Look, MAGENTA, RED, YELLOW, age},
     rows::{Sort, Tab},
 };
@@ -27,6 +27,11 @@ impl OrchestratorView {
             .map(|detail| self.render_pane(detail, window, cx));
         let filters =
             (self.tab == Tab::Issues && self.filters_open).then(|| self.render_facets(cx));
+        let issues = if self.shows_board() {
+            self.render_board(cx)
+        } else {
+            self.render_list(cx)
+        };
         div()
             .flex_1()
             .min_h_0()
@@ -35,6 +40,7 @@ impl OrchestratorView {
             .child(self.render_header(cx))
             .child(self.render_search_row(window, cx))
             .children(self.render_pills(cx))
+            .children(self.render_author_pills(cx))
             .children(self.render_chips(cx))
             .children(self.render_banners(cx))
             .child(
@@ -53,7 +59,7 @@ impl OrchestratorView {
                         },
                     ))
                     .children(filters)
-                    .child(self.render_list(cx))
+                    .child(issues)
                     .children(pane),
             )
             .when(self.sort_open, |el| el.child(self.render_sort_menu(cx)))
@@ -94,6 +100,7 @@ impl OrchestratorView {
             + usize::from(self.filters.mine)
             + usize::from(self.filters.cycle)
             + usize::from(self.label.is_some())
+            + usize::from(self.status.is_some())
     }
 
     /// The Issues filters' column: state, and the labels the open issues
@@ -107,7 +114,20 @@ impl OrchestratorView {
             .iter()
             .flat_map(|repo| repo.snapshot.items.iter())
             .filter(|item| item.pull_request.is_none() && !super::rows::closed(item))
+            .filter(|item| self.issue_source.lists(item.key.source.provider))
             .collect();
+        // Each workflow state the open issues are in, in board order.
+        let mut statuses: Vec<(&crate::orchestrator::Status, usize)> = Vec::new();
+        for status in open.iter().filter_map(|item| super::board::status_of(item)) {
+            match statuses
+                .iter_mut()
+                .find(|(seen, _)| seen.name == status.name)
+            {
+                Some((_, count)) => *count += 1,
+                None => statuses.push((status, 1)),
+            }
+        }
+        statuses.sort_by(|a, b| a.0.order().cmp(&b.0.order()));
         let mut labels: Vec<(String, usize)> = Vec::new();
         for label in open.iter().flat_map(|item| &item.labels) {
             match labels.iter_mut().find(|(name, _)| name == label) {
@@ -251,6 +271,26 @@ impl OrchestratorView {
                     })),
                 )
             })
+            .when(!statuses.is_empty(), |el| {
+                el.child(heading("STATUS"))
+                    .children(statuses.into_iter().map(|(status, count)| {
+                        let on = self.status.as_deref() == Some(status.name.as_str());
+                        let picked = status.name.clone();
+                        option(
+                            format!("orchestrator-facet-status-{}", status.name).into(),
+                            status.name.clone().into(),
+                            Some(count),
+                            on,
+                        )
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.status = (this.status.as_deref() != Some(picked.as_str()))
+                                .then(|| picked.clone());
+                            this.filters_set = true;
+                            this.refresh_rows();
+                            cx.notify();
+                        }))
+                    }))
+            })
             .when(!labels.is_empty(), |el| {
                 el.child(heading("LABELS"))
                     .children(labels.into_iter().map(|(label, count)| {
@@ -356,6 +396,11 @@ impl OrchestratorView {
                 this.label = None;
             }));
         }
+        if let Some(status) = &self.status {
+            row = row.child(chip("orchestrator-chip-status", status.clone(), |this| {
+                this.status = None;
+            }));
+        }
         Some(row)
     }
 
@@ -363,7 +408,9 @@ impl OrchestratorView {
         let look = &self.look;
         let theme = &look.theme;
         let listed: Vec<_> = self.projects_named().collect();
+        let linear = self.issue_source == IssueSource::Linear;
         let title = match listed.as_slice() {
+            _ if linear => "Linear".to_owned(),
             [] => "No repositories yet".to_owned(),
             [only] => only.name(),
             many => format!("{} projects", many.len()),
@@ -380,6 +427,10 @@ impl OrchestratorView {
                 None => providers.push((status.key.provider, vec![&status.state])),
             }
         }
+        // Each source's section shows its own sources' chips: Linear's,
+        // where it connects, only in the Linear section.
+        let source = self.issue_source;
+        providers.retain(|(provider, _)| source.lists(*provider));
         let github = providers
             .iter()
             .any(|(provider, _)| *provider == Provider::Github);
@@ -441,10 +492,11 @@ impl OrchestratorView {
             });
         // A repository without a GitHub remote has no GitHub source, which
         // reads like a missing account without this.
-        let no_github = (!github && !self.repos.is_empty()).then(|| {
-            source_chip(look, ("orchestrator-source-none", 0), Provider::Github)
-                .child(div().text_color(rgb(theme.muted)).child("no GitHub remote"))
-        });
+        let no_github = (!github && !self.repos.is_empty() && source == IssueSource::Repositories)
+            .then(|| {
+                source_chip(look, ("orchestrator-source-none", 0), Provider::Github)
+                    .child(div().text_color(rgb(theme.muted)).child("no GitHub remote"))
+            });
         let dispatchable =
             self.selected.is_some() && self.snapshot().access == Some(Access::ReadWrite);
         div()
@@ -455,11 +507,22 @@ impl OrchestratorView {
             .gap_2()
             .px_4()
             .py_2()
-            .child(look.icon("icons/git-branch.svg", 14., theme.subtext()))
+            .child(look.icon(
+                if linear {
+                    "icons/linear.svg"
+                } else {
+                    "icons/git-branch.svg"
+                },
+                14.,
+                theme.subtext(),
+            ))
             .child(div().font_weight(FontWeight::SEMIBOLD).child(title))
             .children(sources)
             .children(no_github)
             .child(div().flex_1())
+            .children(self.render_hide_statuses(cx))
+            .children(self.render_layout_switch(cx))
+            .children(self.render_new_issue(cx))
             .child(self.render_refresh(cx))
             .when(dispatchable, |el| {
                 el.child(
@@ -679,7 +742,8 @@ impl OrchestratorView {
                             this.refresh_rows();
                             cx.notify();
                         }))
-                })),
+                }))
+                .children(self.render_grouping(cx)),
         )
     }
 

@@ -4,6 +4,10 @@ use super::*;
 
 #[cfg(unix)]
 mod linear;
+#[cfg(unix)]
+mod linear_create;
+#[cfg(unix)]
+mod linear_move;
 
 #[test]
 fn closing_the_view_does_not_cancel_an_accepted_action() {

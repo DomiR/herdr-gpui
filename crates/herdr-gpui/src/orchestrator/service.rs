@@ -115,6 +115,10 @@ enum Command {
     },
     /// Save the Linear API key, or with `None` remove it, then sync.
     SaveLinearKey(Option<SecretString>),
+    /// Move a Linear issue to another workflow state, then sync.
+    MoveLinearIssue(super::linear::Move),
+    /// Read what the new issue dialog offers, or create the issue it asks for.
+    LinearCreate(linear_create::Ask),
 }
 
 /// A pull request looked up for the open item.
@@ -179,6 +183,11 @@ pub(crate) struct Snapshot {
     /// Each open pull request's review and checks, by repository and number,
     /// as the last sync of its source read them. Never stored.
     pub(crate) pr_status: Arc<HashMap<(String, u64), super::PrStatus>>,
+    /// The [`super::linear::Move::sequence`] of the last move this worker
+    /// finished, moved or not: `items` shows its outcome.
+    pub(crate) linear_moved: u64,
+    /// The new issue dialog's choices, and the newest creation's outcome.
+    pub(crate) linear_create: linear_create::LinearCreate,
 }
 
 pub(crate) struct Service {
@@ -213,6 +222,21 @@ impl Service {
         })
     }
 
+    /// A service whose commands queue and are never served, for view tests
+    /// that ask for work without a worker. Its queue is leaked, so asks
+    /// succeed until it is full.
+    #[cfg(test)]
+    pub(crate) fn unserved() -> Self {
+        let (commands, receiver) = mpsc::sync_channel(COMMANDS);
+        std::mem::forget(receiver);
+        Self {
+            commands,
+            mailbox: Arc::default(),
+            notices: Arc::default(),
+            cancelled: Arc::default(),
+        }
+    }
+
     /// Asks for `action`. A full queue means the worker is behind; the user
     /// is told, and nothing is queued silently.
     pub(crate) fn act(&self, action: Action) -> bool {
@@ -223,6 +247,14 @@ impl Service {
     /// `false` means the worker is behind and nothing was queued.
     pub(crate) fn save_linear_key(&self, key: Option<SecretString>) -> bool {
         self.commands.try_send(Command::SaveLinearKey(key)).is_ok()
+    }
+
+    /// Asks for a Linear issue to move. `false` means the worker is behind
+    /// and nothing was queued.
+    pub(crate) fn move_linear_issue(&self, change: super::linear::Move) -> bool {
+        self.commands
+            .try_send(Command::MoveLinearIssue(change))
+            .is_ok()
     }
 
     /// Asks for pull request `number`'s status; a full queue drops it.
@@ -288,8 +320,8 @@ struct Worker {
     linear_key: LinearKey,
     /// The Linear workspace's `urlKey`, once a sync has read it.
     linear_workspace: Option<String>,
-    /// Sends Linear's listing query; tests answer without a network.
-    linear_fetch: fn(&SecretString, Value) -> Result<Value>,
+    /// Sends a Linear query; tests answer without a network.
+    linear_fetch: fn(&SecretString, &str, Value) -> Result<Value>,
 }
 
 impl Worker {
@@ -346,6 +378,20 @@ impl Worker {
                     let token = self.request.token.clone();
                     self.sync(token.as_ref());
                     next_sync = Instant::now() + sync;
+                }
+                Ok(Command::MoveLinearIssue(change)) => {
+                    if self.move_linear_issue(&change) {
+                        let token = self.request.token.clone();
+                        self.sync(token.as_ref());
+                        next_sync = Instant::now() + sync;
+                    }
+                }
+                Ok(Command::LinearCreate(ask)) => {
+                    if self.linear_create(ask) {
+                        let token = self.request.token.clone();
+                        self.sync(token.as_ref());
+                        next_sync = Instant::now() + sync;
+                    }
                 }
                 Ok(Command::LoadPullRequest(number)) => self.load_pull_request(number),
                 Ok(Command::LoadAgents { endpoint, target }) => {
@@ -885,6 +931,7 @@ fn spawn_action(
 }
 
 mod linear;
+pub(super) mod linear_create;
 #[cfg(test)]
 mod tests;
 

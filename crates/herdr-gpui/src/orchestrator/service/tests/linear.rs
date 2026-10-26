@@ -16,7 +16,7 @@ fn issue(identifier: &str) -> Value {
     })
 }
 
-fn listing(workspace: &str, issues: &[&str]) -> Value {
+pub(super) fn listing(workspace: &str, issues: &[&str]) -> Value {
     json!({ "data": {
         "organization": { "urlKey": workspace },
         "issues": {
@@ -26,25 +26,25 @@ fn listing(workspace: &str, issues: &[&str]) -> Value {
     } })
 }
 
-fn acme(_: &SecretString, _: Value) -> Result<Value> {
+fn acme(_: &SecretString, _: &str, _: Value) -> Result<Value> {
     Ok(listing("acme", &["ENG-1", "ENG-2"]))
 }
 
-fn beta(_: &SecretString, _: Value) -> Result<Value> {
+fn beta(_: &SecretString, _: &str, _: Value) -> Result<Value> {
     Ok(listing("beta", &["OPS-3"]))
 }
 
-fn rejected(_: &SecretString, _: Value) -> Result<Value> {
+fn rejected(_: &SecretString, _: &str, _: Value) -> Result<Value> {
     Err(Error::LinearKeyRejected)
 }
 
-fn unreachable(_: &SecretString, _: Value) -> Result<Value> {
+fn unreachable(_: &SecretString, _: &str, _: Value) -> Result<Value> {
     panic!("Linear was asked while it waits out a failure")
 }
 
 /// A worker on a repository with no remote and no Beads, so Linear is its
 /// only source.
-fn worker(dir: &std::path::Path) -> Worker {
+pub(super) fn worker(dir: &std::path::Path) -> Worker {
     let request = Request {
         target: ConnectTarget::Local,
         checkout: dir.to_string_lossy().into_owned(),

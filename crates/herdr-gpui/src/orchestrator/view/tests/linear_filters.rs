@@ -1,5 +1,6 @@
 //! Mine and Current cycle on the Issues tab, and their one-time default.
 use super::*;
+use crate::orchestrator::IssueSource;
 use crate::orchestrator::{
     Cycle, Request, Timing, Tracker,
     view::{Look, OrchestratorView},
@@ -122,8 +123,12 @@ fn view(cx: &mut TestAppContext) -> gpui::Entity<OrchestratorView> {
         ui: config.ui.clone(),
         mono: config.terminal.clone(),
     };
-    cx.add_window_view(|_, cx| OrchestratorView::with_repo(request, look, cx))
-        .0
+    let view = cx
+        .add_window_view(|_, cx| OrchestratorView::with_repo(request, look, cx))
+        .0;
+    // As the Linear section shows it.
+    cx.update(|cx| view.update(cx, |view, _| view.issue_source = IssueSource::Linear));
+    view
 }
 
 #[gpui::test]
@@ -159,4 +164,43 @@ fn the_default_applies_once_and_never_over_a_choice(cx: &mut TestAppContext) {
         })
     });
     assert_eq!(filters, Filters::default());
+}
+
+#[gpui::test]
+fn linear_issues_list_only_in_their_own_section(cx: &mut TestAppContext) {
+    let view = view(cx);
+    let shown = cx.update(|cx| {
+        view.update(cx, |view, cx| {
+            let mut items = listing();
+            items.push(item(Provider::Github, "7", "Bug", "2026-10-01T00:00:00Z"));
+            view.repo_mut().snapshot.items = Arc::new(items);
+            view.tab = Tab::Issues;
+            view.filters = Filters::default();
+            view.refresh_rows();
+            let linear = view.keys().len();
+            // Issues: the repositories' own, with filters of their own.
+            view.set_issue_source(IssueSource::Repositories, cx);
+            let repositories = (view.keys().len(), view.filters);
+            view.set_issue_source(IssueSource::Linear, cx);
+            (linear, repositories, view.keys().len())
+        })
+    });
+    // The fixture's GitHub issue and bead, and the GitHub issue added here.
+    assert_eq!(shown, (4, (3, Filters::default()), 4));
+}
+
+#[gpui::test]
+fn linear_defaults_never_narrow_the_repositories_issues(cx: &mut TestAppContext) {
+    let view = view(cx);
+    let filters = cx.update(|cx| {
+        view.update(cx, |view, cx| {
+            view.set_issue_source(IssueSource::Repositories, cx);
+            view.repo_mut().snapshot.items = Arc::new(listing());
+            view.default_filters();
+            let issues = view.filters;
+            view.set_issue_source(IssueSource::Linear, cx);
+            (issues, view.filters.mine, view.filters.cycle)
+        })
+    });
+    assert_eq!(filters, (Filters::default(), true, true));
 }

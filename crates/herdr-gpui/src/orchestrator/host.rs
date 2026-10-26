@@ -431,21 +431,31 @@ impl HerdrWindow {
             } => {
                 self.open_run_workspace(id, host.as_deref(), session.as_deref(), &workspace_id, cx)
             }
-            Event::OpenUrl(url) => match WebUrl::try_from(url.as_str()) {
-                Ok(url) => {
-                    if let Some((_, workspace)) = self.browser_key() {
-                        let endpoint = self.endpoints[self.selected_endpoint].id.clone();
-                        // Only a page tab shows behind the section; the system
-                        // browser, or a page that did not open, leaves it be.
-                        let opened =
-                            self.open_workspace_page(&endpoint, &workspace, url, window, cx);
-                        if opened == crate::browser::PageOpened::Tab {
-                            self.leave_activity_section(id, cx);
+            Event::OpenUrl(url) => {
+                // A Linear issue opens in the Linear app when it is there.
+                if super::open_linear_link(&url, cx) {
+                    return;
+                }
+                match WebUrl::try_from(url.as_str()) {
+                    Ok(url) => {
+                        if let Some((_, workspace)) = self.browser_key() {
+                            let endpoint = self.endpoints[self.selected_endpoint].id.clone();
+                            // Only a page tab shows behind the section; the system
+                            // browser, or a page that did not open, leaves it be.
+                            let opened =
+                                self.open_workspace_page(&endpoint, &workspace, url, window, cx);
+                            if opened == crate::browser::PageOpened::Tab {
+                                // A page is no issue's worktree to come back from.
+                                if let Some(view) = self.orchestrator_view(id).cloned() {
+                                    view.update(cx, |view, _| view.forget_worktree_issue());
+                                }
+                                self.leave_activity_section(id, cx);
+                            }
                         }
                     }
+                    Err(_) => self.tell_orchestrator(id, super::Error::NotWebAddress, cx),
                 }
-                Err(_) => self.tell_orchestrator(id, super::Error::NotWebAddress, cx),
-            },
+            }
             Event::SignIn => {
                 if self.open_menu(window, cx) {
                     self.menu.page = Some(crate::menu::Page::GitHub);

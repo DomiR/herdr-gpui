@@ -1,10 +1,9 @@
-//! Issue and pull request bodies as the views draw them: the release notes'
-//! bounded Markdown lines (headings, lists, bold, code, links), drawn as
-//! native text. GitHub bodies also hold HTML that carries no text of its
-//! own, such as template comments and image tags, which is dropped first.
-//! Parsing happens once per body; a repaint reuses the lines.
+//! Issue and pull request bodies as the views draw them: an issue's
+//! description as full Markdown, images included (`crate::markdown_view`),
+//! parsed once per body so a repaint reuses the blocks. `without_html`
+//! serves the views that still draw a body as plain lines.
 
-use crate::release_notes::{self, Line};
+use crate::markdown_view::{self, Block};
 use std::{cell::RefCell, rc::Rc};
 
 /// Tags dropped with their brackets; their text, if any, stays.
@@ -18,21 +17,21 @@ const MEDIA: &[(&str, &str)] = &[("img", "[image]"), ("video", "[video]")];
 /// The longest tag looked at; anything longer is left as text.
 const MAX_TAG: usize = 1024;
 
-/// The lines of the last body drawn.
+/// The blocks of the last body drawn.
 #[derive(Default)]
-pub(crate) struct Markdown(RefCell<Option<(String, Rc<[Line]>)>>);
+pub(crate) struct Markdown(RefCell<Option<(String, Rc<[Block]>)>>);
 
 impl Markdown {
-    pub(crate) fn lines(&self, body: &str) -> Rc<[Line]> {
+    pub(crate) fn blocks(&self, body: &str) -> Rc<[Block]> {
         let mut cached = self.0.borrow_mut();
-        if let Some((drawn, lines)) = cached.as_ref()
+        if let Some((drawn, blocks)) = cached.as_ref()
             && drawn == body
         {
-            return lines.clone();
+            return blocks.clone();
         }
-        let lines: Rc<[Line]> = release_notes::parse(&without_html(body)).into();
-        *cached = Some((body.to_owned(), lines.clone()));
-        lines
+        let blocks: Rc<[Block]> = markdown_view::parse(body).into();
+        *cached = Some((body.to_owned(), blocks.clone()));
+        blocks
     }
 }
 

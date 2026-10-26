@@ -2,7 +2,6 @@
 //! the orchestrator's worker thread calls it. Neither the key nor a response
 //! body is ever logged.
 
-use super::QUERY;
 use crate::orchestrator::{Error, Result};
 use secrecy::{ExposeSecret, SecretString};
 use serde_json::{Value, json};
@@ -10,14 +9,17 @@ use std::{io::Read, time::Duration};
 
 const URL: &str = "https://api.linear.app/graphql";
 const TIMEOUT: Duration = Duration::from_secs(30);
+/// Seconds a signed file link stays valid: well past the next sync.
+const SIGNED_FOR: &str = "3600";
 /// The most of a response read. A full page of issues is far smaller.
 pub(crate) const LIMIT: usize = 4 * 1024 * 1024;
 /// Characters of Linear's own error message kept for display.
 const MESSAGE: usize = 240;
 
-/// Sends the listing query with `variables` and returns Linear's response.
-pub(crate) fn post(key: &SecretString, variables: Value) -> Result<Value> {
-    let body = json!({ "query": QUERY, "variables": variables }).to_string();
+/// Sends `query`, one of `linear`'s, with `variables` and returns Linear's
+/// response.
+pub(crate) fn post(key: &SecretString, query: &str, variables: Value) -> Result<Value> {
+    let body = json!({ "query": query, "variables": variables }).to_string();
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_global(Some(TIMEOUT))
         .max_redirects(0)
@@ -29,6 +31,10 @@ pub(crate) fn post(key: &SecretString, variables: Value) -> Result<Value> {
         .header("User-Agent", "Herdr-GPUI")
         .header("Content-Type", "application/json")
         .header("Authorization", authorization(key)?)
+        // File links in the answer, such as images in descriptions, come
+        // back signed for this long, so they load without the key. Each
+        // sync renews them.
+        .header("public-file-urls-expire-in", SIGNED_FOR)
         .send(body.as_bytes())
         .map_err(|error| Error::LinearNetwork(Box::new(error)))?;
     let status = reply.status().as_u16();

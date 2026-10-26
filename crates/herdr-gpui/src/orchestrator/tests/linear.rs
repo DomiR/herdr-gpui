@@ -1,8 +1,10 @@
 use super::*;
-use crate::orchestrator::linear::{self, CAP, LIMIT, Listing, Scope, interpret, resolve, valid};
+use crate::orchestrator::linear::{
+    self, CAP, LIMIT, Listing, QUERY, STATES, Scope, interpret, resolve, valid,
+};
 use secrecy::{ExposeSecret, SecretString};
 use serde_json::{Value, json};
-use std::{cell::Cell, ffi::OsString};
+use std::{cell::Cell, ffi::OsString, sync::Arc};
 
 fn acme() -> SourceKey {
     SourceKey {
@@ -39,11 +41,49 @@ fn empty() -> Value {
     page(Vec::new(), None)
 }
 
+/// The workflow states of team `team-eng`: Todo and In Progress.
+fn states() -> Value {
+    json!({ "data": { "teams": { "nodes": [{
+        "id": "team-eng",
+        "states": { "nodes": [
+            { "id": "s-doing", "name": "In Progress", "type": "started",
+              "position": 2.0, "color": "#F2C94C" },
+            { "id": "s-todo", "name": "Todo", "type": "unstarted",
+              "position": 1.0, "color": "#E2E2E2" },
+        ] },
+    }] } } })
+}
+
+/// Team `team-eng`'s states as an issue of the team holds them, in board
+/// order.
+fn eng_states() -> Arc<Vec<Status>> {
+    Arc::new(vec![
+        Status {
+            name: "Todo".into(),
+            kind: StatusKind::Unstarted,
+            rank: 1000,
+            color: Some(0xE2E2E2),
+            id: Some("s-todo".into()),
+        },
+        Status {
+            name: "In Progress".into(),
+            kind: StatusKind::Started,
+            rank: 2000,
+            color: Some(0xF2C94C),
+            id: Some("s-doing".into()),
+        },
+    ])
+}
+
 fn listing(pages: Vec<Value>) -> (Listing, Vec<Value>) {
     let mut pages = pages.into_iter();
     let mut seen = Vec::new();
     let listing = linear::sync(
-        |variables| {
+        |query, variables| {
+            if query == STATES {
+                return Ok(states());
+            }
+            assert_eq!(query, QUERY);
             seen.push(variables);
             Ok(pages.next().unwrap())
         },
@@ -56,15 +96,38 @@ fn listing(pages: Vec<Value>) -> (Listing, Vec<Value>) {
 #[test]
 fn an_issue_reads_as_an_item() {
     let issue = json!({
+        "id": "uuid-12",
         "identifier": "ENG-12", "title": "Fix login", "description": "Steps\n1. Open",
         "url": "https://linear.app/acme/issue/ENG-12/fix-login", "priority": 2.0,
         "branchName": "dominique/eng-12-fix-login",
         "createdAt": "2026-10-01T09:00:00.000Z", "updatedAt": "2026-10-03T10:30:00.000Z",
-        "state": { "name": "In Progress" },
+        "sortOrder": -12.5, "estimate": 3.0,
+        "state": { "id": "s-doing", "name": "In Progress", "type": "started",
+                   "position": 2.0, "color": "#F2C94C" },
+        "team": { "id": "team-eng" },
         "creator": { "displayName": "dominique" },
-        "assignee": { "displayName": "Dominique Rau", "isMe": true },
+        "assignee": { "displayName": "Dominique Rau", "isMe": true,
+                      "avatarUrl": "https://public.linear.app/a/avatar.png" },
         "cycle": { "number": 42.0, "name": null, "isActive": true },
-        "parent": { "identifier": "ENG-1" },
+        "parent": { "identifier": "ENG-1", "title": "Auth overhaul" },
+        "project": { "name": "Frontend", "color": "#5E6AD2" },
+        "attachments": { "nodes": [
+            { "url": "https://github.com/acme/app/pull/9721",
+              "metadata": { "status": "merged", "number": 9721 } },
+            { "url": "https://www.figma.com/file/abc", "metadata": {} },
+            { "url": "https://github.com/acme/app/pull/10555/files",
+              "metadata": { "status": "open", "draft": true } },
+            { "url": "https://github.com/acme/app/issues/12", "metadata": {} },
+            { "url": "https://github.com/acme/app/pull/9721",
+              "metadata": { "status": "merged" } },
+            { "url": "https://github.com/acme/app/pull/10807" },
+        ] },
+        "children": { "pageInfo": { "hasNextPage": false }, "nodes": [
+            { "state": { "type": "completed" } },
+            { "state": { "type": "started" } },
+            { "state": { "type": "canceled" } },
+            { "state": { "type": "unstarted" } },
+        ] },
         "labels": { "nodes": [{ "name": "Bug" }, { "name": "Auth" }] },
         "inverseRelations": { "nodes": [
             { "type": "blocks", "issue": { "identifier": "ENG-7" } },
@@ -108,6 +171,48 @@ fn an_issue_reads_as_an_item() {
                     name: None,
                     active: true,
                 }),
+                status: Some(Status {
+                    name: "In Progress".into(),
+                    kind: StatusKind::Started,
+                    rank: 2000,
+                    color: Some(0xF2C94C),
+                    id: Some("s-doing".into()),
+                }),
+                id: Some("uuid-12".into()),
+                states: eng_states(),
+                sort_order: Some(SortOrder(-12.5)),
+                avatar: Some("https://public.linear.app/a/avatar.png".into()),
+                estimate: Some(3),
+                project: Some(Project {
+                    name: "Frontend".into(),
+                    color: Some(0x5E6AD2),
+                }),
+                parent: Some("Auth overhaul".into()),
+                // GitHub's pull requests only, each once, a draft as one
+                // and a link the integration says nothing of without a state.
+                pull_requests: vec![
+                    LinkedPullRequest {
+                        url: "https://github.com/acme/app/pull/9721".into(),
+                        number: 9721,
+                        state: Some(LinkState::Merged),
+                    },
+                    LinkedPullRequest {
+                        url: "https://github.com/acme/app/pull/10555/files".into(),
+                        number: 10555,
+                        state: Some(LinkState::Draft),
+                    },
+                    LinkedPullRequest {
+                        url: "https://github.com/acme/app/pull/10807".into(),
+                        number: 10807,
+                        state: None,
+                    },
+                ],
+                // A canceled sub-issue counts in neither.
+                progress: Some(Progress {
+                    done: 1,
+                    total: 3,
+                    more: false,
+                }),
             }),
         }
     );
@@ -123,7 +228,23 @@ fn an_issue_reads_as_an_item() {
             bare.tracker.clone(),
             bare.state.as_str()
         ),
-        (None, None, Some(Tracker::default()), "todo")
+        (
+            None,
+            None,
+            // A state without its type, order, color, or id still names
+            // itself; an issue without a team has no states to move to.
+            Some(Tracker {
+                status: Some(Status {
+                    name: "Todo".into(),
+                    kind: StatusKind::Other,
+                    rank: 0,
+                    color: None,
+                    id: None,
+                }),
+                ..Tracker::default()
+            }),
+            "todo"
+        )
     );
 }
 
@@ -163,7 +284,10 @@ fn listing_reads_each_scope_and_lists_an_issue_once() {
 fn each_scope_stops_at_its_cap() {
     let fetched = Cell::new(0);
     let listing = linear::sync(
-        |variables| {
+        |query, variables| {
+            if query == STATES {
+                return Ok(states());
+            }
             fetched.set(fetched.get() + 1);
             let start = fetched.get() * 100;
             let nodes = (start..start + 100)
@@ -196,7 +320,10 @@ fn a_cycle_reads_as_its_name_or_number() {
 fn listing_stops_when_cancelled_between_pages() {
     let fetched = Cell::new(0);
     let result = linear::sync(
-        |_| {
+        |query, _| {
+            if query == STATES {
+                return Ok(states());
+            }
             fetched.set(fetched.get() + 1);
             Ok(page(vec![node("ENG-1")], Some("c1")))
         },

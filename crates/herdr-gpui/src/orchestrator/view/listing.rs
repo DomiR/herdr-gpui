@@ -1,9 +1,12 @@
 //! What the list shows, across every repository: the repositories asked
 //! for, each one's rows by the search, filters, and sort, then one list of
-//! all of them narrowed by the backend and project pills and grouped.
+//! all of them narrowed by the backend, project, and people pills and
+//! grouped.
 
 use super::{
-    OrchestratorView, RepoSpec,
+    IssueSource, OrchestratorView, RepoSpec, board,
+    creators::{self, Grouping},
+    linear_groups,
     repo::Repo,
     rows::{self, ItemRow, Runs, Tab},
 };
@@ -150,6 +153,7 @@ impl OrchestratorView {
                 .iter()
                 .any(|repo| repo.key == *key && repo.outside_git())
         });
+        let hidden = self.hiding().then_some(&self.hidden_statuses);
         for (index, repo) in self.repos.iter_mut().enumerate() {
             let found = crate::orchestrator::naming::found_runs(
                 &repo.snapshot.items,
@@ -182,8 +186,24 @@ impl OrchestratorView {
                 repo.reading_login(),
                 self.sort,
             );
+            if let Some(status) = &self.status {
+                issues.retain(|row| {
+                    board::status_of(&items[row.item]).is_some_and(|has| &has.name == status)
+                });
+            }
             if let Some(label) = &self.label {
                 issues.retain(|row| items[row.item].labels.iter().any(|has| has == label));
+            }
+            let mut narrowed = self.status.is_some() || self.label.is_some();
+            if let Some(hidden) = hidden {
+                let before = issues.len();
+                issues.retain(|row| {
+                    board::status_of(&items[row.item])
+                        .is_none_or(|status| !hidden.contains(&status.name))
+                });
+                narrowed |= issues.len() != before;
+            }
+            if narrowed {
                 // A child kept without its parent stands on its own.
                 for row in &mut issues {
                     row.depth = 0;
@@ -198,12 +218,21 @@ impl OrchestratorView {
         }
         // The backends and projects picked narrow what every repository
         // lists, then all of it is one list.
-        let shown = |repo: &Repo| self.projects.is_empty() || self.projects.contains(&repo.key);
+        // A project picked in Issues never hides Linear's issues, which one
+        // repository's worker lists for the user.
+        let shown = |repo: &Repo| {
+            self.projects.is_empty()
+                || self.issue_source == IssueSource::Linear
+                || self.projects.contains(&repo.key)
+        };
         let backend = |row: &ItemRow| {
-            self.backends.is_empty()
-                || self
-                    .backends
-                    .contains(&self.row_item(row).key.source.provider)
+            let provider = self.row_item(row).key.source.provider;
+            self.issue_source.lists(provider)
+                && (self.backends.is_empty() || self.backends.contains(&provider))
+        };
+        // The people picked narrow only the pull requests.
+        let author = |row: &ItemRow| {
+            self.tab != Tab::PullRequests || creators::picked(&self.authors, self.row_item(row))
         };
         let lists: Vec<Vec<ItemRow>> = self
             .repos
@@ -219,7 +248,7 @@ impl OrchestratorView {
                 let mut parent_kept = false;
                 for row in rows {
                     if row.depth == 0 {
-                        parent_kept = backend(row);
+                        parent_kept = backend(row) && author(row);
                     }
                     if parent_kept {
                         kept.push(*row);
@@ -231,9 +260,18 @@ impl OrchestratorView {
         let merged = rows::merge(lists, |row| self.row_item(row), self.sort);
         let (merged, holders) = rows::dedupe(merged, |row| self.row_item(row).key.canonical());
         self.holders = holders;
-        let lines = match self.tab {
-            Tab::Issues => rows::issue_lines(&merged, |row| self.row_item(row)),
-            Tab::PullRequests => rows::pull_request_lines(&merged, |row| {
+        let lines = match (self.tab, self.grouping) {
+            (Tab::Issues, _) if self.issue_source == IssueSource::Linear => {
+                // The board lays out every row, whatever the list folds.
+                let none = HashSet::new();
+                let collapsed = match self.layout {
+                    board::Layout::List => &self.collapsed,
+                    board::Layout::Board => &none,
+                };
+                linear_groups::lines(&merged, |row| self.row_item(row), self.sort, collapsed)
+            }
+            (Tab::Issues, _) => rows::issue_lines(&merged, |row| self.row_item(row)),
+            (Tab::PullRequests, Grouping::Status) => rows::pull_request_lines(&merged, |row| {
                 let repo = &self.repos[row.repo];
                 let item = self.row_item(row);
                 rows::Next::of(
@@ -242,6 +280,9 @@ impl OrchestratorView {
                     repo.reading_login(),
                 )
             }),
+            (Tab::PullRequests, Grouping::Creator) => {
+                creators::creator_lines(&merged, |row| self.row_item(row).author.as_deref())
+            }
         };
         let mut providers: Vec<Provider> = Vec::new();
         for line in &lines {

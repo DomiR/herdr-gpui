@@ -29,13 +29,15 @@ mod view;
 pub(crate) use actions::{Action, DispatchRequest};
 pub(crate) use error::{Error, Result};
 pub(crate) use host::{LiveCache, Orchestrator, ViewId};
+pub(crate) use linear::open_link as open_linear_link;
 pub(crate) use location::{Repository, database_path};
 pub(crate) use model::Backend;
 #[cfg(test)]
 pub(crate) use model::Workspace;
 pub(crate) use model::{
-    Activity, Checkpoint, Cycle, HerdrSession, Item, ItemKey, Owner, Provider, PullRequest, Run,
-    RunState, SourceKey, Tracker,
+    Activity, Checkpoint, Cycle, HerdrSession, Item, ItemKey, LinkState, LinkedPullRequest, Owner,
+    Progress, Project, Provider, PullRequest, Run, RunState, SortOrder, SourceKey, Status,
+    StatusKind, Tracker,
 };
 pub(crate) use naming::LiveBranch;
 pub(crate) use prompt::nonce;
@@ -46,7 +48,8 @@ pub(crate) use service::SourceStatus;
 pub(crate) use service::{Notice, Request, Service, Snapshot, SyncState, Timing};
 pub(crate) use store::{Access, SCHEMA_VERSION, Store};
 pub(crate) use view::{
-    Event, List, LiveAgent, Look, OrchestratorView, RepoSpec, key_label, pane, without_html,
+    Event, IssueSource, List, LiveAgent, Look, OrchestratorView, RepoSpec, key_label, pane,
+    without_html,
 };
 
 #[cfg(test)]

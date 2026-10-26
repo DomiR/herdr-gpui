@@ -15,7 +15,6 @@ use crate::{
     config::{corners, mix},
     fonts::StyledFont,
     orchestrator::{Access, Item, Owner, Provider},
-    release_notes,
 };
 use gpui::{prelude::*, *};
 
@@ -48,7 +47,7 @@ impl OrchestratorView {
                     el.child(self.render_status_box(&item, &runs, &item_runs, cx))
                 })
                 .child(self.render_meta(&item))
-                .child(self.render_description(&item))
+                .child(self.render_description(&item, cx))
                 .into_any_element(),
             DetailTab::Conversation => div()
                 .flex_1()
@@ -362,14 +361,14 @@ impl OrchestratorView {
             )
     }
 
-    fn render_description(&self, item: &Item) -> AnyElement {
+    fn render_description(&self, item: &Item, cx: &App) -> AnyElement {
         let look = &self.look;
         let body = item.description.as_deref().unwrap_or("");
         let content = if body.trim().is_empty() {
             look.muted("No description.").into_any_element()
         } else {
-            let lines = self.description.lines(body);
-            release_notes::render("orchestrator-description", &lines, &look.theme, &look.mono)
+            let blocks = self.description.blocks(body);
+            crate::markdown_view::render("orchestrator-description", &blocks, look, cx)
                 .into_any_element()
         };
         div()

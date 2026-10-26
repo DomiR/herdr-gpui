@@ -2,6 +2,7 @@
 //! tracker's issues are listed, and shown as chips while the column is
 //! folded, as the Linear default turns them on.
 use super::*;
+use crate::orchestrator::IssueSource;
 use crate::orchestrator::{
     Cycle, Request, Timing, Tracker,
     view::{Look, OrchestratorView, rows::Tab},
@@ -49,6 +50,7 @@ fn open_view(
         view.update(cx, |view, cx| {
             view.repo_mut().snapshot.items = Arc::new(items);
             view.tab = Tab::Issues;
+            view.issue_source = IssueSource::Linear;
             view.default_filters();
             view.refresh_rows();
             cx.notify();

@@ -226,7 +226,8 @@ impl OrchestratorView {
     pub(super) fn close_overlays(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let open = self.dialog.take().is_some()
             | self.confirm.take().is_some()
-            | self.linear.take().is_some();
+            | self.linear.take().is_some()
+            | self.create.close();
         if open {
             window.focus(&self.focus, cx);
             cx.notify();
@@ -393,7 +394,7 @@ impl OrchestratorView {
             (Some(dialog), _, _) => self.render_dialog(dialog, cx),
             (None, Some(confirm), _) => self.render_confirm(confirm, cx),
             (None, None, Some(linear)) => self.render_linear(linear, cx),
-            (None, None, None) => return None,
+            (None, None, None) => self.render_create(cx)?,
         };
         let theme = &self.look.theme;
         let backdrop = (mix(theme.background, theme.foreground, 12) << 8) | 0xB0;

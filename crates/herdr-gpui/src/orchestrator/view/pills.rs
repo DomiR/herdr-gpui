@@ -3,7 +3,7 @@
 //! some narrows the list to them; none picked lists everything. A row of
 //! pills shows only when there is more than one to choose between.
 
-use super::{OrchestratorView, inbox::provider_mark, rows::Tab};
+use super::{IssueSource, OrchestratorView, inbox::provider_mark, rows::Tab};
 use crate::{config::corners, orchestrator::Provider};
 use gpui::{prelude::*, *};
 
@@ -35,8 +35,10 @@ impl OrchestratorView {
             }
         }
         backends.sort_by_key(|(provider, _)| provider.name());
+        // Linear's issues belong to no project, so its section offers none.
         let projects: Vec<(String, String, usize)> = self
             .projects_named()
+            .filter(|_| self.issue_source != IssueSource::Linear)
             .map(|repo| {
                 let count = rows(repo, tab).iter().filter(|row| row.depth == 0).count();
                 (repo.key.clone(), self.project_label(repo), count)
