@@ -24,7 +24,10 @@ fn wsl(distro: &str, script: &str, input: &[u8], cancelled: bool) -> (Result<u64
 fn a_name_that_is_not_a_distribution_is_refused_first() {
     for name in ["", "-d", "two words", "a;b"] {
         let (result, _) = wsl(name, "true", b"", false);
-        assert!(matches!(result, Err(Error::InvalidWslDistro)), "{name}");
+        assert!(
+            matches!(result, Err(Error::Wsl(wsl::Error::InvalidDistro))),
+            "{name}"
+        );
     }
 }
 
@@ -32,7 +35,7 @@ fn a_name_that_is_not_a_distribution_is_refused_first() {
 #[test]
 fn a_distribution_needs_a_windows_client() {
     let (result, _) = wsl("Ubuntu", "true", b"", false);
-    assert!(matches!(result, Err(Error::WslUnsupported)));
+    assert!(matches!(result, Err(Error::Wsl(wsl::Error::Unsupported))));
 }
 
 #[cfg(windows)]
@@ -51,7 +54,7 @@ fn a_windows_client_runs_scripts_only_on_remote_hosts() {
     // An SSH host is accepted: cancelled first, it reports the cancellation
     // instead of the platform, and never starts `ssh`.
     let result = run_script(
-        ScriptHost::Ssh("me@box"),
+        ScriptHost::Ssh("me@box", SshLane::Quick),
         "true",
         std::io::empty(),
         std::io::sink(),
@@ -72,7 +75,7 @@ fn cancellation_before_start_never_starts_wsl() {
 #[test]
 fn a_distribution_script_is_one_argument_after_exec() {
     let script = "printf '%s\\n' \"$HOME\" `x` \"q\"";
-    let command = crate::wsl::command("Ubuntu-24.04", script);
+    let command = wsl::command("Ubuntu-24.04", script);
     let args: Vec<_> = command.get_args().collect();
     assert_eq!(
         args,

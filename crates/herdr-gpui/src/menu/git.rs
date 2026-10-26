@@ -405,7 +405,7 @@ impl HerdrWindow {
                     .gap(px(8.))
                     .child(
                         div()
-                            .text_color(rgb(pr.color(theme)))
+                            .text_color(rgb(crate::pull_request::color(&pr, theme)))
                             .child(format!("#{}", pr.number)),
                     )
                     .child(
@@ -414,7 +414,7 @@ impl HerdrWindow {
                             .py(px(2.))
                             .rounded(px(crate::config::corners::CONTROL))
                             .bg(rgb(theme.active))
-                            .text_color(rgb(pr.color(theme)))
+                            .text_color(rgb(crate::pull_request::color(&pr, theme)))
                             .child(pr.lifecycle()),
                     )
                     .child(div().flex_1())
@@ -490,7 +490,10 @@ impl HerdrWindow {
                                 .text_color(rgb(theme.muted))
                                 .with_animation(
                                     "git-menu-pr-loading",
-                                    Animation::new(std::time::Duration::from_secs(1)).repeat(),
+                                    Animation::new(crate::motion::duration(
+                                        std::time::Duration::from_secs(1),
+                                    ))
+                                    .repeat(),
                                     |icon, delta| {
                                         icon.with_transformation(Transformation::rotate(
                                             percentage(delta),

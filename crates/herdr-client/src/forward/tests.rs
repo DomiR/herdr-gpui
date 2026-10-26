@@ -1,5 +1,5 @@
 use super::*;
-use std::ffi::OsStr;
+use std::{ffi::OsStr, path::PathBuf};
 
 const WAIT: Duration = Duration::from_secs(10);
 
@@ -153,7 +153,7 @@ fn a_long_temporary_directory_falls_back_to_tmp_for_the_socket() {
 fn option_like_targets_are_refused_before_anything_runs() {
     assert!(matches!(
         PortForward::start("-oProxyCommand=x", port(3000)),
-        Err(Error::InvalidSshTarget)
+        Err(Error::Ssh(ssh::Error::InvalidTarget))
     ));
 }
 

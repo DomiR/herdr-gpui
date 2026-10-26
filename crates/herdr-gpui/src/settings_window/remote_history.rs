@@ -5,7 +5,7 @@
 use super::SettingsWindow;
 use crate::herdr_settings::RemotePaneHistory;
 use gpui::{AsyncApp, Context, WeakEntity};
-use herdr_client::{ConnectTarget, ScriptHost};
+use herdr_client::{ConnectTarget, ScriptHost, SshLane};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -61,7 +61,7 @@ impl Default for RemoteHistory {
             hosts: Vec::new(),
             generation: 0,
             read: Arc::new(|target, cancel| {
-                RemotePaneHistory::load(ScriptHost::Ssh(target), cancel)
+                RemotePaneHistory::load(ScriptHost::Ssh(target, SshLane::Quick), cancel)
             }),
         }
     }
@@ -227,7 +227,11 @@ impl SettingsWindow {
             return;
         };
         let task = cx.background_executor().spawn(async move {
-            let result = history.save(ScriptHost::Ssh(&job.target), enabled, &job.cancel);
+            let result = history.save(
+                ScriptHost::Ssh(&job.target, SshLane::Quick),
+                enabled,
+                &job.cancel,
+            );
             (job, result)
         });
         let source = self.source.clone();
@@ -270,7 +274,7 @@ fn describe(error: &(dyn std::error::Error + 'static)) -> String {
     parts.join(": ")
 }
 
-/// Asks every connected daemon on `target` to reload its config, returning
+/// Asks every daemon on `target` to reload its config, returning
 /// the first failure to queue that request.
 fn queue_reload(
     source: &WeakEntity<crate::HerdrWindow>,
@@ -279,25 +283,17 @@ fn queue_reload(
 ) -> Option<String> {
     source
         .update(cx, |source, _| {
-            // Every session on the host reads the same config file.
+            // Every session on the host reads the same config file. Only the
+            // shown one reloads now; the others reload when next shown.
             let mut failure = None;
-            for endpoint in &source.endpoints {
+            for endpoint in &mut source.endpoints {
                 let ConnectTarget::Ssh { target: host, .. } = &endpoint.connection.target else {
                     continue;
                 };
-                let (Some(handle), Some(snapshot)) =
-                    (&endpoint.connection.handle, &endpoint.live.snapshot)
-                else {
-                    continue;
-                };
-                if host != target || !endpoint.live.status.is_connected() {
+                if host != target {
                     continue;
                 }
-                if let Err(error) = handle.request(
-                    &snapshot.boot_id,
-                    herdr_client::Method::ServerReloadConfig,
-                    serde_json::json!({}),
-                ) {
+                if let Err(error) = endpoint.reload_config() {
                     failure.get_or_insert(error);
                 }
             }

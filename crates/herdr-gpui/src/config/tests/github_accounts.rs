@@ -1,15 +1,13 @@
 use super::*;
-use crate::{
-    config::{GitHubAccount, MAX_ACCOUNTS, valid_account_id},
-    error::GitHubAccountsError,
-};
+use crate::config::{GitHubAccount, MAX_ACCOUNTS};
+use herdr_github::AccountsError;
 
 const ID: &str = "0123456789abcdef0123456789abcdef";
 const OTHER: &str = "fedcba9876543210fedcba9876543210";
 
-fn accounts_error(text: &str) -> Option<GitHubAccountsError> {
+fn accounts_error(text: &str) -> Option<AccountsError> {
     match Config::parse(text) {
-        Err(Error::GitHubAccounts(error)) => Some(error),
+        Err(crate::Error::GitHub(herdr_github::Error::Accounts(error))) => Some(error),
         _ => None,
     }
 }
@@ -40,33 +38,33 @@ fn accounts_load_in_order_with_their_owners() -> anyhow::Result<()> {
 fn accounts_the_app_could_not_tell_apart_or_store_are_refused() {
     assert!(matches!(
         accounts_error("[github]\naccounts = [{ id = \"../escape\" }]"),
-        Some(GitHubAccountsError::Id)
+        Some(AccountsError::Id)
     ));
     assert!(matches!(
         accounts_error(&format!(
             "[github]\naccounts = [{{ id = \"{}\" }}]",
             ID.to_uppercase()
         )),
-        Some(GitHubAccountsError::Id)
+        Some(AccountsError::Id)
     ));
     assert!(matches!(
         accounts_error(&format!(
             "[github]\naccounts = [{{ id = \"{ID}\" }}, {{ id = \"{ID}\" }}]"
         )),
-        Some(GitHubAccountsError::DuplicateId(id)) if id == ID
+        Some(AccountsError::DuplicateId(id)) if id == ID
     ));
     assert!(matches!(
         accounts_error(&format!(
             "[github]\naccounts = [{{ id = \"{ID}\", owners = [\"not an owner\"] }}]"
         )),
-        Some(GitHubAccountsError::Owner(owner)) if owner == "not an owner"
+        Some(AccountsError::Owner(owner)) if owner == "not an owner"
     ));
     // A token pasted into an account entry is refused, not silently kept.
     assert!(matches!(
         Config::parse(&format!(
             "[github]\naccounts = [{{ id = \"{ID}\", token = \"ghp_secret\" }}]"
         )),
-        Err(Error::GitHubSecretInConfig("token"))
+        Err(crate::Error::GitHubSecretInConfig("token"))
     ));
 }
 
@@ -116,7 +114,7 @@ fn what_a_newer_build_adds_is_ignored_and_named_not_refused() -> anyhow::Result<
 fn generated_ids_are_valid_and_distinct() -> anyhow::Result<()> {
     let first = GitHubAccount::generate()?;
     let second = GitHubAccount::generate()?;
-    assert!(valid_account_id(&first.id));
+    assert!(herdr_github::config::valid_account_id(&first.id));
     assert_ne!(first.id, second.id);
     assert!(first.owners.is_empty());
     Ok(())
@@ -200,11 +198,15 @@ fn an_add_the_app_would_refuse_is_not_written() -> anyhow::Result<()> {
     let (_temp, _path, local, daemon) = files("theme = \"Nord\"\n")?;
     assert!(matches!(
         Config::add_github_account_at(&local, &daemon, &account("bad", &[])),
-        Err(Error::GitHubAccounts(GitHubAccountsError::Id))
+        Err(crate::Error::GitHub(herdr_github::Error::Accounts(
+            AccountsError::Id
+        )))
     ));
     assert!(matches!(
         Config::add_github_account_at(&local, &daemon, &account(ID, &["not an owner"])),
-        Err(Error::GitHubAccounts(GitHubAccountsError::Owner(_)))
+        Err(crate::Error::GitHub(herdr_github::Error::Accounts(
+            AccountsError::Owner(_)
+        )))
     ));
     assert_eq!(fs::read_to_string(&local)?, "theme = \"Nord\"\n");
     for index in 0..MAX_ACCOUNTS {
@@ -212,7 +214,9 @@ fn an_add_the_app_would_refuse_is_not_written() -> anyhow::Result<()> {
     }
     assert!(matches!(
         Config::add_github_account_at(&local, &daemon, &account(ID, &[])),
-        Err(Error::GitHubAccounts(GitHubAccountsError::TooMany(_)))
+        Err(crate::Error::GitHub(herdr_github::Error::Accounts(
+            AccountsError::TooMany(_)
+        )))
     ));
     Ok(())
 }

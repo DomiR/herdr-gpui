@@ -407,6 +407,16 @@ impl HerdrWindow {
                 self.toggle_tickets(window, cx);
                 return;
             }
+            Command::ToggleAnnotate => {
+                #[cfg(any(target_os = "macos", windows))]
+                self.toggle_shown_annotating(window, cx);
+                #[cfg(not(any(target_os = "macos", windows)))]
+                self.show_flash(
+                    Flash::warning("Annotating pages needs macOS or Windows"),
+                    cx,
+                );
+                return;
+            }
             Command::SplitEditor => {
                 self.split_active_group(window, cx);
                 return;
@@ -417,6 +427,10 @@ impl HerdrWindow {
             }
             Command::OpenPx0 => {
                 self.open_px0(None, window, cx);
+                return;
+            }
+            Command::RemotePair => {
+                self.open_remote_pairing(window, cx);
                 return;
             }
             Command::InstallBrowserSkill => {

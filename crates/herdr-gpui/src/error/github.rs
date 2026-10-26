@@ -1,37 +1,23 @@
-//! Redacted GitHub parser diagnostics retain the original error as a source.
+//! `herdr-github`'s feature errors reach the app through `Error::GitHub`;
+//! these let app code that raises one of them use `?` and `.into()`.
+
 use super::Error;
+use herdr_github::{AccountsError, pr_actions, pull_request};
 
-impl Error {
-    pub(crate) fn github_json(source: serde_json::Error) -> Self {
-        Self::GitHubJson(GitHubJsonError(source))
+impl From<AccountsError> for Error {
+    fn from(error: AccountsError) -> Self {
+        Self::GitHub(error.into())
     }
 }
 
-/// Parser diagnostics can quote credential-bearing fields; expose the cause only
-/// to explicit source inspection, never ordinary Display or Debug formatting.
-#[derive(thiserror::Error)]
-#[error("Invalid GitHub JSON response.")]
-pub struct GitHubJsonError(#[source] serde_json::Error);
-
-impl std::fmt::Debug for GitHubJsonError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("GitHubJsonError([REDACTED])")
+impl From<pr_actions::Error> for Error {
+    fn from(error: pr_actions::Error) -> Self {
+        Self::GitHub(error.into())
     }
 }
 
-/// Why `[github] accounts`, or a change to it, was refused.
-#[derive(Debug, thiserror::Error)]
-pub enum GitHubAccountsError {
-    #[error("[github] accounts may list at most {0} accounts")]
-    TooMany(usize),
-    #[error("[github] accounts id must be 32 lowercase hexadecimal digits")]
-    Id,
-    #[error("[github] accounts lists the id {0} twice")]
-    DuplicateId(String),
-    #[error("[github] accounts must be a list of account tables")]
-    NotAList,
-    #[error("[github] accounts owner {0:?} is not a GitHub user or organization name")]
-    Owner(String),
-    #[error("Could not generate a GitHub account ID")]
-    Random(#[source] getrandom::Error),
+impl From<pull_request::Error> for Error {
+    fn from(error: pull_request::Error) -> Self {
+        Self::GitHub(error.into())
+    }
 }

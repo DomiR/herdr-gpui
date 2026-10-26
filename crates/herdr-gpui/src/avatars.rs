@@ -1,7 +1,10 @@
 use gpui::{Image, ImageFormat};
+pub(crate) use herdr_github::github_repo;
 mod cache;
 mod links;
+mod profiles;
 use herdr_client::{ConnectTarget, protocol::ClientShellWorkspace};
+pub(crate) use profiles::ProfileAvatars;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex, mpsc},
@@ -10,9 +13,6 @@ use std::{
 };
 
 const MAX_REQUESTS: usize = 128;
-
-/// A bound on each remote path segment, above GitHub's own name limits.
-const MAX_SEGMENT: usize = 100;
 
 /// The whole budget for reading one remote checkout's Git configuration.
 const REMOTE_TIMEOUT: Duration = Duration::from_secs(10);
@@ -32,16 +32,18 @@ const REMOTE_READERS: usize = 4;
 pub(crate) enum Checkout<S> {
     /// A workspace directory on this machine, read by local Git.
     Local(S),
-    /// The Git directory a saved SSH device's daemon reported, read there.
-    Ssh { target: S, git_dir: S },
+    /// A directory on a saved SSH device, read there: the Git directory its
+    /// daemon reported, else the workspace directory.
+    Ssh { target: S, dir: S },
 }
 
 impl<'a> Checkout<&'a str> {
     /// The checkout behind `workspace` on the device reached by `target`.
     /// Only the local daemon's directories are read by this machine's Git; a
-    /// saved SSH device is read over SSH by the Git directory its daemon
-    /// reported, so it needs worktree metadata. Other devices may be forwarded
-    /// from an unknown machine and get none.
+    /// saved SSH device is read over SSH. Its daemon reports a Git directory,
+    /// shared by a repository's worktrees, for only some checkouts, so one
+    /// with a branch but none is read by its workspace directory. Other
+    /// devices may be forwarded from an unknown machine and get none.
     pub(crate) fn of(
         local: bool,
         target: &'a ConnectTarget,
@@ -49,10 +51,13 @@ impl<'a> Checkout<&'a str> {
     ) -> Option<Self> {
         match target {
             ConnectTarget::Ssh { target, .. } => {
-                workspace.worktree.as_ref().map(|tree| Self::Ssh {
-                    target,
-                    git_dir: &tree.key,
-                })
+                let dir = match (&workspace.worktree, &workspace.branch) {
+                    (Some(tree), _) => &tree.key,
+                    // Without a branch it is no Git checkout: nothing to dial for.
+                    (None, Some(_)) => &workspace.new_workspace_cwd,
+                    (None, None) => return None,
+                };
+                Some(Self::Ssh { target, dir })
             }
             _ if local => Some(Self::Local(&workspace.new_workspace_cwd)),
             _ => None,
@@ -62,9 +67,9 @@ impl<'a> Checkout<&'a str> {
     fn to_owned(self) -> Checkout<String> {
         match self {
             Self::Local(cwd) => Checkout::Local(cwd.to_owned()),
-            Self::Ssh { target, git_dir } => Checkout::Ssh {
+            Self::Ssh { target, dir } => Checkout::Ssh {
                 target: target.to_owned(),
-                git_dir: git_dir.to_owned(),
+                dir: dir.to_owned(),
             },
         }
     }
@@ -74,7 +79,7 @@ impl Checkout<String> {
     fn as_deref(&self) -> Checkout<&str> {
         match self {
             Self::Local(cwd) => Checkout::Local(cwd),
-            Self::Ssh { target, git_dir } => Checkout::Ssh { target, git_dir },
+            Self::Ssh { target, dir } => Checkout::Ssh { target, dir },
         }
     }
 }
@@ -107,7 +112,7 @@ pub struct Avatars {
     results: mpsc::Receiver<(Checkout<String>, Lookup)>,
     // Presence deduplicates pending requests as well as resolved hits and misses.
     local: HashMap<String, Slot>,
-    // Keyed by SSH target, then Git directory, so a row looks up without allocating.
+    // Keyed by SSH target, then directory, so a row looks up without allocating.
     remote: HashMap<String, HashMap<String, Slot>>,
     // Each connected SSH endpoint's host and when its connection came up.
     links: HashMap<String, (String, Instant)>,
@@ -210,7 +215,9 @@ impl Avatars {
                 Ok(image) => Slot::Resolved(image),
                 // Stopped because its device disconnected: due again as soon
                 // as one is connected, since only then is it asked for.
-                Err(herdr_client::Error::SshCancelled) => Slot::Unreachable { retry_at: now },
+                Err(herdr_client::Error::Ssh(herdr_client::ssh::Error::Cancelled)) => {
+                    Slot::Unreachable { retry_at: now }
+                }
                 Err(_) if reconnected => Slot::Unreachable { retry_at: now },
                 Err(_) => Slot::Unreachable {
                     retry_at: now + RETRY_AFTER,
@@ -237,7 +244,7 @@ impl Avatars {
     fn slot(&self, checkout: Checkout<&str>) -> Option<&Slot> {
         match checkout {
             Checkout::Local(cwd) => self.local.get(cwd),
-            Checkout::Ssh { target, git_dir } => self.remote.get(target)?.get(git_dir),
+            Checkout::Ssh { target, dir } => self.remote.get(target)?.get(dir),
         }
     }
 
@@ -246,11 +253,8 @@ impl Avatars {
             Checkout::Local(cwd) => {
                 self.local.insert(cwd, image);
             }
-            Checkout::Ssh { target, git_dir } => {
-                self.remote
-                    .entry(target)
-                    .or_default()
-                    .insert(git_dir, image);
+            Checkout::Ssh { target, dir } => {
+                self.remote.entry(target).or_default().insert(dir, image);
             }
         }
     }
@@ -300,15 +304,15 @@ fn repo_owner(
             // what is left.
             // A read queued before its device disconnected never dials.
             Checkout::Ssh { target, .. } if links::is_offline(offline, target) => {
-                return Err(herdr_client::Error::SshCancelled);
+                return Err(herdr_client::ssh::Error::Cancelled.into());
             }
-            Checkout::Ssh { target, git_dir } => herdr_client::remote_config_value(
+            Checkout::Ssh { target, dir } => herdr_client::remote_config_value(
                 target,
-                git_dir,
+                dir,
                 key,
                 deadline
                     .checked_duration_since(Instant::now())
-                    .ok_or(herdr_client::Error::SshTimeout)?,
+                    .ok_or(herdr_client::ssh::Error::Timeout)?,
                 || links::is_offline(offline, target),
             )?,
         };
@@ -331,61 +335,6 @@ fn local_config(cwd: &str, key: &str) -> Option<String> {
 
 fn github_owner(remote: &str) -> Option<String> {
     github_repo(remote).map(|(owner, _)| owner)
-}
-
-/// One segment of a remote's path.
-///
-/// Account and repository names are GitHub's to define, so no name grammar is
-/// reproduced here: a segment is refused only when it names the directory
-/// itself or carries punctuation that would not stay inside its own path
-/// segment in the avatar URL built from it.
-fn segment(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= MAX_SEGMENT
-        && value != "."
-        && value != ".."
-        && value
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
-}
-
-pub(crate) fn github_repo(remote: &str) -> Option<(String, String)> {
-    let path = ["git@github.com:", "ssh://git@github.com/"]
-        .into_iter()
-        .find_map(|prefix| remote.strip_prefix(prefix))
-        .or_else(|| http_path(remote))?;
-    let (owner, repo) = path.split_once('/')?;
-    let repo = repo.strip_suffix(".git").unwrap_or(repo);
-    if !segment(owner) || !segment(repo) {
-        return None;
-    }
-    Some((owner.to_ascii_lowercase(), repo.to_owned()))
-}
-
-/// The path of an `http(s)://[userinfo@]github.com/` remote.
-///
-/// Git accepts a user name, or a user name and token, before the host
-/// (`https://user@github.com/o/r`, `https://user:token@github.com/o/r`).
-/// The host is what Git connects to, so it alone must be `github.com`; the
-/// userinfo is skipped and never kept. Userinfo that a URL parser could read
-/// as the end of the authority (`/`, `?`, `#`, `\`, a second `@`) is refused
-/// so the host cannot be misread.
-fn http_path(remote: &str) -> Option<&str> {
-    let rest = ["https://", "http://"]
-        .into_iter()
-        .find_map(|scheme| remote.strip_prefix(scheme))?;
-    let (authority, path) = rest.split_once('/')?;
-    let host = match authority.split_once('@') {
-        None => authority,
-        Some((userinfo, host)) => {
-            let plain = |b: u8| b.is_ascii_graphic() && !matches!(b, b'@' | b'?' | b'#' | b'\\');
-            if userinfo.is_empty() || !userinfo.bytes().all(plain) {
-                return None;
-            }
-            host
-        }
-    };
-    (host == "github.com").then_some(path)
 }
 
 fn cached_image(url: &str) -> Option<(Arc<Image>, bool)> {

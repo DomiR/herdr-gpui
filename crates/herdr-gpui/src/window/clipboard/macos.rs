@@ -7,7 +7,8 @@
 mod tests;
 mod wire;
 
-use super::{ClipboardError, ClipboardItem, IMAGE_LIMIT, TEXT_LIMIT};
+use super::{ClipboardItem, IMAGE_LIMIT, TEXT_LIMIT};
+use crate::window::clipboard;
 use std::{
     ffi::OsString,
     io::{self, Read},
@@ -19,6 +20,9 @@ use std::{
 
 const HELPER: &str = "__read-clipboard";
 const TIMEOUT: Duration = Duration::from_secs(3);
+const READ_CHUNK: usize = 64 * 1024;
+// How far a read may run past the deadline.
+const READ_WAIT: Duration = Duration::from_millis(50);
 // One tag followed by an image at most. Text and file paths have a smaller cap.
 const OUTPUT_LIMIT: usize = IMAGE_LIMIT + 1;
 const CHANGED: u8 = 10;
@@ -42,7 +46,7 @@ pub enum Error {
 
 impl From<Error> for crate::Error {
     fn from(error: Error) -> Self {
-        Self::Clipboard(ClipboardError::Native(error))
+        clipboard::Error::Native(error).into()
     }
 }
 
@@ -78,17 +82,17 @@ pub(crate) fn run_helper(args: &[OsString]) -> Option<ExitCode> {
     Some(match result {
         Ok(item) => match wire::write(item.as_ref(), &mut io::stdout().lock()) {
             Ok(()) => ExitCode::SUCCESS,
-            Err(crate::Error::Clipboard(ClipboardError::Size { .. })) => {
+            Err(crate::Error::Clipboard(clipboard::Error::Size { .. })) => {
                 ExitCode::from(TEXT_TOO_LARGE)
             }
             Err(_) => ExitCode::FAILURE,
         },
-        Err(crate::Error::Clipboard(ClipboardError::Changed)) => ExitCode::from(CHANGED),
-        Err(crate::Error::Clipboard(ClipboardError::Encoding(_))) => ExitCode::from(INVALID_TEXT),
-        Err(crate::Error::Clipboard(ClipboardError::Size { limit })) if limit == TEXT_LIMIT => {
+        Err(crate::Error::Clipboard(clipboard::Error::Changed)) => ExitCode::from(CHANGED),
+        Err(crate::Error::Clipboard(clipboard::Error::Encoding(_))) => ExitCode::from(INVALID_TEXT),
+        Err(crate::Error::Clipboard(clipboard::Error::Size { limit })) if limit == TEXT_LIMIT => {
             ExitCode::from(TEXT_TOO_LARGE)
         }
-        Err(crate::Error::Clipboard(ClipboardError::Size { .. })) => {
+        Err(crate::Error::Clipboard(clipboard::Error::Size { .. })) => {
             ExitCode::from(IMAGE_TOO_LARGE)
         }
         Err(_) => ExitCode::FAILURE,
@@ -112,12 +116,18 @@ fn acquire(
     limit: usize,
 ) -> crate::Result<Option<ClipboardItem>> {
     if Instant::now() >= deadline {
-        return Err(crate::Error::Clipboard(ClipboardError::Timeout));
+        return Err(clipboard::Error::Timeout.into());
     }
-    // As in the Linux reader, a nonblocking socket needs no reader thread
-    // that could outlive a hung clipboard owner. Do not retain or log stderr.
+    // As in the Linux reader, a short read timeout needs no reader thread that
+    // could outlive a hung clipboard owner. Do not retain or log stderr.
     let (mut reader, writer) = UnixStream::pair().map_err(Error::Process)?;
-    reader.set_nonblocking(true).map_err(Error::Process)?;
+    // Block until output arrives rather than sleeping between reads: a socket
+    // pair holds only a few kilobytes, so polling paced a large TIFF copy past
+    // the deadline one small read at a time. Set it before the child can exit:
+    // macOS refuses socket options once the peer has closed.
+    reader
+        .set_read_timeout(Some(READ_WAIT))
+        .map_err(Error::Process)?;
     let spawned = command
         .stdin(Stdio::null())
         .stdout(Stdio::from(OwnedFd::from(writer)))
@@ -126,46 +136,50 @@ fn acquire(
     command.stdout(Stdio::null());
     let mut child = Reader(spawned.map_err(Error::Process)?);
     let mut bytes = Vec::new();
-    let mut buffer = [0; 8192];
+    let mut buffer = vec![0; READ_CHUNK];
     let mut eof = false;
     loop {
         if Instant::now() >= deadline {
-            return Err(crate::Error::Clipboard(ClipboardError::Timeout));
+            return Err(clipboard::Error::Timeout.into());
         }
-        match reader.read(&mut buffer) {
-            Ok(0) => eof = true,
-            Ok(count) => {
-                if count > limit.saturating_sub(bytes.len()) {
-                    return Err(crate::Error::Clipboard(ClipboardError::Size { limit }));
+        if !eof {
+            match reader.read(&mut buffer) {
+                Ok(0) => eof = true,
+                Ok(count) => {
+                    if count > limit.saturating_sub(bytes.len()) {
+                        return Err(clipboard::Error::Size { limit }.into());
+                    }
+                    bytes.extend_from_slice(&buffer[..count]);
                 }
-                bytes.extend_from_slice(&buffer[..count]);
-                continue;
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        io::ErrorKind::WouldBlock
+                            | io::ErrorKind::TimedOut
+                            | io::ErrorKind::Interrupted
+                    ) => {}
+                Err(error) => return Err(Error::Process(error).into()),
             }
-            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {}
-            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
-            Err(error) => return Err(Error::Process(error).into()),
+            continue;
         }
         if let Some(status) = child.0.try_wait().map_err(Error::Process)? {
             if !status.success() {
                 // Partial stdout from a reader that crashed is never pasted.
                 return Err(match status.code() {
-                    Some(code) if code == i32::from(CHANGED) => {
-                        crate::Error::Clipboard(ClipboardError::Changed)
-                    }
+                    Some(code) if code == i32::from(CHANGED) => clipboard::Error::Changed.into(),
                     Some(code) if code == i32::from(INVALID_TEXT) => Error::TextEncoding.into(),
                     Some(code) if code == i32::from(TEXT_TOO_LARGE) => {
-                        crate::Error::Clipboard(ClipboardError::Size { limit: TEXT_LIMIT })
+                        clipboard::Error::Size { limit: TEXT_LIMIT }.into()
                     }
                     Some(code) if code == i32::from(IMAGE_TOO_LARGE) => {
-                        crate::Error::Clipboard(ClipboardError::Size { limit: IMAGE_LIMIT })
+                        clipboard::Error::Size { limit: IMAGE_LIMIT }.into()
                     }
                     _ => Error::Exited(status).into(),
                 });
             }
-            if eof {
-                return wire::read(bytes);
-            }
+            return wire::read(bytes);
         }
+        // Output is complete; the reader is exiting.
         thread::sleep(Duration::from_millis(5));
     }
 }

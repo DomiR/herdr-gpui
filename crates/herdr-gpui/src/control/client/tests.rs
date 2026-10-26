@@ -2,6 +2,7 @@
 use super::*;
 
 mod chat_lines;
+mod remote_lines;
 
 #[test]
 fn output_is_whole_and_only_a_terminal_loses_controls() {
@@ -27,9 +28,12 @@ fn a_plain_launch_asks_for_the_frontmost_window_as_app_focus_does() {
 
 #[test]
 fn every_error_code_has_one_exit_status() {
-    let rejected = |code| crate::Error::ControlRejected {
-        code,
-        message: String::new(),
+    let rejected = |code| {
+        crate::control::Error::Rejected {
+            code,
+            message: String::new(),
+        }
+        .into()
     };
     for (code, expected) in [
         (ErrorCode::InvalidUrl, exit::USAGE),

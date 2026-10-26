@@ -346,6 +346,7 @@ impl HerdrWindow {
         let name = cx.new(SearchInput::new);
         name.update(cx, |input, cx| {
             input.set_placeholder("Default name", cx);
+            input.set_label("Name", cx);
             input.set_appearance(self.config.ui.clone(), self.theme.clone(), cx);
         });
         let naming = cx.subscribe_in(
@@ -403,7 +404,7 @@ impl HerdrWindow {
         }
         // A fresh draft, so it is selected like the first proposal and painted
         // from its start rather than at the scroll a longer one needed.
-        *input = DialogInput::new(branch.clone());
+        *input = DialogInput::branch(branch.clone());
         source.written = branch;
         cx.notify();
     }
@@ -619,7 +620,7 @@ impl HerdrWindow {
             return Err(crate::Error::StaleWorkspace);
         }
         if self.selected_endpoint != 0 || !self.live.local_daemon_peer {
-            return Err(crate::Error::PrUntrustedEndpoint);
+            return Err(herdr_github::pull_request::Error::UntrustedEndpoint.into());
         }
         self.menu_target_input(&crate::pull_request::Origin::Local)
     }
@@ -631,7 +632,7 @@ impl HerdrWindow {
         let input = self.local_repository_input()?;
         let tokens = self
             .main_tokens()
-            .ok_or(crate::Error::GitHubAuthentication)?;
+            .ok_or(herdr_github::Error::Authentication)?;
         Ok((input, tokens))
     }
 

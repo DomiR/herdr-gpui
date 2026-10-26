@@ -56,7 +56,7 @@ fn setup_in_another_main_window_blocks_overlapping_boat_jobs(cx: &mut TestAppCon
                     None,
                     move |_, _| {
                         let _ = wait.recv_timeout(std::time::Duration::from_secs(10));
-                        Err(crate::cloud::Error::Cancelled.into())
+                        Err(crate::Error::from(crate::cloud::Error::Cancelled))
                     },
                     cx,
                 )
@@ -67,7 +67,9 @@ fn setup_in_another_main_window_blocks_overlapping_boat_jobs(cx: &mut TestAppCon
         if crate::cloud::unavailable().is_some() {
             assert!(matches!(
                 result,
-                Err(crate::Error::Cloud(crate::cloud::Error::Unavailable(_)))
+                Err(crate::Error::Remote(herdr_remote::Error::Cloud(
+                    crate::cloud::Error::Unavailable(_)
+                )))
             ));
             assert!(!super::super::setup_running(cx));
         } else {

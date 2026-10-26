@@ -60,9 +60,9 @@ impl HerdrWindow {
             if target.branch.as_deref().is_none_or(str::is_empty)
                 || (target.worktree.is_none() && origin != Some(Origin::Local))
             {
-                return Err(crate::Error::PrMetadata);
+                return Err(herdr_github::pull_request::Error::Metadata.into());
             }
-            let origin = origin.ok_or(crate::Error::PrUntrustedEndpoint)?;
+            let origin = origin.ok_or(herdr_github::pull_request::Error::UntrustedEndpoint)?;
             if !self.workspace_pr_target_current() {
                 return Err(crate::Error::StaleWorkspace);
             }
@@ -166,7 +166,7 @@ impl HerdrWindow {
                     branch: branch.clone(),
                 })
             }
-            _ => workspace_input(workspace, origin),
+            _ => Ok(workspace_input(workspace, origin)?),
         }
     }
 
@@ -343,7 +343,10 @@ impl HerdrWindow {
                             .flex()
                             .items_center()
                             .gap(px(8.))
-                            .child(pill(value.lifecycle().into(), value.color(theme)))
+                            .child(pill(
+                                value.lifecycle().into(),
+                                crate::pull_request::color(value, theme),
+                            ))
                             .child(
                                 div()
                                     .id("workspace-pr-title")

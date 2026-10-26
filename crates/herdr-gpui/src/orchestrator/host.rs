@@ -193,7 +193,7 @@ impl HerdrWindow {
                         timing: Timing::default(),
                         // The same store as the GitHub sign-in; the view
                         // picks the one worker that lists Linear.
-                        linear: Some(crate::github::Store::select(&self.config)),
+                        linear: Some(crate::github::select_store(&self.config.github)),
                     },
                 });
             }

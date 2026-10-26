@@ -115,6 +115,19 @@ recorded so the next one starts over in full.
 
 `remote_config_value` reads a single Git configuration key on a saved SSH host
 with the same bounded, noninteractive process policy as `remote_origin_url`.
+
+On Unix, one-shot commands on a saved SSH host (`remote_config_value`,
+`run_script` with `ScriptHost::Ssh`, and `shared_script_command`) share a
+master connection per host and `SshLane`: `Quick` for small reads, `Bulk` for
+transfers, so a large upload never queues ahead of a read. `ssh::mux` starts
+each master on first use, under a `/bin/sh` watchdog that ends it when this
+process exits, in an owner-only socket directory. A command waiting for one
+gives up at its own deadline; a full master (8 quick or 2 bulk channels, under
+sshd's default `MaxSessions` of 10), one that failed to start (backing off from
+60 seconds to 30 minutes), or a host with a live master from the user's own
+`ControlPath` all connect directly instead. A bridge reconnecting to a host
+retires its masters, since the network path may have changed. The bridge,
+port forwards, `script_command`, and Windows never share.
 Both are blocking helpers for background workers; absent or empty keys return `None`.
 
 All fallible client APIs return the crate-root `Error`, derived with `thiserror`.
@@ -200,7 +213,7 @@ but does not claim the image lease until `complete(extension, data)`, immediatel
 before encoding. Text/key completion via `complete_input` never claims that lease,
 so text can be reserved and published while an image is active without losing its
 position before subsequent input. A competing image completion returns
-`ClipboardImageBusy` and skips its slot; it does not retry or replay.
+`clipboard::Error::Busy` and skips its slot; it does not retry or replay.
 Both APIs use the same 64-entry command queue (plus one worker-held slot) and
 allocate no payload buffer until completion. Callers must separately bound their
 background acquisition tasks and data (the GUI limits preparation to four tasks).
@@ -217,7 +230,7 @@ ClipboardImageCancellation::is_finished(&self) -> bool
 The upload is an owned, sendable RAII permit, not cloneable. Dropping it skips
 the slot. Only one image lease can be held per connection: the eager image API
 claims it at reservation, the input API only on image completion. Another eager
-image reservation or deferred image completion returns `Error::ClipboardImageBusy`. The atomic
+image reservation or deferred image completion returns `clipboard::Error::Busy`. The atomic
 lease remains held until both preparation and the worker slot are gone, so
 repeated drop/cancel cannot accumulate image slots. The ordinary bounded command
 queue still returns `Full`. A cancellation handle is cloneable and does not
@@ -244,7 +257,7 @@ Completion accepts nonempty opaque bytes up to 16 MiB and case-insensitive
 this is extension/size validation, not image decoding or signature validation.
 Invalid input returns `Error::Protocol` with `ClipboardImageSize`,
 `ClipboardImageExtension`, or `ClipboardImageTarget`. Explicit upload
-cancellation returns `ClipboardImageCancelled`; connection cancellation returns
+cancellation returns `clipboard::Error::Cancelled`; connection cancellation returns
 `Disconnected`. Late completion after a worker rejection fails rather than
 replaying on another connection.
 
@@ -257,14 +270,14 @@ It encodes exactly one event for the captured pane/popup using the ordinary
 2 MiB cap, in the same reserved slot, so
 later input (including Enter) cannot overtake the fallback. It shares completion's
 background-only encoding, GUI identity validation, and cancellation rules.
-`DirectTerminal` returns `ClipboardImageInputTarget`: upstream's legacy `Input`
+`DirectTerminal` returns `clipboard::Error::InputTarget`: upstream's legacy `Input`
 carries raw terminal bytes, and this client cannot infer the direct terminal's
 keyboard or bracketed-paste mode. There is no paste-only completion wrapper.
 
 Preparation has a 60-second deadline from reservation, including encoding.
 `is_cancelled` reflects expiration, and late completion returns
-`ClipboardImageCancelled`. An expired, still-empty slot is cancelled and skipped
-by the worker, with `CommandRejected { reason: ClipboardImagePreparationTimeout,
+`clipboard::Error::Cancelled`. An expired, still-empty slot is cancelled and skipped
+by the worker, with `CommandRejected { reason: clipboard::Error::PreparationTimeout,
 request_id: None }`; ordinary input then resumes without replay. A retained
 expired eager image permit still holds the single-image memory lease until dropped, but no
 longer blocks ordinary commands. Already published data is not subject to the
@@ -474,7 +487,7 @@ closes before it is ready without naming an incompatible candidate (that is
 when no Herdr was found) are reduced to an `SshFailure`: `HostKey`, `Auth`,
 `Unreachable`, `HerdrMissing`, or `Other`. The text itself is never retained,
 logged, or exposed, as it may name users, keys, and paths. The class is the
-source of `Error::SshRefused` and travels on `ClientEvent::Disconnected { ssh }`;
+source of `ssh::Error::Refused` and travels on `ClientEvent::Disconnected { ssh }`;
 `SshFailure::needs_user` marks the ones retrying cannot fix. Disconnect reasons
 are sanitized and capped at 1024 characters.
 
@@ -500,7 +513,7 @@ every port is refused, or the master does not connect within 30 seconds.
 `stop`, or dropping the handle, kills the master without waiting; the worker
 reaps it and removes its directory. Nothing reconnects. Callers name the remote
 port, so discovery stays elsewhere. Windows OpenSSH has no control master, so
-there `PortForward::start` returns `Error::SshUnsupported`; `forward_command`,
+there `PortForward::start` returns `ssh::Error::Unsupported`; `forward_command`,
 which holds its forward in its own child, works on Windows too.
 
 On Unix the bridge hands the `ssh` child one end of a socket pair as its
@@ -557,7 +570,7 @@ waiting on a first-run prompt makes `wsl.exe` print nothing and never exit.
 `RemoteHost` names either kind of remote host and dispatches session listing
 and deletion to the right one. Distribution names follow `wsl --import`'s rules
 (`valid_distro`) and are validated before anything spawns. Other platforms
-return `Error::WslUnsupported`.
+return `wsl::Error::Unsupported`.
 
 Saved distributions live in `gpui-wsl.json` beside the endpoint catalog, never
 in upstream's `endpoints.json` or `endpoint-selection.json`, whose strict schemas

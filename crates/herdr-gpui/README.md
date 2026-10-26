@@ -13,8 +13,17 @@ daemons, spawn a local PTY, or emulate a terminal. Herdr's remote bridge may sta
 the named remote session. SSH requires an installed POSIX Herdr, noninteractive authentication,
 and an already trusted host key. For hosts that need MFA or a password, configure
 `ControlMaster auto` with a `ControlPath` in `~/.ssh/config` and authenticate once
-with `ssh HOST` in a terminal: the app reuses that master connection while it lives,
-but never creates or keeps one itself. Set `ForwardAgent yes` only for trusted hosts;
+with `ssh HOST` in a terminal: the app reuses that master connection while it lives.
+Otherwise, on macOS and Linux, the app's own short commands on a host (Git reads,
+avatars, usage, scripts) share one SSH login per host instead of a login each, so
+hosts that rate-limit new SSH connections (a firewall `limit` rule, sshd's
+`MaxStartups`) are not flooded; large transfers such as Teleport get a second
+login of their own, and terminals keep their own connection. These shared logins
+are the app's private children: their sockets are in a directory only the app
+can open, they never touch a master of yours, and they end with the app, even
+if it crashes. One that cannot log in leaves that host's commands connecting
+directly as before, trying again at most once a minute, then less often.
+Set `ForwardAgent yes` only for trusted hosts;
 Herdr servers that support it then keep remote panes' `SSH_AUTH_SOCK` working
 across reconnects. A failed host is retried with backoff capped at 30 seconds.
 Runtime dependencies include GPUI, `herdr-client`, `serde_json` for API parameters,
@@ -1114,6 +1123,20 @@ Other remote systems show it as unavailable. Set top-level `show_system_load = f
 and memory** in Settings, to hide it and stop sampling while no
 [Devices overview](#devices-overview) is open.
 
+GPU and video memory are off by default, with a setting each for the status
+bar and the sidebar. Top-level `show_gpu_load = true`, or **GPU and video
+memory** in Settings > Status bar, shows the selected host's in the status bar;
+`show_sidebar_gpu_load = true`, or **Show GPU and video memory** in Settings >
+Sidebar, shows each host's on a sidebar line under its CPU and memory (layouts
+with detail lines; compact ones add a GPU gauge after the host's name). While
+either is on, the Overview and Devices pages show GPU and VRAM too. `[status_bar]
+gpu_detail = "compact"` shows the shares without the graph and meter. NVIDIA
+cards are read with `nvidia-smi`, AMD cards from the `amdgpu` driver's sysfs
+files, and Apple GPUs with `ioreg`, which reports no video memory because it
+is shared; Intel GPUs report no usage without root and are left out. A remote
+host is probed in the same SSH step as its CPU and memory. While the settings
+are both off no GPU tool runs on any host.
+
 The coffee cup in the status bar keeps this machine's display on and stops it
 from sleeping when idle, for as long as the cup is full; click it again to let
 go. It is app-wide, so every window shows the same cup. macOS holds power
@@ -1446,7 +1469,7 @@ Catalog channels retain typed errors, and rename results share errors with `Arc`
 across cloned UI snapshots. Strings are produced at presentation boundaries, not
 as internal error transport. `anyhow` is reserved for framework boundaries and
 test harnesses, not internal catch-all errors.
-Updater workers and the restart helper use typed `UpdateError` variants, preserving
+Updater workers and the restart helper use typed `herdr_updater::Error` variants, preserving
 sources and recovery context while keeping remote diagnostics out of display text.
 Active regression tests cover typed sources, redaction, and recovery failures;
 the standalone updater harness includes these tests without GPUI dependencies.
@@ -1742,10 +1765,13 @@ With Herdr's `[ui] copy_on_select = false`, shared with the TUI, the release
 copies nothing: the highlight waits for Cmd-C, Ctrl-C, or **Edit > Copy**, and
 any other key drops it, as in Herdr.
 
-Cmd-V sends semantic paste. While a terminal has focus, the native **Edit** menu
-enables **Paste**, and **Copy** while a selection is highlighted. In dialogs and
-search fields, **Cut**, **Copy**, **Paste**, and **Select All** do the same as
-Cmd-X, Cmd-C, Cmd-V, and Cmd-A.
+Cmd-V sends semantic paste (Ctrl-Shift-V on Linux; on Windows, Ctrl-V while
+the clipboard holds text, and Ctrl-Shift-V). While a terminal has focus, the
+native **Edit** menu enables **Paste**, and **Copy** while a selection is
+highlighted. In dialogs and search fields, **Cut**, **Copy**, **Paste**, and
+**Select All** do the same as Cmd-X, Cmd-C, Cmd-V, and Cmd-A on macOS, and
+Ctrl-Shift-X, Ctrl-Shift-C, Ctrl-Shift-V (Ctrl-V on Windows), and Ctrl-Shift-A
+on Linux and Windows, where fields also accept plain Ctrl.
 
 The terminal is exposed to accessibility clients, such as VoiceOver and
 selection tools that read the focused element's selected text (PopClip,
@@ -1910,10 +1936,11 @@ the app reads no Git of its own for this.
   hang from, so it shows the branch glyph, in the theme's blue (the hue its
   notes use), where a repository row shows its owner's avatar. Screen
   readers hear "linked worktree" after its name.
-- In the workspace, a 2-pixel rule in the same blue lies along the tab
-  strip's edge that meets the terminals. It sits in the chrome, so no
-  terminal cell is covered or recoloured; while the strip is hidden there is
-  no chrome to hold it, and the sidebar alone marks the worktree.
+- In the workspace, when `apply_to` includes `"terminal"`, a 2-pixel rule in
+  the same blue lies along the tab strip's edge that meets the terminals. It
+  is off by default. It sits in the chrome, so no terminal cell is covered or
+  recoloured; while the strip is hidden there is no chrome to hold it, and
+  the sidebar alone marks the worktree.
 
 The glyph and the rule reach 3:1 against the chrome (4.5:1 under
 `contrast = "high"`). The `[worktrees]` table changes their hue or where the
@@ -1926,7 +1953,8 @@ marks show:
 # blue.
 tint = "#7aa2f7"
 # Where the marks show; [] turns them off. Without "sidebar", the flat
-# layouts keep their tree and the others draw no guides, as before.
+# layouts keep their tree and the others draw no guides, as before. The
+# default is ["sidebar"]; add "terminal" for the rule along the tab strip.
 apply_to = ["sidebar", "terminal"]
 ```
 
@@ -2166,6 +2194,29 @@ reason. Lanes on another host show it next to their status, and Open, Keep and
 the comparison work across hosts; a host that cannot be read marks only its
 own lanes, keeping the changes read before.
 
+Each fan-out's lanes and the last step each one reached are kept in
+`fan-outs.json` in the state directory, written before and after every step,
+until a lane is kept or the comparison is forgotten. A lane whose next step
+cannot be saved stops before that step runs. If the app quits or
+crashes partway, the next launch shows the fan-out again as a comparison with a
+warning, and each lane says where it stopped: while creating its worktree (the
+branch may exist), before its agent started, while the agent was starting, or
+while the prompt was being sent. Nothing runs by itself. Start agent or Send
+prompt finishes a lane only when clicked, and Send prompt never starts a second
+agent. A lane that fails, finishing included, offers the same button again.
+Keep removes the other worktrees after its usual confirmation; a lane whose
+worktree may exist or sits on a host no longer set up stays saved until Forget,
+which lets the fan-out go and leaves every worktree as it is. Up to four
+fan-outs are kept; a fifth is launched without being saved, and says so, rather
+than dropping one. Its failed lanes can still be retried while its window is
+open, but it does not come back after a quit. A damaged fan-out is dropped without the others, and a file
+that cannot be read is moved to `fan-outs.json.unreadable` instead of being
+saved over. A prompt over 32 KiB is not saved, so its lanes cannot be finished
+from the comparison. A fan-out is restored only against the daemon it ran on,
+the same session or SSH host, since workspace and pane IDs repeat across
+daemons, and a restored lane is finished or removed only once its connected
+host shows its workspace on its branch. Only the first running copy of the app saves and restores fan-outs.
+
 Where new checkouts went is kept in `dispatch-history.json` in the state
 directory, by repository name and host. Like Teleport, dispatch needs a Linux
 or macOS client and the local session or a saved SSH host on both ends.
@@ -2295,7 +2346,14 @@ hold: their GitHub issues and pull requests or GitLab issues, their
 cycles once Linear is connected, and the agent runs dispatched for them.
 Folders outside Git are quietly skipped unless they have a `.beads` folder;
 **Refresh** checks skipped folders again. Git and SSH discovery failures still
-show their errors. Worktrees of one repository count once, and each repository
+show their errors. Opening a repository on an SSH host takes one connection,
+which also finds the agents installed there and its branches, and Beads reads
+in one more. The repositories on one SSH host share at most four connections
+to it at a time, so many of them stay under sshd's default `MaxStartups`; a
+connection the host drops before key exchange is tried once more a second
+later. While an SSH host cannot be reached, a project keeps what it last
+listed, with the error above it, and finds its repository again on the next
+sync or Refresh. Worktrees of one repository count once, and each repository
 syncs on its own, so up to 32 are listed. Linear is yours rather than a
 project's, so it is listed once, with the first project's. A row shows its
 project while several are listed. Under the search, a row of pills picks
@@ -2403,7 +2461,12 @@ self-managed host, lists its open issues (not yet its merge requests), read
 with `GITLAB_TOKEN` or `GITLAB_ACCESS_TOKEN` when `GITLAB_HOST` names that host
 (gitlab.com by default), else with the GitLab CLI's sign-in (`glab auth
 login`), and sent only over HTTPS; public projects need neither, and an
-`http://` remote is read without one. GitHub Enterprise is listed as not
+`http://` remote is read without one. A remote on an SSH host of its own, such
+as `git@gitlab-ssh.example.com:group/project.git` for an instance served at
+`gitlab.example.com`, is read from the instance whose `ssh_host` the GitLab
+CLI's config names it, at that instance's `api_host` and `api_protocol`, with
+its token (`glab config set ssh_host gitlab-ssh.example.com --host
+gitlab.example.com`). GitHub Enterprise is listed as not
 supported yet. The window button in the tab's header moves the view into
 a window of its own.
 
@@ -2422,6 +2485,12 @@ paste cannot carry image data. Local drops and pasted
 paths stay ordinary path pastes, except a live screenshot thumbnail (see
 [File Drops](#file-drops)), and local Ctrl-V is sent to the terminal
 unchanged so agents can read the shared clipboard themselves.
+
+On Windows, Ctrl-V is the app's paste while the clipboard holds text, and that
+keystroke is not sent to the pane. When the clipboard holds no text, Ctrl-V
+behaves as described above: on an SSH or WSL endpoint a clipboard image goes
+through the image bridge, and on a local endpoint Ctrl-V is sent to the
+terminal.
 
 The daemon writes a temporary file and pastes its path into the
 target terminal. OpenCode or another agent can recognize that path as an image;
@@ -2884,7 +2953,9 @@ come back after a restart; closing a workspace in Herdr removes its tabs.
 ### Annotating A Page
 
 **Annotate** in a browser tab's toolbar lets you pin notes to a page and send
-them to the agent that opened it, so it can change the page.
+them to the agent that opened it, so it can change the page. Bind
+`toggle_annotate` under `[keybindings]` to start or stop annotating the page
+in view from the keyboard; it has no default key.
 
 - Hover to outline an element and click to pick it, or select text. For
   anything else, draw a region: turn on **Region** in the notes panel and
@@ -3227,6 +3298,17 @@ directory, or where `just install` puts both) and then on the login shell's
 installed: `claude`, `codex` and `pi` (which `herdr-acp` drives without an
 ACP adapter), `copilot --acp`, `gemini --acp`, or `opencode acp`. The program can
 also be started by hand in any pane: `herdr-acp claude`.
+
+**One click.** Each tab strip also offers a button per installed agent that
+starts its chat in a new tab of that group; the chat's tab looks like any
+other, and **+** still opens a terminal tab. Each button takes the shape
+the tab layout gives **+**. `[chat] launcher` places the buttons: `plus`
+(the default) deals them out from under **+** while the pointer is over it,
+to the right, or to the left when the window has no room there, `beside` keeps them right after **+**, `leading` puts them before
+the tabs, `trailing` at the strip's right end, and `button` shows one named
+button for the agent last started, the others sliding out beside it; `off`
+hides them. Settings > General picks one while ACP chats are on, and
+`herdr-gpui config set chat.launcher beside` sets it from a script.
 
 **Company endpoints.** Variables in `[chat.env]` go into the environment of
 every chat's tab, on this machine or an SSH host: `GH_HOST` for Copilot on
@@ -3730,7 +3812,8 @@ Ctrl+Shift+U is left unbound for
   reports failures in the active dialog tab rather than the connection status, and selects
   and reveals the created checkout once the daemon reports it. Rename and branch
   dialogs support Unicode/IME, grapheme
-  editing, Shift-arrow selection, Home/End, and Cmd-A/C/X/V. Escape/outside click
+  editing, Shift-arrow selection, Home/End, and Cmd-A/C/X/V (Ctrl-A/C/X/V on
+  Linux and Windows). Escape/outside click
   cancels; dialog input never reaches terminals or native creation actions.
   Context menus and dialogs anchor to the pointer and clamp to the viewport.
   Rename trims surrounding whitespace and rejects blank labels inline.
@@ -3993,8 +4076,14 @@ Ctrl+Shift+U is left unbound for
   a workspace. Cmd-N opens the New worktree dialog for the focused workspace
   (for a linked worktree, through its repository's main checkout, starting from
   the linked worktree's branch). The dialog opens on
-  its Branch field with the proposal selected, so typing replaces it; Tab
-  back to the form returns there. The Name field is optional: left empty,
+  its Branch field with the proposal selected, so typing replaces it. Tab and
+  Shift-Tab move between the search, Name, and Branch fields, selecting the
+  field's text, and Ctrl-Tab and Ctrl-Shift-Tab step through the dialog's
+  tabs; in a listing, Tab moves through its rows. The Branch field formats
+  what is typed, pasted, or committed by an input method: whitespace and
+  characters Git refuses (`~^:?*[\`) become one dash, and sequences Git
+  refuses, such as `..`, `@{`, `//`, or a leading dash, never form, so the
+  branch stays one Git accepts. The Name field is optional: left empty,
   the daemon picks the workspace name; anything
   typed is sent as the new workspace's label. The proposed branch follows the
   name, so "Fix login" proposes `worktree/fix-login`, until the Branch field
@@ -4254,10 +4343,11 @@ Ctrl+Shift+U is left unbound for
   Cmd-, opens Settings; Cmd-/ opens the grouped native shortcut reference.
   Native shortcut labels and keycaps come from the shared `controls::COMMANDS`
   catalog, overridden by the config's `[keybindings]` table, with Cmd-V semantic
-  paste shown separately. **Plugin & custom commands** lists the connected
+  paste (Ctrl-Shift-V on Linux, Ctrl-V on Windows) shown separately.
+  **Plugin & custom commands** lists the connected
   daemon's `[[keys.command]]` entries, including plugin actions, with their
   effective prefix and key combinations. A binding that cannot run says why:
-  a Herdr or GUI shortcut (Cmd-V paste and the Edit menu included) holds it,
+  a Herdr or GUI shortcut (the paste key and the Edit menu included) holds it,
   an earlier command holds it, it lacks a modifier, no usable prefix exists,
   it is past the eight-shortcut limit, or this client cannot type it (such as
   Herdr's `hyper`). A command named like a GUI action or an earlier command
@@ -4331,7 +4421,8 @@ Ctrl+Shift+U is left unbound for
 - Pointer selection of terminal cells, copied to the clipboard on release with
   a configurable flash. Selections stay within one pane or the popup above it,
   anchor on half cells, and never reach the daemon.
-- Cmd-V sends semantic Paste; Cmd-Q or window close detaches without killing
+- Cmd-V (Ctrl-Shift-V on Linux, Ctrl-V with clipboard text on Windows) sends
+  semantic Paste; Cmd-Q or window close detaches without killing
   the daemon or its terminals. Window activation is reported to the daemon.
 - Resize uses the actual terminal canvas bounds and measured configured font cell width,
   excluding the native sidebar, tabs and status bar.
@@ -4715,7 +4806,7 @@ the same store under their own service names. A secret larger than Credential
 Manager's 2,560-byte limit is refused with an error rather than truncated. There
 is no private-file store here, so `allow_plaintext_credentials` changes nothing,
 and `GH_TOKEN` / `GITHUB_TOKEN` still take precedence for the main account. The
-`Cred*` calls are the only `unsafe` code involved (`github/credential_manager.rs`):
+`Cred*` calls are the only `unsafe` code involved (`crates/herdr-credentials/src/credential_manager.rs`):
 neither the standard library nor the workspace's dependencies wrap them, and the
 maintained wrapper crates would add a second `windows-sys` version.
 

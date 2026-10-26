@@ -3,10 +3,7 @@
 //! length-bounded before they can reach a label or a daemon request.
 
 use super::Origin;
-use crate::{
-    Error,
-    pull_request::{Remote, clean},
-};
+use crate::pull_request::{Remote, clean};
 use serde_json::Value;
 
 /// Items per list. The tabs are a picker, not a mirror of the repository, so a
@@ -118,15 +115,6 @@ pub(crate) fn fork_branch(number: u64) -> String {
     format!("pr/{number}")
 }
 
-/// The pull request number a [`fork_branch`] name carries, if it is one.
-pub(crate) fn fork_branch_number(branch: &str) -> Option<u64> {
-    let digits = branch.strip_prefix("pr/")?;
-    if digits.starts_with('0') || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
-        return None;
-    }
-    digits.parse().ok()
-}
-
 /// GitHub's branch name for an issue: the number, then a slug of the title,
 /// following GitHub's own "create a branch" naming.
 pub(crate) fn issue_branch(number: u64, title: &str) -> String {
@@ -143,7 +131,7 @@ pub(crate) fn issue_branch(number: u64, title: &str) -> String {
 pub(super) fn parse(response: &Value, origin: &Origin, kind: Kind) -> crate::Result<Vec<Item>> {
     let nodes = response["data"]["repository"][kind.field()]["nodes"]
         .as_array()
-        .ok_or(Error::PrRepository)?;
+        .ok_or(herdr_github::pull_request::Error::Repository)?;
     Ok(nodes
         .iter()
         .take(LIMIT)

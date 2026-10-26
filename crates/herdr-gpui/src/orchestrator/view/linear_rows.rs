@@ -283,7 +283,7 @@ impl OrchestratorView {
 }
 
 /// A group's fold mark.
-fn chevron(look: &Look, open: bool) -> Svg {
+fn chevron(look: &Look, open: bool) -> AnyElement {
     let icon = if open {
         "icons/chevron-down.svg"
     } else {

@@ -4,8 +4,8 @@
 //! pointer.
 
 use super::{
-    DOT_GAP, FLOATING_PADDING, TabContext, TabFace, TabLayout, TabShape, TabState, ZOOM_ICON,
-    close_button, floating_new_tab, kind_icon, status_mark, zoom_mark,
+    DOT_GAP, FLOATING_NEW_TAB_WIDTH, FLOATING_PADDING, TabContext, TabFace, TabLayout, TabShape,
+    TabState, ZOOM_ICON, close_button, floating_new_tab, kind_icon, status_mark, zoom_mark,
 };
 use crate::{
     config::{FontConfig, Theme, corners, mix},
@@ -107,43 +107,48 @@ impl TabLayout for Pills {
                     })
                     .child(close_button(close, &probe, END, text, cx)),
             );
-        base.group(hover)
-            .px(px(MARGIN_X))
-            .py(px(MARGIN_Y))
-            .flex_none()
+        // The pill, not its margin, is the hover group, so the close button
+        // shows exactly where the layer hides a moving status under it.
+        let pill = div()
+            .group(hover)
             .flex()
-            .cursor_pointer()
+            .items_center()
+            .gap(px(GAP))
+            .min_w(px(crate::TAB_WIDTH - 2. * MARGIN_X))
+            .h_full()
+            .pl(px(PAD_LEFT))
+            .pr(px(PAD_RIGHT))
+            .rounded(px(corners::CONTROL))
+            .bg(cx.fill.over(cx.theme.surface, background))
+            .when(!state.selected, |pill| pill.hover(move |s| s.bg(rgb(wash))))
+            .text_color(rgb(text))
+            .child(chip)
             .child(
                 div()
                     .flex()
                     .items_center()
-                    .gap(px(GAP))
-                    .min_w(px(crate::TAB_WIDTH - 2. * MARGIN_X))
-                    .h_full()
-                    .pl(px(PAD_LEFT))
-                    .pr(px(PAD_RIGHT))
-                    .rounded(px(corners::CONTROL))
-                    .bg(cx.fill.over(cx.theme.surface, background))
-                    .when(!state.selected, |pill| pill.hover(move |s| s.bg(rgb(wash))))
-                    .text_color(rgb(text))
-                    .child(chip)
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(DOT_GAP))
-                            .child(label)
-                            .children(zoom_mark(zoomed, &probe, text, cx)),
-                    )
-                    .child(end),
+                    .gap(px(DOT_GAP))
+                    .child(label)
+                    .children(zoom_mark(zoomed, &probe, text, cx)),
             )
+            .child(end);
+        base.px(px(MARGIN_X))
+            .py(px(MARGIN_Y))
+            .flex_none()
+            .flex()
+            .cursor_pointer()
+            .child(crate::mark_layer::hidden_under_pointer(pill))
     }
 
     fn padding(&self) -> f32 {
         FLOATING_PADDING
     }
 
-    fn new_tab(&self, base: Stateful<Div>, icon: Svg, theme: &Theme) -> Stateful<Div> {
+    fn new_tab(&self, base: Stateful<Div>, icon: AnyElement, theme: &Theme) -> Stateful<Div> {
         floating_new_tab(base, icon, theme)
+    }
+
+    fn new_tab_width(&self) -> f32 {
+        FLOATING_NEW_TAB_WIDTH
     }
 }

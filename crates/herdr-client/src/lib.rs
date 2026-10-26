@@ -6,9 +6,11 @@
 #![cfg_attr(test, allow(clippy::disallowed_methods))]
 
 mod catalog;
-mod clipboard;
+pub mod clipboard;
 mod compat;
 mod connect;
+#[cfg(unix)]
+mod control_dir;
 mod discovery;
 mod environment;
 mod error;
@@ -19,6 +21,8 @@ mod handle;
 mod host_theme;
 mod limits;
 mod local_network;
+pub mod local_path;
+pub mod login_env;
 mod method;
 mod options;
 pub mod private_endpoint;
@@ -28,15 +32,17 @@ mod remote_host;
 mod script;
 pub mod scrollback;
 mod session;
-mod sessions;
-mod ssh;
+pub mod sessions;
+pub mod ssh;
 mod surface_images;
+pub mod text;
 mod transport;
 mod upload;
 pub mod workspaces;
-mod wsl;
+pub mod wsl;
 
 #[cfg(all(test, unix))]
+#[path = "../../test-support/executable.rs"]
 mod test_executable;
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
@@ -75,7 +81,8 @@ pub use sessions::{
     LocalSession, RemoteSession, SessionState, delete_local_session, delete_remote_session,
     list_local_sessions, list_remote_sessions,
 };
-pub use ssh::{Bridge, connect_command, script_command};
+pub use ssh::mux::Lane as SshLane;
+pub use ssh::{Bridge, SshChannel, connect_command, script_command, shared_script_command};
 pub use ssh::{
     Destination, FORWARD_READY, HostKeyFingerprint, HostKeyScan, HostProbe, NewHostKey, SshFailure,
     forward_command, probe_host, remote_config_value, remote_origin_url, resolve_destination,
