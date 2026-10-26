@@ -159,7 +159,9 @@ impl HerdrWindow {
             && self.activity_section().is_none()
             && let Some(panel) = self.activity.return_to
         {
-            self.show_activity_panel(panel, window, cx);
+            if !self.return_to_linear_issue(window, cx) {
+                self.show_activity_panel(panel, window, cx);
+            }
             return;
         }
         let Some(snapshot) = self.live.snapshot.clone() else {
@@ -401,6 +403,10 @@ impl HerdrWindow {
                 self.open_git_menu(anchor, window, cx);
                 return;
             }
+            Command::ToggleTickets => {
+                self.toggle_tickets(window, cx);
+                return;
+            }
             Command::SplitEditor => {
                 self.split_active_group(window, cx);
                 return;
@@ -536,6 +542,9 @@ impl HerdrWindow {
                 );
                 return;
             }
+            // Right after a Linear issue's worktree opened, Toggle Sidebar
+            // (Cmd-B) goes back to the issue instead (`orchestrator::section`).
+            Command::ToggleSidebar if self.return_to_linear_issue(window, cx) => return,
             Command::ToggleSidebar => self.toggle_sidebar(),
             Command::FocusNextRegion => return self.cycle_region(true, window, cx),
             Command::FocusPreviousRegion => return self.cycle_region(false, window, cx),
@@ -544,6 +553,10 @@ impl HerdrWindow {
                 self.status_bar_visible = !self.status_bar_visible;
                 window.focus(&self.focus, cx);
                 cx.notify();
+                return;
+            }
+            Command::ToggleSidebarPorts => {
+                self.toggle_sidebar_ports(cx);
                 return;
             }
             Command::ToggleZenMode => {

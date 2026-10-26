@@ -1,13 +1,16 @@
 //! The bar's count bubbles: what needs the user, as the Overview counted it
 //! on the last tick, and from the orchestrator views the window holds, open
-//! pull requests and open issues, the open critical and high Dependabot
-//! alerts, and the automation scripts waiting for approval or after a
-//! failed run. An item two views list, such as one repository open in two
+//! pull requests, open issues, and open Linear issues, the open critical and
+//! high Dependabot alerts, and the automation scripts waiting for approval or
+//! after a failed run. An item two views list, such as one repository open in two
 //! workspaces, counts once. Each count keeps when its newest item last
 //! changed, which the bar compares with when the section was last open.
 
 use super::ActivityPanel;
-use crate::{HerdrWindow, orchestrator::Item};
+use crate::{
+    HerdrWindow,
+    orchestrator::{Item, Provider},
+};
 use chrono::{DateTime, Utc};
 use gpui::App;
 use std::collections::HashSet;
@@ -17,6 +20,7 @@ pub(super) struct Counts {
     needs: Count,
     pull_requests: Count,
     issues: Count,
+    linear: Count,
     security: Count,
     automations: Count,
 }
@@ -39,6 +43,8 @@ impl Counts {
             }
             let count = if item.pull_request.is_some() {
                 &mut self.pull_requests
+            } else if item.key.source.provider == Provider::Linear {
+                &mut self.linear
             } else {
                 &mut self.issues
             };
@@ -52,9 +58,13 @@ impl Counts {
     fn count(self, panel: ActivityPanel) -> Option<Count> {
         match panel {
             ActivityPanel::Overview => Some(self.needs),
-            ActivityPanel::Workspaces | ActivityPanel::Usage => None,
+            ActivityPanel::Workspaces
+            | ActivityPanel::Tickets
+            | ActivityPanel::TicketsNative
+            | ActivityPanel::Usage => None,
             ActivityPanel::PullRequests => Some(self.pull_requests),
             ActivityPanel::Issues => Some(self.issues),
+            ActivityPanel::Linear => Some(self.linear),
             ActivityPanel::Security => Some(self.security),
             ActivityPanel::Automations => Some(self.automations),
         }

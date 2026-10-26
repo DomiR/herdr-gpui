@@ -1150,7 +1150,13 @@ stops listening, the host disconnects, scanning is turned off, or the window
 closes; a page reopened after a dropped tunnel keeps its address while that
 local port is free. Windows clients
 do not scan this machine. Set top-level `show_listening_ports = false`, or
-turn off **Show listening ports** in Settings, to hide them and stop scanning.
+turn off **Show listening ports** in Settings > General, to hide them
+everywhere and stop scanning. To keep them in the status bar but take the
+line away from sidebar rows, set `ports = false` under `[sidebar]`, turn off
+**Show listening ports** in Settings > Sidebar, or run **Toggle Sidebar
+Ports** from the command palette (bindable as `toggle_sidebar_ports` under
+`[keybindings]`, unbound by default). Scanning goes on while the status bar
+still shows them.
 
 Set top-level `show_network_quality = true` to show latency and packet loss
 from this machine in the status bar, after CPU and memory: `NET 31ms 0%`.
@@ -2174,6 +2180,76 @@ window at once, and `herdr-gpui ui panel NAME` shows a section.
 
 - **Workspaces** is the sidebar beside the terminals. Clicking it while shown
   folds the sidebar to its rail.
+- **Tickets** shows the ticket board of a herdr-dog server running on this
+  machine, in herdr-dog's own web UI, from `http://localhost:7778/tickets`,
+  herdr-dog's web development server (`bun run dev` in a herdr-dog
+  checkout), unless `[tickets] url` names another address. The page is
+  created the first time the section opens and keeps its state while other
+  sections show; links it opens in a new window go to the system browser.
+  Builds without embedded pages (Linux) offer to open it in the system
+  browser instead. `toggle_tickets` (palette: **Toggle Tickets**, no
+  default shortcut) shows the section, or the terminals again while it
+  shows.
+- **Linear** lists your open Linear issues and those of your teams' current
+  cycles, once Linear is connected (see [Linear](#linear)), with Dispatch on
+  them as in Issues. They are yours rather than a repository's, so Issues no
+  longer lists them. Its **Mine** and **Current cycle** filters are its own.
+  Each issue shows its workflow state (such as In Progress) in Linear's
+  color, and **Status** in the filters narrows to one. **List** and
+  **Board** in the header switch to a board with a lane per state, in the
+  team's order, drawn like Tickets (native); search and filters narrow it
+  too, and a card opens the issue's page beside it. Drag a card to another
+  lane to move the issue to that state in Linear: the card moves at once,
+  and goes back with a notice if Linear refuses. The board also offers an
+  empty lane for each state of the listed issues' teams but Canceled, so an
+  issue can move where nothing is yet. When an issue's newest run has a
+  workspace, **Go to worktree** shows on its card or row on hover; after
+  going there, Cmd-B (or Back) returns to the Linear section with the
+  issue's page open, and Cmd-B toggles the sidebar again after that. The
+  board and list keep their scroll positions across that trip. On the
+  board, cards follow Linear's own order within a lane; drop a card between
+  two others, in its lane or another, and its place is saved in Linear, with
+  a line marking where it lands. **Hide statuses** in the header picks
+  workflow states to leave out, from the board's lanes and the list, and
+  counts how many are hidden. **New issue** in the header (or C while the
+  list has focus) opens a dialog like Linear's: team, title, a Markdown
+  description, and chips for status, priority, assignee, project, estimate,
+  labels, and cycle. It starts in the team's default state, assigned to
+  you, in the active cycle; a lane's or status group's **+** starts it in
+  that state. Cmd-Enter creates the issue and opens its page; **Create
+  more** keeps the dialog open for the next one. The list groups issues as
+  Linear does, by assignee (you first) and then by status, each group
+  folding, and each row shows priority, identifier, state, title, its
+  parent, and chips for linked pull requests (a click opens one), project,
+  and estimate. Board cards show the identifier and parent, the state and a
+  title of up to two lines, and chips for priority, project, estimate,
+  sub-issue progress, and pull requests. Descriptions draw as
+  Markdown, images included: Linear's files come back signed for an hour
+  with each sync, so they load without your key. A Linear link, from an
+  issue's page or its description, opens in the Linear app when it is
+  installed (macOS), else in the system browser, never in a browser tab.
+- **Tickets (native)** is the same board drawn by the app, still being
+  built. It reads herdr-dog's API at `[tickets] api` (default
+  `http://127.0.0.1:4319/`, its server), so herdr-dog's web app need not
+  run: a lane per status with each ticket's priority, labels, assignee, and
+  sub-ticket progress, labels to filter by, and each ticket's page with its
+  description, sub-tickets, relations, and comments. A status picked on the
+  page moves the ticket to the end of that lane. **New ticket**, or a
+  lane's **+**, opens a form under the header (Enter creates the ticket and
+  opens its page, Escape drops it); **Add a comment** and **Reply to the
+  thread…** open a Markdown composer like herdr-dog's: Write and Preview, a
+  toolbar (heading, bold, italic, code, link, quote, lists, tasks), Cmd-B,
+  I, E, and K, Enter for a new line that continues a list, Cmd-Enter to
+  send as you, and Escape to cancel. A
+  ticket herdr-dog started shows its worktree, and **Open worktree** focuses
+  that folder's workspace, or starts one, as **Open Project** does; Back
+  returns to the board. Cmd-Down scrolls the page, or every lane, to its
+  end, and Cmd-Up back. Descriptions and comments draw as Markdown, with
+  herdr-dog's attached images. **Wide** and **Thin** (or W) switch the page's text
+  between the whole width and a readable column. The page and each lane
+  lay out only the rows that show, so a long ticket or lane stays fast. It reads the board every 10 seconds while shown.
+  Editing a ticket's text, labels, and other properties is only in the web
+  UI so far.
 - **Overview** shows what needs you on every connected host: agents waiting on
   you and failed runs first, in a card of their own, then finished agents
   ready for review, working agents by host, and idle ones. Hovering a row
@@ -2211,8 +2287,8 @@ restart an agent already waiting on you counts as new once.
 
 ## Orchestrator
 
-The activity bar's **Pull requests** and **Issues** sections list, across the
-window, every repository the workspaces of every connected local or SSH host
+The activity bar's **Pull requests**, **Issues**, and **Linear** sections
+list, across the window, every repository the workspaces of every connected local or SSH host
 hold: their GitHub issues and pull requests or GitLab issues, their
 [Beads](https://github.com/steveyegge/beads) issues when a main checkout has a
 `.beads` folder, your open Linear issues and those of your teams' current
@@ -2223,29 +2299,36 @@ show their errors. Worktrees of one repository count once, and each repository
 syncs on its own, so up to 32 are listed. Linear is yours rather than a
 project's, so it is listed once, with the first project's. A row shows its
 project while several are listed. Under the search, a row of pills picks
-backends (GitHub, GitLab, Beads, Linear) and projects, each with its count;
+backends (GitHub, GitLab, and Beads in Issues) and projects, each with its count;
 none picked lists all. The Issues row of a group's "…" menu or of a
 workspace's popover, the Show Issues command, and `herdr-gpui orchestrator`
 open the Issues section narrowed to that workspace's project. A repository
 without a GitHub remote has no GitHub source; the header says "no GitHub
 remote" when none of them has one.
 
-- **Issues** lists open GitHub or GitLab issues, beads, and Linear issues
-  together, grouped by priority. A bead's or Linear issue's children sit under
-  it. The **Filters** button unfolds a column narrowing to items with a run,
-  blocked ones, your Linear issues (Mine), the current cycle, one source, or
-  one label; folded, the filters in use show as chips that clear them. Mine
-  and Current cycle turn on the first time Linear issues arrive, unless you
-  already picked a filter. Five sorts are offered. Search matches every word
+- **Issues** lists open GitHub or GitLab issues and beads together, grouped
+  by priority; **Linear** lists Linear issues the same way, each section with
+  filters of its own. A bead's children sit under it; a Linear sub-issue has its own row naming its parent. The
+  **Filters** button unfolds a column narrowing to items with a run, blocked
+  ones, your Linear issues (Mine), the current cycle, one source, or one
+  label; folded, the filters in use show as chips that clear them. In Linear,
+  Mine and Current cycle turn on the first time Linear issues arrive, unless
+  you already picked a filter. Five sorts are offered. Search matches every word
   you type across title, id, author, labels, state, and body,
   case-insensitively unless a word has a capital, and keeps a match's parents
   in view. **Start agent** on a row opens the dispatch dialog.
-- **Pull requests** is a table grouped by what each waits on: a review asked
-  of you, your own to fix (changes requested or failing checks), those ready to
-  merge, the rest, and recently closed or merged ones. Each row shows its
-  branch, author, review state, its checks as colored pills, diff size, its
-  run, and age. Review state, review requests, and checks are read from GitHub
-  after every sync and kept in memory only, never in the shared database.
+- **Pull requests** is a table grouped by what each waits on (the default),
+  or, from the sort menu's **Group by**, by creator: one heading per author, by
+  name, with pull requests of no known author last. By what each waits on, the
+  groups are: a review asked of you, your own to fix (changes requested or
+  failing checks), those ready to merge, the rest, and recently closed or
+  merged ones. Each row shows its branch, author, review state, its checks as
+  colored pills, diff size, its run, and age. When more than one person has
+  pull requests listed, a row of people pills picks whose to show, with how
+  many each opened; pick several to see all of theirs, or **Everyone** to
+  clear the pick. Review state, review requests, and checks are read from
+  GitHub after every sync and kept in memory only, never in the shared
+  database.
 
 Runs have no list of their own: the [Overview](#activity-bar) shows the agents and
 failed runs that need you, and an item's **Agent** page shows its runs. Their
@@ -2286,7 +2369,7 @@ workspace shows. These runs open their workspace but have no controls.
 
 ### Linear
 
-Click the Linear chip in the tab's header to connect: paste a personal API key,
+Click the Linear chip in the Linear section's header to connect: paste a personal API key,
 which you create in Linear under Settings, Security & access. The key is saved
 like the GitHub sign-in (the macOS Keychain, the Linux Secret Service, or with
 `[github] allow_plaintext_credentials = true` a private file), and the same
@@ -2294,16 +2377,14 @@ dialog removes it.
 When `LINEAR_API_KEY` is set, it is used instead of a saved key. The key is read
 when the tab opens and on refresh, not on every sync.
 
-The Orchestrator then lists two sets of open Linear issues, together and each
-once: those assigned to you, and those in the active cycle of any team you
-belong to, at most 500 of each, the most recently updated first. Two pills on
-the Issues tab narrow them: **Mine** keeps the issues assigned to you, and
-**Current cycle** keeps those in their team's active cycle. Both are Linear
-only: GitHub issues and beads have no assignee or cycle in the shared data, so
-either pill hides them. The first time Linear issues arrive, both turn on,
-showing your work in the current cycle, unless you already clicked a filter.
-Mine is one filter across tabs, so it also narrows the Pull requests tab to
-the ones you opened. A Linear issue's page shows its assignee and cycle.
+The **Linear** section then lists two sets of open Linear issues, together and
+each once: those assigned to you, and those in the active cycle of any team
+you belong to, at most 500 of each, the most recently updated first. They are
+listed only there, never in Issues. Two pills narrow them: **Mine** keeps the
+issues assigned to you, and **Current cycle** keeps those in their team's
+active cycle. The first time Linear issues arrive, both turn on, showing your
+work in the current cycle, unless you already clicked a filter. The Linear
+section's filters are its own, so they never narrow Issues or Pull requests. A Linear issue's page shows its assignee and cycle.
 Dispatch uses the branch name Linear
 gives the issue. Any branch or Herdr workspace whose name holds an issue's
 identifier as a word, such as `dominique/eng-12-fix` for `ENG-12`, is found as

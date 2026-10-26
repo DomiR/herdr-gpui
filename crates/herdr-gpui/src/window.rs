@@ -377,6 +377,11 @@ pub(crate) struct HerdrWindow {
     /// told. It trails the system while the theme for a new appearance
     /// loads, so Herdr never pairs the new appearance with the old colors.
     pub(crate) theme_light: bool,
+    /// The Tickets section's board when drawn natively.
+    pub(crate) ticket_board: crate::tickets::Native,
+    /// The Tickets section's page, which this window creates the first time
+    /// the section shows.
+    pub(crate) tickets: crate::browser::TicketsPage,
     /// Last title pushed to the OS, so the window is renamed only when it changes.
     pub(crate) title: String,
     pub(crate) toasts_hidden: bool,
@@ -664,6 +669,7 @@ impl HerdrWindow {
         self.poll_overview(cx);
         self.poll_security(cx);
         self.poll_automations(cx);
+        self.poll_tickets(cx);
         if self.update_system_load() {
             cx.notify();
         }

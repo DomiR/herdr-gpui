@@ -292,6 +292,8 @@ impl HerdrWindow {
             terminal_notes: Default::default(),
             theme,
             theme_light: crate::app::light_appearance(cx),
+            ticket_board: Default::default(),
+            tickets: Default::default(),
             title: WINDOW_TITLE.to_owned(),
             toasts_hidden: false,
             tunnels: Default::default(),

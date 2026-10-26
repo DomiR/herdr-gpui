@@ -310,16 +310,25 @@ impl Pages {
         window: &mut Window,
         cx: &mut Context<HerdrWindow>,
     ) -> crate::Result<()> {
+        match &tab.location {
+            Some(location) => self.ensure_page(tab.id, location, window, cx),
+            None => Ok(()),
+        }
+    }
+
+    /// Creates page `id` at `location` unless the window has it already, for
+    /// a store tab or the window's own Tickets page.
+    pub(crate) fn ensure_page(
+        &mut self,
+        id: TabId,
+        location: &Location,
+        window: &mut Window,
+        cx: &mut Context<HerdrWindow>,
+    ) -> crate::Result<()> {
         // A review tab is drawn by the app; only pages get a web view.
-        let Some(location) = tab
-            .location
-            .as_ref()
-            .filter(|location| location.is_page())
-            .filter(|_| !self.pages.contains_key(&tab.id) && !self.is_building(tab.id))
-        else {
+        if !location.is_page() || self.pages.contains_key(&id) || self.is_building(id) {
             return Ok(());
-        };
-        let id = tab.id;
+        }
         let posted = self.outbox.sender.clone();
         let preview = match &self.preview {
             Some(preview) => preview.clone(),

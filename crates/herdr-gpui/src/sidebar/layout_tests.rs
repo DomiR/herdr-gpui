@@ -83,6 +83,8 @@ mod selection_scroll;
 #[cfg(test)]
 mod sidebar_cache;
 #[cfg(test)]
+mod sidebar_ports;
+#[cfg(test)]
 mod spacing_overrides;
 #[cfg(test)]
 mod split_pane;
@@ -593,6 +595,8 @@ pub(crate) fn fixture_window(window: &mut Window, cx: &mut Context<HerdrWindow>)
         },
         theme: Default::default(),
         theme_light: crate::app::light_appearance(cx),
+        ticket_board: Default::default(),
+        tickets: Default::default(),
         config_load: None,
         config_watch: None,
         config_load_revision: 0,

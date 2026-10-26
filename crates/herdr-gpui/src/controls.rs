@@ -45,6 +45,8 @@ pub enum Command {
     TabNumber(u8),
     ToggleSidebar,
     ToggleStatusBar,
+    /// Shows or hides the listening ports under sidebar rows, and saves it.
+    ToggleSidebarPorts,
     /// Moves keyboard focus to the next of the terminal, the title bar, the
     /// sidebar, and the status bar, where Tab moves between controls.
     FocusNextRegion,
@@ -80,6 +82,8 @@ pub enum Command {
     ReviewChanges,
     /// The titlebar's Git menu for the focused checkout.
     GitMenu,
+    /// Shows the Tickets section, or the terminals again while it shows.
+    ToggleTickets,
     InstallBrowserSkill,
     SplitEditor,
     OpenCode,
@@ -541,6 +545,11 @@ pub const COMMANDS: &[CommandInfo] = &[
         label: "Toggle Status Bar",
     },
     CommandInfo {
+        command: Command::ToggleSidebarPorts,
+        name: "toggle_sidebar_ports",
+        label: "Toggle Sidebar Ports",
+    },
+    CommandInfo {
         command: Command::FocusNextRegion,
         name: "focus_next_region",
         label: "Focus Next Region",
@@ -664,6 +673,11 @@ pub const COMMANDS: &[CommandInfo] = &[
         command: Command::GitMenu,
         name: "git_menu",
         label: "Git Menu",
+    },
+    CommandInfo {
+        command: Command::ToggleTickets,
+        name: "toggle_tickets",
+        label: "Toggle Tickets",
     },
     CommandInfo {
         command: Command::InstallBrowserSkill,
@@ -849,6 +863,7 @@ pub fn request(command: Command, snapshot: &ClientShellSnapshot) -> Option<(Meth
         | Command::AnnotateSelection
         | Command::ToggleSidebar
         | Command::ToggleStatusBar
+        | Command::ToggleSidebarPorts
         | Command::FocusNextRegion
         | Command::FocusPreviousRegion
         | Command::ToggleZenMode
@@ -875,6 +890,7 @@ pub fn request(command: Command, snapshot: &ClientShellSnapshot) -> Option<(Meth
         | Command::OpenOrchestrator
         | Command::ReviewChanges
         | Command::GitMenu
+        | Command::ToggleTickets
         | Command::InstallBrowserSkill
         | Command::SplitEditor
         | Command::OpenCode

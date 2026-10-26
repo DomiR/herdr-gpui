@@ -330,6 +330,7 @@ impl HerdrWindow {
                 | Command::OpenOrchestrator
                 | Command::ReviewChanges
                 | Command::GitMenu
+                | Command::ToggleTickets
                 | Command::SplitEditor
                 | Command::MoveTabPrevious
                 | Command::MoveTabNext
@@ -374,6 +375,7 @@ impl HerdrWindow {
                 | Command::OpenCode
                 | Command::OpenPx0
                 | Command::ToggleStatusBar
+                | Command::ToggleSidebarPorts
                 | Command::FocusNextRegion
                 | Command::FocusPreviousRegion
                 | Command::ToggleZenMode

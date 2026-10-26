@@ -56,6 +56,7 @@ mod store;
 mod tab_appear;
 mod tab_move;
 mod tab_scroll;
+mod tickets;
 #[cfg(target_os = "macos")]
 mod underlay;
 mod view;
@@ -89,6 +90,7 @@ pub(crate) use snapshot::png as page_png;
 pub(crate) use store::{Scope, Store, Tab, TabId};
 pub(crate) use tab_appear::{Leaving, Listed};
 pub(crate) use tab_scroll::{Thumb, ThumbDrag};
+pub(crate) use tickets::TicketsPage;
 #[cfg(target_os = "macos")]
 pub(crate) use underlay::{
     AroundPages, around as around_pages, ground as ground_around_pages,

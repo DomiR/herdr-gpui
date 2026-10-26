@@ -10,8 +10,10 @@ mod back;
 mod bubbles;
 mod counts;
 mod layout;
+mod linear_return;
 mod sections;
 mod startup_counts;
+mod tickets;
 mod toggle;
 
 fn item(native_id: &str, title: &str) -> Item {
