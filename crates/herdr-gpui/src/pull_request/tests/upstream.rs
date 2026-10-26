@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn upstream_matches_renamed_fork_branch_and_rejects_unrelated_heads() {
-    let head = super::super::fetch::upstream_head("pr/138", |key| {
+    let head = super::super::fetch::upstream_head("pr/138", ("example", "project"), |key| {
         Ok(match key {
             "branch.pr/138.remote" => Some("contributor".into()),
             "branch.pr/138.merge" => Some("refs/heads/feat/inline-ime-preedit".into()),
@@ -59,7 +59,8 @@ fn upstream_matches_renamed_fork_branch_and_rejects_unrelated_heads() {
 
 #[test]
 fn no_upstream_preserves_origin_owner_and_local_branch_matching() {
-    let head = super::super::fetch::upstream_head("feature", |_| Ok(None)).unwrap();
+    let head = super::super::fetch::upstream_head("feature", ("example", "project"), |_| Ok(None))
+        .unwrap();
     assert!(head.is_none());
     let graphql =
         |nodes| serde_json::json!({"data":{"repository":{"pullRequests":{"nodes":nodes}}}});
@@ -90,7 +91,7 @@ fn no_upstream_preserves_origin_owner_and_local_branch_matching() {
 fn unsupported_upstream_and_config_errors_do_not_fall_back() {
     for merge in ["refs/heads/feature", "refs/pull/138/head"] {
         assert!(
-            super::super::fetch::upstream_head("feature", |key| Ok(Some(
+            super::super::fetch::upstream_head("feature", ("example", "project"), |key| Ok(Some(
                 match key {
                     "branch.feature.remote" => "fork",
                     "branch.feature.merge" => merge,
@@ -103,7 +104,44 @@ fn unsupported_upstream_and_config_errors_do_not_fall_back() {
         );
     }
     assert!(matches!(
-        super::super::fetch::upstream_head("feature", |_| Err(Error::PrCancelled)),
+        super::super::fetch::upstream_head("feature", ("example", "project"), |_| Err(
+            Error::PrCancelled
+        )),
         Err(Error::PrCancelled)
     ));
+}
+
+/// A worktree branched from `origin/dev` tracks `dev` but pushes to its own
+/// name; its lookup must not find the pull request whose head is `dev`.
+#[test]
+fn a_branch_tracking_the_base_repositorys_dev_is_looked_up_by_its_own_name() {
+    let config = |push_default: Option<&'static str>| {
+        move |key: &str| {
+            Ok(match key {
+                "branch.feature/ap-916.remote" => Some("origin".into()),
+                "branch.feature/ap-916.merge" => Some("refs/heads/dev".into()),
+                "remote.origin.url" => Some("git@github.com:Example/Project.git".into()),
+                "push.default" => push_default.map(Into::into),
+                _ => panic!("unexpected config read: {key}"),
+            })
+        }
+    };
+    let head =
+        super::super::fetch::upstream_head("feature/ap-916", ("example", "project"), config(None))
+            .unwrap()
+            .unwrap();
+    assert_eq!(head.branch, "feature/ap-916");
+    // Still the base repository's head, in whatever case the remote names it.
+    assert!(
+        head.owner.eq_ignore_ascii_case("example") && head.repo.eq_ignore_ascii_case("project")
+    );
+    // Pushing to the upstream makes it the pull request's head again.
+    let head = super::super::fetch::upstream_head(
+        "feature/ap-916",
+        ("example", "project"),
+        config(Some("upstream")),
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(head.branch, "dev");
 }

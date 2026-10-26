@@ -158,7 +158,7 @@ pub(super) fn target(
             let checkout = local_checkout(input, deadline, cancelled)?;
             let base = super::remote::base_repository(&checkout, deadline, cancelled)?;
             let repository = (base.owner, base.repo);
-            let head = upstream_head(&input.branch, |key| {
+            let head = upstream_head(&input.branch, (&repository.0, &repository.1), |key| {
                 let value = git(
                     &checkout,
                     &["config", "--default", "", "--get", key],
@@ -195,7 +195,7 @@ pub(super) fn target(
         Origin::Ssh(target) => {
             let repository = origins.resolve(target, input, Instant::now(), deadline, cancelled)?;
             let key = input.repo_key.as_deref().ok_or(Error::PrMetadata)?;
-            let head = upstream_head(&input.branch, |name| {
+            let head = upstream_head(&input.branch, (&repository.0, &repository.1), |name| {
                 let timeout = deadline
                     .checked_duration_since(Instant::now())
                     .ok_or(Error::PrTimeout)?;
@@ -264,7 +264,8 @@ pub(crate) fn by_number(
     super::parse::parse_by_number(response, owner, repo, number)
 }
 
-/// The remote head configured for this local branch, independent of its local name.
+/// The remote head a local branch's pull request comes from: its upstream
+/// when the branch pushes there, else its own name on the upstream's remote.
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct Head {
     pub owner: String,
@@ -274,6 +275,7 @@ pub(super) struct Head {
 
 pub(super) fn upstream_head(
     branch: &str,
+    base: (&str, &str),
     mut config: impl FnMut(&str) -> crate::Result<Option<String>>,
 ) -> crate::Result<Option<Head>> {
     let remote = config(&format!("branch.{branch}.remote"))?;
@@ -283,16 +285,29 @@ pub(super) fn upstream_head(
     };
     // An explicitly configured but unsupported upstream must not fall back to
     // a potentially unrelated origin branch (including local `.` upstreams).
-    let branch = merge
+    let upstream = merge
         .strip_prefix("refs/heads/")
-        .filter(|branch| !branch.is_empty())
+        .filter(|upstream| !upstream.is_empty())
         .ok_or(Error::PrBranch)?;
     let url = config(&format!("remote.{remote}.url"))?.ok_or(Error::PrOrigin)?;
     let (owner, repo) = crate::avatars::github_repo(&url).ok_or(Error::PrOrigin)?;
+    // A branch made from another branch of the base repository, such as
+    // `origin/dev`, tracks it but still pushes to its own name, so its pull
+    // request's head is its own name: taking the upstream's would show the
+    // base branch's pull request on every such worktree. A fork's branch, a
+    // renamed checkout of someone's pull request, keeps its upstream, as
+    // does a branch that pushes to its upstream (`push.default=upstream`).
+    let in_base = owner.eq_ignore_ascii_case(base.0) && repo.eq_ignore_ascii_case(base.1);
+    let follows = upstream == branch
+        || !in_base
+        || matches!(
+            config("push.default")?.as_deref(),
+            Some("upstream" | "tracking")
+        );
     Ok(Some(Head {
         owner,
         repo,
-        branch: branch.to_owned(),
+        branch: if follows { upstream } else { branch }.to_owned(),
     }))
 }
 
