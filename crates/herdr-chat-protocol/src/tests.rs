@@ -10,6 +10,7 @@ mod display;
 mod endpoint;
 mod frame;
 mod media;
+mod notices;
 mod wire;
 
 fn text(id: u64, kind: fn(String) -> EntryKind, value: &str) -> Entry {
@@ -24,7 +25,7 @@ fn agent(id: u64, value: &str) -> Entry {
 }
 
 fn user(id: u64, value: &str) -> Entry {
-    text(id, |text| EntryKind::User { text }, value)
+    text(id, |text| EntryKind::User { text, files: 0 }, value)
 }
 
 fn tool(id: u64, status: ToolStatus) -> Entry {

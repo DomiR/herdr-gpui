@@ -700,7 +700,7 @@ impl Worker {
             if !supported || self.retry.iter().any(|(waiting, _)| *waiting == key) {
                 continue;
             }
-            self.set_state(&key, SyncState::Syncing);
+            self.set_syncing(&key);
             self.publish();
             // Only this source's own GitHub reply may set its pause: a delay
             // left by a pull request lookup or another source must not apply.
@@ -714,7 +714,19 @@ impl Worker {
                 _ => key,
             };
             let state = match result {
-                Ok(state) => state,
+                // The view shows no sync times, so the log keeps them.
+                Ok(state) => {
+                    tracing::debug!(
+                        category = "orchestrator_sync",
+                        provider = ?key.provider,
+                        host = key.host.as_str(),
+                        repository = key.repository.as_str(),
+                        elapsed_ms = now.elapsed().as_millis(),
+                        state = ?state,
+                        "Orchestrator source synced"
+                    );
+                    state
+                }
                 Err(Error::Cancelled) => return,
                 Err(error) => {
                     let wait = retry_wait(&error, self.cooldown.take());

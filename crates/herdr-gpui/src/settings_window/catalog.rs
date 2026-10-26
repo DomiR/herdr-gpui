@@ -298,6 +298,7 @@ pub(super) const CATALOG: &[Entry] = &[
     // One per `[features]` flag; a test checks none is missing.
     // keep-sorted start
     feature(Feature::AcpChats),
+    feature(Feature::QaMenu),
     feature(Feature::SidebarHoverMenu),
     // keep-sorted end
     entry(
@@ -496,7 +497,7 @@ pub(super) const CATALOG: &[Entry] = &[
         Section::RemoteControl,
         "remote-idle",
         "Forget idle devices after",
-        "Days a paired device may stay away before it must pair again.",
+        "A day, a week, a month, or never: how long a paired device may stay away.",
     ),
     entry(
         Section::RemoteControl,

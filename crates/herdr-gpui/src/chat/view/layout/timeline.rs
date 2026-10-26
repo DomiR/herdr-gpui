@@ -1,11 +1,11 @@
 //! Entries on a timeline: a gutter down the left marks each entry, with an
 //! avatar where the speaker changes and a dot colored by state for the
 //! agent's thoughts, tool calls, and notices. The line through the gutter
-//! breaks at each turn's summary. The composer is one card, its settings
-//! along the foot.
+//! breaks at each turn's summary. The composer is one card, filled a
+//! shade off the background with no border, its settings along the foot.
 
 use super::{
-    super::{Hues, agent_icon, column},
+    super::{Hues, agent_icon},
     ChatLayout, ComposerParts, Look, Row, Side, side, summary_row,
 };
 use crate::{config::corners, notifications::safe_text};
@@ -22,7 +22,7 @@ pub(super) struct Timeline;
 impl ChatLayout for Timeline {
     fn row(&self, row: Row<'_>, look: &Look<'_>) -> AnyElement {
         let Some(this_side) = row.side() else {
-            return summary_row(row, SPACING + 4.);
+            return summary_row(row, look, SPACING + 4.);
         };
         let speaker = row.speaker();
         let theme = look.theme;
@@ -56,7 +56,7 @@ impl ChatLayout for Timeline {
                 .font_weight(FontWeight::SEMIBOLD)
                 .child(name)
         });
-        column(
+        look.column(
             div()
                 .id(("chat-entry", row.entry.id.0))
                 .flex()
@@ -86,9 +86,11 @@ impl ChatLayout for Timeline {
             .flex()
             .flex_col()
             .rounded(px(corners::PANEL))
-            .border_1()
-            .border_color(rgb(theme.primary()))
-            .bg(rgb(theme.background))
+            .bg(rgb(crate::config::mix(
+                theme.background,
+                theme.foreground,
+                5,
+            )))
             .children(parts.chips)
             .child(parts.draft.px(px(14.)).pt(px(12.)).pb(px(8.)))
             .child(

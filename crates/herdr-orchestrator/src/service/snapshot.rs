@@ -25,7 +25,10 @@ pub struct Notice {
 /// How one source is doing.
 #[derive(Clone, Debug)]
 pub enum SyncState {
-    Syncing,
+    /// With the count its last sync reported, shown until this one ends.
+    Syncing {
+        count: Option<usize>,
+    },
     Synced {
         at: DateTime<Utc>,
         count: usize,

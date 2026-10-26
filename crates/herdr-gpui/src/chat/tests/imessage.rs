@@ -11,6 +11,8 @@ use crate::{HerdrWindow, config::ChatLayoutMode};
 use gpui::{Entity, TestAppContext, VisualTestContext};
 use herdr_client::ConnectTarget;
 
+mod copy;
+
 fn imessage(view: &Entity<HerdrWindow>, program: &Program, cx: &mut VisualTestContext) {
     view.update(cx, |view, cx| {
         view.set_chat_layout_with(ChatLayoutMode::IMessage, |_| Ok(()), cx)
@@ -38,6 +40,10 @@ fn the_user_speaks_on_the_right_and_the_agent_on_the_left(cx: &mut TestAppContex
     assert!(reply.size.width > reply.size.height, "{reply:?}");
     let copy = cx.debug_bounds("chat-copy-2").unwrap();
     assert!(copy.left() >= reply.left() && copy.right() <= reply.right());
+    assert!(
+        cx.debug_bounds("chat-copy-footer-2").is_none(),
+        "plain prose stays compact"
+    );
     // The prompt was answered.
     assert!(cx.debug_bounds("chat-delivered").is_none());
 }
@@ -54,6 +60,7 @@ fn an_unanswered_prompt_reads_delivered(cx: &mut TestAppContext) {
             id: EntryId(2),
             kind: EntryKind::User {
                 text: "Fix it".into(),
+                files: 0,
             },
         },
     ];
@@ -94,6 +101,7 @@ fn typing_shows_while_the_agent_works(cx: &mut TestAppContext) {
         id: EntryId(1),
         kind: EntryKind::User {
             text: "Fix it".into(),
+            files: 0,
         },
     }];
     let snapshot = ServerMessage::Snapshot {
@@ -131,6 +139,7 @@ fn a_streaming_reply_takes_the_whole_width_until_it_ends(cx: &mut TestAppContext
             id: EntryId(1),
             kind: EntryKind::User {
                 text: "Fix it".into(),
+                files: 0,
             },
         },
         agent(2, "On it."),

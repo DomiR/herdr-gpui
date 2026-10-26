@@ -66,7 +66,7 @@ pub(super) fn worker(dir: &std::path::Path) -> Worker {
         .into_iter()
         .map(|(key, _)| SourceStatus {
             key,
-            state: SyncState::Syncing,
+            state: SyncState::Syncing { count: None },
         })
         .collect();
     worker.snapshot.repo = Some(info);

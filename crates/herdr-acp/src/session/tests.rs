@@ -12,18 +12,23 @@ use crate::rpc::{Inbound, Outbox};
 mod attach;
 mod attachments;
 mod auto_accept;
+mod bounds;
 mod commands;
 mod flow;
 mod linked_pictures;
 mod media;
 mod permissions;
+mod prompt_titles;
 mod settings;
 
 type Reports = Rc<RefCell<Vec<Activity>>>;
-type TestSession = Session<Box<dyn FnMut(Activity)>>;
+type Prompts = Rc<RefCell<Vec<String>>>;
+type TestSession = Session<Box<dyn FnMut(Update)>>;
 
 struct Harness {
     agent: Receiver<Vec<u8>>,
+    /// The prompts passed on for Herdr.
+    prompts: Prompts,
     reports: Reports,
     session: TestSession,
 }
@@ -42,14 +47,19 @@ fn config() -> Config {
 fn harness_with(config: Config) -> Harness {
     let (sender, agent) = bounded(64);
     let reports: Reports = Rc::default();
-    let sink = Rc::clone(&reports);
+    let prompts: Prompts = Rc::default();
+    let (sink, prompt_sink) = (Rc::clone(&reports), Rc::clone(&prompts));
     let session = Session::new(
         config,
         Outbox(sender),
-        Box::new(move |activity| sink.borrow_mut().push(activity)) as Box<dyn FnMut(Activity)>,
+        Box::new(move |update| match update {
+            Update::Activity(activity) => sink.borrow_mut().push(activity),
+            Update::Prompt(prompt) => prompt_sink.borrow_mut().push(prompt),
+        }) as Box<dyn FnMut(Update)>,
     );
     Harness {
         agent,
+        prompts,
         reports,
         session,
     }
@@ -137,7 +147,7 @@ impl Harness {
             .entries
             .iter()
             .filter_map(|entry| match &entry.kind {
-                EntryKind::Notice { level, text } => Some((*level, text.clone())),
+                EntryKind::Notice { level, text, .. } => Some((*level, text.clone())),
                 _ => None,
             })
             .collect()
