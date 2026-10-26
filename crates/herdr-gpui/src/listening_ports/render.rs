@@ -6,8 +6,9 @@ use super::{
     tunnel::{self, Key},
 };
 use crate::{
+    app::InitialAppearance,
     browser::WebUrl,
-    config::Theme,
+    config::{Config, Theme, preferences::Preference},
     window::{Flash, HerdrWindow},
 };
 use gpui::{prelude::*, *};
@@ -57,6 +58,45 @@ impl HerdrWindow {
         let daemon = super::Daemon::of(&endpoint.connection.target)?;
         let listed = self.listening_ports.get(&daemon, workspace)?;
         Some((endpoint.id.as_str(), workspace, listed))
+    }
+
+    /// Whether sidebar rows carry their ports line: `[sidebar] ports` hides
+    /// only those, `show_listening_ports` hides every port and the scan.
+    pub(crate) fn sidebar_ports_shown(&self) -> bool {
+        self.config.show_listening_ports && self.config.sidebar_style.ports
+    }
+
+    /// Toggle Sidebar Ports: flips `[sidebar] ports` here at once and saves
+    /// it; the reload after the save, and the config watcher in every other
+    /// window, then show what the file says.
+    pub(crate) fn toggle_sidebar_ports(&mut self, cx: &mut Context<Self>) {
+        self.toggle_sidebar_ports_with(
+            |shown| Config::save_preference(Preference::SidebarPorts(shown)),
+            cx,
+        );
+    }
+
+    /// `save` persists the choice; tests pass one that leaves the real
+    /// config alone.
+    pub(crate) fn toggle_sidebar_ports_with(
+        &mut self,
+        save: impl FnOnce(bool) -> crate::Result<()> + Send + 'static,
+        cx: &mut Context<Self>,
+    ) {
+        // `save_preference` drops the write while a theme save runs, so the
+        // switch must not move either.
+        if self.theme_save_in_flight() {
+            return;
+        }
+        let shown = !self.config.sidebar_style.ports;
+        self.config.sidebar_style.ports = shown;
+        // Windows opened before the save lands start from the new value.
+        if cx.has_global::<InitialAppearance>() {
+            let appearance = cx.global_mut::<InitialAppearance>();
+            appearance.config.sidebar_style.ports = shown;
+        }
+        cx.notify();
+        self.save_preference(move || save(shown), cx);
     }
 
     /// Opens a port's page in a browser tab of `workspace`, through a tunnel

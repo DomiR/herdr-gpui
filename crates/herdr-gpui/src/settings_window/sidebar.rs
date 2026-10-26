@@ -20,6 +20,7 @@ pub(super) enum SidebarKey {
     ActivityBar,
     Automations,
     ChangeCounts,
+    Ports,
     Host(String),
 }
 
@@ -34,6 +35,7 @@ impl SidebarKey {
         Self::ActivityBar,
         Self::Automations,
         Self::ChangeCounts,
+        Self::Ports,
     ];
 
     /// Copies this key's value from `from` into `to`.
@@ -49,6 +51,7 @@ impl SidebarKey {
             Self::ActivityBar => to.activity_bar = from.activity_bar,
             Self::Automations => to.automations = from.automations,
             Self::ChangeCounts => to.change_counts = from.change_counts,
+            Self::Ports => to.ports = from.ports,
             Self::Host(host) => match from.hosts.get(host) {
                 Some(color) => {
                     to.hosts.insert(host.clone(), *color);
@@ -73,6 +76,7 @@ impl SidebarKey {
             Self::ActivityBar => Preference::SidebarActivityBar(style.activity_bar),
             Self::Automations => Preference::SidebarAutomations(style.automations),
             Self::ChangeCounts => Preference::SidebarChangeCounts(style.change_counts),
+            Self::Ports => Preference::SidebarPorts(style.ports),
             Self::Host(host) => Preference::HostColor {
                 host: host.clone(),
                 color: style.hosts.get(host).copied(),
@@ -92,6 +96,7 @@ impl SidebarKey {
             Self::ActivityBar => before.activity_bar != after.activity_bar,
             Self::Automations => before.automations != after.automations,
             Self::ChangeCounts => before.change_counts != after.change_counts,
+            Self::Ports => before.ports != after.ports,
             Self::Host(host) => before.hosts.get(host) != after.hosts.get(host),
         }
     }

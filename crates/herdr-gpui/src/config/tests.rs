@@ -38,6 +38,7 @@ mod omarchy_theme;
 mod preferences;
 mod px0;
 mod repository_icons;
+mod sidebar_ports;
 mod sidebar_scope;
 mod sidebar_search;
 mod sidebar_settings;

@@ -265,6 +265,26 @@ impl SettingsWindow {
                     )),
             )
             .child(
+                ui::row(theme, "sidebar-ports", "Show listening ports")
+                    .description(
+                        "The ports a workspace's servers listen on, on a line under its row. \
+                         The status bar keeps them; Show listening ports in General hides both.",
+                    )
+                    .switch(
+                        ui::toggle(
+                            theme,
+                            "sidebar-ports-toggle",
+                            self.config.sidebar_style.ports,
+                            ready,
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            let mut intent = SidebarIntent::of(&this.config);
+                            intent.style.ports = !intent.style.ports;
+                            this.commit_sidebar(intent, cx);
+                        })),
+                    ),
+            )
+            .child(
                 ui::row(theme, "sidebar-show-agents", "Show agents")
                     .description("List running agents in the sidebar.")
                     .switch(

@@ -362,7 +362,7 @@ impl HerdrWindow {
                 // A child's trunk runs on past its note and ports to the next
                 // sibling, as it runs through the row itself.
                 let trunk = rows.trunk_below(&format!("{endpoint_id}-{id}"), tree, &row_cx);
-                let ports = (self.config.show_listening_ports && !removing_row)
+                let ports = (self.sidebar_ports_shown() && !removing_row)
                     .then_some(daemon.as_ref())
                     .flatten()
                     .and_then(|daemon| self.listening_ports.get(daemon, &workspace.workspace_id))

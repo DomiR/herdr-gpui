@@ -146,6 +146,12 @@ pub(super) const CATALOG: &[Entry] = &[
     ),
     entry(
         Section::Sidebar,
+        "sidebar-ports",
+        "Show listening ports",
+        "The ports a workspace's servers listen on, on a line under its row.",
+    ),
+    entry(
+        Section::Sidebar,
         "sidebar-show-agents",
         "Show agents",
         "List running agents in the sidebar.",
