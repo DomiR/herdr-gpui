@@ -1,5 +1,8 @@
 # Windows QA prompt
 
+For the blank WebView2 page investigation and its native regression, see
+[Windows browser composition (#826)](windows-browser-composition.md).
+
 A prompt for a coding agent running on a Windows machine with this repository
 checked out, to test the launcher, the command line, and the installer.
 Copy everything in the block below into the agent.

@@ -149,6 +149,7 @@ raw-window-handle.workspace = true
 windows = { features = [
   "Data_Xml_Dom",
   "UI_Notifications",
+  "Win32_Graphics_DirectComposition",
   "Win32_Graphics_Gdi",
   "Win32_UI_Shell_Common",
   "Win32_UI_WindowsAndMessaging",

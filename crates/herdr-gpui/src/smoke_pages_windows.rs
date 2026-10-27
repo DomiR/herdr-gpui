@@ -5,7 +5,9 @@
 //! runs GPUI's queued work while the key's App update still holds the App:
 //! GPUI panics and the process aborts (#572). Work is kept queued throughout,
 //! as a running app's ticks keep it, so a blocking build fails here however
-//! fast WebView2 is. The check passes once the page exists and has loaded.
+//! fast WebView2 is. Once the page loads, also check that GPUI does not own
+//! the composition layer above child windows: a live DOM alone cannot prove
+//! the page is visible (#826).
 //!
 //! Pressing the key posts a window message, which has no safe binding.
 //!
@@ -21,6 +23,9 @@ use windows::Win32::{
     UI::WindowsAndMessaging::{PostMessageW, WM_KEYDOWN},
 };
 use wry::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
+#[path = "smoke_pages_windows/composition.rs"]
+mod composition;
 
 /// The title of the page `serve` serves, which the tab takes once it loads.
 const TITLE: &str = "Pages check";
@@ -57,11 +62,17 @@ pub(super) fn start_pages(handle: WindowHandle<HerdrWindow>, cx: &mut App) {
             loop {
                 timer.timer(Duration::from_millis(100)).await;
                 let loaded = handle
-                    .update(cx, |view, window, cx| loaded(view, id, window, cx))
-                    .map_err(|error| anyhow!("{error:#}"))?;
+                    .update(cx, |view, window, cx| {
+                        let loaded = loaded(view, id, window, cx);
+                        if loaded {
+                            composition::check(window)?;
+                        }
+                        Ok::<_, anyhow::Error>(loaded)
+                    })
+                    .map_err(|error| anyhow!("{error:#}"))??;
                 if loaded {
                     return Ok::<_, anyhow::Error>(format!(
-                        "page built and loaded in {:?}",
+                        "page built and loaded in {:?}; parent composition leaves children above it",
                         started.elapsed()
                     ));
                 }
