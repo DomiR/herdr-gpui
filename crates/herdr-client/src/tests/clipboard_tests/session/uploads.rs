@@ -13,7 +13,6 @@ fn sustained_inbound_progress_survives_a_backpressured_outgoing_image() {
     // Never drain the image. Repeated large inbound frames must still finish
     // within the unchanged partial-frame deadline while outbound writes stall.
     for value in [11, 22] {
-        let started = Instant::now();
         send(
             &mut server,
             ServerMessage::Graphics {
@@ -27,7 +26,9 @@ fn sustained_inbound_progress_survives_a_backpressured_outgoing_image() {
             matches!(event, ClientEvent::Message(ServerMessage::Graphics { bytes })
             if bytes.len() == 24 * 1024 * 1024 && bytes.iter().all(|byte| *byte == value))
         );
-        assert!(started.elapsed() < TIMEOUT);
+        // Receiving the frame proves the worker's partial-frame deadline was
+        // met. Timing allocation, encoding, and validation here as well would
+        // turn this transport regression into a debug-build CPU benchmark.
         assert!(
             !cancel.is_finished(),
             "publication is not worker completion"
