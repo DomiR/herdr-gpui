@@ -3651,6 +3651,10 @@ three newest reports, redacted like the log records, and lists dumps by name and
 size without including them: they hold the app's memory, so attach one only
 when asked.
 
+For the known macOS Touch Bar window-close crash, see the
+[investigation and native validation steps](../../docs/macos-window-close.md).
+The upstream dependency fix has not yet been adopted by this checkout.
+
 Local Windows connections are supported through the daemon's named pipe; pass
 the binary client socket path to `--socket`, not the JSON API socket. No debug
 build or `RUST_LOG` setting is needed: client debug records are captured in
@@ -4188,7 +4192,8 @@ Ctrl+Shift+U is left unbound for
   **Projects**, or cycle filters with Ctrl-Tab / Ctrl-Shift-Tab (or Alt-] /
   Alt-[) without clearing the search. Search is fzf's: every space-separated
   term must match, and `'exact`, `^prefix`, `suffix$`, and `!negate` apply per
-  term; host, workspace, path, status, and command ID are searchable context.
+  term; host, workspace, path, status, command ID, and an agent's titles and
+  pane name are searchable context.
   Rows chosen often and recently rise among the matches for a typed query, and
   the Projects filter lists the most frecent projects first before anything is
   typed; that history stays on this machine in `palette-frecency.json`.
