@@ -9,6 +9,8 @@ use std::{
 };
 
 #[path = "../../test-support/executable.rs"]
+// The shared Unix-only fixture writer starts a shell outside production code.
+#[allow(clippy::disallowed_methods)]
 mod executable;
 
 pub struct Fixture {
