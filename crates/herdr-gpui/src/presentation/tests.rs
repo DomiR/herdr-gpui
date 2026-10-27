@@ -87,4 +87,5 @@ fn nothing_is_presented_for_another_boot_a_lost_connection_or_after_clearing() {
     assert!(presentation.frame(&gap).is_none());
 }
 
+mod navigation;
 mod stale;

@@ -366,3 +366,4 @@ fn a_few_blank_rows_never_pass_for_a_scroll() {
 }
 
 mod model;
+mod retained;

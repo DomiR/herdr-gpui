@@ -275,6 +275,9 @@ impl SmoothScroll {
     /// The pane's rect and the offset last painted, for hit testing.
     pub(crate) fn offset(&self) -> Option<(SurfaceRect, f32)> {
         let motion = self.motion.as_ref()?;
+        if motion.target == motion.shown as f64 && motion.painted == 0. {
+            return None;
+        }
         Some((motion.rect, motion.painted))
     }
 
@@ -282,7 +285,9 @@ impl SmoothScroll {
         let moving = self.moving(now);
         let motion = self.motion.as_mut()?;
         if motion.target == motion.shown as f64 && !moving {
-            self.motion = None;
+            // Keep the bounded earlier screens after settling. A later wheel
+            // back over those rows can draw before the daemon answers.
+            motion.painted = 0.;
             return None;
         }
         let offset = motion.offset(now);

@@ -7,7 +7,8 @@
 //! revision. Painting nothing in those gaps flashes the empty background between
 //! two pictures; a multiplexer redrawing a cell grid never blanks between them.
 //! Keeping the last presented frame on screen until its replacement is ready
-//! removes the flash without pretending the old frame is current state.
+//! removes the flash without pretending the old frame is current state. Explicit
+//! navigation can instead preview the destination's cached screen immediately.
 //!
 //! A lost connection keeps its last frame too, once the window asks it to
 //! with [`Presentation::hold`]: the endpoint reconnects in place, and the
@@ -20,7 +21,9 @@
 //! drawn mid-row after a wheel scroll (`smooth_scroll`) is the one exception:
 //! hit testing and IME placement follow its offset, since that is what shows.
 
-use crate::{smooth_scroll::SmoothScroll, state::LiveState};
+mod cache;
+
+use crate::{navigation::NavigationTarget, smooth_scroll::SmoothScroll, state::LiveState};
 use herdr_client::{SurfaceImages, protocol::PaneSurfaceFrame};
 use std::sync::Arc;
 
@@ -33,6 +36,7 @@ pub(crate) struct Picture {
 
 #[derive(Default)]
 pub(crate) struct Presentation {
+    cache: cache::Cache,
     presented: Option<Arc<PaneSurfaceFrame>>,
     /// The pixels the presented frame was shown with. A retained frame keeps
     /// them, since the connection's own set follows the newest surface.
@@ -51,6 +55,41 @@ pub(crate) struct Presentation {
 }
 
 impl Presentation {
+    /// Remember only a coherent live screen, once when leaving it, rather
+    /// than copying or measuring terminal cells on every render.
+    pub(crate) fn remember(&mut self, live: &LiveState) {
+        self.frame(live);
+        if live.surface_ready()
+            && let (Some(snapshot), Some(surface)) = (&live.snapshot, &live.surface)
+        {
+            self.cache.remember(snapshot, surface);
+        }
+        self.scroll.clear();
+    }
+
+    /// A destination's last screen while its focus request is in flight.
+    /// The normal picture still advances underneath, but this preview never
+    /// participates in input routing, surface acknowledgements, or scrolling.
+    pub(crate) fn navigation_picture(
+        &mut self,
+        live: &LiveState,
+        target: Option<NavigationTarget<&str>>,
+        size: (u16, u16),
+    ) -> Option<Picture> {
+        let current = self.picture(live);
+        let preview = target
+            .filter(|_| !self.held && live.status.is_connected())
+            .zip(live.snapshot.as_deref())
+            .and_then(|(target, snapshot)| self.cache.get(snapshot, target, size));
+        match preview {
+            Some(frame) if !live.surface_ready() => Some(Picture {
+                frame,
+                images: Arc::default(),
+            }),
+            _ => current,
+        }
+    }
+
     /// The frame to paint now, recorded as what the window shows: the ready
     /// surface when the client has one, and otherwise the frame last presented
     /// for as long as it can still stand for this window's content.
@@ -114,6 +153,8 @@ impl Presentation {
     /// Keep the presented frame, as stale, across a lost connection until the
     /// endpoint's next connection presents a frame of its own.
     pub(crate) fn hold(&mut self) {
+        self.cache = Default::default();
+        self.scroll.clear();
         self.held = true;
         self.stale |= self.presented.is_some();
     }
@@ -132,6 +173,7 @@ impl Presentation {
     /// Forget the picture. Another connection's window is not this one's, so a
     /// detach, a retarget, or a switch of endpoint starts from an empty area.
     pub(crate) fn clear(&mut self) {
+        self.cache = Default::default();
         self.presented = None;
         self.images = Default::default();
         self.scroll.clear();
