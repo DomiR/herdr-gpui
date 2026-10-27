@@ -1,5 +1,5 @@
 use super::*;
-use std::{fs, os::unix::fs::PermissionsExt};
+use std::fs;
 
 const WAIT: Duration = Duration::from_secs(10);
 
@@ -48,15 +48,15 @@ fn fake_with(name: &str, check: &str, then: &str, idle: Duration) -> (Arc<Regist
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
     let program = dir.join("ssh");
-    fs::write(
+    crate::test_executable::write(
         &program,
         format!(
             "#!/bin/sh\ncase $1 in -O) {check};; esac\necho start >> '{fixture}/log'\nfor arg; do case $arg in ControlPath=*) socket=${{arg#ControlPath=}};; esac; done\npid=\"{fixture}/$(basename \"$(dirname \"$socket\")\").pid\"\n{then}\n",
             fixture = dir.display()
         ),
+        0o700,
     )
     .unwrap();
-    fs::set_permissions(&program, fs::Permissions::from_mode(0o700)).unwrap();
     (Registry::new(program, idle), Fixture { dir })
 }
 
