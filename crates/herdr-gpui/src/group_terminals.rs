@@ -5,10 +5,10 @@
 //! group in use holds the window's own connection, the selected endpoint's
 //! `ConnectionBridge`, so keys, IME, the mouse, paste, drops, and navigation
 //! keep their one path and its fences. Every other terminal group holds a
-//! parked connection: it only displays its tab, reports itself unfocused so
-//! it never becomes the daemon's foreground client, drops the notifications
-//! every connection receives, and focuses its own tab again when something
-//! moves it. Using a parked group swaps its connection with the window's.
+//! parked connection: it only displays its tab, reports itself unfocused,
+//! drops the notifications
+//! every connection receives, and selects its tab once. Using a parked group
+//! swaps its connection with the window's.
 //!
 //! Parked connections belong to the focused workspace of the selected
 //! endpoint. Leaving either, or closing the group, drops them; dropping a
@@ -22,22 +22,16 @@ use crate::{
     state::{ConnectionStatus, LiveState},
     terminal::{popup_origin, viewport},
     terminal_painter::{Ground, ImageTarget, PlacedImages},
-    window::reasserts,
 };
 use gpui::{prelude::*, *};
 use herdr_client::{ConnectOptions, Method};
 use serde_json::json;
 use std::time::{Duration, Instant};
 
-/// How long a parked connection waits for its tab before asking again.
-const REFOCUS_AFTER: Duration = Duration::from_secs(1);
 /// How long a group whose connection failed waits before another attempt.
 const RETRY_AFTER: Duration = Duration::from_secs(2);
 /// Resizes settle for as long as the window's own do.
 const RESIZE_SETTLE: Duration = Duration::from_millis(150);
-/// A frame another client took is re-claimed more slowly than a settled
-/// resize, so the request is not resent while the daemon answers it.
-const RESIZE_REASSERT: Duration = Duration::from_secs(1);
 
 /// A terminal group's connection while another group has the keyboard.
 struct Parked {
@@ -52,8 +46,8 @@ struct Parked {
     bounds: Bounds<Pixels>,
     /// Whether the daemon was told this client is unfocused.
     unfocused: bool,
-    /// The tab last asked for, and when.
-    asked: Option<(String, Instant)>,
+    /// The last selected tab. Snapshot drift is not a new user selection.
+    asked: Option<String>,
 }
 
 impl Parked {
@@ -61,16 +55,6 @@ impl Parked {
         self.connection.handle.is_some()
             && self.live.status.is_connected()
             && self.live.snapshot.is_some()
-    }
-
-    /// Whether the daemon's frame is the size this connection asked for.
-    /// Another client resizing the tab leaves the request stale even when
-    /// the connection's own options did not change.
-    fn surface_size_stale(&self) -> bool {
-        self.live.surface.as_ref().is_some_and(|surface| {
-            surface.frame.width != self.options.surface_size.cols
-                || surface.frame.height != self.options.surface_size.rows
-        })
     }
 
     /// The tab this connection focuses, when it is in `workspace`.
@@ -81,10 +65,9 @@ impl Parked {
             .flatten()
     }
 
-    /// Moves this connection toward `tab` and keeps the daemon's view of it
-    /// in step. A frame another client sized is re-claimed only while the
-    /// window had user input at `last_input` recently enough.
-    fn steer(&mut self, tab: &str, now: Instant, last_input: Option<Instant>) {
+    /// Selects a new group target once. A parked group has no user input:
+    /// neither another client's focus nor its geometry is ours to take back.
+    fn steer(&mut self, tab: &str, now: Instant, active: bool) {
         let (Some(handle), Some(snapshot)) = (&self.connection.handle, &self.live.snapshot) else {
             return;
         };
@@ -92,33 +75,28 @@ impl Parked {
         if !self.unfocused && handle.set_focus(&boot, false).is_ok() {
             self.unfocused = true;
         }
-        let on_tab = self.focused_tab() == Some(tab);
-        let asked_recently = self
-            .asked
-            .as_ref()
-            .is_some_and(|(asked, at)| asked == tab && now.duration_since(*at) < REFOCUS_AFTER);
-        if !on_tab
-            && !asked_recently
-            && handle
-                .request(&boot, Method::TabFocus, json!({"tab_id": tab}))
-                .is_ok()
-        {
-            self.asked = Some((tab.to_owned(), now));
+        if !active {
+            self.pending_resize = None;
+            return;
         }
-        let changed = self.last_queued_options != Some(self.options);
-        let stale = self.surface_size_stale() && reasserts(last_input, now);
-        if self.last_queued_options == Some(self.options) && !stale {
+        let on_tab = self.focused_tab() == Some(tab);
+        if self.asked.as_deref() != Some(tab)
+            && (on_tab
+                || handle
+                    .request(&boot, Method::TabFocus, json!({"tab_id": tab}))
+                    .is_ok())
+        {
+            self.asked = Some(tab.to_owned());
+        }
+        if self.last_queued_options == Some(self.options) {
             self.pending_resize = None;
             return;
         }
         match self.pending_resize {
             Some((options, since)) if options == self.options => {
-                let wait = if changed {
-                    RESIZE_SETTLE
-                } else {
-                    RESIZE_REASSERT
-                };
-                if now.duration_since(since) >= wait && handle.resize(&boot, self.options).is_ok() {
+                if now.duration_since(since) >= RESIZE_SETTLE
+                    && handle.resize(&boot, self.options).is_ok()
+                {
                     self.last_queued_options = Some(self.options);
                     self.pending_resize = None;
                 }
@@ -269,7 +247,7 @@ impl HerdrWindow {
             .filter(|(group, tab)| Some(*group) != primary && Some(tab) != focused.as_ref())
             .collect();
         let now = Instant::now();
-        let last_input = self.last_input;
+        let active = self.active && self.endpoints[self.selected_endpoint].surface_requested();
         let terminals = &mut self.browser.terminals;
         terminals.parked.retain(|parked| {
             parked.workspace == key && needed.iter().any(|(group, _)| *group == parked.group)
@@ -285,7 +263,8 @@ impl HerdrWindow {
                 .iter_mut()
                 .find(|parked| parked.group == *group);
             match existing {
-                Some(parked) => parked.steer(tab, now, last_input),
+                Some(parked) => parked.steer(tab, now, active),
+                None if !active => {}
                 None if terminals.retry.iter().any(|(waiting, _)| waiting == group) => {}
                 None => {
                     let mut connection = ConnectionBridge::new(target.clone());

@@ -29,7 +29,6 @@ mod images;
 mod input;
 mod layout_save;
 mod lifecycle;
-pub(crate) use lifecycle::reasserts;
 mod links;
 mod monitors;
 pub(crate) use links::PressedLink;

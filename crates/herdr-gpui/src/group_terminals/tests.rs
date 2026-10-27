@@ -13,6 +13,7 @@ use std::sync::Arc;
 
 mod idle_reassert;
 mod padding;
+mod passive_steering;
 mod titlebar_navigation;
 
 /// A coherent surface for `snapshot`, as the daemon projects one.
@@ -106,7 +107,7 @@ fn a_parked_connection_stays_unfocused_and_asks_for_its_tab_once() {
         snapshot,
     );
     let now = Instant::now();
-    parked.steer("w1:t2", now, None);
+    parked.steer("w1:t2", now, true);
     assert_eq!(
         peer.receive(),
         ClientMessage::ClientShellFocus { focused: false }
@@ -117,18 +118,23 @@ fn a_parked_connection_stays_unfocused_and_asks_for_its_tab_once() {
     let request: serde_json::Value = serde_json::from_str(&request).unwrap();
     assert_eq!(request["method"], "tab.focus");
     assert_eq!(request["params"]["tab_id"], "w1:t2");
-    // Neither is repeated while the request is fresh; a later tick asks
-    // again only once it has had its time.
-    parked.steer("w1:t2", now + Duration::from_millis(10), None);
+    // A queued selection is not repeated even if its projection is delayed.
+    parked.steer("w1:t2", now + Duration::from_millis(10), true);
     assert!(parked.unfocused);
-    let asked = parked.asked.clone().unwrap();
-    assert_eq!((asked.0.as_str(), asked.1), ("w1:t2", now));
-    parked.steer(
-        "w1:t2",
-        now + REFOCUS_AFTER + Duration::from_millis(10),
-        None,
+    assert_eq!(parked.asked.as_deref(), Some("w1:t2"));
+    parked.steer("w1:t2", now + Duration::from_secs(10), true);
+    assert_eq!(parked.asked.as_deref(), Some("w1:t2"));
+    let boot = fixture_snapshot().boot_id;
+    peer.respond(
+        &boot,
+        request["id"].as_str().unwrap(),
+        &json!({"id": request["id"], "result": {}}),
     );
-    assert!(parked.asked.unwrap().1 > now);
+    peer.client.handle.set_focus(&boot, false).unwrap();
+    assert_eq!(
+        peer.receive(),
+        ClientMessage::ClientShellFocus { focused: false }
+    );
 }
 
 #[test]
@@ -148,15 +154,16 @@ fn a_parked_connection_settles_a_new_size_before_sending_it() {
     let now = Instant::now();
     parked.options.surface_size.cols = 100;
     // Already on its tab, it asks for nothing but a size.
-    parked.steer(&tab, now, None);
+    parked.steer(&tab, now, true);
     assert_eq!(
         peer.receive(),
         ClientMessage::ClientShellFocus { focused: false }
     );
-    assert!(parked.pending_resize.is_some() && parked.asked.is_none());
-    parked.steer(&tab, now + Duration::from_millis(100), None);
+    assert!(parked.pending_resize.is_some());
+    assert_eq!(parked.asked.as_deref(), Some(tab.as_str()));
+    parked.steer(&tab, now + Duration::from_millis(100), true);
     assert!(parked.last_queued_options != Some(parked.options));
-    parked.steer(&tab, now + RESIZE_SETTLE + Duration::from_millis(10), None);
+    parked.steer(&tab, now + RESIZE_SETTLE + Duration::from_millis(10), true);
     let ClientMessage::ClientShellResize { surface_size, .. } = peer.receive() else {
         panic!("expected a resize");
     };
@@ -166,7 +173,7 @@ fn a_parked_connection_settles_a_new_size_before_sending_it() {
 }
 
 #[test]
-fn a_parked_connection_reasks_a_size_another_client_overrode() {
+fn a_parked_connection_leaves_a_size_another_client_overrode() {
     let mut peer = MockPeer::new();
     let snapshot = fixture_snapshot();
     let workspace = snapshot.focused_workspace_id.clone().unwrap();
@@ -181,34 +188,30 @@ fn a_parked_connection_reasks_a_size_another_client_overrode() {
     );
     // The connection's own request is already the queued one, but the
     // daemon projects a frame of another size: another client resized
-    // the tab, so the request must go out again.
+    // the tab. Input in a different group does not entitle this one to it.
     parked.options.surface_size.cols = 100;
     parked.last_queued_options = Some(parked.options);
     let now = Instant::now();
-    parked.steer(&tab, now, Some(now));
+    parked.steer(&tab, now, true);
     assert_eq!(
         peer.receive(),
         ClientMessage::ClientShellFocus { focused: false }
     );
-    assert!(parked.pending_resize.is_some());
-    parked.steer(
-        &tab,
-        now + RESIZE_SETTLE + Duration::from_millis(10),
-        Some(now),
-    );
+    assert!(parked.pending_resize.is_none());
+    parked.steer(&tab, now + RESIZE_SETTLE + Duration::from_millis(10), true);
     assert!(
-        parked.pending_resize.is_some(),
-        "a frame of another size is not re-claimed before it has been answered"
+        parked.pending_resize.is_none(),
+        "a parked group does not reclaim another client's size"
     );
-    parked.steer(
-        &tab,
-        now + RESIZE_REASSERT + Duration::from_millis(10),
-        Some(now),
+    parked.steer(&tab, now + Duration::from_secs(10), true);
+    peer.client
+        .handle
+        .set_focus(&fixture_snapshot().boot_id, false)
+        .unwrap();
+    assert_eq!(
+        peer.receive(),
+        ClientMessage::ClientShellFocus { focused: false }
     );
-    let ClientMessage::ClientShellResize { surface_size, .. } = peer.receive() else {
-        panic!("expected a resize");
-    };
-    assert_eq!(surface_size.cols, 100);
     assert_eq!(parked.last_queued_options, Some(parked.options));
 }
 

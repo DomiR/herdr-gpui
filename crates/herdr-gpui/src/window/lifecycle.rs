@@ -5,8 +5,6 @@
 use super::HerdrWindow;
 use crate::{WINDOW_TITLE, sidebar, state::LiveState};
 use gpui::{Context, Pixels, Point, Window};
-use herdr_client::Method;
-use serde_json::json;
 use std::time::{Duration, Instant};
 
 /// A drag or the full screen animation passes through many sizes, and each
@@ -14,21 +12,18 @@ use std::time::{Duration, Instant};
 /// transcripts. Only the size the window settles on is sent.
 pub(crate) const RESIZE_SETTLE: Duration = Duration::from_millis(150);
 
-/// A frame another client took is re-claimed more slowly than a settled
-/// window resize, so the request is not resent while the daemon answers it.
+/// Retry geometry metadata more slowly than a settled window resize, so the
+/// request is not resent while the daemon answers it. This never claims focus.
 pub(crate) const RESIZE_REASSERT: Duration = Duration::from_secs(1);
 
-/// How long after its last user input a window still re-claims a frame
-/// another client sized. Two windows of different sizes on one tab would
-/// otherwise take it from each other every `RESIZE_REASSERT`; the one in use
-/// keeps it, and an idle one leaves it alone.
+/// How long after input to keep reporting geometry if the frame disagrees.
+/// The daemon may retain another client's size; only new input claims it.
 pub(crate) const REASSERT_AFTER_INPUT: Duration = Duration::from_secs(5);
 
 const BELL_PREVIEW_DELAY: Duration = Duration::from_secs(3);
 
-/// Whether a window whose last user input was at `last_input` may re-claim,
-/// at `now`, a frame another client sized.
-pub(crate) fn reasserts(last_input: Option<Instant>, now: Instant) -> bool {
+/// Whether an active window may retry its geometry metadata at `now`.
+fn reasserts(last_input: Option<Instant>, now: Instant) -> bool {
     last_input.is_some_and(|last| now.saturating_duration_since(last) < REASSERT_AFTER_INPUT)
 }
 
@@ -36,6 +31,39 @@ impl HerdrWindow {
     /// Records that the window just forwarded user input.
     pub(crate) fn note_input(&mut self) {
         self.last_input = Some(Instant::now());
+        // A size mismatch must not turn a poll into session navigation. Only
+        // actual input may claim the displayed tab back. Use the normal focus
+        // fence so further input waits for the claim instead of queuing more
+        // claims against an old projection.
+        if !self.active
+            || !self.surface_activation_ready()
+            || self.surface_matches_options()
+            || self.activation_deadline.is_some()
+            || self.pending_navigation.is_some()
+            || self.pending_toast.is_some()
+        {
+            return;
+        }
+        let Some(tab) = self
+            .live
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.focused_tab_id.clone())
+        else {
+            return;
+        };
+        let options = self.options;
+        if self.request_focus_change(
+            "Focus terminal",
+            Some(crate::NavigationTarget::Tab(tab.clone())),
+            |handle, boot| {
+                handle.resize(boot, options)?;
+                handle.focus_tab(boot, &tab)
+            },
+        ) {
+            self.last_queued_options = Some(options);
+            self.pending_input.geometry_claim = true;
+        }
     }
 
     /// Records the pointer at `position` over the panes as use only when it
@@ -47,7 +75,8 @@ impl HerdrWindow {
             return false;
         }
         self.last_pointer = Some(position);
-        self.note_input();
+        // Hover is useful for sizing, but is not an explicit tab selection.
+        self.last_input = Some(Instant::now());
         true
     }
 
@@ -56,10 +85,10 @@ impl HerdrWindow {
     }
 
     pub(crate) fn resize_at(&mut self, now: Instant) {
-        // Herdr refuses the tab claim below from a connection whose surface is
-        // inactive, as a newly selected endpoint's is until the poll queues
-        // its activation. That activation sends the window's size itself.
-        if !self.endpoints[self.selected_endpoint].surface_requested() {
+        // A background window must not compete for geometry, even immediately
+        // after input. Endpoint activation sends its initial size itself.
+        if !self.active || !self.endpoints[self.selected_endpoint].surface_requested() {
+            self.pending_resize = None;
             return;
         }
         // Another client (a CLI, or another window) can resize the tab the
@@ -102,26 +131,8 @@ impl HerdrWindow {
                 Ok(()) => {
                     self.last_queued_options = Some(self.options);
                     self.pending_resize = Some((self.options, now));
-                    // The daemon sizes a tab for the client that last
-                    // focused, selected or interacted with it. A resize
-                    // alone does not claim it back from another client (a
-                    // CLI, another window, or a TUI attached to the same
-                    // tab), so claim it: select the tab again and re-report
-                    // the window's focus. Not while a focus change is in
-                    // flight: the snapshot still names the tab being left,
-                    // and requests go one at a time, so the claim would land
-                    // after the change and undo it. The change claims the
-                    // tab it lands on itself.
-                    self.sent_focus = None;
-                    if self.activation_deadline.is_none()
-                        && let Some(tab) = snapshot.focused_tab_id.clone()
-                    {
-                        let _ = handle.request(
-                            &snapshot.boot_id,
-                            Method::TabFocus,
-                            json!({ "tab_id": tab }),
-                        );
-                    }
+                    // Geometry reconciliation never selects a tab or
+                    // re-reports focus. Explicit input owns that claim.
                 }
                 // Backpressure is transient: the options stay unqueued, so the
                 // next poll or paint retries them once the worker drains. A

@@ -23,6 +23,7 @@ fn overridden_window(
         )
     });
     view.update(cx, |view, _| {
+        view.active = true;
         let client = herdr_client::connect(
             view.endpoints[view.selected_endpoint]
                 .connection

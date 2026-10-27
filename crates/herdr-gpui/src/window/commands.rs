@@ -244,6 +244,7 @@ impl HerdrWindow {
     }
 
     pub(crate) fn fence_focus_change(&mut self, focus: Option<OwnedNavigationTarget>) {
+        self.pending_input.geometry_claim = false;
         if !self.live.supports_surface {
             return;
         }

@@ -2738,10 +2738,17 @@ tabs. Splitting opens nothing new and moves no tab.
   terminal has its own client connection to the daemon, which keeps a focused
   tab per client. The group in use holds the window's connection and gets the
   keyboard; the others only display their tab, report themselves unfocused so
-  notifications, sounds, and the title follow the group in use, and focus
-  their own tab again when an agent or the CLI moves every client. Pressing a
-  group swaps its connection in. When the daemon moves the window's focus to
-  a tab of another group, that group becomes the group in use.
+  notifications, sounds, and the title follow the group in use. They select
+  their tab once, without repeatedly taking focus or geometry back from another
+  client. If another client moves a parked connection, selecting its group
+  restores the group's tab. Pressing a group swaps its connection in. When the
+  daemon moves the window's focus to a tab of another group, that group becomes
+  the group in use.
+- Background windows defer geometry updates. Automatic resize reconciliation
+  never selects a tab; typing, clicking, scrolling, pasting, or dropping files
+  into a terminal can reclaim its size. Herdr still shares one size per tab,
+  so clients with different geometries cannot both have their preferred size
+  at once.
 - The group in use has the keyboard, and its chosen tab carries the accent.
   **+** opens a terminal tab in that group. The group's **…**, at the end
   of its strip, offers the other kinds of tab: **New Browser Tab**

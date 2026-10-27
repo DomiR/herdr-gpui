@@ -17,6 +17,7 @@ fn a_resize_during_a_focus_change_does_not_claim_the_tab_being_left(cx: &mut gpu
             view.endpoints = vec![endpoint];
             view.options = ConnectOptions::default();
             view.reset_selected(cx);
+            view.active = true;
             view.activation_deadline = None;
             view.last_queued_options = Some(view.options);
             view.pending_resize = None;

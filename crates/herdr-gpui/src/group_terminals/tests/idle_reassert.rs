@@ -20,17 +20,13 @@ fn an_idle_parked_connection_leaves_a_size_another_client_overrode() {
     parked.options.surface_size.cols = 100;
     parked.last_queued_options = Some(parked.options);
     let now = Instant::now();
-    parked.steer(&tab, now, None);
+    parked.steer(&tab, now, false);
     assert_eq!(
         peer.receive(),
         ClientMessage::ClientShellFocus { focused: false }
     );
-    parked.steer(
-        &tab,
-        now + RESIZE_REASSERT + Duration::from_millis(10),
-        None,
-    );
-    parked.steer(&tab, now + RESIZE_REASSERT * 3, None);
+    parked.steer(&tab, now + Duration::from_secs(1), false);
+    parked.steer(&tab, now + Duration::from_secs(3), false);
     // Messages leave in order, so a resize would arrive before this.
     peer.client.handle.set_focus(&boot, true).unwrap();
     assert_eq!(

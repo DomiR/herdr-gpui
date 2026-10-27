@@ -93,6 +93,9 @@ pub(super) enum DropAt {
 
 #[derive(Default)]
 pub(crate) struct PendingInput {
+    /// This activation only reclaims the same tab's geometry. Input may wait
+    /// across it, unlike navigation to a different target.
+    pub(super) geometry_claim: bool,
     /// Where input went at the last coherent projection.
     target: Option<Target>,
     events: VecDeque<Held>,
@@ -315,7 +318,7 @@ impl HerdrWindow {
         self.pending_toast.is_none()
             && self.pending_navigation.is_none()
             && self.live.status.is_connected()
-            && !self.live.activation_pending()
+            && (!self.live.activation_pending() || self.pending_input.geometry_claim)
             && self.endpoints[self.selected_endpoint]
                 .connection
                 .handle
@@ -337,8 +340,22 @@ impl HerdrWindow {
             return false;
         }
         if !self.input_ready() {
+            // Input made before a surface arrived still expresses a claim,
+            // but only for its original target. Geometry polling by itself
+            // carries no such intent.
+            if !self.pending_input.events.is_empty()
+                && self.pending_input.target.as_ref().is_some_and(|target| {
+                    self.live.snapshot.as_ref().is_some_and(|snapshot| {
+                        target.boot == snapshot.boot_id
+                            && self.focused_input_target().as_ref() == Some(&target.input)
+                    })
+                })
+            {
+                self.note_input();
+            }
             return false;
         }
+        self.pending_input.geometry_claim = false;
         let target = self
             .live
             .snapshot

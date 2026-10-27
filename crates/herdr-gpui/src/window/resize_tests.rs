@@ -14,6 +14,7 @@ fn resize_tracks_cell_metrics_and_retries_failed_options(cx: &mut gpui::TestAppC
         )
     });
     view.update(cx, |view, _| {
+        view.active = true;
         let client = herdr_client::connect(
             view.endpoints[view.selected_endpoint]
                 .connection
@@ -71,6 +72,7 @@ fn resize_reasks_when_the_daemon_frame_is_a_different_size(cx: &mut gpui::TestAp
         )
     });
     view.update(cx, |view, _| {
+        view.active = true;
         let client = herdr_client::connect(
             view.endpoints[view.selected_endpoint]
                 .connection
@@ -137,6 +139,7 @@ fn a_full_command_queue_is_retried_without_a_status_error(cx: &mut gpui::TestApp
         )
     });
     view.update(cx, |view, _| {
+        view.active = true;
         // Nothing drains the queue until the gate opens and the worker connects.
         let (stream, _server) =
             Stream::pair().unwrap_or_else(|error| panic!("cannot create stream pair: {error}"));

@@ -32,6 +32,11 @@ impl HerdrWindow {
         // GPUI translates the platform Submit position into window mouse state
         // before invoking on_drop; the payload itself carries no coordinates.
         let position = window.mouse_position();
+        // Claiming geometry can fence away the surface. Keep the pane the
+        // user dropped on rather than hit-testing a differently sized layout.
+        let held_at = (!self.input_ready())
+            .then(|| self.held_drop_at(position))
+            .flatten();
         // A drop over the panes is use even before the frame is ready, so the
         // window takes back a frame another client sized.
         if self.menu.page.is_none() && self.bounds.contains(&position) {
@@ -65,7 +70,7 @@ impl HerdrWindow {
         }
         // The files wait for a ready frame. Delivery has no window to focus,
         // so the window takes focus as the drop is held.
-        let Some(at) = self.held_drop_at(position) else {
+        let Some(at) = held_at.or_else(|| self.held_drop_at(position)) else {
             return;
         };
         cx.stop_propagation();

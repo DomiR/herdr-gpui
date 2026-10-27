@@ -12,6 +12,7 @@ fn successful_resize_reassert_waits_for_the_next_retry_interval(cx: &mut gpui::T
         view.endpoints = vec![endpoint];
         view.options = ConnectOptions::default();
         view.reset_selected(cx);
+        view.active = true;
         view.options.surface_size.cols += 1;
         view.last_queued_options = Some(view.options);
         view.pending_resize = None;
@@ -35,18 +36,12 @@ fn successful_resize_reassert_waits_for_the_next_retry_interval(cx: &mut gpui::T
         server.receive(),
         ClientMessage::ClientShellResize { .. }
     ));
-    let ClientMessage::ClientShellEndpointRequest { request, .. } = server.receive() else {
-        panic!("missing focus claim after resize");
-    };
-    let request: serde_json::Value = serde_json::from_str(&request).unwrap();
-    assert_eq!(request["method"], "tab.focus");
-    server.respond(&request);
     assert!(
         matches!(
             server.receive(),
             ClientMessage::ClientShellFocus { focused: false }
         ),
-        "a delayed frame must not queue a resize/focus pair on every UI tick"
+        "a resize must not claim tab focus, even while its frame is delayed"
     );
 
     view.update(cx, |view, _| {
@@ -79,12 +74,6 @@ fn successful_resize_reassert_waits_for_the_next_retry_interval(cx: &mut gpui::T
         server.receive(),
         ClientMessage::ClientShellResize { .. }
     ));
-    let ClientMessage::ClientShellEndpointRequest { request, .. } = server.receive() else {
-        panic!("missing focus claim after retry interval");
-    };
-    let request: serde_json::Value = serde_json::from_str(&request).unwrap();
-    assert_eq!(request["method"], "tab.focus");
-    server.respond(&request);
     assert!(matches!(
         server.receive(),
         ClientMessage::ClientShellFocus { focused: true }
