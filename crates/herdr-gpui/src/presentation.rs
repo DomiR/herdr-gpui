@@ -8,7 +8,8 @@
 //! two pictures; a multiplexer redrawing a cell grid never blanks between them.
 //! Keeping the last presented frame on screen until its replacement is ready
 //! removes the flash without pretending the old frame is current state. Explicit
-//! navigation can instead preview the destination's cached screen immediately.
+//! remote navigation can instead preview the destination's cached screen
+//! immediately.
 //!
 //! A lost connection keeps its last frame too, once the window asks it to
 //! with [`Presentation::hold`]: the endpoint reconnects in place, and the
@@ -54,12 +55,24 @@ pub(crate) struct Presentation {
     pub(crate) probe: Probe,
 }
 
+impl crate::HerdrWindow {
+    /// WSL has remote paths but no network round trip to hide with a cache.
+    pub(crate) fn cache_remote_surfaces(&self) -> bool {
+        self.selected_is_remote()
+            && !matches!(
+                self.endpoints[self.selected_endpoint].connection.target,
+                herdr_client::ConnectTarget::Wsl { .. }
+            )
+    }
+}
+
 impl Presentation {
-    /// Remember only a coherent live screen, once when leaving it, rather
-    /// than copying or measuring terminal cells on every render.
-    pub(crate) fn remember(&mut self, live: &LiveState) {
+    /// Keep the current picture across navigation. Remote connections also
+    /// cache the coherent screen for revisits, once when leaving it.
+    pub(crate) fn remember(&mut self, live: &LiveState, cache: bool) {
         self.frame(live);
-        if live.surface_ready()
+        if cache
+            && live.surface_ready()
             && let (Some(snapshot), Some(surface)) = (&live.snapshot, &live.surface)
         {
             self.cache.remember(snapshot, surface);

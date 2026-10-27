@@ -82,8 +82,8 @@ fn revisiting_a_worktree_draws_its_screen_without_waiting_for_any_response() {
     let mut presentation = Presentation::default();
     let a = visited(0);
     let b = visited(1);
-    presentation.remember(&a);
-    presentation.remember(&b);
+    presentation.remember(&a, true);
+    presentation.remember(&b, true);
     let mut waiting = b.clone();
     waiting.surface = None;
     assert!(Arc::ptr_eq(
@@ -124,7 +124,7 @@ fn revisiting_a_worktree_draws_its_screen_without_waiting_for_any_response() {
 fn rapid_navigation_previews_the_latest_destination_and_misses_keep_the_last_screen() {
     let mut presentation = Presentation::default();
     for index in 0..3 {
-        presentation.remember(&visited(index));
+        presentation.remember(&visited(index), true);
     }
     let mut waiting = visited(2);
     waiting.surface = None;
@@ -139,9 +139,9 @@ fn rapid_navigation_previews_the_latest_destination_and_misses_keep_the_last_scr
 #[test]
 fn previews_reject_resize_reboot_closed_panes_and_changed_zoom() {
     let mut presentation = Presentation::default();
-    presentation.remember(&visited(0));
+    presentation.remember(&visited(0), true);
     let b = visited(1);
-    presentation.remember(&b);
+    presentation.remember(&b, true);
     let mut waiting = b.clone();
     waiting.surface = None;
     let resized = presentation
@@ -174,9 +174,9 @@ fn previews_reject_resize_reboot_closed_panes_and_changed_zoom() {
 fn reconnect_and_clear_forget_other_worktrees() {
     for hold in [true, false] {
         let mut presentation = Presentation::default();
-        presentation.remember(&visited(0));
+        presentation.remember(&visited(0), true);
         let b = visited(1);
-        presentation.remember(&b);
+        presentation.remember(&b, true);
         if hold {
             presentation.hold();
             presentation.resume();

@@ -4,7 +4,40 @@ use super::*;
 /// its last screen must change anyway, while terminal input remains fenced.
 #[gpui::test]
 fn cached_navigation_is_visible_before_the_server_answers(cx: &mut gpui::TestAppContext) {
-    let (endpoint, mut server) = connected_endpoint_reporting("cached-navigation", Some("0.9.5"));
+    navigation(
+        cx,
+        ConnectTarget::Ssh {
+            target: "remote".into(),
+            session: "default".into(),
+        },
+        true,
+    );
+}
+
+#[gpui::test]
+fn local_navigation_keeps_the_live_picture_without_caching_worktrees(
+    cx: &mut gpui::TestAppContext,
+) {
+    for target in [
+        ConnectTarget::Local,
+        ConnectTarget::Session {
+            name: "default".into(),
+            development: false,
+        },
+        ConnectTarget::Socket("/fixture/herdr.sock".into()),
+        ConnectTarget::Wsl {
+            distro: "Ubuntu".into(),
+            session: "default".into(),
+        },
+    ] {
+        navigation(cx, target, false);
+    }
+}
+
+fn navigation(cx: &mut gpui::TestAppContext, target: ConnectTarget, cached: bool) {
+    let (mut endpoint, mut server) =
+        connected_endpoint_reporting("cached-navigation", Some("0.9.5"));
+    endpoint.connection.target = target;
     let (fixture, cx) = cx.add_window_view(|window, cx| {
         Fixture(cx.new(|cx| crate::sidebar::layout_tests::fixture_window(window, cx)))
     });
@@ -28,8 +61,16 @@ fn cached_navigation_is_visible_before_the_server_answers(cx: &mut gpui::TestApp
         tab.workspace_id = "other".into();
         tab.focused = false;
         snapshot.tabs.push(tab);
-        // We previously visited w1, then moved to the other workspace.
-        view.presentation.remember(&destination);
+        // Leaving w1 goes through the real cache policy at the focus fence.
+        view.live = destination.clone();
+        *view.endpoints[0].connection.inbox.lock().unwrap() = view.live.clone();
+        view.fence_focus_change(Some(NavigationTarget::Workspace("other".into())));
+        let ClientMessage::ClientShellEndpointRequest { request, .. } = server.receive() else {
+            panic!("expected the first navigation's surface fence");
+        };
+        let request: serde_json::Value = serde_json::from_str(&request).unwrap();
+        assert_eq!(request["method"], "client_shell.surface.set");
+        server.respond(&request);
         let remembered = destination.surface.clone().unwrap();
         view.live = destination.clone();
         let snapshot = Arc::make_mut(view.live.snapshot.as_mut().unwrap());
@@ -50,7 +91,8 @@ fn cached_navigation_is_visible_before_the_server_answers(cx: &mut gpui::TestApp
             .presentation
             .navigation_picture(&view.live, Some(target.as_deref()), (80, 24))
             .unwrap();
-        assert!(Arc::ptr_eq(&picture.frame, &remembered));
+        assert_eq!(Arc::ptr_eq(&picture.frame, &remembered), cached);
+        assert_eq!(picture.frame.surface_revision, if cached { 1 } else { 2 });
         view.send(
             ClientPaneInputEvent::TextCommit("must not reach old pane".into()),
             cx,

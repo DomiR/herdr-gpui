@@ -409,9 +409,10 @@ pub fn start(handle: WindowHandle<HerdrWindow>, cx: &mut App) {
                             let picture = view.presentation.navigation_picture(
                                 &view.live, Some(target),
                                 (view.options.surface_size.cols, view.options.surface_size.rows),
-                            ).context("missing navigation preview")?;
-                            if picture.frame.panes.len() != 3 {
-                                bail!("space switch did not preview the destination's three panes");
+                            ).context("missing navigation picture")?;
+                            let expected_panes = if view.cache_remote_surfaces() { 3 } else { 1 };
+                            if picture.frame.panes.len() != expected_panes {
+                                bail!("space switch picture has {} panes, expected {expected_panes}", picture.frame.panes.len());
                             }
                             Ok(())
                         })?;

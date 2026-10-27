@@ -230,7 +230,10 @@ impl Render for HerdrWindow {
             self.presentation.scroll.clear();
         }
         let now = crate::motion::now();
-        let slide = self.presentation.scroll.slide(now);
+        let slide = self
+            .presentation
+            .scroll
+            .slide(now, self.cache_remote_surfaces());
         // A link in a pane drawn mid-row underlines where its text is drawn.
         let link_shift = link_rows.first().and_then(|(row, columns)| {
             self.shift_at(point(

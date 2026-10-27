@@ -281,13 +281,17 @@ impl SmoothScroll {
         Some((motion.rect, motion.painted))
     }
 
-    pub(crate) fn slide(&mut self, now: Instant) -> Option<Slide> {
+    pub(crate) fn slide(&mut self, now: Instant, retain_settled: bool) -> Option<Slide> {
         let moving = self.moving(now);
         let motion = self.motion.as_mut()?;
         if motion.target == motion.shown as f64 && !moving {
-            // Keep the bounded earlier screens after settling. A later wheel
-            // back over those rows can draw before the daemon answers.
-            motion.painted = 0.;
+            // Remote connections keep earlier screens for the next gesture;
+            // local connections release them as soon as this one settles.
+            if retain_settled {
+                motion.painted = 0.;
+            } else {
+                self.motion = None;
+            }
             return None;
         }
         let offset = motion.offset(now);
