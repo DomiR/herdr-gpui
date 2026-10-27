@@ -134,18 +134,35 @@ fn a_master_that_fails_to_start_is_not_tried_again_until_the_backoff_ends() {
 
 #[test]
 fn a_waiting_command_connects_directly_at_its_deadline() {
-    let (registry, fixture) = fake("slow", &format!("sleep 1; {READY}"));
-    let started = Instant::now();
-    let early = registry.open(
-        "devbox",
-        Lane::Quick,
-        Instant::now() + Duration::from_millis(100),
-        || false,
+    let (registry, fixture) = fake(
+        "slow",
+        &format!(r#"while [ ! -f "${{pid%/*}}/ready" ]; do sleep 0.01; done; {READY}"#),
     );
-    assert!(early.is_none());
-    assert!(started.elapsed() < Duration::from_millis(900));
+    let (finished, result) = std::sync::mpsc::sync_channel(1);
+    let waiting = thread::spawn({
+        let registry = registry.clone();
+        move || {
+            let early = registry.open(
+                "devbox",
+                Lane::Quick,
+                Instant::now() + Duration::from_millis(100),
+                || false,
+            );
+            finished.send(early).unwrap();
+        }
+    });
+    wait_until(|| fixture.starts() == 1);
+    // The master cannot become ready until we release it. Returning now proves
+    // the caller's own deadline ended the wait, independent of startup speed.
+    assert!(result.recv_timeout(WAIT).unwrap().is_none());
+    waiting.join().unwrap();
     // The master it asked for still comes up for the next command.
-    assert!(open(&registry, Lane::Quick).is_some());
+    fs::write(fixture.dir.join("ready"), "").unwrap();
+    assert!(
+        open(&registry, Lane::Quick).is_some(),
+        "master state after release: {:?}",
+        registry.lock()
+    );
     assert_eq!(fixture.starts(), 1);
 }
 
