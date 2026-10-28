@@ -88,11 +88,13 @@ fn connect(path: &Path) -> io::Result<OwnedHandle> {
     let name = name.to_ns_name::<GenericNamespaced>().inspect_err(|error| {
         tracing::warn!(operation = "pipe_name", kind = ?error.kind(), raw_os_error = ?error.raw_os_error(), "Windows local transport failed");
     })?;
-    let LocalStream::NamedPipe(pipe) = LocalStream::connect(name).inspect_err(|error| {
-        // Keep native codes without recording the user's socket path. The
-        // byte-mode connector opens the pipe overlapped, in its read mode.
-        tracing::warn!(operation = "pipe_connect", kind = ?error.kind(), raw_os_error = ?error.raw_os_error(), "Windows local transport failed");
-    })?;
+    let LocalStream::NamedPipe(pipe) = LocalStream::connect(name)
+        .inspect_err(|error| {
+            // Keep native codes without recording the user's socket path. The
+            // byte-mode connector opens the pipe overlapped, in its read mode.
+            tracing::warn!(operation = "pipe_connect", kind = ?error.kind(), raw_os_error = ?error.raw_os_error(), "Windows local transport failed");
+        })
+        .map_err(super::access::denied)?;
     // Owning the handle also keeps `interprocess` from flushing a dropped
     // stream on a thread of its own, which would wait on the peer unbounded.
     Ok(pipe.into())

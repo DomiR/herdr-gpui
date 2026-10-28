@@ -3604,6 +3604,24 @@ error codes (for example, `5` for Windows access denied). A successful plain
 pipe client alone does not establish why the GUI was denied; include these
 records when reporting the failure.
 
+When Windows refuses the pipe, the app reads its own access token, logs its
+`integrity` and `elevated` values with "Windows refused the daemon pipe", and
+names the likely cause in the disconnection reason:
+
+- **Low integrity.** A process below medium integrity can neither open the
+  daemon's pipe for writing nor create files in `%APPDATA%`, such as the
+  `config-gpui.lock` the settings use. Windows starts a program at the lower
+  of its parent's level and its executable's label, so files extracted or
+  downloaded by a sandboxed program run at low integrity from Explorer and
+  from an elevated scheduled task alike. Relabel the Herdr UI folder with
+  `icacls "<folder>" /setintegritylevel (OI)(CI)M /T`, then restart the app;
+  `icacls "<folder>\herdr-gpui.exe"` shows a `Mandatory Label\Low` entry
+  while the problem remains.
+- **Elevated server.** A `herdr server` started from an administrator
+  terminal admits only administrator clients (Herdr 0.9.4 and later). Start
+  the server from an ordinary terminal, or restart it with
+  `herdr server --allow-unelevated-clients`, which closes its panes.
+
 ## Keyboard Shortcuts
 
 Open **Herdr > Keyboard Shortcuts** to search every application command,

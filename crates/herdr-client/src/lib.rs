@@ -36,6 +36,8 @@ pub mod sessions;
 pub mod ssh;
 mod surface_images;
 pub mod text;
+#[cfg(windows)]
+mod token;
 mod transport;
 mod upload;
 pub mod workspaces;

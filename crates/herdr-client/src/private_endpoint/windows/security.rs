@@ -10,18 +10,16 @@
 
 use std::{
     io,
-    os::windows::io::{AsRawHandle as _, BorrowedHandle, FromRawHandle as _, OwnedHandle},
+    os::windows::io::{AsRawHandle as _, BorrowedHandle},
     ptr,
     sync::OnceLock,
 };
 use windows_sys::Win32::{
-    Foundation::{HANDLE, HLOCAL, LocalFree},
+    Foundation::{HLOCAL, LocalFree},
     Security::{
         Authorization::{ConvertSidToStringSidW, GetSecurityInfo, SE_KERNEL_OBJECT},
-        GetTokenInformation, OWNER_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID, TOKEN_QUERY,
-        TOKEN_USER, TokenUser,
+        OWNER_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID, TOKEN_USER, TokenUser,
     },
-    System::Threading::{GetCurrentProcess, OpenProcessToken},
 };
 
 /// Memory the system allocated for an out parameter, freed with `LocalFree`.
@@ -71,43 +69,9 @@ pub fn user_sid() -> io::Result<String> {
 }
 
 fn read_user_sid() -> io::Result<String> {
-    let mut raw: HANDLE = ptr::null_mut();
-    // SAFETY: the current-process pseudo handle needs no closing, and `raw`
-    // is a live out pointer.
-    if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut raw) } == 0 {
-        return Err(io::Error::last_os_error());
-    }
-    // SAFETY: on success `raw` is a token handle this function now owns.
-    let token = unsafe { OwnedHandle::from_raw_handle(raw) };
-    let mut needed = 0;
-    // SAFETY: a null buffer of length zero only asks for the size needed.
-    unsafe {
-        GetTokenInformation(
-            token.as_raw_handle(),
-            TokenUser,
-            ptr::null_mut(),
-            0,
-            &mut needed,
-        )
-    };
-    // `u64` units keep the buffer aligned for `TOKEN_USER` and its SID.
-    let mut buffer = vec![0_u64; (needed as usize).div_ceil(8).max(1)];
-    let len = u32::try_from(buffer.len() * 8).map_err(|_| io::ErrorKind::InvalidData)?;
-    // SAFETY: `buffer` is writable for `len` bytes and outlives the call.
-    let filled = unsafe {
-        GetTokenInformation(
-            token.as_raw_handle(),
-            TokenUser,
-            buffer.as_mut_ptr().cast(),
-            len,
-            &mut needed,
-        )
-    };
-    if filled == 0 {
-        return Err(io::Error::last_os_error());
-    }
-    // SAFETY: on success the buffer starts with a `TOKEN_USER` whose SID
-    // points into the same buffer, which lives until this function returns.
+    let buffer = crate::token::information(TokenUser)?;
+    // SAFETY: the buffer was filled with a `TOKEN_USER` whose SID points into
+    // the same buffer, which lives until this function returns.
     unsafe {
         let user = &*buffer.as_ptr().cast::<TOKEN_USER>();
         sid_string(user.User.Sid)
