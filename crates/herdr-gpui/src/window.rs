@@ -3,6 +3,7 @@
 //! split by responsibility across the submodules below; the fields live here
 //! because every one of them describes this window's own presentation state.
 
+mod accessibility;
 mod annotate;
 mod announcement;
 mod backdrop;
@@ -654,9 +655,13 @@ impl HerdrWindow {
             self.discard_composition(cx);
         }
         self.poll_github(window, cx);
+        if self.poll_gitlab_avatars() {
+            cx.notify();
+        }
         if self.update_workspace_pr() {
             cx.notify();
         }
+        self.publish_remote_pull_requests(cx);
         self.update_merged_cleanup(window, cx);
         if self.update_git() {
             cx.notify();

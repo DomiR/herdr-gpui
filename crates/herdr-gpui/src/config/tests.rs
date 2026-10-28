@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 mod accent;
 mod activity_bar;
+mod agent_skill;
 mod agents_header;
 mod agents_placement;
 mod backdrop;
@@ -33,6 +34,7 @@ mod icon_font;
 mod keybindings;
 mod line_height;
 mod loading;
+mod lock_access;
 mod missing_fonts;
 mod notification_settings;
 mod omarchy_theme;
