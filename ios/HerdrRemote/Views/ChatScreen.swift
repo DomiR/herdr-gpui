@@ -24,7 +24,8 @@ struct ChatScreen: View {
         }
         // The principal item below draws the header; the title is what the
         // iPad's split view and the window's name fall back to.
-        .navigationTitle(title)
+        // Window titles show in Stage Manager and the app switcher.
+        .navigationTitle(LockState.shared.hidesNames ? "Herdr Remote" : title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(removing: width == .regular ? .title : nil)
         .toolbar(.hidden, for: .tabBar)

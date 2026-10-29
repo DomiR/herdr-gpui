@@ -71,7 +71,8 @@ struct TerminalScreen: View {
         }
         .environment(\.colorScheme, .dark)
         .toolbarColorScheme(.dark, for: .navigationBar)
-        .navigationTitle(title)
+        // Window titles show in Stage Manager and the app switcher.
+        .navigationTitle(LockState.shared.hidesNames ? "Herdr Remote" : title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .toolbar {

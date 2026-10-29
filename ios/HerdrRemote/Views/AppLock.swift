@@ -33,6 +33,7 @@ struct AppLock: ViewModifier {
                 if phase == .background, required { state.locked = true }
                 if phase == .active, state.locked { Task { await state.unlock() } }
             }
+            .onAppear { state.cover(required && (state.locked || phase != .active)) }
             .task { if state.locked { await state.unlock() } }
     }
 }
@@ -47,13 +48,25 @@ final class LockState {
     @ObservationIgnored private var covers: [ObjectIdentifier: UIWindow] = [:]
     @ObservationIgnored private var unlocking = false
 
+    /// Whether chat names should stay hidden, as in window titles.
+    var hidesNames: Bool { locked && AppLock.isOn }
+
+    /// Covers every connected window scene, or none. Each window's lock
+    /// calls this as it appears, so a window opened or restored while
+    /// locked is covered too.
     func cover(_ covered: Bool) {
         guard covered else {
             covers.values.forEach { $0.isHidden = true }
             covers = [:]
             return
         }
-        for scene in UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }) where covers[ObjectIdentifier(scene)] == nil {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        // A cover whose scene went away; its identifier may be reused.
+        for (id, window) in covers where window.windowScene == nil || !scenes.contains(where: { ObjectIdentifier($0) == id }) {
+            window.isHidden = true
+            covers[id] = nil
+        }
+        for scene in scenes where covers[ObjectIdentifier(scene)]?.windowScene !== scene {
             let window = UIWindow(windowScene: scene)
             window.windowLevel = .alert + 1
             window.rootViewController = UIHostingController(rootView: LockCover { Task { await self.unlock() } })
