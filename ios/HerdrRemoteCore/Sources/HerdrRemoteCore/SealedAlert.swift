@@ -144,3 +144,25 @@ public struct AlertPresentation: Hashable, Sendable {
         return nil
     }
 }
+
+/// Checks a Live Activity's answer against the chat it names. Every paired
+/// computer holds the push-to-start token, so any of them can start an
+/// activity that names another computer's chat; answering only when that
+/// chat really waits on the same question, with the same answer offered,
+/// keeps one computer from steering an answer to another.
+public enum ActivityAnswer {
+    /// Whether `permission` in `transcript` is the question the activity
+    /// showed as `question` (the daemon's excerpt of its title: whitespace
+    /// collapsed, cut with an ellipsis) and offers `option`.
+    public static func matches(question: String, permission: PermissionId, option: String, in transcript: Transcript) -> Bool {
+        guard let waiting = transcript.permissions.first(where: { $0.id == permission }),
+              waiting.options.contains(where: { $0.id == option })
+        else { return false }
+        let title = waiting.title.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        if question.hasSuffix("\u{2026}") {
+            let shown = question.dropLast()
+            return !shown.isEmpty && title.hasPrefix(shown) && title.count > shown.count
+        }
+        return title == question
+    }
+}

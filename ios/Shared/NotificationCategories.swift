@@ -40,7 +40,9 @@ enum NotificationCategories {
     private static func action(_ action: AlertPresentation.Action) -> UNNotificationAction {
         switch action.style {
         case let .textInput(placeholder):
-            UNTextInputNotificationAction(identifier: action.id, title: action.title, options: [], textInputButtonTitle: "Send", textInputPlaceholder: placeholder)
+            // A prompt can make an agent do anything, so a locked phone
+            // asks for Face ID or the passcode first.
+            UNTextInputNotificationAction(identifier: action.id, title: action.title, options: [.authenticationRequired], textInputButtonTitle: "Send", textInputPlaceholder: placeholder)
         case .destructive:
             UNNotificationAction(identifier: action.id, title: action.title, options: [.destructive])
         case .authenticated:

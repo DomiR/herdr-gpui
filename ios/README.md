@@ -211,9 +211,14 @@ the phone as APNs alerts instead of Web Push. These alerts are sealed to
 the phone: Apple sees only "Herdr", "New activity", and ciphertext.
 
 1. **Registration.** The app asks to show alerts after the first pairing.
-   It then registers its APNs token and the public half of a
-   key-agreement key: a Secure Enclave key in the App Group's keychain
-   group, or a software key in the simulator.
+   It then registers its APNs token with each computer, along with the
+   public half of that computer's own key-agreement key: a Secure Enclave
+   key in the App Group's keychain group, or a software key in the
+   simulator.
+   - An alert counts as from the computer whose key opens it, and is
+     dropped if its text names another computer.
+   - So one paired computer cannot send an alert whose actions reach
+     another.
 2. **Opening.** The Notification Service Extension
    (`HerdrRemoteNotifications`) opens each alert. It shows the chat's
    title and text, groups the alert with the chat's other notifications,
@@ -221,7 +226,8 @@ the phone: Apple sees only "Herdr", "New activity", and ciphertext.
 3. **Actions.**
    - **Questions:** up to four answers. "Always" answers ask for Face ID
      first.
-   - **Finished turns:** Reply, whose text becomes the next prompt.
+   - **Finished turns:** Reply, whose text becomes the next prompt. Reply
+     asks for Face ID or the passcode on a locked phone.
    - **Where they run:** an action runs in the app without opening it,
      and signs in with the device key.
 4. **Clears and badges.** An answer given elsewhere sends a background
@@ -230,12 +236,15 @@ the phone: Apple sees only "Herdr", "New activity", and ciphertext.
 
 A Live Activity in the question phase also offers up to three answers
 (never the "always" ones) as buttons that answer from the lock screen.
+Any computer can start an activity that names another computer's chat.
+So a button answers only after the app reads that chat and finds the
+same question still waiting, with the same answer offered.
 
 The simulator delivers `simctl push` payloads but does not run the
 extension. For the simulator loop:
 - `-provisionalAlerts YES` grants quiet permission without the prompt.
-- `-exportNotifyKey YES` writes the alert key to the App Group, where a
-  script can seal a payload to it.
+- `-exportNotifyKey FINGERPRINT` writes that computer's alert key to the
+  App Group, where a script can seal a payload to it.
 - `-dumpNotifications YES` writes what was delivered, and opens each
   alert in the app as the extension would.
 

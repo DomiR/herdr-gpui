@@ -106,9 +106,10 @@ final class ActivityTokens {
                 .compactMap { running in
                     running.token.map { API.APNsRegistration.Activity(pane: running.attributes.pane, token: $0) }
                 }
-            // Without the key, alerts would arrive sealed to nobody: send
-            // neither and the computer keeps using Web Push or nothing.
-            let notifyKey = alert == nil ? nil : try? NotifyKey.loadOrCreate().registered
+            // Each computer seals to its own key. Without one, alerts would
+            // arrive sealed to nobody: send neither, and the computer keeps
+            // using Web Push or nothing.
+            let notifyKey = alert == nil ? nil : try? NotifyKey.loadOrCreate(for: computer.fingerprint).registered
             let registration = API.APNsRegistration(
                 pushToStart: pushToStart,
                 activities: activities,

@@ -77,3 +77,27 @@ import Testing
         #expect(!alert.presentation.actions.isEmpty || alert.kind != .question)
     }
 }
+
+@Suite struct ActivityAnswerTests {
+    static func transcript(title: String) throws -> Transcript {
+        let json = """
+        {"agent":"claude","permissions":[{"id":7,"call_id":"c","title":\(String(reflecting: title)),
+          "options":[{"id":"allow","kind":"allow_once","name":"Allow once"}]}]}
+        """
+        return try JSONDecoder().decode(Transcript.self, from: Data(json.utf8))
+    }
+
+    @Test func theSameQuestionOnTheNamedChatMatches() throws {
+        let chat = try Self.transcript(title: "Run  git push\norigin main")
+        #expect(ActivityAnswer.matches(question: "Run git push origin main", permission: 7, option: "allow", in: chat))
+        #expect(ActivityAnswer.matches(question: "Run git push\u{2026}", permission: 7, option: "allow", in: chat))
+    }
+
+    @Test func anotherQuestionIdOrAnswerDoesNot() throws {
+        let chat = try Self.transcript(title: "Run git push origin main")
+        #expect(!ActivityAnswer.matches(question: "Delete the repo", permission: 7, option: "allow", in: chat))
+        #expect(!ActivityAnswer.matches(question: "Run git push origin main", permission: 8, option: "allow", in: chat))
+        #expect(!ActivityAnswer.matches(question: "Run git push origin main", permission: 7, option: "always", in: chat))
+        #expect(!ActivityAnswer.matches(question: "\u{2026}", permission: 7, option: "allow", in: chat))
+    }
+}

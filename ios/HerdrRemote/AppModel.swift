@@ -72,6 +72,7 @@ final class AppModel {
     func forget(_ computer: Computer) {
         computers.removeAll { $0.device == computer.device }
         save()
+        try? NotifyKey.forget(computer.fingerprint)
         Task { await sessions.forget(computer) }
     }
 

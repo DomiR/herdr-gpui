@@ -14,20 +14,29 @@ struct AnswerIntent: LiveActivityIntent {
     @Parameter(title: "Chat") var pane: String
     @Parameter(title: "Question") var permission: Int
     @Parameter(title: "Answer") var option: String
+    /// The question as the activity showed it, which must still be waiting
+    /// on that chat (`ActivityAnswer`).
+    @Parameter(title: "Question text") var question: String
 
     init() {}
 
-    init(computer: String, pane: String, permission: PermissionId, option: String) {
+    init(computer: String, pane: String, permission: PermissionId, option: String, question: String) {
         self.computer = computer
         self.pane = pane
         self.permission = Int(clamping: permission.value)
         self.option = option
+        self.question = question
     }
 
     func perform() async throws -> some IntentResult {
         #if !WIDGET_EXTENSION
-        let command = ChatCommand.answer(permission: PermissionId(UInt64(max(0, permission))), option: option)
-        try await BackgroundCommands.send(command, computer: computer, pane: pane)
+        try await BackgroundCommands.answerFromActivity(
+            computer: computer,
+            pane: pane,
+            permission: PermissionId(UInt64(max(0, permission))),
+            option: option,
+            question: question
+        )
         #endif
         return .result()
     }

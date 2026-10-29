@@ -13,21 +13,22 @@ final class NotificationService: UNNotificationServiceExtension {
     ) {
         let content = (request.content.mutableCopy() as? UNMutableNotificationContent) ?? UNMutableNotificationContent()
         guard let sealed = request.content.userInfo["sealed"] as? String,
-              let key = try? NotifyKey.load(),
-              let alert = try? key.open(sealed)
+              let opened = try? NotifyKey.open(sealed)
         else {
             // Shown as sent: "Herdr", "New activity"; opening the app
             // shows what it was.
             contentHandler(content)
             return
         }
+        let alert = opened.alert
         content.title = alert.title
         content.body = alert.body
         content.threadIdentifier = alert.pane
         if let badge = alert.badge { content.badge = NSNumber(value: badge) }
         var info = content.userInfo
         info["sealed"] = nil
-        info[AlertKeys.computer] = alert.computer
+        // The computer whose key opened it, which actions then reach.
+        info[AlertKeys.computer] = opened.computer.hex
         info[AlertKeys.pane] = alert.pane
         if let permission = alert.permission { info[AlertKeys.permission] = NSNumber(value: permission.id.value) }
         content.userInfo = info

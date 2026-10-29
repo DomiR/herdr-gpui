@@ -48,7 +48,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, @preconcurrency UNUser
         didReceiveRemoteNotification userInfo: [AnyHashable: Any]
     ) async -> UIBackgroundFetchResult {
         guard let sealed = userInfo["sealed"] as? String,
-              let alert = try? NotifyKey.load()?.open(sealed)
+              let alert = (try? NotifyKey.open(sealed))?.alert
         else { return .noData }
         let center = UNUserNotificationCenter.current()
         if alert.clear {
@@ -96,14 +96,15 @@ final class AppDelegate: NSObject, UIApplicationDelegate, @preconcurrency UNUser
 #if DEBUG
 extension AppDelegate {
     /// For the simulator loop, which cannot tap the permission prompt:
-    /// `-provisionalAlerts YES` asks quietly instead, `-exportNotifyKey YES`
-    /// writes the alert key's public half to the App Group, and
+    /// `-provisionalAlerts YES` asks quietly instead, `-exportNotifyKey FP`
+    /// writes the public half of computer FP's alert key to the App Group, and
     /// `-dumpNotifications YES` writes what was delivered there, as the
     /// extension left it. Answers whether it handled alerts itself.
     func followDebugArguments() -> Bool {
         let defaults = UserDefaults.standard
         guard let folder = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: NotifyKey.group) else { return false }
-        if defaults.bool(forKey: "exportNotifyKey"), let key = try? NotifyKey.loadOrCreate() {
+        if let hex = defaults.string(forKey: "exportNotifyKey"), let computer = Fingerprint(hex),
+           let key = try? NotifyKey.loadOrCreate(for: computer) {
             try? Data(key.registered.utf8).write(to: folder.appending(path: "debug-notify-key.txt"))
         }
         if defaults.bool(forKey: "dumpNotifications") {
@@ -120,7 +121,7 @@ extension AppDelegate {
                         // The simulator does not run the extension for
                         // `simctl push`; this opens it as the extension would.
                         "opened": (content.userInfo["sealed"] as? String).flatMap { sealed in
-                            (try? NotifyKey.load()?.open(sealed)).map { "\($0.title) | \($0.body) | \($0.presentation.actions.map(\.title))" }
+                            (try? NotifyKey.open(sealed))?.map { "\($0.computer.hex.prefix(4)): \($0.alert.title) | \($0.alert.body) | \($0.alert.presentation.actions.map(\.title))" }
                         } ?? "",
                     ]
                 }
