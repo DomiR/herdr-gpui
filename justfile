@@ -238,6 +238,9 @@ ios-testflight:
     # are not secret.
     export APPLE_TEAM_ID="${APPLE_TEAM_ID:-VJAHQVZ96V}"
     export ASC_KEY_ID="${ASC_KEY_ID:-VACF2WK94S}"
+    if [ -z "${ASC_ISSUER_ID:-}" ] || [ -z "${ASC_KEY_P8:-}" ]; then
+        echo "Reading the App Store Connect key from pass: tap your YubiKey if it asks."
+    fi
     if [ -z "${ASC_ISSUER_ID:-}" ]; then
         ASC_ISSUER_ID=$(pass show apple/app-store-connect-issuer-id | head -1)
         export ASC_ISSUER_ID
@@ -246,6 +249,7 @@ ios-testflight:
         ASC_KEY_P8=$(pass show "herdr-gpui/apple-api-key-$ASC_KEY_ID")
         export ASC_KEY_P8
     fi
+    echo "Credentials ready (key $ASC_KEY_ID, team $APPLE_TEAM_ID)."
     sh ios/tools/testflight.sh
 
 # Render the native screen mockups in a headless simulator.
