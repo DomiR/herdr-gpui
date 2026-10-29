@@ -99,11 +99,14 @@ targets:
       path: HerdrRemoteWatch/Info.plist
       properties:
         CFBundleDisplayName: Herdr
+        CFBundleIconName: AppIcon
         WKApplication: true
         WKCompanionAppBundleIdentifier: so.pen.herdr.remote
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: so.pen.herdr.remote.watchkitapp
+        # App Store Connect refuses the upload without the Watch app's icon.
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
   HerdrRemoteShare:
     type: app-extension
