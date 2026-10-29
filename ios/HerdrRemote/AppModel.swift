@@ -7,7 +7,7 @@ import UIKit
 
 /// Where the app should go next: a chat or terminal opened from a Live
 /// Activity, a notification, or a list.
-private let log = Logger(subsystem: "so.pen.herdr-remote", category: "app")
+private let log = Logger(subsystem: "so.pen.herdr.remote", category: "app")
 
 enum Route: Codable, Hashable {
     case chat(PaneKey, title: String)
@@ -174,8 +174,13 @@ final class AppModel {
     }
 
     #if DEBUG
-    /// Starts a local activity with sample content, to check the layouts on
-    /// a device without an APNs key.
+    /// Where the sample activity is, for Settings: iOS shows activities
+    /// only outside the app, so the button says what happened.
+    var sampleStatus: String?
+
+    /// Starts a local activity with sample content and plays it through a
+    /// few steps to done, to check the layouts and updates on a device
+    /// without an APNs key.
     func startSample() {
         let facts = ChatActivityFacts(
             computer: computers.first?.name ?? "studio",
@@ -195,14 +200,42 @@ final class AppModel {
             working: 2,
             waiting: 1
         )
+        let id: String
         do {
-            _ = try Activity.request(
+            id = try Activity.request(
                 attributes: ChatActivityAttributes(facts: facts),
                 content: .init(state: state, staleDate: nil)
-            )
+            ).id
         } catch {
-            message = error.localizedDescription
+            sampleStatus = "Could not start: \(error.localizedDescription)"
+            return
         }
+        sampleStatus = "Started. Go to the Home Screen or lock the phone: it shows in the Dynamic Island and on the Lock Screen, and updates every few seconds."
+        // The app is suspended soon after it leaves the screen, which is
+        // when the activity shows; the updates need the background time.
+        let background = UIApplication.shared.beginBackgroundTask(withName: "Sample activity")
+        Task { [weak self] in
+            await Self.playSample(id, from: state)
+            self?.sampleStatus = "Finished. It leaves the Lock Screen in a minute."
+            UIApplication.shared.endBackgroundTask(background)
+        }
+    }
+
+    /// Steps the sample activity `id` through a few updates, then ends it.
+    private nonisolated static func playSample(_ id: String, from start: ChatActivityState) async {
+        var state = start
+        for (index, step) in ["Running cargo test", "Fixing split_tests.rs", "Running just ci"].enumerated() {
+            try? await Task.sleep(for: .seconds(5))
+            state.step = step
+            state.planDone = min(3 + index, 4)
+            await Activity<ChatActivityAttributes>.activities.first { $0.id == id }?.update(.init(state: state, staleDate: nil))
+        }
+        try? await Task.sleep(for: .seconds(5))
+        state.phase = .finished
+        state.summary = "Split the tests into four files; just ci passes."
+        state.working = 1
+        await Activity<ChatActivityAttributes>.activities.first { $0.id == id }?
+            .end(.init(state: state, staleDate: nil), dismissalPolicy: .after(.now + 60))
     }
     #endif
 }

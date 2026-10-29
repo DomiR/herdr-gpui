@@ -11,7 +11,7 @@ struct AppLock: ViewModifier {
     private let state = LockState.shared
 
     nonisolated static let setting = "requireFaceID"
-    nonisolated static var store: UserDefaults? { UserDefaults(suiteName: "group.so.pen.herdr-remote") }
+    nonisolated static var store: UserDefaults? { UserDefaults(suiteName: "group.so.pen.herdr.remote") }
     /// Fails closed: settings that cannot be read count as locked.
     nonisolated static var isOn: Bool { store?.bool(forKey: setting) ?? true }
 

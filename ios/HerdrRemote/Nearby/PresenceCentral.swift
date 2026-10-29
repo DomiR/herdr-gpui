@@ -3,7 +3,7 @@ import Foundation
 import HerdrRemoteCore
 import os
 
-private let log = Logger(subsystem: "so.pen.herdr-remote", category: "presence")
+private let log = Logger(subsystem: "so.pen.herdr.remote", category: "presence")
 
 /// Bluetooth presence after pairing (`Presence`): keeps a connection to
 /// each paired computer that has presence on and is in range, proves this
@@ -26,7 +26,7 @@ private let log = Logger(subsystem: "so.pen.herdr-remote", category: "presence")
 @MainActor
 final class PresenceCentral: NSObject {
     static let presence = CBUUID(string: "6E3A4F21-8C0B-4D7E-9A55-2F1C0B7D4E93")
-    static let restoreIdentifier = "so.pen.herdr-remote.presence"
+    static let restoreIdentifier = "so.pen.herdr.remote.presence"
 
     /// The paired computers, kept current by the app model.
     var computers: [Computer] = [] {

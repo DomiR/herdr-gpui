@@ -4,7 +4,7 @@ import Observation
 import os
 import WidgetKit
 
-private let log = Logger(subsystem: "so.pen.herdr-remote", category: "fleet")
+private let log = Logger(subsystem: "so.pen.herdr.remote", category: "fleet")
 
 /// A chat row with where it lives, for lists across computers.
 struct ChatItem: Identifiable, Hashable {

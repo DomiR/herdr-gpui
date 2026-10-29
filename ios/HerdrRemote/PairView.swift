@@ -1,13 +1,12 @@
 import SwiftUI
 import UIKit
 
-/// Pairing: scan the QR Herdr shows (or paste its link), compare the
+/// Pairing: pick a computer nearby or scan the QR Herdr shows, compare the
 /// matching code with the computer's dialog, and wait for Allow.
 struct PairView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @State private var pairing = PairingModel()
-    @State private var pasted = ""
     @State private var deviceName = UIDevice.current.name
 
     var body: some View {
@@ -20,14 +19,10 @@ struct PairView: View {
                     ProgressView(text)
                 case let .code(code):
                     codeView(code)
-                case let .paired(name):
-                    ContentUnavailableView {
-                        Label("Paired with \(name)", systemImage: "checkmark.circle.fill")
-                    } description: {
-                        Text("Running chats on \(name) now appear on the lock screen.")
-                    } actions: {
-                        Button("Done") { dismiss() }.buttonStyle(.borderedProminent)
-                    }
+                case .paired:
+                    // The sheet closes on its own; the new computer is
+                    // already on the home screen behind it.
+                    Color.clear
                 case let .failed(message):
                     ContentUnavailableView {
                         Label("Pairing failed", systemImage: "xmark.octagon")
@@ -37,6 +32,12 @@ struct PairView: View {
                         Button("Try again") { pairing.cancel() }
                     }
                 }
+            }
+            .onChange(of: pairing.step) { _, step in
+                if case .paired = step { dismiss() }
+            }
+            .sensoryFeedback(trigger: pairing.step) { _, step in
+                if case .paired = step { .success } else { nil }
             }
             .navigationTitle("Pair a computer")
             .navigationBarTitleDisplayMode(.inline)
@@ -53,9 +54,9 @@ struct PairView: View {
 
     private var scan: some View {
         Form {
-            let nearby = (model.nearby.computers + model.bluetooth.computers).filter { candidate in
-                candidate.pairing && !model.computers.contains { candidate.matches($0.fingerprint) }
-            }
+            // Computers already paired stay listed: the computer may have
+            // removed this phone, and pairing again replaces the record.
+            let nearby = (model.nearby.computers + model.bluetooth.computers).filter(\.pairing)
             Section {
                 ForEach(nearby) { computer in
                     Button {
@@ -64,6 +65,13 @@ struct PairView: View {
                         HStack {
                             Label(computer.name, systemImage: "laptopcomputer")
                             Spacer()
+                            if let machine = model.fleet.machines.first(where: { computer.matches($0.computer.fingerprint) }) {
+                                if case .revoked = machine.status {
+                                    Text("Revoked").font(.footnote).foregroundStyle(.red)
+                                } else {
+                                    Text("Paired").font(.footnote).foregroundStyle(.secondary)
+                                }
+                            }
                             if case .bluetooth = computer.route {
                                 Image(systemName: "dot.radiowaves.left.and.right").accessibilityLabel("Bluetooth")
                             } else {
@@ -89,17 +97,6 @@ struct PairView: View {
                     .listRowInsets(EdgeInsets())
             } footer: {
                 Text("In Herdr, open Remote control > Pair device and point the camera at the QR.")
-            }
-            Section("Or paste the pairing link") {
-                TextField("https://…/pair#t=…", text: $pasted, axis: .vertical)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .keyboardType(.URL)
-                Button("Paste") {
-                    pasted = UIPasteboard.general.string ?? pasted
-                }
-                Button("Pair") { start(pasted) }
-                    .disabled(pasted.isEmpty)
             }
             Section("This phone's name on the computer") {
                 TextField("iPhone", text: $deviceName)

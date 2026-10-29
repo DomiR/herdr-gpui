@@ -71,7 +71,7 @@ and nothing goes through your phone.
 
    ```sh
    link=$(ios/tools/remote_control.py "$state" pair | sed -E 's#https://[^/]+/pair#https://127.0.0.1:7543/pair#')
-   xcrun simctl launch DEVICE so.pen.herdr-remote -pairLink "$link"
+   xcrun simctl launch DEVICE so.pen.herdr.remote -pairLink "$link"
    ios/tools/remote_control.py "$state" approve
    ```
 
@@ -80,7 +80,7 @@ and nothing goes through your phone.
      opens a chat, as tapping a Live Activity does.
    - `-openTerm PANE` opens a terminal; `-type TEXT` then types into it
      (a newline presses Enter).
-   - `-tab board|computers|search` picks a tab.
+   - `-tab board|computers` picks a tab.
    - `-newWorkspace YES` opens the new workspace form.
    - With `-openLink`, `-session YES` opens the chat's session sheet and
      `-draft TEXT` types into its composer (`-draft /` lists the slash
@@ -88,7 +88,7 @@ and nothing goes through your phone.
 4. **Read the results.** `xcrun simctl io DEVICE screenshot FILE` captures
    the screen, and `daemon.log` lists every request.
    - The cache sits in the App Group container
-     (`xcrun simctl get_app_container DEVICE so.pen.herdr-remote group.so.pen.herdr-remote`).
+     (`xcrun simctl get_app_container DEVICE so.pen.herdr.remote group.so.pen.herdr.remote`).
    - Avoid `simctl openurl`: its confirmation alert needs a tap, and it
      keeps the app inactive until the simulator restarts.
 
@@ -99,11 +99,11 @@ account.
 
 1. Set `DEVELOPMENT_TEAM` in `project.yml` (or in Xcode, Signing &
    Capabilities, for both targets).
-2. Rename the bundle identifiers if `so.pen.herdr-remote` is taken for your
+2. Rename the bundle identifiers if `so.pen.herdr.remote` is taken for your
    team.
-   - Change both `so.pen.herdr-remote` and `so.pen.herdr-remote.widgets`;
+   - Change both `so.pen.herdr.remote` and `so.pen.herdr.remote.widgets`;
      the extension's must start with the app's.
-   - Change the App Group `group.so.pen.herdr-remote` too.
+   - Change the App Group `group.so.pen.herdr.remote` too.
    - Use the new identifier as `topic` below.
 3. Run on a device. Live Activities and the Secure Enclave do not work fully
    in the simulator; there the app uses a software device key.
@@ -181,7 +181,7 @@ is answered 503.
    {
      "team_id": "ABCDE12345",
      "key_id": "KEYID12345",
-     "topic": "so.pen.herdr-remote",
+     "topic": "so.pen.herdr.remote",
      "sandbox": true
    }
    ```

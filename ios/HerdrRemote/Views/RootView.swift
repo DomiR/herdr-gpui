@@ -1,7 +1,7 @@
 import HerdrRemoteCore
 import SwiftUI
 
-enum RootTab: Hashable { case home, board, computers, search }
+enum RootTab: Hashable { case home, board, computers }
 
 /// Home B: attention first, with Board, Computers, and Search as tabs.
 struct RootView: View {
@@ -76,9 +76,6 @@ struct RootView: View {
             Tab("Computers", systemImage: "desktopcomputer", value: RootTab.computers) {
                 NavigationStack { ComputersTab(pairing: $pairing).withRoutes() }
             }
-            Tab(value: RootTab.search, role: .search) {
-                NavigationStack { SearchTab().withRoutes() }
-            }
         }
     }
 }
@@ -108,7 +105,6 @@ extension RootView {
         switch defaults.string(forKey: "tab") {
         case "board": tab = .board
         case "computers": tab = .computers
-        case "search": tab = .search
         default: break
         }
         if defaults.bool(forKey: "newWorkspace") {

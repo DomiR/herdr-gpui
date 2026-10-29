@@ -385,7 +385,7 @@ the APNs key):
 
 - **Project**: an XcodeGen spec (`ios/project.yml`) for the `HerdrRemote` app
   and the `HerdrRemoteWidgets` extension, iOS 17.2+, bundle
-  `so.pen.herdr-remote`. Logic without UIKit sits in the `HerdrRemoteCore`
+  `so.pen.herdr.remote`. Logic without UIKit sits in the `HerdrRemoteCore`
   Swift package, whose tests run on the Mac with `swift test`.
 - **Activity**: `ChatActivityAttributes` (computer name, computer id,
   workspace, chat title, agent, pane) with `ChatActivityState` as its

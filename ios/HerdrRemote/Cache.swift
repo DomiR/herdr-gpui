@@ -20,7 +20,7 @@ struct Cache: Sendable {
     }
 
     static let shared: Cache = {
-        let base = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.so.pen.herdr-remote")
+        let base = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.so.pen.herdr.remote")
             ?? URL.applicationSupportDirectory
         return Cache(folder: base.appending(path: "Cache", directoryHint: .isDirectory))
     }()

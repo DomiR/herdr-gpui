@@ -5,7 +5,7 @@ import WidgetKit
 /// Opens the board from Control Center, the Lock Screen, or the Action button.
 struct BoardControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
-        StaticControlConfiguration(kind: "so.pen.herdr-remote.board") {
+        StaticControlConfiguration(kind: "so.pen.herdr.remote.board") {
             ControlWidgetButton(action: OpenBoardIntent()) {
                 Label("Herdr Board", systemImage: "square.grid.2x2")
             }
@@ -18,7 +18,7 @@ struct BoardControl: ControlWidget {
 /// Opens the new workspace form.
 struct NewWorkspaceControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
-        StaticControlConfiguration(kind: "so.pen.herdr-remote.new-workspace") {
+        StaticControlConfiguration(kind: "so.pen.herdr.remote.new-workspace") {
             ControlWidgetButton(action: NewWorkspaceIntent()) {
                 Label("New Workspace", systemImage: "folder.badge.plus")
             }

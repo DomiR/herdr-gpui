@@ -125,7 +125,7 @@ pub(crate) fn sender_for_tests() -> Sender {
     let key = p256::ecdsa::SigningKey::from(
         p256::SecretKey::from_slice(&[7; 32]).expect("a valid scalar"),
     );
-    let config = config::from_parts("ABCDE12345", "XYZ9876543", "so.pen.herdr-remote", true, key)
+    let config = config::from_parts("ABCDE12345", "XYZ9876543", "so.pen.herdr.remote", true, key)
         .expect("a valid config");
     Sender::new(config).expect("a sender")
 }

@@ -3,7 +3,7 @@ import HerdrRemoteCore
 import os
 import WatchConnectivity
 
-private let log = Logger(subsystem: "so.pen.herdr-remote", category: "watch")
+private let log = Logger(subsystem: "so.pen.herdr.remote", category: "watch")
 
 /// The phone's end of the Watch app: it hands the Watch the chats it last
 /// saw (the widget summary, with each waiting question) and sends the

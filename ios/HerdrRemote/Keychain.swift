@@ -7,8 +7,8 @@ import Security
 /// so push tokens can be sent while the phone is locked, and never synced
 /// or restored to another device.
 enum Keychain {
-    static let service = "so.pen.herdr-remote"
-    static let group = "group.so.pen.herdr-remote"
+    static let service = "so.pen.herdr.remote"
+    static let group = "group.so.pen.herdr.remote"
 
     enum Failure: Error, LocalizedError {
         case status(OSStatus)

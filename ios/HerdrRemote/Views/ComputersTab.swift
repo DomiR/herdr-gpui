@@ -2,13 +2,28 @@ import HerdrRemoteCore
 import SwiftUI
 
 /// Computers C: an outline from computer to workspace to its chats and
-/// terminal tabs.
+/// terminal tabs, with search across all of them at the top.
 struct ComputersTab: View {
     @Environment(AppModel.self) private var model
     @Binding var pairing: Bool
     @State private var collapsed: Set<String> = []
+    @State private var query = ""
 
     var body: some View {
+        Group {
+            if query.isEmpty { outline } else { SearchResults(query: query) }
+        }
+        .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Chats, workspaces, terminals")
+        .navigationTitle("Computers")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink { SettingsView() } label: { Image(systemName: "gearshape") }
+                    .accessibilityLabel("Settings")
+            }
+        }
+    }
+
+    private var outline: some View {
         List {
             ForEach(model.fleet.machines) { machine in
                 DisclosureGroup(isExpanded: expanded(machine.id)) {
@@ -61,13 +76,6 @@ struct ComputersTab: View {
             Button { pairing = true } label: { Label("Add a computer", systemImage: "plus") }
         }
         .listStyle(.sidebar)
-        .navigationTitle("Computers")
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                NavigationLink { SettingsView() } label: { Image(systemName: "gearshape") }
-                    .accessibilityLabel("Settings")
-            }
-        }
     }
 
     private func expanded(_ id: String) -> Binding<Bool> {
@@ -105,9 +113,9 @@ struct ComputerLabel: View {
 }
 
 /// Chats, workspaces, and terminals across every computer, by name.
-struct SearchTab: View {
+private struct SearchResults: View {
     @Environment(AppModel.self) private var model
-    @State private var query = ""
+    let query: String
 
     var body: some View {
         let needle = query.lowercased()
@@ -137,7 +145,8 @@ struct SearchTab: View {
                 }
             }
         }
-        .searchable(text: $query, prompt: "Chats, workspaces, terminals")
-        .navigationTitle("Search")
+        .overlay {
+            if chats.isEmpty, terminals.isEmpty { ContentUnavailableView.search(text: query) }
+        }
     }
 }

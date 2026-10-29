@@ -3,7 +3,7 @@ import os
 import UIKit
 import UserNotifications
 
-private let log = Logger(subsystem: "so.pen.herdr-remote", category: "alerts")
+private let log = Logger(subsystem: "so.pen.herdr.remote", category: "alerts")
 
 /// Owns the app model, so notification actions and pushes that launch the
 /// app in the background reach the same state the screens use, and

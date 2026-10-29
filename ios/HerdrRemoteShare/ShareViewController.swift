@@ -82,7 +82,7 @@ final class ShareModel {
         sending = true
         Task {
             // The app lock (Settings > Privacy) covers sending from here too.
-            if UserDefaults(suiteName: "group.so.pen.herdr-remote")?.bool(forKey: "requireFaceID") == true,
+            if UserDefaults(suiteName: "group.so.pen.herdr.remote")?.bool(forKey: "requireFaceID") == true,
                !((try? await LAContext().evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Send to Herdr")) ?? false) {
                 sending = false
                 return

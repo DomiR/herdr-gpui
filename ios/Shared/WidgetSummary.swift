@@ -47,11 +47,11 @@ struct WidgetSummary: Codable, Hashable, Sendable {
         chats.filter(\.needsYou) + chats.filter { $0.working && !$0.needsYou } + chats.filter { !$0.working && !$0.needsYou }
     }
 
-    static let kind = "so.pen.herdr-remote.attention"
+    static let kind = "so.pen.herdr.remote.attention"
 
     #if os(iOS)
     private static var file: URL? {
-        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.so.pen.herdr-remote")?
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.so.pen.herdr.remote")?
             .appending(path: "summary.json")
     }
 

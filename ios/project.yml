@@ -42,7 +42,7 @@ targets:
       properties:
         CFBundleDisplayName: Herdr Remote
         CFBundleURLTypes:
-          - CFBundleURLName: so.pen.herdr-remote
+          - CFBundleURLName: so.pen.herdr.remote
             CFBundleURLSchemes: [herdr-remote]
         NSCameraUsageDescription: Herdr Remote reads the pairing QR code Herdr shows on your computer, and takes photos you send to a chat.
         NSFaceIDUsageDescription: Herdr Remote asks for Face ID before a chat allows every tool call without asking.
@@ -73,12 +73,13 @@ targets:
         # `production` for TestFlight and App Store builds.
         aps-environment: development
         # The cache lives in the App Group, which the widgets will read.
-        com.apple.security.application-groups: [group.so.pen.herdr-remote]
+        com.apple.security.application-groups: [group.so.pen.herdr.remote]
         # Questions interrupt Focus, as a waiting agent should.
         com.apple.developer.usernotifications.time-sensitive: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: so.pen.herdr-remote
+        PRODUCT_BUNDLE_IDENTIFIER: so.pen.herdr.remote
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
   HerdrRemoteWatch:
     type: application
@@ -95,10 +96,10 @@ targets:
       properties:
         CFBundleDisplayName: Herdr
         WKApplication: true
-        WKCompanionAppBundleIdentifier: so.pen.herdr-remote
+        WKCompanionAppBundleIdentifier: so.pen.herdr.remote
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: so.pen.herdr-remote.watchkitapp
+        PRODUCT_BUNDLE_IDENTIFIER: so.pen.herdr.remote.watchkitapp
 
   HerdrRemoteShare:
     type: app-extension
@@ -129,10 +130,10 @@ targets:
       path: HerdrRemoteShare/HerdrRemoteShare.entitlements
       properties:
         # The paired computers' keychain item and the summary live here.
-        com.apple.security.application-groups: [group.so.pen.herdr-remote]
+        com.apple.security.application-groups: [group.so.pen.herdr.remote]
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: so.pen.herdr-remote.share
+        PRODUCT_BUNDLE_IDENTIFIER: so.pen.herdr.remote.share
 
   HerdrRemoteNotifications:
     type: app-extension
@@ -154,10 +155,10 @@ targets:
       path: HerdrRemoteNotifications/HerdrRemoteNotifications.entitlements
       properties:
         # The App Group is also the keychain group the alert key is in.
-        com.apple.security.application-groups: [group.so.pen.herdr-remote]
+        com.apple.security.application-groups: [group.so.pen.herdr.remote]
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: so.pen.herdr-remote.notifications
+        PRODUCT_BUNDLE_IDENTIFIER: so.pen.herdr.remote.notifications
 
   HerdrRemoteWidgets:
     type: app-extension
@@ -175,9 +176,14 @@ targets:
         CFBundleDisplayName: Herdr Remote
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: HerdrRemoteWidgets/HerdrRemoteWidgets.entitlements
+      properties:
+        # The summary the widgets and Controls draw lives here.
+        com.apple.security.application-groups: [group.so.pen.herdr.remote]
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: so.pen.herdr-remote.widgets
+        PRODUCT_BUNDLE_IDENTIFIER: so.pen.herdr.remote.widgets
         # The answer intent's perform runs in the app; the widget only
         # draws its button.
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) WIDGET_EXTENSION

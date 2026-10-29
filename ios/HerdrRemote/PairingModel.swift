@@ -49,9 +49,21 @@ final class PairingModel {
             } catch is CancellationError {
                 step = .idle
             } catch {
-                step = .failed(error.localizedDescription)
+                step = .failed(Self.describe(error))
             }
         }
+    }
+
+    /// The error's message, plus the TLS status behind a secure connection
+    /// failure: iOS words every TLS failure the same way, and the status
+    /// (such as -9802, a fatal alert) is what tells them apart.
+    private static func describe(_ error: Error) -> String {
+        let message = error.localizedDescription
+        guard let error = error as? URLError,
+              let status = error.errorUserInfo["_kCFStreamErrorCodeKey"] as? Int
+        else { return message }
+        let host = error.failingURL?.host() ?? "?"
+        return "\(message) (\(host), \(error.code.rawValue), TLS \(status))"
     }
 
     func cancel() {

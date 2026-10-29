@@ -12,7 +12,7 @@ import Security
 /// keychain group, so the Notification Service Extension opens alerts
 /// with the keys the app registered.
 enum NotifyKey {
-    static let group = "group.so.pen.herdr-remote"
+    static let group = "group.so.pen.herdr.remote"
 
     enum Stored {
         case secureEnclave(SecureEnclave.P256.KeyAgreement.PrivateKey)
@@ -92,7 +92,7 @@ enum NotifyKey {
     private static func query() -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "so.pen.herdr-remote",
+            kSecAttrService as String: "so.pen.herdr.remote",
             kSecAttrAccount as String: "notify-keys",
             kSecAttrAccessGroup as String: group,
         ]

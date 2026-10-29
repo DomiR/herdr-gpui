@@ -17,7 +17,7 @@ mod tokens;
 
 const TEAM: &str = "ABCDE12345";
 const KEY_ID: &str = "XYZ9876543";
-const TOPIC: &str = "so.pen.herdr-remote";
+const TOPIC: &str = "so.pen.herdr.remote";
 
 const CHAT: Chat<'static> = Chat {
     agent: "Claude",

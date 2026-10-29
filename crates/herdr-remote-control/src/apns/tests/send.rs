@@ -47,7 +47,7 @@ fn request_carries_the_live_activity_headers() {
     assert_eq!(header("apns-push-type"), "liveactivity");
     assert_eq!(
         header("apns-topic"),
-        "so.pen.herdr-remote.push-type.liveactivity"
+        "so.pen.herdr.remote.push-type.liveactivity"
     );
     assert_eq!(header("apns-priority"), "10");
     assert_eq!(header("content-type"), "application/json");

@@ -42,6 +42,9 @@ struct SettingsView: View {
                 }
                 #if DEBUG
                 Button("Start a sample activity") { model.startSample() }
+                if let status = model.sampleStatus {
+                    Text(status).font(.footnote).foregroundStyle(.secondary)
+                }
                 #endif
             } header: {
                 Text("Live Activities")

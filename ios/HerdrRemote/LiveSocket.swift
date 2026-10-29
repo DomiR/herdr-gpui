@@ -4,7 +4,7 @@ import os
 
 /// `ComputerLink`'s network for one paired computer: pings, sessions from
 /// the device key, and the live socket over the pinned session.
-private let log = Logger(subsystem: "so.pen.herdr-remote", category: "live")
+private let log = Logger(subsystem: "so.pen.herdr.remote", category: "live")
 
 enum LiveSocket {
     static func io(for computer: Computer, sessions: Sessions) -> LinkIO {
