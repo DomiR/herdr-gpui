@@ -6,7 +6,7 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @State private var cacheSize = 0
-    @AppStorage(AppLock.setting) private var requireFaceID = false
+    @AppStorage(AppLock.setting, store: AppLock.store) private var requireFaceID = false
 
     var body: some View {
         List {

@@ -1,5 +1,6 @@
 import AppIntents
 import HerdrRemoteCore
+import UIKit
 
 /// Opens a chat: from Spotlight, Siri, or Shortcuts.
 struct OpenChatIntent: OpenIntent {
@@ -22,6 +23,11 @@ struct WhatNeedsMeIntent: AppIntent {
     func perform() async throws -> some IntentResult & ProvidesDialog & ReturnsValue<[ChatEntity]> {
         let summary = WidgetSummary.load()
         let waiting = summary.chats.filter(\.needsYou)
+        // On a locked phone Siri says counts only, never chat titles.
+        guard await UIApplication.shared.isProtectedDataAvailable else {
+            let dialog: IntentDialog = waiting.isEmpty ? "Nothing needs you." : "\(waiting.count) chat\(waiting.count == 1 ? "" : "s") need\(waiting.count == 1 ? "s" : "") you. Unlock to see which."
+            return .result(value: [], dialog: dialog)
+        }
         let dialog: IntentDialog = switch waiting.count {
         case 0: summary.working > 0 ? "Nothing needs you. \(summary.working) running." : "Nothing needs you."
         case 1: "\(waiting[0].title) on \(waiting[0].computer) needs you."
@@ -46,6 +52,7 @@ struct AskChatIntent: AppIntent {
     }
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
+        try AppLockError.check()
         let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { throw $prompt.needsValueError() }
         try await BackgroundCommands.send(.prompt(text: text), computer: chat.computerId, pane: chat.pane)
@@ -62,6 +69,7 @@ struct StopChatIntent: AppIntent {
     @Parameter(title: "Chat") var chat: ChatEntity
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
+        try AppLockError.check()
         try await requestConfirmation(actionName: .go, dialog: "Stop \(chat.title) on \(chat.computer)?")
         try await BackgroundCommands.send(.cancel, computer: chat.computerId, pane: chat.pane)
         return .result(dialog: "Stopped \(chat.title).")
@@ -94,5 +102,20 @@ struct HerdrShortcuts: AppShortcutsProvider {
             shortTitle: "Board",
             systemImageName: "square.grid.2x2"
         )
+    }
+}
+
+/// With the app locked (Settings > Privacy), Siri and Shortcuts do not act
+/// on chats: they cannot ask for Face ID in the background, and the lock
+/// promises that nothing reaches a chat without it.
+enum AppLockError: Error, CustomLocalizedStringResourceConvertible {
+    case locked
+
+    var localizedStringResource: LocalizedStringResource {
+        "Herdr Remote is locked. Open it to send to a chat."
+    }
+
+    static func check() throws {
+        if AppLock.isOn { throw AppLockError.locked }
     }
 }

@@ -108,6 +108,10 @@ extension AppDelegate {
     /// extension left it. Answers whether it handled alerts itself.
     func followDebugArguments() -> Bool {
         let defaults = UserDefaults.standard
+        // `-lockForTest YES|NO` turns the Face ID lock on or off.
+        if defaults.object(forKey: "lockForTest") != nil {
+            AppLock.store?.set(defaults.bool(forKey: "lockForTest"), forKey: AppLock.setting)
+        }
         guard let folder = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: NotifyKey.group) else { return false }
         if let hex = defaults.string(forKey: "exportNotifyKey"), let computer = Fingerprint(hex),
            let key = try? NotifyKey.loadOrCreate(for: computer) {

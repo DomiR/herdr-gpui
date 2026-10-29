@@ -61,8 +61,9 @@ private struct AttentionView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(inline).font(.headline).widgetAccentable()
                 if let first = summary.ranked.first {
-                    Text(first.title).font(.caption).lineLimit(1)
-                    Text("\(first.computer) · \(first.workspace)").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                    // Chat titles stay off a locked phone's screen.
+                    Text(first.title).font(.caption).lineLimit(1).privacySensitive()
+                    Text("\(first.computer) · \(first.workspace)").font(.caption2).foregroundStyle(.secondary).lineLimit(1).privacySensitive()
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -118,8 +119,8 @@ private struct ChatLine: View {
             Circle().fill(chat.needsYou ? Palette.question : chat.working ? Palette.working : Color.secondary)
                 .frame(width: 7, height: 7)
             VStack(alignment: .leading, spacing: 0) {
-                Text(chat.title).font(.caption.weight(.medium)).lineLimit(1)
-                Text("\(chat.computer) · \(chat.workspace)").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                Text(chat.title).font(.caption.weight(.medium)).lineLimit(1).privacySensitive()
+                Text("\(chat.computer) · \(chat.workspace)").font(.caption2).foregroundStyle(.secondary).lineLimit(1).privacySensitive()
             }
         }
     }

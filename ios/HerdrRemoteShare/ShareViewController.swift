@@ -1,4 +1,5 @@
 import HerdrRemoteCore
+import LocalAuthentication
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
@@ -80,6 +81,12 @@ final class ShareModel {
         guard !prompt.isEmpty || !jpegs.isEmpty else { return }
         sending = true
         Task {
+            // The app lock (Settings > Privacy) covers sending from here too.
+            if UserDefaults(suiteName: "group.so.pen.herdr-remote")?.bool(forKey: "requireFaceID") == true,
+               !((try? await LAContext().evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Send to Herdr")) ?? false) {
+                sending = false
+                return
+            }
             do {
                 try await BackgroundCommands.sendPrompt(prompt, pictures: jpegs, computer: chat.computerId, pane: chat.pane)
                 finish(true)
