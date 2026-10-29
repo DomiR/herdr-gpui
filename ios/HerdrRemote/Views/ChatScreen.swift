@@ -1,5 +1,6 @@
 import HerdrRemoteCore
 import SwiftUI
+import UIKit
 
 /// Chat B: the latest turn as a document (the prompt as a heading, steps
 /// folded to one line, the answer with its diffs), the running step
@@ -79,6 +80,8 @@ private struct ChatDocument: View {
     @State private var draft = ""
     @State private var problem: String?
     @State private var dismissedQuestion: PermissionId?
+    /// A link the agent wrote, shown in full before it opens.
+    @State private var pendingLink: URL?
 
     var body: some View {
         let entries = transcript.entries
@@ -139,6 +142,21 @@ private struct ChatDocument: View {
             if transcript.status == .working { RunningCapsule(transcript: transcript, tools: tools) }
         }
         .safeAreaInset(edge: .bottom) { composer }
+        .environment(\.openURL, OpenURLAction { url in
+            guard EntryView.webSchemes.contains(url.scheme?.lowercased() ?? "") else { return .discarded }
+            pendingLink = url
+            return .handled
+        })
+        .confirmationDialog(
+            "Open this link?",
+            isPresented: Binding(get: { pendingLink != nil }, set: { if !$0 { pendingLink = nil } }),
+            titleVisibility: .visible,
+            presenting: pendingLink
+        ) { url in
+            Button("Open in Safari") { UIApplication.shared.open(url) }
+        } message: { url in
+            Text(url.absoluteString)
+        }
         .sheet(item: question) { permission in
             QuestionSheet(key: key, permission: permission)
                 .presentationDetents([.medium, .large])

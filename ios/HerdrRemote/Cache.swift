@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import HerdrRemoteCore
 
@@ -25,7 +26,13 @@ struct Cache: Sendable {
     }()
 
     private func computerFolder(_ device: String) -> URL {
-        folder.appending(path: RemoteClient.segment(device), directoryHint: .isDirectory)
+        folder.appending(path: Self.name(device), directoryHint: .isDirectory)
+    }
+
+    /// A file name for an id the daemon chose: its SHA-256 in hex, so no
+    /// id (`..`, a slash) can name a path outside the cache.
+    static func name(_ id: String) -> String {
+        SHA256.hash(data: Data(id.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
     func home(_ device: String) -> Home? {
@@ -68,7 +75,7 @@ struct Cache: Sendable {
     }
 
     private func chatFile(_ device: String, _ pane: String) -> URL {
-        computerFolder(device).appending(path: "chats/\(RemoteClient.segment(pane)).json")
+        computerFolder(device).appending(path: "chats/\(Self.name(pane)).json")
     }
 
     private func read<Value: Decodable>(_ type: Value.Type, at url: URL) -> Value? {

@@ -33,10 +33,21 @@ struct EntryView: View {
         }
     }
 
+    /// Inline markdown from the agent, which is untrusted: only `http` and
+    /// `https` links stay links (opening one asks first, see ChatScreen),
+    /// so transcript text can never follow the app's own scheme.
     private func markdown(_ text: String) -> AttributedString {
-        (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
-            ?? AttributedString(text)
+        guard var styled = try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))
+        else { return AttributedString(text) }
+        for run in styled.runs {
+            if let link = run.link, !Self.webSchemes.contains(link.scheme?.lowercased() ?? "") {
+                styled[run.range].link = nil
+            }
+        }
+        return styled
     }
+
+    static let webSchemes: Set<String> = ["http", "https"]
 
     private func turnLine(_ summary: TurnSummary) -> String {
         let seconds = Int(summary.durationMs / 1000)
