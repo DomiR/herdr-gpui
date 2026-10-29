@@ -16,6 +16,10 @@ use std::collections::VecDeque;
 pub(crate) const TOKEN_TTL_MS: u64 = 60_000;
 /// How long a claimed pairing waits for the desktop's answer.
 pub(crate) const APPROVAL_TTL_MS: u64 = 120_000;
+/// Nearby tokens one pairing seals before the dialog must be opened again.
+/// Each one is a fresh guess at the code for a man in the middle, and
+/// keeps the pairing open a little longer, so both stay bounded.
+pub(crate) const MAX_NEARBY_REVEALS: u8 = 3;
 /// Finished claims whose outcome a phone can still poll.
 const REMEMBERED_OUTCOMES: usize = 8;
 
@@ -60,6 +64,8 @@ struct Open {
     token_expires_ms: u64,
     /// The token a nearby phone was sealed, kept beside the QR's.
     nearby: Option<NearbyToken>,
+    /// Nearby tokens sealed so far, kept when the QR rotates.
+    nearby_reveals: u8,
     phase: Phase,
 }
 
@@ -142,9 +148,11 @@ impl Pairings {
         let token = random_bytes::<SECRET_LEN>()?;
         // Rotating the QR keeps a token already sealed to a nearby phone,
         // which claims it moments later.
-        let (id, nearby) = match self.open.as_mut() {
-            Some(open) if open.unclaimed() => (open.id.clone(), open.nearby.take()),
-            _ => (PairingId(random_id()?), None),
+        let (id, nearby, nearby_reveals) = match self.open.as_mut() {
+            Some(open) if open.unclaimed() => {
+                (open.id.clone(), open.nearby.take(), open.nearby_reveals)
+            }
+            _ => (PairingId(random_id()?), None, 0),
         };
         self.close();
         let token_expires_ms = now_ms.saturating_add(TOKEN_TTL_MS);
@@ -153,6 +161,7 @@ impl Pairings {
             token_digest: sha256(&[&token]),
             token_expires_ms,
             nearby,
+            nearby_reveals,
             phase: Phase::Waiting,
         });
         Ok(Offer {
@@ -253,7 +262,8 @@ impl Pairings {
     }
 
     /// Keeps `token` as the open pairing's nearby token, claimable for
-    /// [`TOKEN_TTL_MS`] with `code`; a newer one replaces it.
+    /// [`TOKEN_TTL_MS`] with `code`; a newer one replaces it, at most
+    /// [`MAX_NEARBY_REVEALS`] times for one pairing.
     pub(crate) fn set_nearby(
         &mut self,
         token: &[u8; SECRET_LEN],
@@ -264,6 +274,10 @@ impl Pairings {
             return Err(Error::NoPairing);
         }
         let open = self.open.as_mut().ok_or(Error::NoPairing)?;
+        if open.nearby_reveals >= MAX_NEARBY_REVEALS {
+            return Err(Error::NearbyExhausted);
+        }
+        open.nearby_reveals += 1;
         open.nearby = Some(NearbyToken {
             digest: sha256(&[token]),
             code,

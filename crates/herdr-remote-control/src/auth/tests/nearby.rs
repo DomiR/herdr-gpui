@@ -6,7 +6,7 @@ use crate::auth::{
     nearby::{
         KEY_INFO, MAX_SESSIONS, SESSION_TTL_MS, code, commit, fingerprint_bytes, key, transcript,
     },
-    pairing::TOKEN_TTL_MS,
+    pairing::{MAX_NEARBY_REVEALS, TOKEN_TTL_MS},
 };
 use aes_gcm::{
     Aes256Gcm, KeyInit as _,
@@ -327,4 +327,27 @@ fn a_bad_phone_key_or_nonce_is_refused() {
         .nearby_reveal(&started.session, "AAAA", FP, &origins(), T0)
         .unwrap_err();
     assert!(matches!(short, Error::NearbyCrypto));
+}
+
+#[test]
+fn one_pairing_seals_only_a_few_nearby_tokens_even_as_the_qr_rotates() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut auth, offer) = open(dir.path());
+    let phone = Phone::new(3, 4);
+    for attempt in 0..MAX_NEARBY_REVEALS {
+        let now = T0 + u64::from(attempt) * 1_000;
+        exchange(&mut auth, &phone, now);
+        // The dialog rotates its QR; the count stays with the pairing.
+        assert_eq!(auth.mint(now + 1, &origins(), FP).unwrap().id, offer.id);
+    }
+    let now = T0 + 10_000;
+    let started = auth
+        .nearby_start(None, &phone.public_key(), "Studio", FP, now)
+        .unwrap();
+    let refused = auth
+        .nearby_reveal(&started.session, &phone.nonce(), FP, &origins(), now)
+        .unwrap_err();
+    assert!(matches!(refused, Error::NearbyExhausted));
+    // The QR still pairs.
+    assert!(auth.pairing_open(now));
 }

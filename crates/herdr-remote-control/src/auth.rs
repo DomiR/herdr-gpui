@@ -64,6 +64,8 @@ pub enum Error {
     NearbyBusy,
     #[error("the nearby pairing did not check out; start again")]
     NearbyCrypto,
+    #[error("too many nearby attempts; open Pair device on the computer again")]
+    NearbyExhausted,
     #[error("the remote control daemon has no address to offer")]
     NoAddress,
     #[error("open Remote control > Pair device on the computer first")]

@@ -367,7 +367,9 @@ impl IntoResponse for ApiError {
             Self::Auth(auth::Error::RateLimited | auth::Error::NearbyBusy) => {
                 StatusCode::TOO_MANY_REQUESTS
             }
-            Self::Auth(auth::Error::NoPairing) => StatusCode::CONFLICT,
+            Self::Auth(auth::Error::NearbyExhausted | auth::Error::NoPairing) => {
+                StatusCode::CONFLICT
+            }
             Self::Auth(auth::Error::UnknownNearby) => StatusCode::NOT_FOUND,
             Self::Auth(auth::Error::UnknownDevice) => StatusCode::FORBIDDEN,
             Self::Auth(
