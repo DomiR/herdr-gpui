@@ -25,6 +25,9 @@ mod decide;
 mod jwt;
 mod pacer;
 mod payload;
+// Phase 0 spike: sealed notifications, wired into pushes in phase 5.
+#[cfg(test)]
+mod seal;
 mod send;
 mod tokens;
 

@@ -9,6 +9,7 @@ mod decide;
 mod jwt;
 mod pacer;
 mod payload;
+mod seal;
 mod send;
 mod tokens;
 
