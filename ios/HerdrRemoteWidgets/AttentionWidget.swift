@@ -130,8 +130,8 @@ extension WidgetSummary {
     /// Made-up chats for the widget gallery.
     static let sample = WidgetSummary(
         chats: [
-            .init(device: "d", computerId: "", computer: "Studio", pane: "p1", title: "Fix mise discovery", workspace: "herdr", workspaceId: "w1", agent: "claude", needsYou: true, working: false),
-            .init(device: "d", computerId: "", computer: "Studio", pane: "p2", title: "Equalize splits", workspace: "herdr", workspaceId: "w1", agent: "codex", needsYou: false, working: true),
+            .init(device: "d", computerId: "", computer: "Studio", pane: "p1", title: "Fix mise discovery", workspace: "herdr", workspaceId: "w1", agent: "claude", needsYou: true, working: false, question: nil),
+            .init(device: "d", computerId: "", computer: "Studio", pane: "p2", title: "Equalize splits", workspace: "herdr", workspaceId: "w1", agent: "codex", needsYou: false, working: true, question: nil),
         ],
         updated: .now
     )

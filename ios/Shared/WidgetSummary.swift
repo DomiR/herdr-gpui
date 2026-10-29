@@ -19,12 +19,21 @@ struct WidgetSummary: Codable, Hashable, Sendable {
         var agent: String?
         var needsYou: Bool
         var working: Bool
+        /// The question waiting, with its answers, for the Watch.
+        var question: Question?
 
         var id: String { "\(device)|\(pane)" }
 
         var link: URL {
             ChatLink(computer: computer, computerId: computerId, pane: pane).url
         }
+    }
+
+    /// A waiting permission request, as the Watch answers it.
+    struct Question: Codable, Hashable, Sendable {
+        var permission: PermissionId
+        var title: String
+        var options: [ChatActivityState.Option]
     }
 
     var chats: [Chat] = []
@@ -40,6 +49,7 @@ struct WidgetSummary: Codable, Hashable, Sendable {
 
     static let kind = "so.pen.herdr-remote.attention"
 
+    #if os(iOS)
     private static var file: URL? {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.so.pen.herdr-remote")?
             .appending(path: "summary.json")
@@ -62,4 +72,5 @@ struct WidgetSummary: Codable, Hashable, Sendable {
         guard previous != self, let data = try? JSONEncoder().encode(self) else { return false }
         return (try? data.write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])) != nil
     }
+    #endif
 }

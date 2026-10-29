@@ -139,7 +139,14 @@ final class Fleet {
                 workspaceId: item.workspace.id,
                 agent: item.chat.agent,
                 needsYou: item.needsYou,
-                working: item.working
+                working: item.working,
+                question: item.question.map { question in
+                    WidgetSummary.Question(
+                        permission: question.id,
+                        title: question.title,
+                        options: question.options.prefix(4).map { .init(id: $0.id, name: $0.name, kind: $0.kind) }
+                    )
+                }
             )
         }
         if WidgetSummary(chats: chats, updated: .now).save() {

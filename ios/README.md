@@ -272,6 +272,23 @@ extension. For the simulator loop:
     switcher.
   - "Always" answers and auto-accept ask either way.
 
+## iPad and Apple Watch
+
+- **iPad:**
+  - The attention list sits beside the chat, with the workspace's terminal
+    in an inspector (⌘⌥I).
+  - A chat or terminal opens in its own window from its context menu.
+  - Keyboard: ⌘N, ⌘⇧B, ⌘, and ⌘⌥↑ / ⌘⌥↓.
+- **Apple Watch:**
+  - Shows what needs you and what is running, and answers with a tap or a
+    dictated reply.
+  - It holds no keys. Every request goes to the phone over
+    WatchConnectivity, and the phone checks it against the chats it last
+    saw before sending it with its device key.
+  - "Always" answers stay on the phone.
+  - For the simulator: `-sample YES` shows made-up chats, and
+    `-openFirst YES` opens the first.
+
 ## What the daemon sends
 
 Live Activity payloads follow `ChatActivityState` (`HerdrRemoteCore`) and

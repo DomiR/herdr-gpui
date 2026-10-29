@@ -7,6 +7,7 @@ HerdrRemoteNotifications/Info.plist
 HerdrRemoteNotifications/HerdrRemoteNotifications.entitlements
 HerdrRemoteShare/Info.plist
 HerdrRemoteShare/HerdrRemoteShare.entitlements
+HerdrRemoteWatch/Info.plist
 
 # Xcode and SwiftPM build output.
 build/

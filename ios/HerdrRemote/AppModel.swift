@@ -81,7 +81,12 @@ final class AppModel {
             Task { await self.tokens.sync() }
         }
         presence.computers = computers
-        fleet.onSummary = { [spotlight] in spotlight.update(WidgetSummary.load()) }
+        fleet.onSummary = { [spotlight] in
+            let summary = WidgetSummary.load()
+            spotlight.update(summary)
+            WatchLink.shared.publish(summary)
+        }
+        WatchLink.shared.start()
         paths.pathUpdateHandler = { [weak self] _ in
             Task { @MainActor in self?.fleet.networkChanged() }
         }
