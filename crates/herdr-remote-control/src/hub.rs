@@ -59,6 +59,14 @@ pub enum Error {
     // keep-sorted end
 }
 
+/// A workspace [`Hub::create_workspace`] opened, and the pane its chat
+/// starts in.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct CreatedWorkspace {
+    pub(crate) pane: String,
+    pub(crate) workspace: String,
+}
+
 pub(crate) struct Hub {
     api: api::Api,
     /// Owns the worker that projects the layout; dropping it disconnects.
@@ -198,13 +206,13 @@ impl Hub {
     }
 
     /// A new workspace in `cwd`, on a new worktree when `branch` is given,
-    /// with a chat running `agent` in it. Returns the workspace's id.
+    /// with a chat running `agent` in it.
     pub(crate) async fn create_workspace(
         &self,
         cwd: &str,
         branch: Option<&str>,
         agent: Agent,
-    ) -> Result<String> {
+    ) -> Result<CreatedWorkspace> {
         let program = self.program.as_deref().ok_or(Error::ProgramMissing)?;
         let opened = self
             .api
@@ -228,7 +236,7 @@ impl Hub {
                 .await?;
             let (_, pane) = created_tab(&response).ok_or(Error::Response)?;
             self.run_line(&pane, &command_line(agent)).await?;
-            return Ok(workspace);
+            return Ok(CreatedWorkspace { workspace, pane });
         };
         let created = self
             .api
@@ -239,16 +247,20 @@ impl Hub {
             .await?;
         let pane = created["root_pane"]["pane_id"]
             .as_str()
-            .ok_or(Error::Response)?;
+            .ok_or(Error::Response)?
+            .to_owned();
         let worktree = created["workspace"]["workspace_id"]
             .as_str()
             .ok_or(Error::Response)?
             .to_owned();
         // The worktree's first pane is a shell in its folder; the program
         // path rides in this line because the pane was not made with it.
-        self.run_line(pane, &direct_command_line(program, agent))
+        self.run_line(&pane, &direct_command_line(program, agent))
             .await?;
-        Ok(worktree)
+        Ok(CreatedWorkspace {
+            workspace: worktree,
+            pane,
+        })
     }
 
     /// Types `line` and Enter into `pane`, as Herdr UI starts a chat.

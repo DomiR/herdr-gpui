@@ -3,9 +3,12 @@
 //! follows the views it subscribes to. Commands keep the web app's `POST`
 //! routes, so one rate limit and `Origin` policy covers every write.
 
+mod create;
 mod live;
 mod model;
 mod wire;
+
+pub(crate) use create::{create_workspace, new_options, start_chat};
 
 use crate::{
     control::DeviceId,

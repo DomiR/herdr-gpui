@@ -21,6 +21,8 @@ mod stream;
 mod terminal;
 mod uploads;
 
+pub(crate) use api::{NEW_CHAT_WAIT, check_new_workspace, parse_agent};
+pub(crate) use fragments::folders;
 pub(crate) use indicators::{Indicators, Look};
 pub(crate) use log::report_limit;
 pub(crate) use origins::Origins;
@@ -187,6 +189,12 @@ pub(crate) fn router(state: Shared) -> Router {
         .route("/api/v2/chat/{pane}", get(crate::native::get_chat))
         .route("/api/v2/home", get(crate::native::get_home))
         .route("/api/v2/live", get(crate::native::live))
+        .route("/api/v2/new", get(crate::native::new_options))
+        .route("/api/v2/workspaces", post(crate::native::create_workspace))
+        .route(
+            "/api/v2/workspaces/{workspace}/chats",
+            post(crate::native::start_chat),
+        )
         .route("/f/home", get(fragments::home))
         .route("/f/board", get(fragments::board))
         .route("/f/chat/{pane}", get(fragments::chat))
