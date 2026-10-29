@@ -41,7 +41,10 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: so.pen.herdr-remote
             CFBundleURLSchemes: [herdr-remote]
-        NSCameraUsageDescription: Herdr Remote reads the pairing QR code Herdr shows on your computer.
+        NSCameraUsageDescription: Herdr Remote reads the pairing QR code Herdr shows on your computer, and takes photos you send to a chat.
+        NSFaceIDUsageDescription: Herdr Remote asks for Face ID before a chat allows every tool call without asking.
+        NSMicrophoneUsageDescription: Herdr Remote listens while you dictate a prompt, transcribing it on your phone.
+        NSSpeechRecognitionUsageDescription: Herdr Remote transcribes your dictated prompts on your phone.
         NSLocalNetworkUsageDescription: Herdr Remote talks to Herdr on your computers over your local network.
         NSBonjourServices: [_herdr-remote._tcp]
         NSBluetoothAlwaysUsageDescription: Herdr Remote finds your computers nearby over Bluetooth when you pair one.

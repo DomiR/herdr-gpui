@@ -112,6 +112,35 @@ final class RemoteClient: Sendable {
         return answer.rejected
     }
 
+    /// Uploads a picture for a prompt (JPEG, PNG, GIF, or WebP, at most
+    /// 3.5 MB); answers the id a prompt's attachments name it by.
+    func upload(_ image: Data, pane: String, bearer: String) async throws -> String {
+        struct Answer: Decodable { let id: String }
+        guard let url = URL(string: origin + "/api/chat/\(Self.segment(pane))/upload") else { throw RemoteError.unreachable }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 60
+        request.httpBody = image
+        request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
+        let answer: Answer = try await perform(request)
+        return answer.id
+    }
+
+    /// The agents and folders a new workspace or chat may use.
+    func newOptions(bearer: String) async throws -> NewOptions {
+        try await send("GET", "/api/v2/new", bearer: bearer)
+    }
+
+    /// Creating waits up to ten seconds for the chat's program to report in.
+    func createWorkspace(_ request: NewWorkspaceRequest, bearer: String) async throws -> Created {
+        try await send("POST", "/api/v2/workspaces", body: request, bearer: bearer, timeout: 30)
+    }
+
+    func startChat(_ request: NewChatRequest, workspace: String, bearer: String) async throws -> Created {
+        try await send("POST", "/api/v2/workspaces/\(Self.segment(workspace))/chats", body: request, bearer: bearer, timeout: 30)
+    }
+
     /// The live socket, authenticated like every other call.
     func live(bearer: String) -> URLSessionWebSocketTask {
         let url = URL(string: origin.replacingOccurrences(of: "https://", with: "wss://") + "/api/v2/live")
@@ -178,6 +207,10 @@ final class RemoteClient: Sendable {
         if let bearer {
             request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
         }
+        return try await perform(request)
+    }
+
+    private func perform<Answer: Decodable>(_ request: URLRequest) async throws -> Answer {
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw RemoteError.notHTTP }
         guard (200..<300).contains(http.statusCode) else {

@@ -29,6 +29,12 @@ struct RootView: View {
             }
         }
         .sheet(isPresented: $pairing) { PairView() }
+        .sheet(item: Bindable(model).creating) { creating in
+            switch creating {
+            case let .workspace(device): NewWorkspaceSheet(device: device)
+            case let .chat(device, workspace, label): NewChatSheet(device: device, workspace: workspace, label: label)
+            }
+        }
         .overlay(alignment: .bottom) {
             if let offer = model.nearbyOffer {
                 ZStack(alignment: .bottom) {
@@ -62,8 +68,10 @@ extension RootView {
     /// `-pairLink URL` pairs without the camera (the desktop still
     /// approves), `-openLink URL` opens a Live Activity's link as a tap on
     /// the activity would, `-openTerm PANE` opens the terminal pane of
-    /// whichever computer lists it, and `-tab board|computers|search`
-    /// picks a tab.
+    /// whichever computer lists it, `-tab board|computers|search` picks a
+    /// tab, and `-newWorkspace YES` opens the new workspace form. In a
+    /// chat, `-session YES` opens its session sheet and `-draft TEXT`
+    /// types into the composer.
     func followLaunchArguments() async {
         let defaults = UserDefaults.standard
         if let link = defaults.string(forKey: "pairLink"),
@@ -81,6 +89,10 @@ extension RootView {
         case "computers": tab = .computers
         case "search": tab = .search
         default: break
+        }
+        if defaults.bool(forKey: "newWorkspace") {
+            try? await Task.sleep(for: .seconds(2))
+            model.creating = .workspace(device: nil)
         }
         if let pane = defaults.string(forKey: "openTerm") {
             try? await Task.sleep(for: .seconds(2))

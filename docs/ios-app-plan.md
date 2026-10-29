@@ -215,6 +215,26 @@ The daemon sends:
   terminals), 64 messages queued for a slow phone before `reload`, the
   existing per-device stream cap, and a ping every 20 s.
 
+New workspaces and chats (Phase 3) have their own JSON routes, so the
+app learns the pane it should open:
+
+- `GET /api/v2/new` answers what the forms offer: `{"agents": [{"id":
+  "claude", "name": "Claude"}], "recent": ["/Users/me/code/herdr-gpui"],
+  "roots": [{"path": "/Users/me/code", "folders": ["/Users/me/code/a"]}]}`.
+  Agents come in Herdr's order; `id` is what a request names.
+- `POST /api/v2/workspaces` takes `{"cwd", "agent", "branch"?, "prompt"?}`
+  and answers `{"workspace": "w3", "pane": "p7", "prompted": true}`. The
+  folder must be one `new` offers, and `branch`, when not blank, opens a
+  worktree.
+- `POST /api/v2/workspaces/{workspace}/chats` takes `{"agent", "prompt"?}`
+  and answers `{"pane": "p7", "prompted": true}`.
+- Both wait up to 10 s for the chat's program to report in, then send the
+  first prompt if it is not blank. `pane` is `null` when the chat was not
+  listed in time; `prompted` is false when there was no prompt or the
+  chat refused it, and the phone opens the chat to send it again.
+  A prompt over 256 KiB, an unknown agent, a folder not offered, or an
+  invalid branch is answered 400 before anything is created.
+
 ## Connectivity
 
 - Each computer stores every address it reported: LAN, Tailscale,
@@ -301,7 +321,11 @@ bytes.
      plaintext `{"token": TOKEN, "origins": [...]}`.
    - B stores `TOKEN`'s digest on the open pairing as its nearby token,
      with `code` as the code its claim will carry (60 s, single use; a
-     newer reveal replaces it).
+     newer reveal replaces it). One pairing seals at most three nearby
+     tokens, kept across QR rotations; the fourth reveal answers 409
+     (`NearbyExhausted`) until the dialog is opened again. Each reveal is
+     another guess for a man in the middle and keeps the pairing open
+     60 s longer, so both stay bounded.
 3. A checks `commit`, computes `code` and `key`, opens `sealed`, and shows
    `code`. It then claims over TLS pinned to `fingerprint`, exactly as the
    QR claim does, at the first of `origins` that answers. The claim
@@ -605,6 +629,22 @@ API, the Swift reducer and `ComputerLink`, and the app on iOS 26 with the
 picked home, board, computers outline, search, a document chat with
 questions and a composer, and a read-only terminal, checked end to end in
 the simulator against a sandbox daemon.
+
+Phase 2 (nearby pairing) is built: Bonjour pairing ran end to end in the
+simulator, and Bluetooth waits for a device. Phase 3 (chat parity) is
+built and checked in the simulator against a sandbox daemon and a
+scripted agent:
+- **Answers:** native Markdown blocks (`MarkdownBlock` in
+  `HerdrRemoteCore`).
+- **Composer:** photos, the camera, and pasted images (uploaded at once),
+  on-device dictation with `SpeechAnalyzer`, and `/` completion.
+- **Queue:** queued prompts can be removed.
+- **Session sheet C:** the context ring, mode tiles, an effort slider,
+  the other settings, and auto-accept behind Face ID.
+- **Creating:** new workspace A and new chat, through `/api/v2/new`,
+  `/api/v2/workspaces`, and `/api/v2/workspaces/{id}/chats`.
+- **Still to check on a phone:** dictation, the camera, paste, and Face
+  ID. A token-rate readout (tok/s) waits for the agents to report one.
 
 0. **Spikes**, each with a written result:
    - A macOS GATT peripheral from Herdr.app through objc2, including the

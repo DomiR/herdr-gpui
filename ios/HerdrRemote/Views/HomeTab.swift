@@ -64,8 +64,14 @@ struct HomeTab: View {
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button { pairing = true } label: { Image(systemName: "plus") }
-                    .accessibilityLabel("Pair a computer")
+                Menu {
+                    Button("New Workspace", systemImage: "folder.badge.plus") { model.creating = .workspace(device: nil) }
+                        .disabled(model.fleet.machines.isEmpty)
+                    Button("Pair a Computer", systemImage: "laptopcomputer.and.iphone") { pairing = true }
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .accessibilityLabel("New")
             }
         }
     }

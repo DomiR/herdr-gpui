@@ -11,6 +11,7 @@ struct ChatScreen: View {
     let key: PaneKey
     let title: String
     @State private var store: ChatStore?
+    @State private var showingSession = false
 
     var body: some View {
         Group {
@@ -24,18 +25,38 @@ struct ChatScreen: View {
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                VStack(spacing: 0) {
-                    Text(title).font(.headline).lineLimit(1)
-                    if let line = store?.transcript.map(sessionLine), !line.isEmpty {
-                        Text(line).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Button { showingSession = store != nil } label: {
+                    VStack(spacing: 0) {
+                        HStack(spacing: 4) {
+                            Text(title).font(.headline).lineLimit(1)
+                            Image(systemName: "chevron.down.circle.fill").font(.caption).foregroundStyle(.tertiary)
+                        }
+                        if let line = store?.transcript.map(sessionLine), !line.isEmpty {
+                            Text(line).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
                     }
                 }
+                .buttonStyle(.plain)
+                .accessibilityHint("Shows the session's settings")
             }
             if let usage = store?.transcript?.usage {
-                ToolbarItem(placement: .topBarTrailing) { ContextRing(percent: usage.percent) }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showingSession = true } label: { ContextRing(percent: usage.percent) }
+                }
             }
         }
-        .onAppear { store = model.fleet.openChat(key) }
+        .sheet(isPresented: $showingSession) {
+            if let store {
+                SessionSheet(key: key, store: store).presentationDetents([.medium, .large])
+            }
+        }
+        .onAppear {
+            store = model.fleet.openChat(key)
+            #if DEBUG
+            // The simulator loop's `-session YES` opens the session sheet.
+            if UserDefaults.standard.bool(forKey: "session") { showingSession = true }
+            #endif
+        }
         .onDisappear {
             if let store { model.fleet.closeChat(store) }
         }
@@ -59,15 +80,17 @@ struct ChatScreen: View {
 
 struct ContextRing: View {
     var percent: Int
+    var size: CGFloat = 20
+    var lineWidth: CGFloat = 3
 
     var body: some View {
         ZStack {
-            Circle().stroke(.quaternary, lineWidth: 3)
+            Circle().stroke(.quaternary, lineWidth: lineWidth)
             Circle().trim(from: 0, to: Double(percent) / 100)
-                .stroke(percent > 80 ? AnyShapeStyle(.orange) : AnyShapeStyle(.tint), style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .stroke(percent > 80 ? AnyShapeStyle(.orange) : AnyShapeStyle(.tint), style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
         }
-        .frame(width: 20, height: 20)
+        .frame(width: size, height: size)
         .accessibilityLabel("Context \(percent) percent full")
     }
 }
@@ -77,7 +100,6 @@ private struct ChatDocument: View {
     let key: PaneKey
     let store: ChatStore
     let transcript: Transcript
-    @State private var draft = ""
     @State private var problem: String?
     @State private var dismissedQuestion: PermissionId?
     /// A link the agent wrote, shown in full before it opens.
@@ -127,8 +149,25 @@ private struct ChatDocument: View {
                 ForEach(tools.flatMap(diffs), id: \.path) { diff in
                     DiffBlock(path: diff.path, old: diff.old, new: diff.new)
                 }
-                ForEach(transcript.queued, id: \.id) { queued in
-                    Label("Queued: \(queued.text)", systemImage: "clock").font(.footnote).foregroundStyle(.secondary)
+                if !transcript.queued.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Queued").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+                        ForEach(transcript.queued, id: \.id) { queued in
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Image(systemName: "clock").foregroundStyle(.secondary)
+                                Text(queued.text).font(.subheadline).lineLimit(3)
+                                if !queued.attachments.isEmpty {
+                                    Label("\(queued.attachments.count)", systemImage: "photo").font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Button { unqueue(queued) } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel("Remove from the queue")
+                            }
+                            .padding(10)
+                            .background(.fill.quinary, in: .rect(cornerRadius: 12))
+                        }
+                    }
                 }
                 if let problem { Text(problem).font(.footnote).foregroundStyle(.red) }
             }
@@ -141,9 +180,9 @@ private struct ChatDocument: View {
         .overlay(alignment: .top) {
             if transcript.status == .working { RunningCapsule(transcript: transcript, tools: tools) }
         }
-        .safeAreaInset(edge: .bottom) { composer }
+        .safeAreaInset(edge: .bottom) { Composer(key: key, transcript: transcript, problem: $problem) }
         .environment(\.openURL, OpenURLAction { url in
-            guard EntryView.webSchemes.contains(url.scheme?.lowercased() ?? "") else { return .discarded }
+            guard MarkdownView.webSchemes.contains(url.scheme?.lowercased() ?? "") else { return .discarded }
             pendingLink = url
             return .handled
         })
@@ -181,33 +220,8 @@ private struct ChatDocument: View {
         tool.content.compactMap { if case let .diff(path, old, new) = $0 { (path, old, new) } else { nil } }
     }
 
-    private var composer: some View {
-        HStack(alignment: .bottom, spacing: 10) {
-            TextField("Message \(transcript.agent)", text: $draft, axis: .vertical)
-                .lineLimit(1...6)
-                .padding(.horizontal, 16).padding(.vertical, 11)
-                .glassEffect(.regular, in: .rect(cornerRadius: 22))
-            let stopping = draft.isEmpty && transcript.status == .working
-            Button {
-                send(stopping ? .cancel : .prompt(text: draft))
-            } label: {
-                Image(systemName: stopping ? "stop.fill" : "arrow.up").font(.body.bold()).frame(width: 36, height: 36)
-            }
-            .buttonStyle(.glassProminent)
-            .buttonBorderShape(.circle)
-            .disabled(transcript.readOnly || (draft.isEmpty && !stopping))
-            .accessibilityLabel(stopping ? "Stop" : "Send")
-        }
-        .padding(.horizontal, 16).padding(.bottom, 6)
-    }
-
-    private func send(_ command: ChatCommand) {
-        let sent = draft
-        if case .prompt = command { draft = "" }
-        Task {
-            problem = await model.fleet.send(command, to: key)
-            if problem != nil, case .prompt = command { draft = sent }
-        }
+    private func unqueue(_ queued: Queued) {
+        Task { problem = await model.fleet.send(.unqueue(queued.id), to: key) }
     }
 }
 

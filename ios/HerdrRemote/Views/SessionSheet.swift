@@ -1,0 +1,211 @@
+import HerdrRemoteCore
+import LocalAuthentication
+import SwiftUI
+
+/// Session C: cards for the context, the mode, effort, the session's
+/// other settings, and auto-accept, which asks for Face ID before it
+/// turns on.
+struct SessionSheet: View {
+    @Environment(AppModel.self) private var model
+    let key: PaneKey
+    let store: ChatStore
+    @State private var problem: String?
+    @State private var effort: Double?
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                if let transcript = store.transcript {
+                    VStack(spacing: 14) {
+                        contextCard(transcript)
+                        if let modes = transcript.modes, !modes.available.isEmpty { modeTiles(modes) }
+                        if let option = transcript.options.first(where: { $0.category == .thoughtLevel }),
+                           case let .select(choices, current) = option.kind, choices.count > 1 {
+                            effortCard(option, choices: choices, current: current)
+                        }
+                        let others = transcript.options.filter { $0.category != .thoughtLevel }
+                        if !others.isEmpty { optionsCard(others) }
+                        autoAcceptCard(transcript)
+                        if let problem { Text(problem).font(.footnote).foregroundStyle(.red) }
+                    }
+                    .padding(16)
+                }
+            }
+            .navigationTitle("Session")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+
+    // MARK: Cards
+
+    private func contextCard(_ transcript: Transcript) -> some View {
+        HStack(spacing: 18) {
+            ZStack {
+                ContextRing(percent: transcript.usage?.percent ?? 0, size: 76, lineWidth: 8)
+                Text("\(transcript.usage?.percent ?? 0)%").font(.title3.weight(.semibold).monospacedDigit())
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(currentName(transcript.options.first { $0.category == .model }) ?? transcript.agent)
+                    .font(.headline)
+                if let usage = transcript.usage {
+                    Text("\(tokens(usage.used)) of \(tokens(usage.size)) tokens").font(.subheadline).foregroundStyle(.secondary)
+                    if let cost = usage.cost {
+                        Text(money(cost)).font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
+                    }
+                } else {
+                    Text("No usage reported yet").font(.subheadline).foregroundStyle(.secondary)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .card()
+    }
+
+    private func modeTiles(_ modes: Modes) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Mode").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                ForEach(modes.available, id: \.id) { mode in
+                    let selected = mode.id == modes.current
+                    Button {
+                        send(.setMode(mode.id))
+                    } label: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(mode.name).font(.subheadline.weight(.semibold))
+                            if let description = mode.description {
+                                Text(description).font(.caption).foregroundStyle(.secondary).lineLimit(3)
+                                    .multilineTextAlignment(.leading)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 64, alignment: .topLeading)
+                        .padding(12)
+                        .background(selected ? AnyShapeStyle(.tint.opacity(0.18)) : AnyShapeStyle(.fill.quinary), in: .rect(cornerRadius: 14))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 14).strokeBorder(selected ? AnyShapeStyle(.tint) : AnyShapeStyle(.clear), lineWidth: 1.5)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(selected ? .isSelected : [])
+                    .sensoryFeedback(.selection, trigger: modes.current)
+                }
+            }
+        }
+        .card()
+    }
+
+    private func effortCard(_ option: ConfigOption, choices: [Choice], current: String) -> some View {
+        let index = Double(choices.firstIndex { $0.id == current } ?? 0)
+        let shown = Int((effort ?? index).rounded())
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(option.name).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                Spacer()
+                Text(choices[min(max(shown, 0), choices.count - 1)].name).font(.subheadline.weight(.semibold))
+            }
+            Slider(
+                value: Binding(get: { effort ?? index }, set: { effort = $0 }),
+                in: 0...Double(choices.count - 1),
+                step: 1
+            ) { editing in
+                guard !editing, let effort else { return }
+                let choice = choices[min(max(Int(effort.rounded()), 0), choices.count - 1)]
+                self.effort = nil
+                if choice.id != current { send(.setOption(id: option.id, value: .choice(choice.id))) }
+            }
+            .accessibilityLabel(option.name)
+            HStack {
+                Text(choices.first?.name ?? "").font(.caption2).foregroundStyle(.tertiary)
+                Spacer()
+                Text(choices.last?.name ?? "").font(.caption2).foregroundStyle(.tertiary)
+            }
+        }
+        .card()
+    }
+
+    private func optionsCard(_ options: [ConfigOption]) -> some View {
+        VStack(spacing: 12) {
+            ForEach(options) { option in
+                switch option.kind {
+                case let .select(choices, current):
+                    HStack {
+                        Text(option.name)
+                        Spacer()
+                        Menu {
+                            ForEach(choices, id: \.id) { choice in
+                                Button {
+                                    send(.setOption(id: option.id, value: .choice(choice.id)))
+                                } label: {
+                                    if choice.id == current { Label(choice.name, systemImage: "checkmark") } else { Text(choice.name) }
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text(choices.first { $0.id == current }?.name ?? current).lineLimit(1)
+                                Image(systemName: "chevron.up.chevron.down").font(.caption)
+                            }
+                        }
+                    }
+                case let .toggle(current):
+                    Toggle(option.name, isOn: Binding(
+                        get: { current },
+                        set: { send(.setOption(id: option.id, value: .toggle($0))) }
+                    ))
+                }
+            }
+        }
+        .card()
+    }
+
+    private func autoAcceptCard(_ transcript: Transcript) -> some View {
+        Toggle(isOn: Binding(get: { transcript.autoAccept }, set: { setAutoAccept($0) })) {
+            VStack(alignment: .leading, spacing: 2) {
+                Label("Auto-accept", systemImage: "bolt.shield").font(.headline)
+                Text("Allows every tool call without asking. Turning it on asks for Face ID.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .tint(.red)
+        .card(tint: transcript.autoAccept ? .red : nil)
+    }
+
+    // MARK: Actions
+
+    private func setAutoAccept(_ on: Bool) {
+        Task {
+            if on {
+                let context = LAContext()
+                do {
+                    guard try await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Allow every tool call without asking") else { return }
+                } catch {
+                    return
+                }
+            }
+            problem = await model.fleet.send(.setAutoAccept(on), to: key)
+        }
+    }
+
+    private func send(_ command: ChatCommand) {
+        Task { problem = await model.fleet.send(command, to: key) }
+    }
+
+    private func currentName(_ option: ConfigOption?) -> String? {
+        guard let option, case let .select(choices, current) = option.kind else { return nil }
+        return choices.first { $0.id == current }?.name ?? current
+    }
+
+    private func tokens(_ count: UInt64) -> String {
+        count >= 1000 ? "\(count / 1000)k" : "\(count)"
+    }
+
+    private func money(_ cost: Cost) -> String {
+        (Double(cost.micros) / 1_000_000).formatted(.currency(code: cost.currency))
+    }
+}
+
+private extension View {
+    func card(tint: Color? = nil) -> some View {
+        padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(tint.map { AnyShapeStyle($0.opacity(0.12)) } ?? AnyShapeStyle(.background.secondary), in: .rect(cornerRadius: 20))
+    }
+}

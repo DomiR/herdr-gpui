@@ -13,6 +13,8 @@ struct AgentIcon: View {
         if name.contains("gemini") { return ("diamond.fill", Color(red: 0.36, green: 0.52, blue: 0.96)) }
         if name.contains("opencode") { return ("chevron.left.forwardslash.chevron.right", .teal) }
         if name.contains("amp") { return ("bolt.fill", .pink) }
+        if name.contains("copilot") { return ("airplane", Color(red: 0.42, green: 0.36, blue: 0.9)) }
+        if name == "pi" || name.hasPrefix("pi ") { return ("p.circle.fill", .green) }
         return ("sparkles", .indigo)
     }
 

@@ -1,11 +1,14 @@
 import ActivityKit
 import Foundation
+import os
 import HerdrRemoteCore
 import Network
 import UIKit
 
 /// Where the app should go next: a chat or terminal opened from a Live
 /// Activity, a notification, or a list.
+private let log = Logger(subsystem: "so.pen.herdr-remote", category: "app")
+
 enum Route: Hashable {
     case chat(PaneKey, title: String)
     case term(PaneKey, title: String)
@@ -25,6 +28,8 @@ final class AppModel {
     var message: String?
     /// Set by a deep link; the root view shows it and clears it.
     var pendingRoute: Route?
+    /// A new workspace or chat being set up, as a sheet over every tab.
+    var creating: Creating?
     let sessions: Sessions
     let tokens: ActivityTokens
     let fleet: Fleet
@@ -42,6 +47,7 @@ final class AppModel {
         do {
             computers = try ComputerStore.load()
         } catch {
+            log.error("Could not read the paired computers: \(error.localizedDescription, privacy: .public)")
             message = error.localizedDescription
         }
         // Property observers do not run during `init`.
@@ -72,6 +78,7 @@ final class AppModel {
         do {
             try ComputerStore.save(computers)
         } catch {
+            log.error("Could not save the paired computers: \(error.localizedDescription, privacy: .public)")
             message = error.localizedDescription
         }
     }

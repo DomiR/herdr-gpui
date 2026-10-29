@@ -2,8 +2,7 @@ import HerdrRemoteCore
 import SwiftUI
 import UIKit
 
-/// One transcript entry. Markdown is inline only here; block markdown
-/// (code fences, lists) arrives with the chat parity phase.
+/// One transcript entry.
 struct EntryView: View {
     let entry: Entry
 
@@ -14,7 +13,7 @@ struct EntryView: View {
                 .background(.tint.opacity(0.1), in: .rect(cornerRadius: 16))
                 .textSelection(.enabled)
         case let .agent(text):
-            Text(markdown(text)).textSelection(.enabled)
+            MarkdownView(text: text)
         case let .thought(text):
             Text(text).font(.callout.italic()).foregroundStyle(.secondary).lineLimit(4)
         case let .image(_, image):
@@ -32,22 +31,6 @@ struct EntryView: View {
                 .foregroundStyle(notice.level == .info ? AnyShapeStyle(.secondary) : AnyShapeStyle(notice.level == .error ? .red : .orange))
         }
     }
-
-    /// Inline markdown from the agent, which is untrusted: only `http` and
-    /// `https` links stay links (opening one asks first, see ChatScreen),
-    /// so transcript text can never follow the app's own scheme.
-    private func markdown(_ text: String) -> AttributedString {
-        guard var styled = try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))
-        else { return AttributedString(text) }
-        for run in styled.runs {
-            if let link = run.link, !Self.webSchemes.contains(link.scheme?.lowercased() ?? "") {
-                styled[run.range].link = nil
-            }
-        }
-        return styled
-    }
-
-    static let webSchemes: Set<String> = ["http", "https"]
 
     private func turnLine(_ summary: TurnSummary) -> String {
         let seconds = Int(summary.durationMs / 1000)

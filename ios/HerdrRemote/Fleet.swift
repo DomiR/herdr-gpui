@@ -20,6 +20,16 @@ struct ChatItem: Identifiable, Hashable {
     var working: Bool { !needsYou && (chat.status == .working || chat.summary?.status == .working) }
 }
 
+enum FleetError: Error, LocalizedError {
+    case offline(String)
+
+    var errorDescription: String? {
+        switch self {
+        case let .offline(name): "\(name) is not connected."
+        }
+    }
+}
+
 /// A terminal tab with where it lives.
 struct TerminalItem: Identifiable, Hashable {
     let computer: Computer
@@ -149,16 +159,26 @@ final class Fleet {
     /// Sends a command to a chat; answers a reason to show when it failed
     /// or the chat refused it.
     func send(_ command: ChatCommand, to key: PaneKey) async -> String? {
-        guard let machine = machines.first(where: { $0.id == key.device }),
-              case let .online(origin) = machine.status
-        else { return "\(machines.first { $0.id == key.device }?.computer.name ?? "The computer") is not connected." }
         do {
-            let token = try await sessions.token(for: machine.computer, at: origin)
-            let client = RemoteClient(origin: origin, fingerprint: machine.computer.fingerprint)
-            return try await client.command(command, pane: key.pane, bearer: token)
+            return try await call(key.device) { client, token in
+                try await client.command(command, pane: key.pane, bearer: token)
+            }
         } catch {
             return error.localizedDescription
         }
+    }
+
+    /// Calls the daemon of `device` at the address its link is using.
+    func call<Answer: Sendable>(
+        _ device: String,
+        _ body: @Sendable (RemoteClient, String) async throws -> Answer
+    ) async throws -> Answer {
+        guard let machine = machines.first(where: { $0.id == device }),
+              case let .online(origin) = machine.status
+        else { throw FleetError.offline(machines.first { $0.id == device }?.computer.name ?? "The computer") }
+        let token = try await sessions.token(for: machine.computer, at: origin)
+        let client = RemoteClient(origin: origin, fingerprint: machine.computer.fingerprint)
+        return try await body(client, token)
     }
 
     // MARK: Links

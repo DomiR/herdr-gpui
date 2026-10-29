@@ -20,6 +20,11 @@ struct ComputersTab: View {
                                     ChatRowLabel(item: item, showsComputer: false)
                                 }
                             }
+                            Button {
+                                model.creating = .chat(device: machine.id, workspace: workspace.id, label: workspace.label)
+                            } label: {
+                                Label("New chat", systemImage: "plus.bubble")
+                            }
                             ForEach(workspace.terminals) { terminal in
                                 if let pane = terminal.firstPane {
                                     NavigationLink(value: Route.term(PaneKey(device: machine.id, pane: pane.pane), title: terminal.label)) {
@@ -40,6 +45,11 @@ struct ComputersTab: View {
                                 Image(systemName: "folder")
                             }
                         }
+                    }
+                    Button {
+                        model.creating = .workspace(device: machine.id)
+                    } label: {
+                        Label("New workspace", systemImage: "folder.badge.plus")
                     }
                 } label: {
                     ComputerLabel(machine: machine)

@@ -56,8 +56,18 @@ and nothing goes through your phone.
    - It reads the local Herdr's workspaces.
    - The macOS firewall blocks an unsigned debug daemon on LAN and
      Tailscale addresses, so the simulator uses `127.0.0.1`.
-2. **Pair without the camera.** The tool approves as the desktop dialog
-   would:
+2. **Pair without the camera.** Build signed to run locally, so the app
+   has its entitlements and the simulator's keychain keeps the pairing
+   across launches (`just ios-build` is unsigned, and its keychain calls
+   fail with "A required entitlement isn't present"):
+
+   ```sh
+   cd ios && xcodebuild -project HerdrRemote.xcodeproj -scheme HerdrRemote \
+     -destination 'platform=iOS Simulator,id=DEVICE' -derivedDataPath build \
+     CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= build
+   ```
+
+   Then pair. The tool approves as the desktop dialog would:
 
    ```sh
    link=$(ios/tools/remote_control.py "$state" pair | sed -E 's#https://[^/]+/pair#https://127.0.0.1:7543/pair#')
@@ -70,6 +80,10 @@ and nothing goes through your phone.
      opens a chat, as tapping a Live Activity does.
    - `-openTerm PANE` opens a terminal.
    - `-tab board|computers|search` picks a tab.
+   - `-newWorkspace YES` opens the new workspace form.
+   - With `-openLink`, `-session YES` opens the chat's session sheet and
+     `-draft TEXT` types into its composer (`-draft /` lists the slash
+     commands).
 4. **Read the results.** `xcrun simctl io DEVICE screenshot FILE` captures
    the screen, and `daemon.log` lists every request.
    - The cache sits in the App Group container
