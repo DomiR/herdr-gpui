@@ -41,6 +41,10 @@ targets:
       path: HerdrRemote/Info.plist
       properties:
         CFBundleDisplayName: Herdr Remote
+        # Only standard algorithms (TLS, AES-GCM, ECDH, the system's
+        # signatures), which is exempt: builds skip the export compliance
+        # question in App Store Connect.
+        ITSAppUsesNonExemptEncryption: false
         CFBundleURLTypes:
           - CFBundleURLName: so.pen.herdr.remote
             CFBundleURLSchemes: [herdr-remote]
