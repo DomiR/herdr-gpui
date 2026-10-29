@@ -1,22 +1,26 @@
 import SwiftUI
 
-/// Herdr Remote: the companion to Herdr's web app that adds Live Activities
-/// and the Dynamic Island. Chats themselves stay in the web app; this app
-/// pairs with computers, keeps them supplied with push tokens, and opens a
-/// chat's page when an activity is tapped.
+/// Herdr Remote: the chats and terminals running in Herdr on your
+/// computers, with Live Activities on the lock screen. Each paired
+/// computer keeps one live socket while the app is in front; launch draws
+/// the cached state at once.
 @main
 struct HerdrRemoteApp: App {
     @State private var model = AppModel()
+    @Environment(\.scenePhase) private var phase
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootView()
                 .environment(model)
-                .onOpenURL { url in
-                    Task { await model.open(url) }
-                }
-                .task {
-                    model.tokens.start()
+                .onOpenURL { model.open($0) }
+                .task { model.tokens.start() }
+                .onChange(of: phase, initial: true) { _, phase in
+                    switch phase {
+                    case .active: model.fleet.activate()
+                    case .background: model.fleet.deactivate()
+                    default: break
+                    }
                 }
         }
     }

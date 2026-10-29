@@ -1,24 +1,40 @@
 import ActivityKit
 import Foundation
 import HerdrRemoteCore
+import Network
 import UIKit
 
-/// The app's state: paired computers, the tokens it keeps sending them, and
-/// opening chats in the web app, where they live.
+/// Where the app should go next: a chat or terminal opened from a Live
+/// Activity, a notification, or a list.
+enum Route: Hashable {
+    case chat(PaneKey, title: String)
+    case term(PaneKey, title: String)
+}
+
+/// The app's state: paired computers, their live links, and the tokens
+/// Live Activities need.
 @MainActor
 @Observable
 final class AppModel {
     private(set) var computers: [Computer] = [] {
-        didSet { tokens.computers = computers }
+        didSet {
+            tokens.computers = computers
+            fleet.sync(computers)
+        }
     }
     var message: String?
+    /// Set by a deep link; the root view shows it and clears it.
+    var pendingRoute: Route?
     let sessions: Sessions
     let tokens: ActivityTokens
+    let fleet: Fleet
+    private let paths = NWPathMonitor()
 
     init() {
         let sessions = Sessions()
         self.sessions = sessions
         tokens = ActivityTokens(sessions: sessions)
+        fleet = Fleet(sessions: sessions)
         do {
             computers = try ComputerStore.load()
         } catch {
@@ -26,13 +42,16 @@ final class AppModel {
         }
         // Property observers do not run during `init`.
         tokens.computers = computers
+        fleet.sync(computers)
+        paths.pathUpdateHandler = { [weak self] _ in
+            Task { @MainActor in self?.fleet.networkChanged() }
+        }
+        paths.start(queue: .main)
     }
 
     func add(_ computer: Computer) {
         // A computer is its CA: pairing the same CA (or the same device id)
-        // again replaces the old record. Names come from the computer and are
-        // display only, so another computer using the same name is kept
-        // beside it, never in its place.
+        // again replaces the old record. Names are display only.
         computers.removeAll { $0.fingerprint == computer.fingerprint || $0.device == computer.device }
         computers.append(computer)
         save()
@@ -53,9 +72,8 @@ final class AppModel {
         }
     }
 
-    /// Opens a Live Activity's link: the chat's page at the first of the
-    /// computer's addresses that answers, in Safari.
-    func open(_ url: URL) async {
+    /// Opens a Live Activity's or notification's link in the app.
+    func open(_ url: URL) {
         guard let link = ChatLink(url: url) else { return }
         guard let fingerprint = link.fingerprint,
               let computer = computers.first(where: { $0.fingerprint == fingerprint })
@@ -63,12 +81,10 @@ final class AppModel {
             message = "\(link.computer.isEmpty ? "That computer" : link.computer) is not paired with this phone."
             return
         }
-        let origin = await reachableOrigin(of: computer)
-        guard let page = link.page(origin: origin) else { return }
-        await UIApplication.shared.open(page)
+        let title = fleet.chatItems.first { $0.computer.device == computer.device && $0.chat.pane == link.pane }?.chat.title
+        pendingRoute = .chat(PaneKey(device: computer.device, pane: link.pane), title: title ?? "Chat")
     }
 
-    /// Opens the computer's web app home in Safari.
     /// The name to show for `computer`: its own, plus the start of its
     /// fingerprint when another paired computer has the same name.
     func displayName(_ computer: Computer) -> String {
@@ -81,22 +97,6 @@ final class AppModel {
     func computer(for facts: ChatActivityFacts) -> Computer? {
         guard let fingerprint = facts.fingerprint else { return nil }
         return computers.first { $0.fingerprint == fingerprint }
-    }
-
-    func openWebApp(_ computer: Computer) async {
-        let origin = await reachableOrigin(of: computer)
-        guard let url = URL(string: origin + "/") else { return }
-        await UIApplication.shared.open(url)
-    }
-
-    private func reachableOrigin(of computer: Computer) async -> String {
-        for origin in computer.origins {
-            if await RemoteClient(origin: origin, fingerprint: computer.fingerprint).ping() {
-                return origin
-            }
-        }
-        // Nothing answered; Safari shows why for the pairing address.
-        return computer.origins.first ?? ""
     }
 
     #if DEBUG

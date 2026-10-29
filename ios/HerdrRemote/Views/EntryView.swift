@@ -1,0 +1,118 @@
+import HerdrRemoteCore
+import SwiftUI
+import UIKit
+
+/// One transcript entry. Markdown is inline only here; block markdown
+/// (code fences, lists) arrives with the chat parity phase.
+struct EntryView: View {
+    let entry: Entry
+
+    var body: some View {
+        switch entry.kind {
+        case let .user(text, _):
+            Text(text).padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                .background(.tint.opacity(0.1), in: .rect(cornerRadius: 16))
+                .textSelection(.enabled)
+        case let .agent(text):
+            Text(markdown(text)).textSelection(.enabled)
+        case let .thought(text):
+            Text(text).font(.callout.italic()).foregroundStyle(.secondary).lineLimit(4)
+        case let .image(_, image):
+            if let data = Data(base64Encoded: image.data), let picture = UIImage(data: data) {
+                Image(uiImage: picture).resizable().scaledToFit().frame(maxHeight: 280)
+                    .clipShape(.rect(cornerRadius: 12))
+            }
+        case let .tool(tool):
+            ToolRow(tool: tool)
+        case let .turn(summary):
+            Text(turnLine(summary)).font(.caption).foregroundStyle(.secondary)
+        case let .notice(notice):
+            Label(notice.text, systemImage: notice.level == .error ? "exclamationmark.octagon" : "info.circle")
+                .font(.footnote)
+                .foregroundStyle(notice.level == .info ? AnyShapeStyle(.secondary) : AnyShapeStyle(notice.level == .error ? .red : .orange))
+        }
+    }
+
+    private func markdown(_ text: String) -> AttributedString {
+        (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+            ?? AttributedString(text)
+    }
+
+    private func turnLine(_ summary: TurnSummary) -> String {
+        let seconds = Int(summary.durationMs / 1000)
+        let time = seconds >= 60 ? "\(seconds / 60)m \(seconds % 60)s" : "\(seconds)s"
+        return summary.end == .done ? "Done in \(time)" : "Ended (\(summary.end.rawValue)) after \(time)"
+    }
+}
+
+struct ToolRow: View {
+    let tool: Tool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Group {
+                switch tool.status {
+                case .inProgress: ProgressView().controlSize(.mini)
+                case .failed: Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
+                case .completed: Image(systemName: symbol)
+                case .pending: Image(systemName: "circle.dotted").foregroundStyle(.tertiary)
+                }
+            }
+            .frame(width: 20)
+            Text(tool.title).font(.subheadline).lineLimit(2)
+        }
+    }
+
+    private var symbol: String {
+        switch tool.kind {
+        case .read: "doc.text.magnifyingglass"
+        case .edit: "pencil"
+        case .delete: "trash"
+        case .move: "arrow.right.doc.on.clipboard"
+        case .search: "magnifyingglass"
+        case .execute: "terminal"
+        case .think: "brain"
+        case .fetch: "globe"
+        case .switchMode: "arrow.triangle.swap"
+        case .other: "wrench.and.screwdriver"
+        }
+    }
+}
+
+/// A file change with removed and added lines, scrolling sideways.
+struct DiffBlock: View {
+    let path: String
+    let old: String?
+    let new: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(path).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1)
+                .padding(.horizontal, 12).padding(.vertical, 8)
+            ScrollView(.horizontal, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(lines.prefix(60).enumerated()), id: \.offset) { _, line in
+                        Text("\(line.mark) \(line.text)")
+                            .font(.system(.caption, design: .monospaced))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 12)
+                            .background(line.mark == "+" ? Color.green.opacity(0.18) : line.mark == "-" ? Color.red.opacity(0.18) : .clear)
+                    }
+                }
+            }
+            if lines.count > 60 {
+                Text("\(lines.count - 60) more lines").font(.caption).foregroundStyle(.secondary).padding(12)
+            }
+        }
+        .padding(.bottom, 8)
+        .background(.fill.quinary, in: .rect(cornerRadius: 12))
+    }
+
+    /// Removed lines then added ones: the change, not a minimal diff.
+    private var lines: [(mark: String, text: String)] {
+        let before = (old ?? "").split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        let after = new.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        let common = Set(before).intersection(after)
+        return before.filter { !common.contains($0) }.map { ("-", $0) } + after.filter { !common.contains($0) }.map { ("+", $0) }
+    }
+}

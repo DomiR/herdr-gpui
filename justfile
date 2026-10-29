@@ -211,6 +211,27 @@ sort:
 web-css:
     tailwindcss --input crates/herdr-remote-control/src/web/assets/input.css --output crates/herdr-remote-control/src/web/assets/app.css --minify
 
+# The iOS app (ios/README.md). Not part of `ci`, which runs on Linux too;
+# the iOS workflow runs these on macOS.
+ios-generate:
+    cd ios && xcodegen -q
+
+# Swift package tests, against the fixtures the daemon's Rust tests write.
+ios-test:
+    cd ios/HerdrRemoteCore && swift test
+
+# Unsigned build of the app and its extensions for the simulator.
+ios-build: ios-generate
+    cd ios && xcodebuild -project HerdrRemote.xcodeproj -scheme HerdrRemote -destination 'generic/platform=iOS Simulator' -derivedDataPath build CODE_SIGNING_ALLOWED=NO -quiet build
+
+# Archive and upload to TestFlight; needs the App Store Connect key (see the script).
+ios-testflight:
+    sh ios/tools/testflight.sh
+
+# Render the native screen mockups in a headless simulator.
+ios-mockups appearance="dark" round="2":
+    ios/Mockups/render.sh {{appearance}} {{round}}
+
 test-mockup-wait:
     python3 .claude/skills/gpui-mockup/scripts/test_wait.py
 

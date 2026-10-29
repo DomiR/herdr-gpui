@@ -116,6 +116,105 @@ This is a new module beside `web/`. It reads the same hub and uses the same
   from the Rust types in a test and compared byte for byte, then decoded in
   Swift. A field added on one side without the other fails CI.
 
+### The v2 wire, exactly
+
+All JSON, `snake_case`. Chat types are `herdr_chat_protocol`'s own serde
+(`Transcript`, `Change`, `Cursor`, `Status`, `Permission`); nothing is
+mirrored. Bearer auth as today (`Authorization: Bearer TOKEN`).
+
+`GET /api/v2/home` answers a `Home`:
+
+```json
+{
+  "computer": "MacBook Pro",
+  "fingerprint": "64 uppercase hex",
+  "connected": true,
+  "waiting": 1,
+  "workspaces": [{
+    "id": "w1", "label": "herdr-gpui", "branch": "main", "cwd": "/Users/me/code/herdr-gpui",
+    "pull_request": {"number": 870, "url": "https://github.com/...", "tone": "success"},
+    "chats": [{
+      "pane": "p1", "tab": "t1", "title": "Equalize splits", "agent": "claude",
+      "status": "working",
+      "summary": {
+        "connected": true, "status": {"state": "working"},
+        "question": null, "questions": 0,
+        "last_text": "Added Equalize Splits…", "turn_started_ms": 1761670000000,
+        "usage_percent": 42
+      }
+    }],
+    "terminals": [{
+      "tab": "t2", "label": "zsh", "cwd": "/Users/me/code/herdr-gpui", "zoomed": false,
+      "panes": [{"pane": "p2", "label": null, "cwd": "/Users/me/code/herdr-gpui", "focused": true}],
+      "agent": {"name": "claude", "status": "done"}
+    }]
+  }]
+}
+```
+
+- `status` and `agent.status` are Herdr's agent status: `unknown`, `idle`,
+  `working`, `blocked`, or `done`. `summary` is absent while the chat's
+  connection is not linked yet. `question` is a `Permission`. `waiting` is
+  the badge: chats whose transcript has a permission waiting.
+- `pull_request` is absent when the workspace has none; `tone` is
+  `herdr_github::pull_request::Tone` as serde writes it.
+- As built: `waiting` counts every waiting permission request, as the web
+  app's badge does; a chat's `cursor` is `null` until the daemon has heard
+  from its program once; runs also carry `strike` and `hidden`; a device
+  holding eight streams and sockets is answered 429.
+
+`GET /api/v2/chat/{pane}` answers a `chat_snapshot` message (below)
+without its `type`.
+
+`GET /api/v2/live` upgrades to a WebSocket. Text frames only, one JSON
+object each, at most 4 KiB from the phone; binary frames close the socket.
+
+The phone sends:
+
+```json
+{"type": "subscribe", "view": "home"}
+{"type": "subscribe", "view": "chat", "pane": "p1", "since": {"epoch": "uuid", "seq": 41}}
+{"type": "subscribe", "view": "term", "pane": "p2"}
+{"type": "unsubscribe", "view": "chat", "pane": "p1"}
+```
+
+`since` is optional: the cursor of the transcript the phone has cached.
+
+The daemon sends:
+
+```json
+{"type": "home", "home": {}}
+{"type": "chat_snapshot", "pane": "p1", "cursor": {"epoch": "uuid", "seq": 41}, "connected": true, "transcript": {}}
+{"type": "chat_resumed", "pane": "p1", "cursor": {"epoch": "uuid", "seq": 41}, "connected": true}
+{"type": "chat_changes", "pane": "p1", "changes": [{"cursor": {"epoch": "uuid", "seq": 42}, "change": {"change": "append", "id": 7, "text": "…"}}]}
+{"type": "chat_connection", "pane": "p1", "connected": false}
+{"type": "term_screen", "pane": "p2", "columns": 120, "rows": [[{"text": "PASS", "fg": "green", "bold": true}]]}
+{"type": "reload", "view": "chat", "pane": "p1"}
+{"type": "error", "message": "no such chat"}
+{"type": "bye", "reason": "revoked"}
+```
+
+- A subscription answers at once with the current state: `home`; for a
+  chat, `chat_resumed` when `since` equals the chat's cursor, otherwise
+  `chat_snapshot`; for a terminal, `term_screen`.
+- `home` is sent whole after each burst of changes, gathered 400 ms, and
+  never for streamed text alone. `chat_changes` gathers 120 ms. Each
+  change carries the cursor it leads to. A phone that sees a gap (another
+  epoch, or a `seq` that is not one more) subscribes again with its
+  cursor.
+- `term_screen` is sent only when the screen changed, read every 300 ms
+  while subscribed. A run has `text` and, when set, `fg` and `bg` (one of
+  the 16 names `black`, `red`, `green`, `yellow`, `blue`, `magenta`,
+  `cyan`, `white`, and their `bright_` forms, or `#rrggbb`), `bold`,
+  `dim`, `italic`, `underline`, `inverse` (only when true).
+- `reload` means the phone lagged or the view went away: it fetches the
+  view again (a chat that is gone answers 404). `bye` precedes the close
+  when the session expired (`expired`) or the device was revoked
+  (`revoked`).
+- Bounds: eight subscriptions per socket (one home, the rest chats or
+  terminals), 64 messages queued for a slow phone before `reload`, the
+  existing per-device stream cap, and a ping every 20 s.
+
 ## Connectivity
 
 - Each computer stores every address it reported: LAN, Tailscale,
@@ -446,6 +545,13 @@ release tag; pull requests run only `ios-test` and the unsigned build.
   step in App Store Connect.
 
 ## Phases
+
+Status, 2026-10-28: phase 0 ran (`docs/ios-spikes.md`; the device checks
+wait for a signed build), and phase 1 is built: the daemon's `native/`
+API, the Swift reducer and `ComputerLink`, and the app on iOS 26 with the
+picked home, board, computers outline, search, a document chat with
+questions and a composer, and a read-only terminal, checked end to end in
+the simulator against a sandbox daemon.
 
 0. **Spikes**, each with a written result:
    - A macOS GATT peripheral from Herdr.app through objc2, including the

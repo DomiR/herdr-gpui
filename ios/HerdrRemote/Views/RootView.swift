@@ -1,0 +1,111 @@
+import HerdrRemoteCore
+import SwiftUI
+
+enum RootTab: Hashable { case home, board, computers, search }
+
+/// Home B: attention first, with Board, Computers, and Search as tabs.
+struct RootView: View {
+    @Environment(AppModel.self) private var model
+    @State private var tab = RootTab.home
+    @State private var homePath = NavigationPath()
+    @State private var pairing = false
+
+    var body: some View {
+        TabView(selection: $tab) {
+            Tab("Home", systemImage: "house", value: RootTab.home) {
+                NavigationStack(path: $homePath) {
+                    HomeTab(pairing: $pairing).withRoutes()
+                }
+            }
+            .badge(model.fleet.waiting)
+            Tab("Board", systemImage: "square.grid.2x2", value: RootTab.board) {
+                NavigationStack { BoardTab().withRoutes() }
+            }
+            Tab("Computers", systemImage: "desktopcomputer", value: RootTab.computers) {
+                NavigationStack { ComputersTab(pairing: $pairing).withRoutes() }
+            }
+            Tab(value: RootTab.search, role: .search) {
+                NavigationStack { SearchTab().withRoutes() }
+            }
+        }
+        .sheet(isPresented: $pairing) { PairView() }
+        #if DEBUG
+        .task { await followLaunchArguments() }
+        #endif
+        .onChange(of: model.pendingRoute) { _, route in
+            guard let route else { return }
+            tab = .home
+            homePath.append(route)
+            model.pendingRoute = nil
+        }
+    }
+}
+
+#if DEBUG
+extension RootView {
+    /// For the simulator loop (`ios/README.md`), which cannot tap:
+    /// `-pairLink URL` pairs without the camera (the desktop still
+    /// approves), `-openLink URL` opens a Live Activity's link as a tap on
+    /// the activity would, `-openTerm PANE` opens a terminal pane of the
+    /// first computer, and `-tab board|computers|search` picks a tab.
+    func followLaunchArguments() async {
+        let defaults = UserDefaults.standard
+        if let link = defaults.string(forKey: "pairLink"),
+           !model.computers.contains(where: { (try? PairingLink(link))?.fingerprint == $0.fingerprint }) {
+            let pairing = PairingModel()
+            pairing.pair(link, deviceName: "Simulator") { model.add($0) }
+        }
+        if let text = defaults.string(forKey: "openLink"), let url = URL(string: text) {
+            // Lets the first home arrive, so the chat has its title.
+            try? await Task.sleep(for: .seconds(2))
+            model.open(url)
+        }
+        switch defaults.string(forKey: "tab") {
+        case "board": tab = .board
+        case "computers": tab = .computers
+        case "search": tab = .search
+        default: break
+        }
+        if let pane = defaults.string(forKey: "openTerm"), let computer = model.computers.first {
+            model.pendingRoute = .term(PaneKey(device: computer.device, pane: pane), title: pane)
+        }
+    }
+}
+#endif
+
+extension View {
+    func withRoutes() -> some View {
+        navigationDestination(for: Route.self) { route in
+            switch route {
+            case let .chat(key, title): ChatScreen(key: key, title: title)
+            case let .term(key, title): TerminalScreen(key: key, title: title)
+            }
+        }
+    }
+}
+
+/// Says which computers are not reachable, and why.
+struct ConnectionBanner: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let down = model.fleet.machines.compactMap { machine -> String? in
+            switch machine.status {
+            case let .offline(reason): "\(machine.computer.name): \(reason)"
+            case .revoked: "\(machine.computer.name) unpaired this phone. Pair it again."
+            case .connecting where machine.home != nil: "Reconnecting to \(machine.computer.name)…"
+            default: nil
+            }
+        }
+        if !down.isEmpty {
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(down, id: \.self) { Text($0) }
+            }
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 14).padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glassEffect(.regular, in: .rect(cornerRadius: 16))
+        }
+    }
+}

@@ -1,0 +1,58 @@
+import ActivityKit
+import HerdrRemoteCore
+import SwiftUI
+
+/// Settings A: one grouped list. Notifications, presence, and Face ID
+/// join it with their phases.
+struct SettingsView: View {
+    @Environment(AppModel.self) private var model
+    @State private var cacheSize = 0
+
+    var body: some View {
+        List {
+            Section("Computers") {
+                ForEach(model.computers) { computer in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(model.displayName(computer))
+                        Text(computer.origins.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary)
+                        Text(fingerprintLine(computer)).font(.caption2.monospaced()).foregroundStyle(.secondary)
+                    }
+                    .swipeActions {
+                        Button("Forget", role: .destructive) { model.forget(computer) }
+                    }
+                }
+            }
+            Section {
+                if !ActivityAuthorizationInfo().areActivitiesEnabled {
+                    Label("Live Activities are off for Herdr Remote. Turn them on in Settings.", systemImage: "exclamationmark.triangle")
+                }
+                #if DEBUG
+                Button("Start a sample activity") { model.startSample() }
+                #endif
+            } header: {
+                Text("Live Activities")
+            }
+            Section("Storage") {
+                LabeledContent("Cached chats and lists", value: ByteCountFormatter.string(fromByteCount: Int64(cacheSize), countStyle: .file))
+                Button("Clear cache", role: .destructive) {
+                    model.fleet.cache.clear()
+                    cacheSize = 0
+                }
+            }
+            if let problem = model.tokens.lastError ?? model.message {
+                Section("Last problem") { Text(problem).font(.footnote).foregroundStyle(.secondary) }
+            }
+            Section {
+                LabeledContent("Version", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")
+            }
+        }
+        .navigationTitle("Settings")
+        .task { cacheSize = model.fleet.cache.size() }
+    }
+
+    /// The fingerprint in groups of four, the way the desktop shows it.
+    private func fingerprintLine(_ computer: Computer) -> String {
+        let hex = Array(computer.fingerprint.hex.prefix(16))
+        return stride(from: 0, to: hex.count, by: 4).map { String(hex[$0..<min($0 + 4, hex.count)]) }.joined(separator: " ")
+    }
+}
