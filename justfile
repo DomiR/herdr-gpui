@@ -167,7 +167,7 @@ bundle profile="release" features="":
     # a signed file's old signature with its inode, so reading the rewritten
     # pages kills the reader, and a chat still running the old herdr-acp
     # keeps its own copy.
-    rm -f "$app/Contents/MacOS/Herdr" "$app/Contents/MacOS/herdr-acp" "$app/Contents/MacOS/herdr-automate" "$app/Contents/MacOS/herdr-remote-control"
+    rm -f "$app/Contents/MacOS/Herdr" "$app/Contents/MacOS/herdr-acp" "$app/Contents/MacOS/herdr-automate" "$app/Contents/MacOS/herdr-remote-control" "$app/Contents/MacOS/herdr-nearby"
     cp target/{{profile}}/herdr-gpui "$app/Contents/MacOS/Herdr"
     # The automation daemon, found beside the app's executable.
     cp target/{{profile}}/herdr-automate "$app/Contents/MacOS/herdr-automate"
@@ -176,6 +176,10 @@ bundle profile="release" features="":
     cp target/{{profile}}/herdr-acp "$app/Contents/MacOS/herdr-acp"
     # Remote control runs the herdr-remote-control beside it as a user service.
     cp target/{{profile}}/herdr-remote-control "$app/Contents/MacOS/herdr-remote-control"
+    # Bluetooth pairing and presence run the Swift helper beside it; without
+    # it the app pairs over the network only.
+    xcrun swiftc -O -swift-version 6 macos/herdr-nearby/main.swift macos/herdr-nearby/Framing.swift \
+        macos/herdr-nearby/Bonjour.swift -o "$app/Contents/MacOS/herdr-nearby"
     cp assets/macos/Info.plist "$app/Contents/Info.plist"
     # LaunchServices and the Dock cache icons by bundle ID, so every worktree
     # build sharing the release ID competed with the installed app's icon.
