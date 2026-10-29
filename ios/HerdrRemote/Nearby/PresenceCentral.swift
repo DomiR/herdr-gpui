@@ -14,9 +14,10 @@ private let log = Logger(subsystem: "so.pen.herdr-remote", category: "presence")
 ///   computer comes back in range, and state restoration relaunches the
 ///   app in the background to do it.
 /// - The peripheral does not say which computer it is, so the phone says
-///   hello as each computer with presence on until one answers with a
-///   challenge; the sealed addresses that answer a proof then open only
-///   with that computer's key.
+///   hello, by a daily hint rather than its device id, as each computer
+///   with presence on until one answers. It signs only a challenge signed
+///   by that computer's pinned CA, and the sealed addresses that answer a
+///   proof open only with that computer's key.
 /// - Signal strength is read while the app runs; in the background the
 ///   last state stands until the connection drops, which counts as away.
 ///
@@ -48,6 +49,8 @@ final class PresenceCentral: NSObject {
         /// Computers not yet tried with hello.
         var candidates: [Computer] = []
         var trying: Computer?
+        /// A proof was sent for `trying` and awaits its answer.
+        var challenged = false
         var proven: Computer?
         var nearness = Presence.Nearness()
 
@@ -108,23 +111,33 @@ final class PresenceCentral: NSObject {
         }
         link.candidates.removeFirst()
         link.trying = next
-        send(.hello(device: next.device), on: link)
+        send(.hello(hint: Presence.hint(device: next.device, day: Presence.day(.now))), on: link)
     }
 
     private func received(_ message: Data, on link: Link) {
         guard let incoming = try? JSONDecoder().decode(Presence.Incoming.self, from: message) else { return }
         switch incoming {
-        case let .challenge(nonce):
+        case let .challenge(nonce, certificate, signature):
             guard let computer = link.trying else { return }
+            // Not the pinned computer, or a relay rewriting the challenge:
+            // sign nothing, and try the next computer.
+            guard Presence.challengeIsFrom(computer.fingerprint, device: computer.device, nonce: nonce, certificate: certificate, signature: signature) else {
+                log.error("A presence challenge did not come from \(computer.name, privacy: .public)")
+                helloNext(link)
+                return
+            }
             do {
                 let key = try DeviceKey(kind: computer.keyKind, data: computer.keyData)
-                let signature = DeviceKeyEncoding.signature(try key.signature(for: try Presence.message(nonce: nonce)))
-                send(.prove(device: computer.device, signature: signature), on: link)
+                let proof = DeviceKeyEncoding.signature(try key.signature(for: try Presence.message(fingerprint: computer.fingerprint, nonce: nonce)))
+                link.challenged = true
+                send(.prove(nonce: nonce, signature: proof), on: link)
             } catch {
                 log.error("Could not sign presence: \(error.localizedDescription, privacy: .public)")
             }
         case let .proven(sealed):
-            guard let computer = link.trying else { return }
+            // Only as the answer to a proof this phone sent on this link.
+            guard let computer = link.trying, link.challenged else { return }
+            link.challenged = false
             if let sealed {
                 // Only this computer's key opens it; a peripheral that is
                 // another computer gets no say over these addresses.
@@ -161,6 +174,7 @@ final class PresenceCentral: NSObject {
 
     private func start(_ link: Link) {
         link.proven = nil
+        link.challenged = false
         link.nearness = Presence.Nearness()
         link.candidates = wanted
         link.peripheral.discoverServices([NearbyBluetooth.service])

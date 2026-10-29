@@ -108,19 +108,20 @@ pub(crate) fn answer(state: &State, stop: &watch::Sender<bool>, request: Request
                 .nearby_reveal(&session, &nonce, &state.fingerprint, &origins, now)
                 .map(Response::NearbyRevealed)
         }
-        Request::PresenceChallenge { device } => state
-            .auth()
-            .presence_challenge(&device, now)
-            .map(|nonce| Response::PresenceChallenge { nonce }),
-        Request::PresenceProve {
-            device,
-            nonce,
-            signature,
-        } => {
-            let proven = state
-                .auth()
-                .presence_prove(&device, &nonce, &signature, now);
-            proven.map(|()| Response::PresenceProven {
+        Request::PresenceChallenge { hint } => presence_challenge(state, &hint, now),
+        Request::PresenceProve { nonce, signature } => {
+            // A daemon on the user's own certificate holds no CA key, so it
+            // never gave out a nonce to answer.
+            let fingerprint = crate::auth::nearby::fingerprint_bytes(&state.fingerprint)
+                .filter(|_| state.authority.is_some());
+            let proven = fingerprint
+                .ok_or(crate::auth::Error::UnknownPresence)
+                .and_then(|fingerprint| {
+                    state
+                        .auth()
+                        .presence_prove(&nonce, &signature, &fingerprint, now)
+                });
+            proven.map(|device| Response::PresenceProven {
                 addresses: sealed_addresses(state, &device),
                 device,
             })
@@ -190,6 +191,24 @@ pub(crate) fn answer(state: &State, stop: &watch::Sender<bool>, request: Request
     result.unwrap_or_else(|error| Response::Error {
         code: ErrorCode::from(&error),
         message: error.to_string(),
+    })
+}
+
+/// A nonce for the phone whose hint is `hint`, signed with this computer's
+/// CA key, so the phone knows which computer asks before it signs.
+fn presence_challenge(state: &State, hint: &str, now: u64) -> Result<Response, crate::auth::Error> {
+    let Some(authority) = &state.authority else {
+        return Err(crate::auth::Error::UnknownPresence);
+    };
+    let challenge = state.auth().presence_challenge(hint, now)?;
+    let message = crate::auth::presence::challenge_message(&challenge.nonce, &challenge.device);
+    let signature = authority
+        .sign(&message)
+        .ok_or(crate::auth::Error::UnknownPresence)?;
+    Ok(Response::PresenceChallenge {
+        certificate: crate::auth::encode(authority.ca_der()),
+        nonce: crate::auth::encode(&challenge.nonce),
+        signature: crate::auth::encode(&signature),
     })
 }
 

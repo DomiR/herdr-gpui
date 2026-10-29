@@ -1,12 +1,13 @@
 //! Presence through the control socket, as Herdr UI relays it from the
-//! `herdr-nearby` helper: a nonce, the phone's proof, the addresses sealed
-//! to it, and the near mark that holds its alerts. Also writes the fixture
-//! the phone's Swift tests read (`Fixtures/presence/prove.json`).
+//! `herdr-nearby` helper: a challenge signed by this computer's CA, the
+//! phone's proof bound to that CA, the addresses sealed to it, and the near
+//! mark that holds its alerts. Also writes the fixture the phone's Swift
+//! tests read (`Fixtures/presence/prove.json`).
 
 use super::*;
 use crate::{
     apns::seal::{ADDRESSES_INFO, seal_with},
-    auth::presence::message,
+    auth::presence::{challenge_message, hint, message},
     control::{ErrorCode, Request, Response},
 };
 use aes_gcm::{
@@ -36,10 +37,56 @@ fn device_key(seed: u8) -> SigningKey {
     SigningKey::from_slice(&[seed; 32]).unwrap()
 }
 
-fn prove(key: &SigningKey, nonce: &str) -> String {
+const DAY_MS: u64 = 86_400_000;
+
+/// This computer's CA fingerprint as raw bytes.
+fn ca(state: &Shared) -> [u8; 32] {
+    auth::nearby::fingerprint_bytes(&state.fingerprint).unwrap()
+}
+
+fn prove(key: &SigningKey, fingerprint: &[u8; 32], nonce: &str) -> String {
     let nonce = URL_SAFE_NO_PAD.decode(nonce).unwrap();
-    let signature: Signature = key.sign(&message(&nonce));
+    let signature: Signature = key.sign(&message(fingerprint, &nonce));
     b64(&signature.to_bytes())
+}
+
+/// A hello for `device` today, and the challenge it gets.
+fn challenge(state: &Shared, device: &DeviceId) -> (String, String, String) {
+    let hint = b64(&hint(device, now_ms() / DAY_MS));
+    match control(state, Request::PresenceChallenge { hint }) {
+        Response::PresenceChallenge {
+            certificate,
+            nonce,
+            signature,
+        } => (certificate, nonce, signature),
+        other => panic!("no challenge: {other:?}"),
+    }
+}
+
+/// The P-256 key in a DER certificate, as the phone reads it.
+fn certificate_key(der: &[u8]) -> p256::ecdsa::VerifyingKey {
+    let (_, certificate) = x509_parser::parse_x509_certificate(der).unwrap();
+    p256::ecdsa::VerifyingKey::from_sec1_bytes(&certificate.public_key().subject_public_key.data)
+        .unwrap()
+}
+
+/// What the phone checks before it signs: the certificate is the one it
+/// pinned, and it signed this challenge for this device.
+fn phone_checks(
+    fingerprint: &[u8; 32],
+    device: &DeviceId,
+    certificate: &str,
+    nonce: &str,
+    signature: &str,
+) -> bool {
+    use p256::ecdsa::signature::Verifier as _;
+    let certificate = URL_SAFE_NO_PAD.decode(certificate).unwrap();
+    let nonce = URL_SAFE_NO_PAD.decode(nonce).unwrap();
+    let signature = Signature::from_slice(&URL_SAFE_NO_PAD.decode(signature).unwrap()).unwrap();
+    auth::sha256(&[&certificate]) == *fingerprint
+        && certificate_key(&certificate)
+            .verify(&challenge_message(&nonce, device), &signature)
+            .is_ok()
 }
 
 /// Opens addresses sealed to `device` as the phone does.
@@ -81,19 +128,18 @@ fn a_proven_phone_gets_this_computers_addresses_sealed_to_it() {
         )
         .unwrap();
 
-    let Response::PresenceChallenge { nonce } = control(
-        &state,
-        Request::PresenceChallenge {
-            device: device.clone(),
-        },
-    ) else {
-        panic!("no challenge");
-    };
+    let (certificate, nonce, signature) = challenge(&state, &device);
+    assert!(phone_checks(
+        &ca(&state),
+        &device,
+        &certificate,
+        &nonce,
+        &signature
+    ));
     let proven = control(
         &state,
         Request::PresenceProve {
-            device: device.clone(),
-            signature: prove(&device_key(4), &nonce),
+            signature: prove(&device_key(4), &ca(&state), &nonce),
             nonce,
         },
     );
@@ -110,23 +156,40 @@ fn a_proven_phone_gets_this_computers_addresses_sealed_to_it() {
 }
 
 #[test]
+fn the_challenge_is_signed_for_the_device_it_names() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = state(dir.path());
+    let (device, _) = signed_in(&state, 4);
+    let (other, _) = signed_in(&state, 5);
+    let (certificate, nonce, signature) = challenge(&state, &device);
+    // A challenge the computer signed for one device is not one for another,
+    // and another CA's fingerprint does not pin it.
+    assert!(!phone_checks(
+        &ca(&state),
+        &other,
+        &certificate,
+        &nonce,
+        &signature
+    ));
+    assert!(!phone_checks(
+        &[1; 32],
+        &device,
+        &certificate,
+        &nonce,
+        &signature
+    ));
+}
+
+#[test]
 fn a_phone_without_a_notify_key_is_proven_without_addresses() {
     let dir = tempfile::tempdir().unwrap();
     let state = state(dir.path());
     let (device, _) = signed_in(&state, 4);
-    let Response::PresenceChallenge { nonce } = control(
-        &state,
-        Request::PresenceChallenge {
-            device: device.clone(),
-        },
-    ) else {
-        panic!("no challenge");
-    };
+    let (_, nonce, _) = challenge(&state, &device);
     let proven = control(
         &state,
         Request::PresenceProve {
-            device,
-            signature: prove(&device_key(4), &nonce),
+            signature: prove(&device_key(4), &ca(&state), &nonce),
             nonce,
         },
     );
@@ -140,27 +203,40 @@ fn a_phone_without_a_notify_key_is_proven_without_addresses() {
 }
 
 #[test]
-fn unknown_devices_and_bad_proofs_are_refused() {
+fn unknown_hints_and_bad_proofs_read_the_same() {
     let dir = tempfile::tempdir().unwrap();
     let state = state(dir.path());
-    let unknown = DeviceId("nobody".into());
-    assert!(matches!(
-        control(
-            &state,
-            Request::PresenceChallenge {
-                device: unknown.clone()
-            }
-        ),
+    let unknown = control(
+        &state,
+        Request::PresenceChallenge {
+            hint: b64(&[0; 16]),
+        },
+    );
+    let (device, _) = signed_in(&state, 4);
+    let (_, nonce, _) = challenge(&state, &device);
+    let bad = control(
+        &state,
+        Request::PresenceProve {
+            signature: prove(&device_key(5), &ca(&state), &nonce),
+            nonce,
+        },
+    );
+    let (
+        Response::Error { code, message },
         Response::Error {
-            code: ErrorCode::UnknownDevice,
-            ..
-        }
-    ));
+            code: bad_code,
+            message: bad_message,
+        },
+    ) = (unknown, bad)
+    else {
+        panic!("both refused");
+    };
+    assert_eq!((code, message), (bad_code, bad_message));
     assert!(matches!(
         control(
             &state,
             Request::PresenceSet {
-                device: unknown,
+                device: DeviceId("nobody".into()),
                 near: true
             }
         ),
@@ -168,26 +244,6 @@ fn unknown_devices_and_bad_proofs_are_refused() {
             code: ErrorCode::UnknownDevice,
             ..
         }
-    ));
-    let (device, _) = signed_in(&state, 4);
-    let Response::PresenceChallenge { nonce } = control(
-        &state,
-        Request::PresenceChallenge {
-            device: device.clone(),
-        },
-    ) else {
-        panic!("no challenge");
-    };
-    assert!(matches!(
-        control(
-            &state,
-            Request::PresenceProve {
-                device,
-                signature: prove(&device_key(5), &nonce),
-                nonce,
-            },
-        ),
-        Response::Error { .. }
     ));
 }
 
@@ -211,42 +267,77 @@ fn a_near_mark_is_set_and_lifted() {
     assert!(!state.near().is_near(&device, now_ms()));
 }
 
-/// The phone's side, from fixed values: what it signs, a signature the
-/// daemon's verifier accepts, and addresses sealed to its notify key.
+/// Both sides from fixed values: the computer's hello hint, its CA and
+/// challenge signature, what the phone signs, a signature the daemon's
+/// verifier accepts, and addresses sealed to its notify key. The CA
+/// certificate's own signature is randomized, so it and the challenge
+/// signature are checked by what they prove rather than byte for byte.
 #[test]
 fn the_presence_fixture_matches() {
+    use p256::ecdsa::signature::Verifier as _;
+    let device_id = DeviceId("3TjaYoW0bNYChLkxfCexSw".into());
+    let hint_day = 20_000u64;
     let device = device_key(4);
     let nonce = [3u8; 32];
-    let signed = message(&nonce);
+    let ca_key = SigningKey::from_slice(&[8; 32]).unwrap();
+    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../ios/HerdrRemoteCore/Tests/HerdrRemoteCoreTests/Fixtures/presence/prove.json");
+    let update = std::env::var_os("HERDR_UPDATE_FIXTURES").is_some();
+    let stored: Option<Value> = (!update).then(|| {
+        serde_json::from_str(
+            &std::fs::read_to_string(&path)
+                .unwrap_or_else(|error| panic!("{}: {error}", path.display())),
+        )
+        .unwrap()
+    });
+    let ca_certificate = match &stored {
+        Some(stored) => URL_SAFE_NO_PAD
+            .decode(stored["ca_certificate"].as_str().unwrap())
+            .unwrap(),
+        None => fixture_ca(&ca_key),
+    };
+    // The certificate holds the fixed CA key, and pins as its digest.
+    assert_eq!(
+        certificate_key(&ca_certificate)
+            .to_sec1_point(false)
+            .as_bytes(),
+        ca_key.verifying_key().to_sec1_point(false).as_bytes()
+    );
+    let fingerprint = auth::sha256(&[&ca_certificate]);
+    let challenge_signature: Signature = ca_key.sign(&challenge_message(&nonce, &device_id));
+    let signed = message(&fingerprint, &nonce);
     let signature: Signature = device.sign(&signed);
     // As `Presences::prove` checks it.
     let public =
         auth::PublicKey::parse(&b64(device.verifying_key().to_sec1_point(false).as_bytes()))
             .unwrap();
-    {
-        use p256::ecdsa::signature::Verifier as _;
-        public
-            .verifying_key()
-            .unwrap()
-            .verify(&signed, &signature)
-            .unwrap();
-    }
+    public
+        .verifying_key()
+        .unwrap()
+        .verify(&signed, &signature)
+        .unwrap();
     let notify = SecretKey::from_slice(&[6; 32]).unwrap();
     let plaintext = json!({ "origins": ["https://192.168.1.20:7443", "https://100.64.0.3:7443"] });
-    let sealed = seal_with(
+    let sealed = b64(&seal_with(
         &notify.public_key(),
         plaintext.to_string().as_bytes(),
         ADDRESSES_INFO,
         &SecretKey::from_slice(&[9; 32]).unwrap(),
         &[1; 12],
     )
-    .unwrap();
-    let sealed = b64(&sealed);
+    .unwrap());
     assert_eq!(
         serde_json::from_slice::<Value>(&open(&notify, &sealed)).unwrap(),
         plaintext
     );
     let fixture = json!({
+        "device_id": device_id.0,
+        "hint_day": hint_day,
+        "hint": b64(&hint(&device_id, hint_day)),
+        "ca_certificate": b64(&ca_certificate),
+        "ca_fingerprint": b64(&fingerprint),
+        "challenge_message": b64(&challenge_message(&nonce, &device_id)),
+        "challenge_signature": b64(&challenge_signature.to_bytes()),
         "device_private_key": b64(&device.to_bytes()),
         "device_public_key": b64(device.verifying_key().to_sec1_point(false).as_bytes()),
         "nonce": b64(&nonce),
@@ -258,9 +349,7 @@ fn the_presence_fixture_matches() {
             "sealed": sealed,
         },
     });
-    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../ios/HerdrRemoteCore/Tests/HerdrRemoteCoreTests/Fixtures/presence/prove.json");
-    if std::env::var_os("HERDR_UPDATE_FIXTURES").is_some() {
+    let Some(stored) = stored else {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(
             &path,
@@ -268,16 +357,24 @@ fn the_presence_fixture_matches() {
         )
         .unwrap();
         return;
-    }
-    let expected: Value = serde_json::from_str(
-        &std::fs::read_to_string(&path)
-            .unwrap_or_else(|error| panic!("{}: {error}", path.display())),
-    )
-    .unwrap();
+    };
     assert_eq!(
         fixture,
-        expected,
+        stored,
         "{} is out of date; run with HERDR_UPDATE_FIXTURES=1",
         path.display()
     );
+}
+
+/// A CA certificate for the fixed key, as the daemon's own are made.
+fn fixture_ca(key: &SigningKey) -> Vec<u8> {
+    use p256::pkcs8::{EncodePrivateKey as _, LineEnding};
+    let pem = SecretKey::from(key).to_pkcs8_pem(LineEnding::LF).unwrap();
+    let key = rcgen::KeyPair::from_pem(&pem).unwrap();
+    let mut params = rcgen::CertificateParams::default();
+    params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Constrained(0));
+    params
+        .distinguished_name
+        .push(rcgen::DnType::CommonName, "Herdr Remote fixture CA");
+    params.self_signed(&key).unwrap().der().to_vec()
 }

@@ -227,7 +227,7 @@ async fn run(
                 helper.send(frame(&central, &reply));
             }
             Ok(Event::PresenceFrame { central, data }) => {
-                let reply = match (presence.receive(&central, &data), client) {
+                let reply = match (presence.receive(&central, &data, Instant::now()), client) {
                     (Received::Ask(request), Some(client)) => {
                         Some(presence.answered(&central, client.request(request).await))
                     }

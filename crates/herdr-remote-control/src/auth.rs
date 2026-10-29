@@ -101,7 +101,9 @@ pub enum Error {
     UnknownNearby,
     #[error("no such pairing, or it expired")]
     UnknownPairing,
-    #[error("no such presence challenge, or it expired")]
+    /// Every presence failure: an unknown hint, a spent or late nonce, a
+    /// bad signature. One text, so a phone learns nothing from which.
+    #[error("presence was not accepted")]
     UnknownPresence,
     // keep-sorted end
 }
@@ -423,21 +425,26 @@ impl Auth {
         Ok(revealed)
     }
 
-    /// A nonce for a paired phone near over Bluetooth to sign.
-    pub(crate) fn presence_challenge(&mut self, device: &DeviceId, now_ms: u64) -> Result<String> {
-        self.presence.challenge(device, now_ms, &self.devices)
+    /// A nonce for the paired phone whose daily hint is `hint` to sign.
+    pub(crate) fn presence_challenge(
+        &mut self,
+        hint: &str,
+        now_ms: u64,
+    ) -> Result<presence::Challenge> {
+        self.presence.challenge(hint, now_ms, &self.devices)
     }
 
-    /// Checks a phone's presence proof.
+    /// Checks a phone's presence proof for the CA with `fingerprint`;
+    /// answers the device it proves.
     pub(crate) fn presence_prove(
         &mut self,
-        device: &DeviceId,
         nonce: &str,
         signature: &str,
+        fingerprint: &[u8; 32],
         now_ms: u64,
-    ) -> Result<()> {
+    ) -> Result<DeviceId> {
         self.presence
-            .prove(device, nonce, signature, now_ms, &self.devices)
+            .prove(nonce, signature, fingerprint, now_ms, &self.devices)
     }
 
     /// Notes that `claim` came from an app installed from another computer.

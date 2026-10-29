@@ -138,15 +138,15 @@ pub enum Request {
         session: String,
         nonce: String,
     },
-    /// A paired phone near over Bluetooth says which device it is, which
-    /// Herdr UI relays: answered with a nonce for it to sign
-    /// (`docs/ios-app-plan.md`, "Presence, exactly").
+    /// A paired phone near over Bluetooth says hello with its daily hint,
+    /// which Herdr UI relays: answered with a nonce, signed by this
+    /// computer's CA (`docs/ios-app-plan.md`, "Presence, exactly").
     PresenceChallenge {
-        device: DeviceId,
+        hint: String,
     },
-    /// The phone's signature over `herdr-presence-v1 || nonce`.
+    /// The phone's signature over `herdr-presence-v1 || CA fingerprint ||
+    /// nonce`; the nonce names the device it was given for.
     PresenceProve {
-        device: DeviceId,
         nonce: String,
         signature: String,
     },
@@ -176,9 +176,13 @@ pub enum Response {
     },
     NearbyStarted(NearbyStarted),
     NearbyRevealed(NearbyRevealed),
-    /// The nonce a presence challenge asks the phone to sign, base64url.
+    /// The nonce a presence challenge asks the phone to sign, with this
+    /// computer's CA certificate (DER) and its signature over
+    /// `herdr-presence-challenge-v1 || nonce || device id`, all base64url.
     PresenceChallenge {
+        certificate: String,
         nonce: String,
+        signature: String,
     },
     /// The phone proved it is `device`. `addresses` is the computer's
     /// current origins sealed to the device's notify key, for the phone to

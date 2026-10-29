@@ -10,7 +10,7 @@ use herdr_remote_control::control::{self, DeviceId, Request, Response};
 use serde::Deserialize;
 use serde_json::json;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     time::{Duration, Instant},
 };
 
@@ -19,14 +19,30 @@ pub(crate) const IDLE_LIMIT_SECONDS: u64 = 300;
 /// How often a near mark is renewed; the daemon lets one lapse after two
 /// minutes.
 pub(crate) const RENEW: Duration = Duration::from_secs(30);
+/// Hellos one phone may send per [`HELLO_WINDOW`]; more are dropped, so a
+/// device nearby cannot make the daemon sign challenges without end.
+pub(crate) const HELLO_LIMIT: usize = 8;
+pub(crate) const HELLO_WINDOW: Duration = Duration::from_secs(60);
+/// Challenges one phone may hold unanswered, as the daemon keeps per device.
+const NONCES_KEPT: usize = 4;
+/// What the phone reads for every failure, so it learns nothing from which.
+pub(crate) const REFUSED: &str = "presence was not accepted";
 
 /// A phone's presence message.
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case", tag = "type")]
 enum PhoneFrame {
-    Hello { device: String },
-    Prove { device: String, signature: String },
-    Near { near: bool },
+    /// The phone's daily hint, not its device id.
+    Hello {
+        hint: String,
+    },
+    Prove {
+        nonce: String,
+        signature: String,
+    },
+    Near {
+        near: bool,
+    },
 }
 
 /// What to do with a phone's frame.
@@ -41,8 +57,11 @@ pub(crate) enum Received {
 
 #[derive(Debug, Default)]
 struct Central {
-    /// The device a challenge was asked for, and its nonce once answered.
-    challenge: Option<(DeviceId, Option<String>)>,
+    /// Nonces the daemon gave this phone, newest last: it may prove only
+    /// one of these.
+    nonces: VecDeque<String>,
+    /// When its recent hellos came, for [`HELLO_LIMIT`].
+    hellos: VecDeque<Instant>,
     /// The device this phone proved it is.
     proven: Option<DeviceId>,
     /// Whether the phone says it is close (its RSSI, its own hysteresis).
@@ -59,28 +78,36 @@ pub(crate) struct PresenceRelay {
 }
 
 impl PresenceRelay {
-    /// A frame phone `central` wrote.
-    pub(crate) fn receive(&mut self, central: &str, data: &[u8]) -> Received {
+    /// A frame phone `central` wrote at `now`.
+    pub(crate) fn receive(&mut self, central: &str, data: &[u8], now: Instant) -> Received {
         let Ok(frame) = serde_json::from_slice::<PhoneFrame>(data) else {
-            return Received::Reply(error("that message is not one Herdr reads"));
+            return Received::Reply(refused());
         };
         let state = self.centrals.entry(central.to_owned()).or_default();
         match frame {
-            PhoneFrame::Hello { device } => {
-                let device = DeviceId(device);
-                state.challenge = Some((device.clone(), None));
-                Received::Ask(Request::PresenceChallenge { device })
-            }
-            PhoneFrame::Prove { device, signature } => match &state.challenge {
-                Some((asked, Some(nonce))) if asked.0 == device => {
-                    Received::Ask(Request::PresenceProve {
-                        device: asked.clone(),
-                        nonce: nonce.clone(),
-                        signature,
-                    })
+            PhoneFrame::Hello { hint } => {
+                while state
+                    .hellos
+                    .front()
+                    .is_some_and(|at| now.duration_since(*at) >= HELLO_WINDOW)
+                {
+                    state.hellos.pop_front();
                 }
-                _ => Received::Reply(error("say hello first")),
-            },
+                if state.hellos.len() >= HELLO_LIMIT {
+                    return Received::Nothing;
+                }
+                state.hellos.push_back(now);
+                Received::Ask(Request::PresenceChallenge { hint })
+            }
+            PhoneFrame::Prove { nonce, signature } => {
+                match state.nonces.iter().position(|given| *given == nonce) {
+                    Some(index) => {
+                        state.nonces.remove(index);
+                        Received::Ask(Request::PresenceProve { nonce, signature })
+                    }
+                    None => Received::Reply(refused()),
+                }
+            }
             PhoneFrame::Near { near } => {
                 state.near = near;
                 Received::Nothing
@@ -97,27 +124,32 @@ impl PresenceRelay {
     ) -> Vec<u8> {
         let state = self.centrals.entry(central.to_owned()).or_default();
         match result {
-            Ok(Response::PresenceChallenge { nonce }) => {
-                if let Some((_, slot)) = &mut state.challenge {
-                    *slot = Some(nonce.clone());
+            Ok(Response::PresenceChallenge {
+                certificate,
+                nonce,
+                signature,
+            }) => {
+                if state.nonces.len() >= NONCES_KEPT {
+                    state.nonces.pop_front();
                 }
-                json!({ "type": "challenge", "nonce": nonce })
-                    .to_string()
-                    .into_bytes()
+                state.nonces.push_back(nonce.clone());
+                json!({
+                    "type": "challenge",
+                    "nonce": nonce,
+                    "certificate": certificate,
+                    "signature": signature,
+                })
+                .to_string()
+                .into_bytes()
             }
             Ok(Response::PresenceProven { device, addresses }) => {
-                state.challenge = None;
                 state.proven = Some(device);
                 json!({ "type": "proven", "addresses": addresses })
                     .to_string()
                     .into_bytes()
             }
-            Ok(Response::Error { message, .. }) => {
-                state.challenge = None;
-                error(&message)
-            }
-            Ok(_) => error("the computer gave an answer this relay does not read"),
-            Err(failure) => error(&failure.to_string()),
+            // The daemon's reason stays here: the phone reads one text.
+            Ok(_) | Err(_) => refused(),
         }
     }
 
@@ -171,9 +203,8 @@ impl PresenceRelay {
     }
 }
 
-fn error(message: &str) -> Vec<u8> {
-    let message: String = message.chars().take(200).collect();
-    json!({ "type": "error", "message": message })
+fn refused() -> Vec<u8> {
+    json!({ "type": "error", "message": REFUSED })
         .to_string()
         .into_bytes()
 }

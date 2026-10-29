@@ -513,29 +513,54 @@ control, "Hold phone alerts while I'm here"); macOS only for now.
   `6E3A4F21-8C0B-4D7E-9A55-2F1C0B7D4E93`, framed like `pair`: a 2-byte
   big-endian length, then at most 4 KiB of JSON, cut into chunks.
 - **Phone to Mac:**
-  - `{"type":"hello","device":ID}`. A phone that does not know which
-    paired computer this is tries each device ID it holds; an unknown one
-    gets an error.
-  - `{"type":"prove","device":ID,"signature":B64URL}`.
+  - `{"type":"hello","hint":B64URL}`.
+    - The hint is the first 16 bytes of `SHA-256("herdr-presence-hint-v1"
+      || device id (UTF-8) || day)`, where `day` is the Unix time divided
+      by 86400, UTC, as a big-endian u32.
+    - It changes daily, so a listener cannot follow a phone by its id.
+      The daemon accepts yesterday's, today's, or tomorrow's.
+    - A phone that does not know which paired computer this is sends the
+      hint for each computer it holds.
+  - `{"type":"prove","nonce":B64URL,"signature":B64URL}`: the nonce
+    names the device it was given for.
   - `{"type":"near","near":BOOL}`: the phone's own RSSI decision, with
     hysteresis.
 - **Mac to phone:**
-  - `{"type":"challenge","nonce":B64URL}`.
+  - `{"type":"challenge","nonce":B64URL,"certificate":B64URL,"signature":B64URL}`.
+    - `certificate` is the daemon's CA certificate (DER).
+    - `signature` is its CA key's ECDSA P-256 / SHA-256 signature, r||s,
+      over `"herdr-presence-challenge-v1" || nonce || device id (UTF-8)`.
+    - The phone checks that `SHA-256(certificate)` is the fingerprint it
+      pinned at pairing, and that the signature verifies with the
+      certificate's key, before it signs anything.
+    - So a peripheral that is not that computer gets no signature.
+    - A daemon on a user-supplied certificate holds no CA key and refuses
+      presence.
   - `{"type":"proven","addresses":B64URL|null}`.
-  - `{"type":"error","message":TEXT}`.
-- **Proof.** ECDSA P-256 with SHA-256, signed by the device key that signs
-  sessions, encoded r||s (IEEE P1363) as base64url. The signed bytes are
-  `"herdr-presence-v1" || nonce`, with the nonce as 32 raw bytes, so a
-  session signature never passes as a presence one. A nonce is single
-  use, one per device at a time, and good for 30 s.
+  - `{"type":"error","message":"presence was not accepted"}`, the same
+    text for every failure (unknown hint, spent or late nonce, bad
+    signature, malformed frame).
+- **Proof.**
+  - ECDSA P-256 with SHA-256, signed by the device key that signs
+    sessions, encoded r||s (IEEE P1363) as base64url.
+  - The signed bytes are `"herdr-presence-v1" || CA fingerprint (32 raw
+    bytes) || nonce (32 raw bytes)`. So a session signature never passes
+    as a presence one, and a proof for one computer is worth nothing to
+    another.
+  - A nonce is single use and good for 30 s.
+  - Up to 4 wait per device, the oldest dropped beyond that, so a forged
+    hello cannot cancel the real phone's challenge.
+  - Herdr UI takes at most 8 hellos a minute from one phone, and a phone
+    may prove only a nonce given to it.
 - **Addresses.** On a valid proof, the daemon seals `{"origins":[...]}` to
   the device's registered `notify_key`, in the alert seal's format with
   `herdr-remote-addresses-v1` as HKDF info and AAD. With no key, it sends
   `null`.
 - **Control socket (Herdr UI only).**
-  - `presence_challenge {device}` answers `presence_challenge {nonce}`.
-  - `presence_prove {device, nonce, signature}` answers
-    `presence_proven {device, addresses}`.
+  - `presence_challenge {hint}` answers `presence_challenge {nonce,
+    certificate, signature}`.
+  - `presence_prove {nonce, signature}` answers `presence_proven {device,
+    addresses}`.
   - `presence_set {device, near}` answers `done`.
 - **Near.**
   - Herdr UI marks a device near while a phone that proved it says
@@ -551,9 +576,18 @@ control, "Hold phone alerts while I'm here"); macOS only for now.
     wins, and they go in order once the mark is lifted or lapses.
   - A clear drops the held alert for its chat and still goes.
   - Live Activity pushes are never held.
-- **Fixture.** `Fixtures/presence/prove.json` holds a fixed device key,
-  nonce, signed bytes, a signature the daemon's verifier accepts, and
-  addresses sealed to a fixed notify key.
+- **Fixture.** `Fixtures/presence/prove.json` holds both sides from fixed
+  values.
+  - **The hello:** `device_id`, `hint_day`, and `hint`.
+  - **The computer's side:**
+    - `ca_certificate` and `ca_fingerprint`;
+    - `challenge_message` and `challenge_signature`, made with a fixed CA
+      key.
+  - **The phone's side:** its key, `nonce`, the signed `message`, and a
+    `signature` the daemon's verifier accepts.
+  - **Addresses** sealed to a fixed notify key.
+  - The certificate's own signature is randomized, so the test checks it
+    by its key rather than byte for byte.
 
 ## Feature parity with the web app
 
@@ -820,6 +854,24 @@ That fallback waits for its throughput spike to run on a device.
 - **Checked:** against shared fixtures (the signed bytes, the signature
   encoding, the sealed addresses) and unit tests on each side.
 - **Needs a device:** the Bluetooth path itself.
+
+Phase 7 (system) is built:
+- **Widgets:** Needs You in home and lock screen sizes, drawn from a
+  summary file in the App Group.
+- **Controls:** Board and New Workspace.
+- **App Intents:**
+  - What needs me, Ask a chat, Stop a chat (both need an unlocked phone),
+    and Open the board.
+  - `ChatEntity` is an `IndexedEntity`, so Spotlight indexes it.
+- **Share extension:** sends to an existing chat. New chat from the share
+  sheet waits.
+- **Face ID:** an optional app lock, and before "always" answers.
+- **Keychain:** the paired computers moved to the App Group's keychain
+  group, with a migration that copies before it deletes.
+- **Checked in the simulator:** the migration, and the summary written
+  from a live home.
+- **Needs a device or hands:** widgets, Controls, Siri, Spotlight, and
+  the share sheet need a tap or a device to see.
 
 0. **Spikes**, each with a written result:
    - A macOS GATT peripheral from Herdr.app through objc2, including the

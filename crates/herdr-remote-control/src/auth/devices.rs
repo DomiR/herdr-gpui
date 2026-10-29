@@ -91,6 +91,11 @@ impl Devices {
         self.records.len()
     }
 
+    /// Every paired device's id.
+    pub(crate) fn ids(&self) -> impl Iterator<Item = &DeviceId> {
+        self.records.iter().map(|record| &record.id)
+    }
+
     pub(crate) fn get(&self, id: &DeviceId) -> Option<&DeviceRecord> {
         self.records.iter().find(|record| &record.id == id)
     }
