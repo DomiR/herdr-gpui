@@ -3,9 +3,9 @@ import SwiftUI
 import UIKit
 
 /// Chat B: the latest turn as a document (the prompt as a heading, steps
-/// folded to one line, the answer with its diffs), the running step
-/// pinned under the header, earlier turns summed up, and questions in a
-/// bottom sheet.
+/// folded to one line, the answer, then its diffs folded to a line each),
+/// the running step pinned under the header, earlier turns summed up, and
+/// questions in a bottom sheet.
 struct ChatScreen: View {
     @Environment(AppModel.self) private var model
     let key: PaneKey

@@ -73,16 +73,51 @@ struct ToolRow: View {
     }
 }
 
-/// A file change with removed and added lines, scrolling sideways.
+/// A file change, folded to its name and line counts until tapped, then
+/// its removed and added lines, scrolling sideways.
 struct DiffBlock: View {
     let path: String
     let old: String?
     let new: String
 
+    /// Folded to one line at first: on a phone, what the agent said matters
+    /// more than the code, which is a tap away.
+    @State private var expanded = false
+
     var body: some View {
+        let lines = lines
         VStack(alignment: .leading, spacing: 0) {
-            Text(path).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1)
-                .padding(.horizontal, 12).padding(.vertical, 8)
+            Button {
+                withAnimation(.snappy) { expanded.toggle() }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "doc.text").foregroundStyle(.secondary)
+                    Text((path as NSString).lastPathComponent).font(.caption.monospaced().weight(.semibold))
+                        .lineLimit(1).truncationMode(.middle)
+                    Spacer(minLength: 4)
+                    let added = lines.count { $0.mark == "+" }
+                    let removed = lines.count - added
+                    if added > 0 { Text("+\(added)").foregroundStyle(.green) }
+                    if removed > 0 { Text("−\(removed)").foregroundStyle(.red) }
+                    Image(systemName: "chevron.right").foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(expanded ? 90 : 0))
+                }
+                .font(.caption.monospaced())
+                .padding(.horizontal, 12).padding(.vertical, 10)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(path), \(expanded ? "hide" : "show") changes")
+            if expanded { changes(lines) }
+        }
+        .background(.fill.quinary, in: .rect(cornerRadius: 12))
+    }
+
+    @ViewBuilder
+    private func changes(_ lines: [(mark: String, text: String)]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(path).font(.caption2.monospaced()).foregroundStyle(.secondary).lineLimit(1).truncationMode(.head)
+                .padding(.horizontal, 12).padding(.bottom, 6)
             ScrollView(.horizontal, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(lines.prefix(60).enumerated()), id: \.offset) { _, line in
@@ -99,7 +134,7 @@ struct DiffBlock: View {
             }
         }
         .padding(.bottom, 8)
-        .background(.fill.quinary, in: .rect(cornerRadius: 12))
+        .transition(.opacity)
     }
 
     /// Removed lines then added ones: the change, not a minimal diff.
