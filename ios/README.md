@@ -248,6 +248,30 @@ extension. For the simulator loop:
 - `-dumpNotifications YES` writes what was delivered, and opens each
   alert in the app as the extension would.
 
+## Around the system
+
+- **Widgets:**
+  - Needs You: small, medium (the chats as links), and the lock screen
+    sizes. It is drawn from `summary.json` in the App Group, which the app
+    rewrites as homes change.
+  - The file is readable after the first unlock, so lock screen widgets
+    draw. The full cache stays readable only while unlocked.
+- **Controls:** Herdr Board and New Herdr Workspace, for Control Center,
+  the Lock Screen, and the Action button.
+- **Siri and Shortcuts:**
+  - What needs me, Ask a chat, Stop a chat, and Open the board.
+  - Asking and stopping need an unlocked phone.
+  - Chats are `ChatEntity`s that Spotlight indexes. Tapping one opens the
+    chat.
+- **Share sheet:** "Herdr" sends text, a link, or up to four pictures to
+  a chat as a prompt. It signs in like the app does, because the paired
+  computers' keychain item lives in the App Group's keychain group. An
+  item from before moves there on first launch.
+- **Face ID:**
+  - Optional: Settings > Privacy locks the app and hides it in the app
+    switcher.
+  - "Always" answers and auto-accept ask either way.
+
 ## What the daemon sends
 
 Live Activity payloads follow `ChatActivityState` (`HerdrRemoteCore`) and

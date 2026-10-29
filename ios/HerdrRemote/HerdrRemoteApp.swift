@@ -15,6 +15,7 @@ struct HerdrRemoteApp: App {
         WindowGroup {
             RootView()
                 .environment(model)
+                .modifier(AppLock())
                 .onOpenURL { model.open($0) }
                 .task { model.tokens.start() }
                 .onChange(of: model.fleet.waiting, initial: true) { _, waiting in

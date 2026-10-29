@@ -53,6 +53,11 @@ struct RootView: View {
         #if DEBUG
         .task { await followLaunchArguments() }
         #endif
+        .onChange(of: model.pendingTab) { _, wanted in
+            guard let wanted else { return }
+            tab = wanted
+            model.pendingTab = nil
+        }
         .onChange(of: model.pendingRoute) { _, route in
             guard let route else { return }
             tab = .home

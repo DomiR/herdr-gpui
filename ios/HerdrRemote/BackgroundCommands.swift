@@ -50,6 +50,20 @@ enum BackgroundCommands {
         }
     }
 
+    /// A prompt with pictures, from the share extension: each picture is
+    /// uploaded first, then the prompt names them.
+    static func sendPrompt(_ text: String, pictures: [Data], computer fingerprint: String, pane: String) async throws {
+        let session = try await signIn(fingerprint)
+        var ids: [String] = []
+        for picture in pictures {
+            ids.append(try await session.client.upload(picture, pane: pane, bearer: session.token))
+        }
+        let command = ChatCommand.prompt(text: text, attachments: ids)
+        if let rejected = try await session.client.command(command, pane: pane, bearer: session.token) {
+            throw Failure.rejected(rejected)
+        }
+    }
+
     private static func signIn(_ fingerprint: String) async throws -> (client: RemoteClient, token: String) {
         let computers = try ComputerStore.load()
         guard let wanted = Fingerprint(fingerprint),

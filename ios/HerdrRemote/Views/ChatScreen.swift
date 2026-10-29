@@ -282,6 +282,7 @@ private struct QuestionSheet: View {
 
     private func answer(_ option: PermissionOption) {
         Task {
+            guard await OwnerCheck.allows(option) else { return }
             problem = await model.fleet.send(.answer(permission: permission.id, option: option.id), to: key)
             if problem == nil { dismiss() }
         }

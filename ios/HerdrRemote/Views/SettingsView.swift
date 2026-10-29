@@ -6,6 +6,7 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @State private var cacheSize = 0
+    @AppStorage(AppLock.setting) private var requireFaceID = false
 
     var body: some View {
         List {
@@ -44,6 +45,20 @@ struct SettingsView: View {
                 #endif
             } header: {
                 Text("Live Activities")
+            }
+            Section {
+                Toggle("Require Face ID", isOn: Binding(
+                    get: { requireFaceID },
+                    set: { on in
+                        // Turning the lock off asks too, so a borrowed,
+                        // unlocked phone cannot drop it.
+                        Task { if await OwnerCheck.confirm(on ? "Lock Herdr Remote" : "Stop locking Herdr Remote") { requireFaceID = on } }
+                    }
+                ))
+            } header: {
+                Text("Privacy")
+            } footer: {
+                Text("Asks for Face ID when the app opens and hides it in the app switcher. \"Always\" answers and auto-accept ask either way.")
             }
             Section("Storage") {
                 LabeledContent("Cached chats and lists", value: ByteCountFormatter.string(fromByteCount: Int64(cacheSize), countStyle: .file))

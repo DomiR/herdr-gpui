@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, @preconcurrency UNUser
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        AppModel.current = model
         UNUserNotificationCenter.current().delegate = self
         Task { await NotificationCategories.register(.finished) }
         #if DEBUG
@@ -29,7 +30,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate, @preconcurrency UNUser
     /// paired computers seal alerts to.
     static func enableAlerts() async {
         let center = UNUserNotificationCenter.current()
-        let granted = (try? await center.requestAuthorization(options: [.alert, .badge, .sound])) ?? false
+        var options: UNAuthorizationOptions = [.alert, .badge, .sound]
+        #if DEBUG
+        // The simulator loop cannot tap the prompt (`-provisionalAlerts`).
+        if UserDefaults.standard.bool(forKey: "provisionalAlerts") { options.insert(.provisional) }
+        #endif
+        let granted = (try? await center.requestAuthorization(options: options)) ?? false
         if granted { UIApplication.shared.registerForRemoteNotifications() }
     }
 

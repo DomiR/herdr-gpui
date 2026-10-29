@@ -31,6 +31,23 @@ final class AppModel {
     var pendingRoute: Route?
     /// A new workspace or chat being set up, as a sheet over every tab.
     var creating: Creating?
+    /// A tab to switch to, from a Control or an intent; the root view
+    /// shows it and clears it.
+    var pendingTab: RootTab?
+
+    /// The one model, for intents iOS runs in the app's process.
+    static var current: AppModel?
+
+    enum Shortcut { case board, newWorkspace, chat(Route) }
+
+    /// Shows what a Control, an intent, or Spotlight asked for.
+    func show(_ shortcut: Shortcut) {
+        switch shortcut {
+        case .board: pendingTab = .board
+        case .newWorkspace: creating = .workspace(device: nil)
+        case let .chat(route): pendingRoute = route
+        }
+    }
     let sessions: Sessions
     let tokens: ActivityTokens
     let fleet: Fleet
@@ -38,6 +55,7 @@ final class AppModel {
     let bluetooth = NearbyBluetooth()
     /// Bluetooth presence with the computers that have it on.
     let presence = PresenceCentral()
+    private let spotlight = SpotlightChats()
     /// Nearby computers the person closed the card for, this launch.
     var dismissedNearby: Set<String> = []
     private let paths = NWPathMonitor()
@@ -63,6 +81,7 @@ final class AppModel {
             Task { await self.tokens.sync() }
         }
         presence.computers = computers
+        fleet.onSummary = { [spotlight] in spotlight.update(WidgetSummary.load()) }
         paths.pathUpdateHandler = { [weak self] _ in
             Task { @MainActor in self?.fleet.networkChanged() }
         }

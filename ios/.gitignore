@@ -5,6 +5,8 @@ HerdrRemote/HerdrRemote.entitlements
 HerdrRemoteWidgets/Info.plist
 HerdrRemoteNotifications/Info.plist
 HerdrRemoteNotifications/HerdrRemoteNotifications.entitlements
+HerdrRemoteShare/Info.plist
+HerdrRemoteShare/HerdrRemoteShare.entitlements
 
 # Xcode and SwiftPM build output.
 build/

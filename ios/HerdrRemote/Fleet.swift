@@ -2,6 +2,7 @@ import Foundation
 import HerdrRemoteCore
 import Observation
 import os
+import WidgetKit
 
 private let log = Logger(subsystem: "so.pen.herdr-remote", category: "fleet")
 
@@ -82,6 +83,8 @@ final class Fleet {
             return Machine(computer: computer, home: cache.home(computer.device))
         }
         if active { machines.forEach { startLink($0.computer) } }
+        // From the cached homes at launch, and without forgotten ones.
+        publishSummary()
     }
 
     /// The app came to the foreground: links connect and catch up.
@@ -121,6 +124,32 @@ final class Fleet {
     }
 
     var waiting: Int { machines.reduce(0) { $0 + ($1.home?.waiting ?? 0) } }
+
+    /// Writes what widgets, Controls, Siri, Spotlight, and the share
+    /// extension show, and reloads the widgets when it changed.
+    func publishSummary() {
+        let chats = chatItems.map { item in
+            WidgetSummary.Chat(
+                device: item.computer.device,
+                computerId: item.computer.fingerprint.hex,
+                computer: item.computer.name,
+                pane: item.chat.pane,
+                title: item.chat.title,
+                workspace: item.workspace.label,
+                workspaceId: item.workspace.id,
+                agent: item.chat.agent,
+                needsYou: item.needsYou,
+                working: item.working
+            )
+        }
+        if WidgetSummary(chats: chats, updated: .now).save() {
+            WidgetCenter.shared.reloadTimelines(ofKind: WidgetSummary.kind)
+        }
+        onSummary?()
+    }
+
+    /// Called after each summary, for Spotlight.
+    @ObservationIgnored var onSummary: (() -> Void)?
 
     // MARK: Views
 
@@ -220,6 +249,7 @@ final class Fleet {
             machines[index].home = home
             machines[index].stale = false
             cache.save(home: home, device: device)
+            publishSummary()
         case let .event(.error(message)):
             log.error("\(self.machines[index].computer.name, privacy: .public) refused: \(message, privacy: .public)")
         case let .event(.termScreen(screen)):

@@ -127,6 +127,10 @@ struct AnswerCard: View {
     private func answer(_ option: PermissionOption) {
         sending = true
         Task {
+            guard await OwnerCheck.allows(option) else {
+                sending = false
+                return
+            }
             problem = await model.fleet.send(.answer(permission: question.id, option: option.id), to: item.key)
             sending = false
         }

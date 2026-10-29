@@ -1,5 +1,4 @@
 import HerdrRemoteCore
-import LocalAuthentication
 import SwiftUI
 
 /// Session C: cards for the context, the mode, effort, the session's
@@ -172,14 +171,7 @@ struct SessionSheet: View {
 
     private func setAutoAccept(_ on: Bool) {
         Task {
-            if on {
-                let context = LAContext()
-                do {
-                    guard try await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Allow every tool call without asking") else { return }
-                } catch {
-                    return
-                }
-            }
+            if on, !(await OwnerCheck.confirm("Allow every tool call without asking")) { return }
             problem = await model.fleet.send(.setAutoAccept(on), to: key)
         }
     }
