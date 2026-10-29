@@ -173,6 +173,8 @@ impl Supervisor {
     /// never touch a service.
     pub(crate) fn install(cx: &mut App) {
         cx.set_global(Self::default());
+        #[cfg(target_os = "macos")]
+        super::nearby::Station::install(cx);
         Self::start(cx);
     }
 
@@ -236,6 +238,16 @@ impl Supervisor {
         if supervisor.quitting || !supervisor.loaded {
             return;
         }
+        // Presence runs the nearby helper while the daemon it reports to
+        // does.
+        #[cfg(target_os = "macos")]
+        {
+            let presence = supervisor.config.enabled
+                && supervisor.config.presence
+                && matches!(supervisor.health, Health::Running(_));
+            super::nearby::Station::set_presence(cx, presence);
+        }
+        let supervisor = cx.global_mut::<Self>();
         if !supervisor.reconciling && supervisor.synced.as_ref() != Some(&supervisor.config) {
             supervisor.reconciling = true;
             let (config, reconcile, send) = (

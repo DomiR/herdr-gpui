@@ -28,6 +28,7 @@ fn fixed_seal(plaintext: &[u8]) -> crate::apns::Result<Vec<u8>> {
     seal_with(
         &device().public_key(),
         plaintext,
+        INFO,
         &SecretKey::from_slice(&[9; 32]).unwrap(),
         &[1; 12],
     )

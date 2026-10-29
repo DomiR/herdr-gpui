@@ -138,6 +138,25 @@ pub enum Request {
         session: String,
         nonce: String,
     },
+    /// A paired phone near over Bluetooth says which device it is, which
+    /// Herdr UI relays: answered with a nonce for it to sign
+    /// (`docs/ios-app-plan.md`, "Presence, exactly").
+    PresenceChallenge {
+        device: DeviceId,
+    },
+    /// The phone's signature over `herdr-presence-v1 || nonce`.
+    PresenceProve {
+        device: DeviceId,
+        nonce: String,
+        signature: String,
+    },
+    /// Whether a proven phone's owner is at this computer: while near, the
+    /// device's alerts are held. A mark not renewed lapses after two
+    /// minutes.
+    PresenceSet {
+        device: DeviceId,
+        near: bool,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -157,6 +176,18 @@ pub enum Response {
     },
     NearbyStarted(NearbyStarted),
     NearbyRevealed(NearbyRevealed),
+    /// The nonce a presence challenge asks the phone to sign, base64url.
+    PresenceChallenge {
+        nonce: String,
+    },
+    /// The phone proved it is `device`. `addresses` is the computer's
+    /// current origins sealed to the device's notify key, for the phone to
+    /// find it again when its address changed; `None` when the device
+    /// registered no key.
+    PresenceProven {
+        device: DeviceId,
+        addresses: Option<String>,
+    },
 }
 
 /// The daemon's answer to a nearby phone's first step, the same JSON over

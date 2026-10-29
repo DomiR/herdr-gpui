@@ -1,0 +1,17 @@
+{
+  "addresses": {
+    "device_notify_private_key": "BgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgY",
+    "plaintext": {
+      "origins": [
+        "https://192.168.1.20:7443",
+        "https://100.64.0.3:7443"
+      ]
+    },
+    "sealed": "BHE1-k_ZOgnc6Yu_aBtL_PUOfA1jVOYq-wv_KjQpYXhl7UwfAt25Aj7lalV-UV1qncZsEfIglg3llDNN9Yh3ZyQBAQEBAQEBAQEBAQGInRYA0iPrWmv_Jz2Nh5gzSHhfz4nPyRnDxilgJx8nnq8ZPkzx6p7jFXjtkIjaDEJ4xVUwLI9N8jpTpXziU4LknxN1X0SORikF9ZMTUr08apWHLw"
+  },
+  "device_private_key": "BAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQ",
+  "device_public_key": "BHMQPsMLPM9X2q4I6TU0rvFEo1lAz2u7oSoM98vV1lpk2CyMmenTxF-SRbqbJ5gsmuqOwduUsZxEeVlCwOsiqjI",
+  "message": "aGVyZHItcHJlc2VuY2UtdjEDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAw",
+  "nonce": "AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM",
+  "signature": "9pFlW_GM_1MNsNN1jOpdPVUkTGvbwBNfnef1cJjq-Z3HTRFYIIy8Indo3nLV_Ew_dHCh1Xz8bSWPb30NVcMMtA"
+}

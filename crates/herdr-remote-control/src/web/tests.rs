@@ -18,6 +18,7 @@ mod indicators;
 mod nearby;
 mod origins;
 mod pairing;
+mod presence;
 mod pull_requests;
 mod routes;
 mod stream;
@@ -58,6 +59,7 @@ pub(crate) fn state_with(dir: &std::path::Path, hub: Arc<Hub>) -> Shared {
         hub,
         look: Look::load(dir),
         names: RwLock::new(names),
+        near: Mutex::default(),
         port: 7443,
         privacy: Privacy::Generic,
         pull_requests,

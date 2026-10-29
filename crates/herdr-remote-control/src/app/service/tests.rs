@@ -74,6 +74,8 @@ fn the_daemon_runs_with_every_setting_as_an_argument() {
         keep_running: false,
         notifications: Privacy::Excerpt,
         port: 9443,
+        // Herdr UI's own: presence runs beside the daemon, not in its args.
+        presence: true,
     };
     assert_eq!(
         words(&custom.args()),

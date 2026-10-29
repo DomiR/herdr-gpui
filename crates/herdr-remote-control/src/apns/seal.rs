@@ -4,8 +4,10 @@
 //! key-agreement key whose public half the device registered.
 //!
 //! `sealed = ephemeral SEC1 point (65) || nonce (12) || AES-256-GCM(text) || tag`,
-//! keyed by `HKDF-SHA256(salt: ephemeral || device, ikm: ECDH, info: INFO)`
-//! with `INFO` as the associated data. CryptoKit's
+//! keyed by `HKDF-SHA256(salt: ephemeral || device, ikm: ECDH, info)` with
+//! `info` as the associated data. The info names what is sealed: [`INFO`]
+//! for alerts, [`ADDRESSES_INFO`] for the addresses presence hands a phone,
+//! so one cannot be passed off as the other. CryptoKit's
 //! `hkdfDerivedSymmetricKey(using:salt:sharedInfo:outputByteCount:)` derives
 //! the same key, which the shared fixture checks.
 
@@ -15,13 +17,16 @@ use hkdf::Hkdf;
 use p256::{PublicKey, SecretKey, elliptic_curve::zeroize::Zeroizing};
 use sha2::Sha256;
 
-/// Names the format in the key derivation and the associated data.
+/// Names an alert in the key derivation and the associated data.
 pub(crate) const INFO: &[u8] = b"herdr-remote-notify-v1";
+/// Names the addresses a proven phone gets over Bluetooth presence.
+pub(crate) const ADDRESSES_INFO: &[u8] = b"herdr-remote-addresses-v1";
 const POINT_LEN: usize = 65;
 const NONCE_LEN: usize = 12;
 
-/// Seals `plaintext` to `device` with a fresh one-time key and nonce.
-pub(crate) fn seal(device: &PublicKey, plaintext: &[u8]) -> Result<Vec<u8>> {
+/// Seals `plaintext` to `device` under `info` with a fresh one-time key
+/// and nonce.
+pub(crate) fn seal(device: &PublicKey, plaintext: &[u8], info: &[u8]) -> Result<Vec<u8>> {
     let mut nonce = [0; NONCE_LEN];
     getrandom::fill(&mut nonce).map_err(Error::Random)?;
     let ephemeral = loop {
@@ -32,7 +37,7 @@ pub(crate) fn seal(device: &PublicKey, plaintext: &[u8]) -> Result<Vec<u8>> {
             break key;
         }
     };
-    seal_with(device, plaintext, &ephemeral, &nonce)
+    seal_with(device, plaintext, info, &ephemeral, &nonce)
 }
 
 /// Seals `plaintext` to `device` with the given one-time key and nonce;
@@ -40,6 +45,7 @@ pub(crate) fn seal(device: &PublicKey, plaintext: &[u8]) -> Result<Vec<u8>> {
 pub(crate) fn seal_with(
     device: &PublicKey,
     plaintext: &[u8],
+    info: &[u8],
     ephemeral: &SecretKey,
     nonce: &[u8; NONCE_LEN],
 ) -> Result<Vec<u8>> {
@@ -51,7 +57,7 @@ pub(crate) fn seal_with(
     let shared = ephemeral.diffie_hellman(device);
     let mut key = Zeroizing::new([0; 32]);
     Hkdf::<Sha256>::new(Some(&salt), shared.raw_secret_bytes())
-        .expand(INFO, key.as_mut_slice())
+        .expand(info, key.as_mut_slice())
         .map_err(|_| Error::Seal)?;
     let cipher = Aes256Gcm::new_from_slice(key.as_slice()).map_err(|_| Error::Seal)?;
     let ciphertext = cipher
@@ -59,7 +65,7 @@ pub(crate) fn seal_with(
             nonce.into(),
             Payload {
                 msg: plaintext,
-                aad: INFO,
+                aad: info,
             },
         )
         .map_err(|_| Error::Seal)?;

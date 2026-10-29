@@ -4,13 +4,14 @@
 //! device the native app registered for alerts gets them sealed through
 //! APNs; any other gets Web Push, which is blocking HTTPS on the blocking
 //! pool. A push service that says a token or subscription is gone drops it
-//! from the device.
+//! from the device. While Herdr UI marks a device near (presence), its
+//! alerts are held and go out when the owner leaves.
 
 use crate::{
     apns::{self, Registration, alert::Sealed},
     control::DeviceId,
     hub::Event,
-    push::{Chat, Delivery, Notification, Outcome, Subscription, Throttle, decide},
+    push::{Chat, Delivery, Hold, Notification, Outcome, Subscription, Throttle, decide},
     web::{State, now_ms},
 };
 use herdr_chat_protocol::{Cursor, Transcript};
@@ -29,6 +30,7 @@ pub(super) async fn run(state: Arc<State>) {
     let mut transcripts: HashMap<String, Base> = HashMap::new();
     let mut throttles: HashMap<DeviceId, Throttle> = HashMap::new();
     let mut outbox = Outbox::default();
+    let mut holds: HashMap<DeviceId, Hold> = HashMap::new();
     let mut ticker = tokio::time::interval(TICK);
     loop {
         tokio::select! {
@@ -64,7 +66,7 @@ pub(super) async fn run(state: Arc<State>) {
                         base.cursor = Some(cursor);
                     }
                     if let Some(notification) = notification {
-                        offer(&state, &mut throttles, &mut outbox, notification);
+                        offer(&state, &mut throttles, &mut holds, &mut outbox, notification);
                     }
                 }
                 Ok((_, Event::Connection)) => {}
@@ -81,8 +83,9 @@ pub(super) async fn run(state: Arc<State>) {
                     })
                     .collect();
                 for (device, notification) in due {
-                    outbox.send(&state, device, notification);
+                    dispatch(&state, &mut holds, &mut outbox, device, notification);
                 }
+                release(&state, &mut holds, &mut outbox, now);
                 // Forget chats that left the layout.
                 let layout = state.hub.layout();
                 transcripts.retain(|pane, _| layout.chat(pane).is_some());
@@ -137,6 +140,7 @@ fn notification(
 fn offer(
     state: &Arc<State>,
     throttles: &mut HashMap<DeviceId, Throttle>,
+    holds: &mut HashMap<DeviceId, Hold>,
     outbox: &mut Outbox,
     notification: Notification,
 ) {
@@ -160,9 +164,55 @@ fn offer(
             .or_default()
             .offer(notification.clone(), now)
         {
-            outbox.send(state, device, passed);
+            dispatch(state, holds, outbox, device, passed);
         }
     }
+}
+
+/// Sends `notification` to `device` now, or holds it while the device is
+/// near.
+fn dispatch(
+    state: &Arc<State>,
+    holds: &mut HashMap<DeviceId, Hold>,
+    outbox: &mut Outbox,
+    device: DeviceId,
+    notification: Notification,
+) {
+    let passed = if state.near().is_near(&device, now_ms()) {
+        holds.entry(device.clone()).or_default().hold(notification)
+    } else {
+        Some(notification)
+    };
+    if let Some(notification) = passed {
+        outbox.send(state, device, notification);
+    }
+}
+
+/// Sends what was held for devices no longer near, oldest first.
+fn release(
+    state: &Arc<State>,
+    holds: &mut HashMap<DeviceId, Hold>,
+    outbox: &mut Outbox,
+    now_ms: u64,
+) {
+    let gone: Vec<DeviceId> = {
+        let mut near = state.near();
+        near.forget(now_ms);
+        holds
+            .keys()
+            .filter(|device| !near.is_near(device, now_ms))
+            .cloned()
+            .collect()
+    };
+    for device in gone {
+        let Some(mut hold) = holds.remove(&device) else {
+            continue;
+        };
+        for notification in hold.release() {
+            outbox.send(state, device.clone(), notification);
+        }
+    }
+    holds.retain(|_, hold| !hold.is_empty());
 }
 
 /// Questions waiting across every chat, for the app badge.
@@ -252,7 +302,7 @@ async fn send_alert(state: &Arc<State>, device: &DeviceId, notification: &Notifi
         waiting(state),
     );
     let Ok(push) = apns::alert::push(sealed, &notification.tag, |plaintext| {
-        apns::seal::seal(&key, plaintext)
+        apns::seal::seal(&key, plaintext, apns::seal::INFO)
     }) else {
         return true;
     };

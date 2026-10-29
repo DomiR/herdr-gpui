@@ -24,7 +24,8 @@ pub(crate) const MAX_MESSAGE: usize = 4096;
 const MAX_LINE: usize = 8 * 1024;
 /// Lines waiting in each direction; a full queue drops the newest.
 const QUEUE: usize = 16;
-/// Tells the helper to stop advertising, before its input closes.
+/// Tells the helper to stop advertising for pairing, and before its input
+/// closes, everything.
 pub(crate) const STOP: &str = r#"{"type":"stop"}"#;
 
 /// One line from the helper.
@@ -38,6 +39,17 @@ pub(crate) enum Event {
     },
     /// What the helper could not do, for the log.
     Failure(String),
+    /// A whole `presence` message a phone wrote.
+    PresenceFrame {
+        central: String,
+        data: Vec<u8>,
+    },
+    /// A phone left: out of range, or it closed the connection.
+    Disconnected {
+        central: String,
+    },
+    /// Seconds since the desktop's last input.
+    Idle(u64),
 }
 
 #[derive(Deserialize)]
@@ -45,6 +57,9 @@ pub(crate) enum Event {
 enum Line {
     State { state: String },
     Frame { central: String, data: String },
+    PresenceFrame { central: String, data: String },
+    Disconnected { central: String },
+    Idle { seconds: u64 },
     Error { message: String },
 }
 
@@ -71,6 +86,15 @@ pub(crate) fn parse_line(line: &str) -> Option<Event> {
             (central_id(&central) && data.len() <= MAX_MESSAGE)
                 .then_some(Event::Frame { central, data })
         }
+        Line::PresenceFrame { central, data } => {
+            let data = STANDARD.decode(data).ok()?;
+            (central_id(&central) && data.len() <= MAX_MESSAGE)
+                .then_some(Event::PresenceFrame { central, data })
+        }
+        Line::Disconnected { central } => {
+            central_id(&central).then_some(Event::Disconnected { central })
+        }
+        Line::Idle { seconds } => Some(Event::Idle(seconds)),
         Line::Error { message } => Some(Event::Failure(message.chars().take(200).collect())),
     }
 }
@@ -153,6 +177,18 @@ pub(crate) fn port(offer_url: &str) -> Option<u16> {
 /// Writes `data` back to the phone `central`.
 pub(crate) fn frame(central: &str, data: &[u8]) -> String {
     json!({ "type": "frame", "central": central, "data": STANDARD.encode(data) }).to_string()
+}
+
+/// Writes `data` back to the phone `central` on `presence`.
+pub(crate) fn presence_frame(central: &str, data: &[u8]) -> String {
+    json!({ "type": "presence_frame", "central": central, "data": STANDARD.encode(data) })
+        .to_string()
+}
+
+/// Turns advertising for paired phones' presence on or off; pairing's
+/// advertisement goes on beside it.
+pub(crate) fn advertise_presence(on: bool) -> String {
+    json!({ "type": "advertise_presence", "on": on }).to_string()
 }
 
 /// The helper beside `exe`, never one found on `PATH`: it is part of the

@@ -3,7 +3,7 @@
 //! connection gets its own, bounded by a deadline on the request.
 
 use crate::{
-    control::{self, ErrorCode, Request, Response, Status},
+    control::{self, DeviceId, ErrorCode, Request, Response, Status},
     web::{State, now_ms},
 };
 use herdr_chat_protocol::{read_frame, write_frame};
@@ -108,6 +108,33 @@ pub(crate) fn answer(state: &State, stop: &watch::Sender<bool>, request: Request
                 .nearby_reveal(&session, &nonce, &state.fingerprint, &origins, now)
                 .map(Response::NearbyRevealed)
         }
+        Request::PresenceChallenge { device } => state
+            .auth()
+            .presence_challenge(&device, now)
+            .map(|nonce| Response::PresenceChallenge { nonce }),
+        Request::PresenceProve {
+            device,
+            nonce,
+            signature,
+        } => {
+            let proven = state
+                .auth()
+                .presence_prove(&device, &nonce, &signature, now);
+            proven.map(|()| Response::PresenceProven {
+                addresses: sealed_addresses(state, &device),
+                device,
+            })
+        }
+        Request::PresenceSet { device, near } => {
+            if state.auth().devices().get(&device).is_none() {
+                return Response::Error {
+                    code: ErrorCode::UnknownDevice,
+                    message: "no such device".into(),
+                };
+            }
+            state.near().set(&device, near, now);
+            Ok(Response::Done)
+        }
         Request::Devices => {
             let connected = state.connected();
             return Response::Devices {
@@ -164,6 +191,30 @@ pub(crate) fn answer(state: &State, stop: &watch::Sender<bool>, request: Request
         code: ErrorCode::from(&error),
         message: error.to_string(),
     })
+}
+
+/// What a proven phone gets: the origins it can reach this computer at,
+/// sealed to the key it registered for alerts, so only it reads them.
+fn sealed_addresses(state: &State, device: &DeviceId) -> Option<String> {
+    #[derive(serde::Serialize)]
+    struct Addresses {
+        origins: Vec<String>,
+    }
+    let registration = crate::apns::Registration::from_stored(
+        state
+            .auth()
+            .devices()
+            .get(device)
+            .and_then(|record| record.apns.as_ref()),
+    );
+    let key = registration.notify_key.as_ref()?.key().to_owned();
+    let plaintext = serde_json::to_vec(&Addresses {
+        origins: state.origins(),
+    })
+    .ok()?;
+    let sealed =
+        crate::apns::seal::seal(&key, &plaintext, crate::apns::seal::ADDRESSES_INFO).ok()?;
+    Some(crate::auth::encode(&sealed))
 }
 
 fn status(state: &State) -> Status {

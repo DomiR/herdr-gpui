@@ -10,18 +10,28 @@
 //!
 //! The helper speaks newline-delimited JSON on stdio (its header comment in
 //! `macos/herdr-nearby/main.swift` lists the messages).
+//!
+//! With `[remote] presence` on, the helper also runs while remote control
+//! does, advertising for paired phones' presence ([`presence`]). One
+//! [`Station`] owns the one helper for both.
 
 // keep-sorted start
 #[cfg(target_os = "macos")]
 mod error;
 #[cfg(target_os = "macos")]
+pub(crate) mod presence;
+#[cfg(target_os = "macos")]
 mod relay;
+#[cfg(target_os = "macos")]
+mod station;
 // keep-sorted end
 
 #[cfg(target_os = "macos")]
 pub use error::Error;
 #[cfg(target_os = "macos")]
 pub(crate) use relay::*;
+#[cfg(target_os = "macos")]
+pub(crate) use station::{Advert, Station};
 
 /// The Mac's Bluetooth radio, as the helper last reported it.
 #[cfg(target_os = "macos")]

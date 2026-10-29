@@ -30,7 +30,14 @@ fn seals_the_fixture_bytes() {
     let nonce: [u8; 12] = bytes(&fixture, "nonce").try_into().unwrap();
     let plaintext = fixture["plaintext"].as_str().unwrap();
 
-    let sealed = seal_with(&device_public, plaintext.as_bytes(), &ephemeral, &nonce).unwrap();
+    let sealed = seal_with(
+        &device_public,
+        plaintext.as_bytes(),
+        INFO,
+        &ephemeral,
+        &nonce,
+    )
+    .unwrap();
 
     assert_eq!(
         URL_SAFE_NO_PAD.encode(&sealed),
@@ -43,7 +50,7 @@ fn seals_the_fixture_bytes() {
 fn the_device_key_opens_it_and_a_changed_byte_does_not() {
     let device = SecretKey::from_slice(&[7; 32]).unwrap();
     let ephemeral = SecretKey::from_slice(&[9; 32]).unwrap();
-    let sealed = seal_with(&device.public_key(), b"hello", &ephemeral, &[1; 12]).unwrap();
+    let sealed = seal_with(&device.public_key(), b"hello", INFO, &ephemeral, &[1; 12]).unwrap();
 
     let open = |sealed: &[u8]| -> Option<Vec<u8>> {
         let ephemeral = PublicKey::from_sec1_bytes(&sealed[..65]).ok()?;

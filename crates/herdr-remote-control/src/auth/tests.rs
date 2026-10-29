@@ -8,6 +8,7 @@ mod limits;
 mod nearby;
 mod nearby_vectors;
 mod pairing;
+mod presence;
 mod session;
 
 const ORIGIN: &str = "https://192.168.1.20:7443";

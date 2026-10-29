@@ -75,6 +75,9 @@ pub(crate) struct State {
     /// The status marks the lists draw, as Herdr UI last sent them.
     pub(crate) look: Look,
     pub(crate) names: RwLock<Names>,
+    /// Devices whose owner is at this computer, as Herdr UI last said:
+    /// their alerts wait until they leave.
+    pub(crate) near: Mutex<crate::push::Near>,
     pub(crate) port: u16,
     pub(crate) privacy: Privacy,
     pub(crate) pull_requests:
@@ -90,6 +93,10 @@ pub(crate) struct State {
 impl State {
     pub(crate) fn auth(&self) -> MutexGuard<'_, Auth> {
         self.auth.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    pub(crate) fn near(&self) -> MutexGuard<'_, crate::push::Near> {
+        self.near.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     /// Every `https://` origin the server answers at now.

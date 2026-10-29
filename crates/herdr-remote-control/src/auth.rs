@@ -13,6 +13,7 @@ mod handoff;
 mod limits;
 pub(crate) mod nearby;
 mod pairing;
+pub(crate) mod presence;
 mod session;
 
 pub(crate) use devices::Devices;
@@ -20,6 +21,7 @@ pub(crate) use handoff::{Handoff, Handoffs};
 pub(crate) use limits::RateLimiter;
 pub(crate) use nearby::NearbySessions;
 pub(crate) use pairing::{Claim, ClaimId, NewDevice, Pairings};
+pub(crate) use presence::Presences;
 pub(crate) use session::{Challenge, ChallengeId, Session, Sessions};
 
 use crate::control::{
@@ -99,6 +101,8 @@ pub enum Error {
     UnknownNearby,
     #[error("no such pairing, or it expired")]
     UnknownPairing,
+    #[error("no such presence challenge, or it expired")]
+    UnknownPresence,
     // keep-sorted end
 }
 
@@ -280,6 +284,7 @@ pub(crate) struct Auth {
     nearby: NearbySessions,
     pair_limit: RateLimiter<IpAddr>,
     pairings: Pairings,
+    presence: Presences,
     /// Bumped whenever sessions end early, so open streams check again.
     revoked: watch::Sender<u64>,
     sessions: Sessions,
@@ -305,6 +310,7 @@ impl Auth {
                 limits.addresses,
             ),
             pairings: Pairings::default(),
+            presence: Presences::default(),
             revoked: watch::Sender::new(0),
             sessions: Sessions::default(),
         })
@@ -415,6 +421,23 @@ impl Auth {
         let (revealed, code) = started.reveal(nonce, fingerprint, &token, origins)?;
         self.pairings.set_nearby(&token, code, now_ms)?;
         Ok(revealed)
+    }
+
+    /// A nonce for a paired phone near over Bluetooth to sign.
+    pub(crate) fn presence_challenge(&mut self, device: &DeviceId, now_ms: u64) -> Result<String> {
+        self.presence.challenge(device, now_ms, &self.devices)
+    }
+
+    /// Checks a phone's presence proof.
+    pub(crate) fn presence_prove(
+        &mut self,
+        device: &DeviceId,
+        nonce: &str,
+        signature: &str,
+        now_ms: u64,
+    ) -> Result<()> {
+        self.presence
+            .prove(device, nonce, signature, now_ms, &self.devices)
     }
 
     /// Notes that `claim` came from an app installed from another computer.
