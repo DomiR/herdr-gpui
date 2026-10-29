@@ -368,3 +368,55 @@ fn a_device_list_from_before_hosts_still_loads() {
     assert_eq!(record.via, None);
     assert!(record.links.is_empty());
 }
+
+#[test]
+fn a_host_that_answers_after_the_phone_was_revoked_is_owed_a_revocation() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut auth, device) = paired(dir.path(), &[devbox()]);
+    auth.ask_host(&device, &devbox(), &public_key(&signing_key(2)), T0)
+        .unwrap();
+    auth.take_host_pairings(T0);
+    // Revoked while Herdr UI was still enrolling it on the host.
+    assert!(auth.revoke(&device).unwrap());
+    assert!(matches!(
+        auth.host_paired(
+            &device,
+            &devbox(),
+            HostOutcome::Paired(enrolled("d-late")),
+            T0
+        ),
+        Err(Error::Links(crate::auth::links::Error::NotPairing))
+    ));
+    let owed = HostRevoke {
+        host: devbox(),
+        device: DeviceId("d-late".into()),
+    };
+    assert_eq!(auth.host_revokes(), vec![owed.clone()]);
+    assert_eq!(super::auth(dir.path()).host_revokes(), vec![owed]);
+}
+
+#[test]
+fn a_host_that_answers_after_its_request_timed_out_is_owed_a_revocation() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut auth, device) = paired(dir.path(), &[devbox()]);
+    auth.ask_host(&device, &devbox(), &public_key(&signing_key(2)), T0)
+        .unwrap();
+    auth.take_host_pairings(T0);
+    let late = T0 + TAKEN_TTL_MS;
+    assert!(
+        auth.host_paired(
+            &device,
+            &devbox(),
+            HostOutcome::Paired(enrolled("d-late")),
+            late
+        )
+        .is_err()
+    );
+    assert_eq!(auth.host_revokes().len(), 1);
+    // A failure or a refusal that comes late owes nothing.
+    assert!(
+        auth.host_paired(&device, &devbox(), HostOutcome::Denied, late)
+            .is_err()
+    );
+    assert_eq!(auth.host_revokes().len(), 1);
+}

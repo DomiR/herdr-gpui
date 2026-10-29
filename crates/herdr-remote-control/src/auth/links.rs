@@ -247,6 +247,17 @@ impl Links {
             .get_mut(&key)
             .filter(|ask| ask.stage == Stage::Taken)
         else {
+            // A host that took the phone after its request ended (the phone
+            // was revoked, or the request timed out) holds a device nobody
+            // will use: it is owed a revocation.
+            if let HostOutcome::Paired(enrolled) = outcome
+                && enrolled.valid()
+            {
+                self.owe([HostRevoke {
+                    host: host.clone(),
+                    device: enrolled.device,
+                }])?;
+            }
             return Err(Error::NotPairing.into());
         };
         match outcome {
@@ -294,12 +305,16 @@ impl Links {
     /// paired with is owed a revocation. Blocking.
     pub(crate) fn forget(&mut self, device: &DeviceRecord) -> Result<()> {
         self.asks.retain(|(id, _), _| id != &device.id);
-        let owed = device.links.iter().filter_map(|link| {
+        self.owe(device.links.iter().filter_map(|link| {
             link.paired.as_ref().map(|paired| HostRevoke {
                 host: link.host.clone(),
                 device: paired.device.clone(),
             })
-        });
+        }))
+    }
+
+    /// Adds revocations hosts are owed. Blocking when any is new.
+    fn owe(&mut self, owed: impl IntoIterator<Item = HostRevoke>) -> Result<()> {
         let before = self.revokes.len();
         for revoke in owed {
             if !self.revokes.contains(&revoke) {
