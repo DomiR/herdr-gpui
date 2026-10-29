@@ -23,6 +23,7 @@ struct LockScreenView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            StepStack(state: state)
             HStack(alignment: .center, spacing: 10) {
                 PhaseMark(phase: state.phase)
                 VStack(alignment: .leading, spacing: 2) {
@@ -40,6 +41,7 @@ struct LockScreenView: View {
             if state.phase == .working || state.phase == .finished {
                 TurnProgress(state: state)
             }
+            AnswerButtons(attributes: attributes, state: state)
         }
         .padding(14)
         .background(state.phase == .question ? Palette.question.opacity(0.18) : Color.clear)

@@ -51,6 +51,11 @@ final class ActivityTests: XCTestCase {
         XCTAssertEqual(state.planLabel, "Step 3 of 4")
         XCTAssertEqual(state.waiting, 1)
         XCTAssertEqual(state.headline, "Needs an answer")
+        // What the lock screen's answer buttons and step stack need.
+        XCTAssertEqual(state.permission, 7)
+        XCTAssertEqual(state.options.map(\.id), ["allow", "reject"])
+        XCTAssertEqual(state.options.map(\.kind), [.allowOnce, .rejectOnce])
+        XCTAssertEqual(state.previous, ["Read lib.rs", "Edit lib.rs"])
     }
 
     func testEndDecodes() throws {

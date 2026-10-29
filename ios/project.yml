@@ -34,6 +34,7 @@ targets:
     dependencies:
       - package: HerdrRemoteCore
       - target: HerdrRemoteWidgets
+      - target: HerdrRemoteNotifications
     info:
       path: HerdrRemote/Info.plist
       properties:
@@ -65,9 +66,36 @@ targets:
         aps-environment: development
         # The cache lives in the App Group, which the widgets will read.
         com.apple.security.application-groups: [group.so.pen.herdr-remote]
+        # Questions interrupt Focus, as a waiting agent should.
+        com.apple.developer.usernotifications.time-sensitive: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: so.pen.herdr-remote
+
+  HerdrRemoteNotifications:
+    type: app-extension
+    platform: iOS
+    sources:
+      - HerdrRemoteNotifications
+      - path: Shared/NotifyKey.swift
+      - path: Shared/NotificationCategories.swift
+    dependencies:
+      - package: HerdrRemoteCore
+    info:
+      path: HerdrRemoteNotifications/Info.plist
+      properties:
+        CFBundleDisplayName: Herdr Remote
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
+    entitlements:
+      path: HerdrRemoteNotifications/HerdrRemoteNotifications.entitlements
+      properties:
+        # The App Group is also the keychain group the alert key is in.
+        com.apple.security.application-groups: [group.so.pen.herdr-remote]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: so.pen.herdr-remote.notifications
 
   HerdrRemoteWidgets:
     type: app-extension
@@ -88,6 +116,9 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: so.pen.herdr-remote.widgets
+        # The answer intent's perform runs in the app; the widget only
+        # draws its button.
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) WIDGET_EXTENSION
 
 schemes:
   HerdrRemote:

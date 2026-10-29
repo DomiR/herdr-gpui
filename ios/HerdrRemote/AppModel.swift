@@ -65,6 +65,7 @@ final class AppModel {
         computers.removeAll { $0.fingerprint == computer.fingerprint || $0.device == computer.device }
         computers.append(computer)
         save()
+        Task { await AppDelegate.enableAlerts() }
         Task { await tokens.sync(only: computer.fingerprint) }
     }
 

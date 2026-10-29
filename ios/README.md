@@ -204,6 +204,41 @@ The two must match, so switch both together.
 - **A mismatch:** a token sent to the wrong service is refused as
   `BadDeviceToken`, and the daemon then forgets it.
 
+## Sealed alerts
+
+With the APNs key installed, questions, finished turns, and errors reach
+the phone as APNs alerts instead of Web Push. These alerts are sealed to
+the phone: Apple sees only "Herdr", "New activity", and ciphertext.
+
+1. **Registration.** The app asks to show alerts after the first pairing.
+   It then registers its APNs token and the public half of a
+   key-agreement key: a Secure Enclave key in the App Group's keychain
+   group, or a software key in the simulator.
+2. **Opening.** The Notification Service Extension
+   (`HerdrRemoteNotifications`) opens each alert. It shows the chat's
+   title and text, groups the alert with the chat's other notifications,
+   and adds the actions.
+3. **Actions.**
+   - **Questions:** up to four answers. "Always" answers ask for Face ID
+     first.
+   - **Finished turns:** Reply, whose text becomes the next prompt.
+   - **Where they run:** an action runs in the app without opening it,
+     and signs in with the device key.
+4. **Clears and badges.** An answer given elsewhere sends a background
+   push that removes the chat's notifications. Badges show the questions
+   waiting.
+
+A Live Activity in the question phase also offers up to three answers
+(never the "always" ones) as buttons that answer from the lock screen.
+
+The simulator delivers `simctl push` payloads but does not run the
+extension. For the simulator loop:
+- `-provisionalAlerts YES` grants quiet permission without the prompt.
+- `-exportNotifyKey YES` writes the alert key to the App Group, where a
+  script can seal a payload to it.
+- `-dumpNotifications YES` writes what was delivered, and opens each
+  alert in the app as the extension would.
+
 ## What the daemon sends
 
 Live Activity payloads follow `ChatActivityState` (`HerdrRemoteCore`) and

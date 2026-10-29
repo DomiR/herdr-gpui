@@ -353,6 +353,73 @@ give `commit`, `code`, `key`, and `sealed`; a relay vector checks that a
 man in the middle who substitutes its own keys yields different codes on
 the two sides.
 
+### Notifications, exactly
+
+**Registration.** `POST /api/apns` takes two more optional fields beside
+`push_to_start` and `activities`. Like `push_to_start`, each replaces the
+stored value when present and keeps it when absent.
+
+```json
+{ "alert": "9f02…(hex device token)", "notify_key": "BHk3…" }
+```
+
+`notify_key` is base64url without padding of the 65-byte uncompressed P-256
+point the app opens alerts with. Anything else is refused. A device with
+both, on a daemon with the user's APNs key, gets every chat notification
+through APNs and none through Web Push. APNs refusing the token
+(`BadDeviceToken`, `Unregistered`) drops `alert`.
+
+**A shown alert** is push type `alert`, topic the bundle id,
+`apns-collapse-id` the chat's tag (at most 64 bytes), and priority 10 for a
+question, 5 otherwise:
+
+```json
+{ "aps": { "alert": { "title": "Herdr", "body": "New activity" },
+           "mutable-content": 1, "thread-id": "w1:p2",
+           "interruption-level": "time-sensitive", "badge": 2, "sound": "default" },
+  "sealed": "BASE64URL" }
+```
+
+`interruption-level` is `active` for anything but a question. `badge` is the
+questions waiting across every chat.
+
+**`sealed`** is `seal.rs`'s format to `notify_key`:
+`ephemeral point (65) || nonce (12) || AES-256-GCM || tag`, keyed by HKDF over
+the ECDH secret with info `herdr-remote-notify-v1`. Its plaintext, in this
+field order:
+
+```json
+{ "v": 1, "kind": "question", "clear": false,
+  "computer": "64 uppercase hex CA fingerprint", "pane": "w1:p2",
+  "title": "Claude needs an answer", "body": "…", "badge": 2,
+  "permission": { "id": 7, "options": [
+      { "id": "allow", "kind": "allow_once", "name": "Allow once" } ] } }
+```
+
+- `kind` is `question`, `turn_ended`, or `error`.
+- `permission` appears only for a permission request, with at most four
+  options in the agent's order.
+- The privacy setting decides what `body` quotes.
+- `body` is shortened, ending in `…`, until the whole payload fits 4 KB.
+
+**A clear** (the last question was answered from any client) is push type
+`background`, priority 5:
+
+```json
+{ "aps": { "content-available": 1, "badge": 0 }, "sealed": "…" }
+```
+
+Its plaintext has `"clear": true`, and the app removes the chat's
+notifications (`thread-id` = `pane`).
+
+**Live Activity buttons.** `content-state` also carries:
+- in the question phase, `permission` (the waiting permission's id) and
+  `options` (its first three, `{id, kind, name}`);
+- `previous`, the two steps before `step`, oldest first, for the step stack.
+
+The shared fixtures are `Fixtures/notify/alert.json` (device key, plaintext,
+whole payload) and `Fixtures/update.json`.
+
 ### Bluetooth on the desktop
 
 The Mac is the peripheral and the phone the central, because iOS supports
@@ -663,6 +730,21 @@ a sandbox daemon:
 - **Still to do:** the screen is SwiftUI text per row, not yet the Core
   Text view the table above names, and hardware keys need an iPad or a
   phone with a keyboard to check.
+
+Phase 5 (notifications) is built:
+- **Daemon:** sealed APNs alerts with collapse ids, time-sensitive
+  questions, badges, and background clears. Live Activity state carries
+  the permission, three options, and the previous two steps.
+- **App:** a Notification Service Extension that opens alerts with the
+  App Group key and adds per-answer categories, actions that answer or
+  reply without opening the app, Live Activity answer buttons
+  (`AnswerIntent`), and the step stack.
+- **Checked:**
+  - Swift opens the daemon's own sealed fixture.
+  - An alert sealed by a separate Python implementation, pushed with
+    `simctl push`, opened in the app with the right actions.
+- **Needs a device:** the extension itself (the simulator does not run
+  it for `simctl push`), the lock-screen buttons, and APNs delivery.
 
 0. **Spikes**, each with a written result:
    - A macOS GATT peripheral from Herdr.app through objc2, including the

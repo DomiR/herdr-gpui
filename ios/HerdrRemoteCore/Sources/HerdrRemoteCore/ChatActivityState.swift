@@ -15,6 +15,9 @@ import Foundation
 /// | `summary` | string? | how the turn ended |
 /// | `planDone`, `planTotal` | int? | plan progress |
 /// | `working`, `waiting` | int, default 0 | this computer's running turns and waiting questions |
+/// | `permission` | int? | the waiting permission's id, in the question phase |
+/// | `options` | `[{id, name, kind}]`, default empty | its first three options, for answer buttons |
+/// | `previous` | `[string]`, default empty | the two steps before `step`, oldest first |
 ///
 /// `startedAt` is decoded here as Unix seconds rather than through a
 /// `JSONDecoder` date strategy, which ActivityKit does not let an app pick.
@@ -36,6 +39,22 @@ public struct ChatActivityState: Codable, Hashable, Sendable {
     public var planTotal: Int?
     public var working: Int
     public var waiting: Int
+    public var permission: PermissionId?
+    public var options: [Option]
+    public var previous: [String]
+
+    /// An answer the lock screen offers as a button.
+    public struct Option: Codable, Hashable, Sendable {
+        public var id: String
+        public var name: String
+        public var kind: PermissionKind
+
+        public init(id: String, name: String, kind: PermissionKind) {
+            self.id = id
+            self.name = name
+            self.kind = kind
+        }
+    }
 
     public init(
         phase: Phase,
@@ -47,7 +66,10 @@ public struct ChatActivityState: Codable, Hashable, Sendable {
         planDone: Int? = nil,
         planTotal: Int? = nil,
         working: Int = 0,
-        waiting: Int = 0
+        waiting: Int = 0,
+        permission: PermissionId? = nil,
+        options: [Option] = [],
+        previous: [String] = []
     ) {
         self.phase = phase
         self.step = step
@@ -59,10 +81,14 @@ public struct ChatActivityState: Codable, Hashable, Sendable {
         self.planTotal = planTotal
         self.working = working
         self.waiting = waiting
+        self.permission = permission
+        self.options = options
+        self.previous = previous
     }
 
     enum CodingKeys: String, CodingKey {
         case phase, step, startedAt, cost, question, summary, planDone, planTotal, working, waiting
+        case permission, options, previous
     }
 
     public init(from decoder: Decoder) throws {
@@ -78,6 +104,9 @@ public struct ChatActivityState: Codable, Hashable, Sendable {
         planTotal = try container.decodeIfPresent(Int.self, forKey: .planTotal)
         working = try container.decodeIfPresent(Int.self, forKey: .working) ?? 0
         waiting = try container.decodeIfPresent(Int.self, forKey: .waiting) ?? 0
+        permission = try container.decodeIfPresent(PermissionId.self, forKey: .permission)
+        options = try container.decodeIfPresent([Option].self, forKey: .options) ?? []
+        previous = try container.decodeIfPresent([String].self, forKey: .previous) ?? []
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -92,6 +121,9 @@ public struct ChatActivityState: Codable, Hashable, Sendable {
         try container.encodeIfPresent(planTotal, forKey: .planTotal)
         try container.encode(working, forKey: .working)
         try container.encode(waiting, forKey: .waiting)
+        try container.encodeIfPresent(permission, forKey: .permission)
+        if !options.isEmpty { try container.encode(options, forKey: .options) }
+        if !previous.isEmpty { try container.encode(previous, forKey: .previous) }
     }
 
     /// Plan progress from 0 to 1, when the agent keeps a plan.
