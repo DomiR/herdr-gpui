@@ -78,7 +78,8 @@ and nothing goes through your phone.
 3. **Drive it with debug launch arguments.**
    - `-openLink 'herdr-remote://chat?id=FINGERPRINT&computer=NAME&pane=PANE'`
      opens a chat, as tapping a Live Activity does.
-   - `-openTerm PANE` opens a terminal.
+   - `-openTerm PANE` opens a terminal; `-type TEXT` then types into it
+     (a newline presses Enter).
    - `-tab board|computers|search` picks a tab.
    - `-newWorkspace YES` opens the new workspace form.
    - With `-openLink`, `-session YES` opens the chat's session sheet and

@@ -646,6 +646,24 @@ scripted agent:
 - **Still to check on a phone:** dictation, the camera, paste, and Face
   ID. A token-rate readout (tok/s) waits for the agents to report one.
 
+Phase 4 (terminal parity) is built and checked in the simulator against
+a sandbox daemon:
+- **Typing:** keys typed on the phone reach the shell in order
+  (`TermInput` in `HerdrRemoteCore`, one request at a time with keys
+  batched between).
+- **Key rows B:** sticky ctrl and alt, with ^C set apart.
+- **Screen:** fit to width, pinch to zoom, and double-tap to reset; it
+  scrolls sideways only once pinched wider than the screen.
+- **Hardware keyboard:** arrows, Escape, Tab, Control and Option
+  combinations, and ⌘V.
+- **Header:** paste through `PasteButton` (no prompt) and a picture
+  typed in as a path, the tab's panes as chips, and the action sheet A
+  (split, zoom, new tab, new chat, close).
+- **Actions:** they now also answer the `pane` to show next.
+- **Still to do:** the screen is SwiftUI text per row, not yet the Core
+  Text view the table above names, and hardware keys need an iPad or a
+  phone with a keyboard to check.
+
 0. **Spikes**, each with a written result:
    - A macOS GATT peripheral from Herdr.app through objc2, including the
      TCC prompt.

@@ -100,6 +100,18 @@ fn actions_call_herdrs_methods_without_focusing() {
     );
 }
 
+#[test]
+fn an_action_answers_the_pane_to_show_next() {
+    use crate::web::terminal::{Action, next_pane};
+    assert_eq!(next_pane(Action::SplitRight, "p1", Some("p2")), Some("p2"));
+    assert_eq!(next_pane(Action::NewTab, "p1", Some("p3")), Some("p3"));
+    // A split Herdr did not report stays on the pane it split.
+    assert_eq!(next_pane(Action::SplitDown, "p1", None), Some("p1"));
+    assert_eq!(next_pane(Action::Zoom, "p1", None), Some("p1"));
+    assert_eq!(next_pane(Action::ClosePane, "p1", None), None);
+    assert_eq!(next_pane(Action::CloseTab, "p1", Some("p9")), None);
+}
+
 #[tokio::test]
 async fn a_phone_reaches_only_terminal_panes_with_valid_keys() {
     let dir = tempfile::tempdir().unwrap();

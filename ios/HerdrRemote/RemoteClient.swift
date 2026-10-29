@@ -3,6 +3,16 @@ import Foundation
 import HerdrRemoteCore
 import Security
 
+/// What the terminal's action sheet asks of Herdr.
+enum TermAction: String, Encodable, CaseIterable {
+    case splitRight = "split_right"
+    case splitDown = "split_down"
+    case zoom
+    case newTab = "new_tab"
+    case closePane = "close_pane"
+    case closeTab = "close_tab"
+}
+
 /// Trusts a server only through the computer's own CA: the presented chain
 /// must contain the certificate whose SHA-256 the pairing QR carried, and
 /// the chain must then verify with that certificate as its only anchor
@@ -139,6 +149,41 @@ final class RemoteClient: Sendable {
 
     func startChat(_ request: NewChatRequest, workspace: String, bearer: String) async throws -> Created {
         try await send("POST", "/api/v2/workspaces/\(Self.segment(workspace))/chats", body: request, bearer: bearer, timeout: 30)
+    }
+
+    // MARK: Terminals
+
+    /// Keys in Herdr's syntax (`TermInput`), at most 64.
+    func termKeys(_ keys: [String], pane: String, bearer: String) async throws {
+        struct Body: Encodable { let keys: [String] }
+        let _: EmptyAnswer = try await send("POST", "/api/term/\(Self.segment(pane))/keys", body: Body(keys: keys), bearer: bearer)
+    }
+
+    func termPaste(_ text: String, pane: String, bearer: String) async throws {
+        struct Body: Encodable { let text: String }
+        let _: EmptyAnswer = try await send("POST", "/api/term/\(Self.segment(pane))/paste", body: Body(text: text), bearer: bearer)
+    }
+
+    /// A picture the computer stores and types the path of, as a file
+    /// dropped on a terminal would.
+    func termUpload(_ image: Data, pane: String, bearer: String) async throws {
+        guard let url = URL(string: origin + "/api/term/\(Self.segment(pane))/upload") else { throw RemoteError.unreachable }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 60
+        request.httpBody = image
+        request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
+        let _: EmptyAnswer = try await perform(request)
+    }
+
+    /// Runs an action from the sheet; answers the pane to show next, or
+    /// `nil` when the pane or tab is gone.
+    func termAction(_ action: TermAction, pane: String, bearer: String) async throws -> String? {
+        struct Body: Encodable { let action: TermAction }
+        struct Answer: Decodable { let pane: String? }
+        let answer: Answer = try await send("POST", "/api/term/\(Self.segment(pane))/action", body: Body(action: action), bearer: bearer)
+        return answer.pane
     }
 
     /// The live socket, authenticated like every other call.

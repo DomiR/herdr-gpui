@@ -1,48 +1,198 @@
 import HerdrRemoteCore
+import PhotosUI
 import SwiftUI
 import UIKit
 
-/// Terminal A, read only for now: the pane's screen full bleed, fit to the
-/// width. Typing (the two key rows) and the action sheet come with the
-/// terminal phase.
+/// Terminal A: the pane's screen full bleed, fit to the width and pinched
+/// larger or smaller, with the two key rows docked above the keyboard,
+/// paste and pictures in the header, the tab's other panes as chips, and
+/// the Herdr action sheet.
 struct TerminalScreen: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
     let key: PaneKey
     let title: String
     @State private var store: TermStore?
+    @State private var typing: TermTyping?
+    @State private var keyboard = false
+    /// Pinch zoom over the size that fits the width.
+    @State private var zoom: CGFloat = 1
+    @GestureState private var pinch: CGFloat = 1
+    @State private var actions = false
+    @State private var picks: [PhotosPickerItem] = []
+    @State private var choosingPhotos = false
+    @State private var problem: String?
 
     var body: some View {
         GeometryReader { geometry in
             if let screen = store?.screen {
-                let size = fit(columns: screen.columns, width: geometry.size.width - 16)
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(Array(screen.rows.enumerated()), id: \.offset) { _, row in
-                            Text(row.reduce(into: AttributedString()) { line, run in line += Self.styled(run) })
-                                .font(.system(size: size, design: .monospaced))
-                                .lineLimit(1)
-                                .fixedSize(horizontal: true, vertical: false)
+                let fitted = fit(columns: screen.columns, width: geometry.size.width - 16)
+                let size = min(28, max(4, fitted * zoom * pinch))
+                ScrollView(.vertical) {
+                    // Sideways only once pinched wider than the screen.
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(Array(screen.rows.enumerated()), id: \.offset) { _, row in
+                                Text(row.reduce(into: AttributedString()) { line, run in line += Self.styled(run) })
+                                    .font(.system(size: size, design: .monospaced))
+                                    .lineLimit(1)
+                                    .fixedSize(horizontal: true, vertical: false)
+                            }
                         }
+                        .padding(8)
+                        .textSelection(.enabled)
                     }
+                    .scrollDisabled(size <= fitted)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(8)
-                    .textSelection(.enabled)
                 }
                 .defaultScrollAnchor(.bottom)
+                .gesture(
+                    MagnifyGesture()
+                        .updating($pinch) { value, state, _ in state = value.magnification }
+                        .onEnded { value in zoom = min(3, max(0.5, zoom * value.magnification)) }
+                )
+                .onTapGesture(count: 2) { withAnimation(.snappy) { zoom = 1 } }
             } else {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .background(Color(red: 0.07, green: 0.07, blue: 0.09))
+        .background(Self.background)
+        .background { if let typing { TermKeyboard(typing: typing, shown: $keyboard).frame(width: 1, height: 1).opacity(0) } }
+        .safeAreaInset(edge: .top, spacing: 0) { paneChips }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if let typing {
+                VStack(spacing: 0) {
+                    if let reason = problem ?? typing.problem {
+                        Text(reason).font(.footnote).foregroundStyle(.orange).padding(6)
+                    }
+                    TermKeyRows(typing: typing, keyboard: $keyboard)
+                }
+            }
+        }
         .environment(\.colorScheme, .dark)
+        .toolbarColorScheme(.dark, for: .navigationBar)
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
-        .onAppear { store = model.fleet.openTerm(key) }
+        .toolbar {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                PasteButton(payloadType: String.self) { strings in
+                    typing?.paste(strings.joined(separator: "\n"))
+                }
+                .labelStyle(.iconOnly)
+                Button { choosingPhotos = true } label: { Image(systemName: "photo") }
+                    .accessibilityLabel("Send a picture")
+                Button { actions = true } label: { Image(systemName: "diamond.fill") }
+                    .accessibilityLabel("Herdr actions")
+            }
+        }
+        .confirmationDialog("Herdr", isPresented: $actions, titleVisibility: .hidden) {
+            Button("Split Right") { run(.splitRight) }
+            Button("Split Down") { run(.splitDown) }
+            Button(item?.terminal.zoomed == true ? "Unzoom" : "Zoom") { run(.zoom) }
+            Button("New Tab") { run(.newTab) }
+            if let item {
+                Button("New Chat in \(item.workspace.label)") {
+                    model.creating = .chat(device: key.device, workspace: item.workspace.id, label: item.workspace.label)
+                }
+            }
+            Button("Close Pane", role: .destructive) { run(.closePane) }
+            Button("Close Tab", role: .destructive) { run(.closeTab) }
+        }
+        .photosPicker(isPresented: $choosingPhotos, selection: $picks, maxSelectionCount: 1, matching: .images)
+        .onChange(of: picks) { _, chosen in
+            guard let item = chosen.first else { return }
+            picks = []
+            Task { await upload(item) }
+        }
+        .onAppear {
+            store = model.fleet.openTerm(key)
+            if typing == nil { typing = TermTyping(key: key, fleet: model.fleet) }
+            #if DEBUG
+            // The simulator loop's `-type TEXT` types into the terminal.
+            if let text = UserDefaults.standard.string(forKey: "type") { typing?.type(text) }
+            #endif
+        }
         .onDisappear {
+            keyboard = false
             if let store { model.fleet.closeTerm(store) }
         }
     }
+
+    /// The terminal tab this pane is in, from the computer's home.
+    private var item: TerminalItem? {
+        model.fleet.terminalItems.first { $0.computer.device == key.device && $0.terminal.panes.contains { $0.pane == key.pane } }
+    }
+
+    /// The tab's panes as chips, when it has more than one.
+    @ViewBuilder
+    private var paneChips: some View {
+        if let item, item.terminal.panes.count > 1 {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(Array(item.terminal.panes.enumerated()), id: \.element.pane) { index, pane in
+                        let current = pane.pane == key.pane
+                        Button {
+                            guard !current else { return }
+                            model.pendingRoute = .term(PaneKey(device: key.device, pane: pane.pane), title: title)
+                        } label: {
+                            Text(pane.label ?? "Pane \(index + 1)").font(.caption.weight(.medium)).lineLimit(1)
+                                .padding(.horizontal, 10).padding(.vertical, 5)
+                                .background(current ? AnyShapeStyle(.tint.opacity(0.3)) : AnyShapeStyle(.fill.tertiary), in: .capsule)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(current ? .isSelected : [])
+                    }
+                }
+                .padding(.horizontal, 10).padding(.vertical, 6)
+            }
+            .background(Self.background)
+        }
+    }
+
+    // MARK: Actions
+
+    private func run(_ action: TermAction) {
+        let pane = key.pane
+        Task {
+            do {
+                let next = try await model.fleet.call(key.device) { client, token in
+                    try await client.termAction(action, pane: pane, bearer: token)
+                }
+                switch next {
+                case nil: dismiss()
+                case let next? where next != pane:
+                    model.pendingRoute = .term(PaneKey(device: key.device, pane: next), title: title)
+                default: break
+                }
+                problem = nil
+            } catch {
+                problem = error.localizedDescription
+            }
+        }
+    }
+
+    private func upload(_ item: PhotosPickerItem) async {
+        guard let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data),
+              let prepared = PreparedImage(image)
+        else {
+            problem = "That picture could not be read."
+            return
+        }
+        let pane = key.pane
+        do {
+            try await model.fleet.call(key.device) { client, token in
+                try await client.termUpload(prepared.jpeg, pane: pane, bearer: token)
+            }
+            problem = nil
+        } catch {
+            problem = error.localizedDescription
+        }
+    }
+
+    // MARK: Drawing
+
+    static let background = Color(red: 0.07, green: 0.07, blue: 0.09)
 
     /// The point size at which `columns` monospaced cells fill `width`.
     private func fit(columns: Int, width: CGFloat) -> CGFloat {
@@ -60,7 +210,7 @@ struct TerminalScreen: View {
         var foreground = color(run.fg) ?? Color(white: 0.86)
         var background = color(run.bg)
         if run.inverse {
-            (foreground, background) = (background ?? Color(red: 0.07, green: 0.07, blue: 0.09), foreground)
+            (foreground, background) = (background ?? Self.background, foreground)
         }
         var text = AttributedString(run.hidden ? String(repeating: " ", count: run.text.count) : run.text)
         text.foregroundColor = run.dim ? foreground.opacity(0.6) : foreground

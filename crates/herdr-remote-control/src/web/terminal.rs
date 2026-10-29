@@ -269,12 +269,25 @@ pub(super) async fn action(
         .as_str()
         .or_else(|| result["root_pane"]["pane_id"].as_str())
         .filter(|id| !id.is_empty());
-    let location = match (request.action, created) {
-        (Action::SplitRight | Action::SplitDown | Action::NewTab, Some(created)) => {
-            format!("/term/{}", render::urlencode(created))
-        }
-        (Action::ClosePane | Action::CloseTab, _) => "/".to_owned(),
-        _ => format!("/term/{}", render::urlencode(&pane)),
-    };
-    Ok(Json(json!({ "location": location })))
+    let next = next_pane(request.action, &pane, created);
+    let location = next.map_or_else(
+        || "/".to_owned(),
+        |next| format!("/term/{}", render::urlencode(next)),
+    );
+    // `location` for the web app, `pane` for the native one.
+    Ok(Json(json!({ "location": location, "pane": next })))
+}
+
+/// The pane the phone shows after `action` on `pane`: the one it created,
+/// the same one, or none (home) when it is gone.
+pub(crate) fn next_pane<'a>(
+    action: Action,
+    pane: &'a str,
+    created: Option<&'a str>,
+) -> Option<&'a str> {
+    match (action, created) {
+        (Action::SplitRight | Action::SplitDown | Action::NewTab, Some(created)) => Some(created),
+        (Action::ClosePane | Action::CloseTab, _) => None,
+        _ => Some(pane),
+    }
 }
