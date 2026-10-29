@@ -19,10 +19,20 @@ struct PairView: View {
                     ProgressView(text)
                 case let .code(code):
                     codeView(code)
-                case .paired:
-                    // The sheet closes on its own; the new computer is
+                case let .paired(name):
+                    // The sheet closes on its own unless the computer pairs
+                    // the phone with its hosts too; the new computer is
                     // already on the home screen behind it.
-                    Color.clear
+                    if let computer = pairing.paired {
+                        VStack(alignment: .leading, spacing: 20) {
+                            Label("Paired with \(name)", systemImage: "checkmark.circle.fill")
+                                .font(.title3.bold()).foregroundStyle(.green)
+                            AlsoPairing(computer: computer) { dismiss() }
+                            Spacer()
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding()
+                    }
                 case let .failed(message):
                     ContentUnavailableView {
                         Label("Pairing failed", systemImage: "xmark.octagon")
@@ -33,9 +43,6 @@ struct PairView: View {
                     }
                 }
             }
-            .onChange(of: pairing.step) { _, step in
-                if case .paired = step { dismiss() }
-            }
             .sensoryFeedback(trigger: pairing.step) { _, step in
                 if case .paired = step { .success } else { nil }
             }
@@ -43,7 +50,7 @@ struct PairView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
+                    Button(pairing.paired == nil ? "Cancel" : "Done") {
                         pairing.cancel()
                         dismiss()
                     }

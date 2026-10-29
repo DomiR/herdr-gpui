@@ -18,6 +18,7 @@ use std::{
 };
 
 mod addresses;
+mod hosts;
 
 /// What keeps this computer advertised for nearby pairing.
 type NearbyAdvert = nearby::Advert;
@@ -35,6 +36,8 @@ const NAME_LIMIT: usize = 64;
 /// a pairing still open at the daemon, so its token stops working at once.
 pub(crate) struct PairingDialog {
     pub(crate) pairing: Pairing,
+    /// The other machines the phone may be allowed on too.
+    pub(crate) hosts: Vec<hosts::Choice>,
     addresses_scroll: ScrollHandle,
     other_addresses: crate::motion::Toggle,
     client: Option<Client>,
@@ -100,6 +103,7 @@ impl HerdrWindow {
             .map(|client| Self::drive_pairing(client, cx));
         self.menu.remote_pairing = Some(PairingDialog {
             pairing: pairing.with_address(address),
+            hosts: hosts::choices(Supervisor::hosts(cx)),
             addresses_scroll: ScrollHandle::new(),
             other_addresses: crate::motion::Toggle::default(),
             client,
@@ -185,7 +189,8 @@ impl HerdrWindow {
 
     fn answer_pairing(&mut self, allow: bool, cx: &mut Context<Self>) {
         if let Some(dialog) = &mut self.menu.remote_pairing {
-            dialog.pairing.answer(allow);
+            let ticked = hosts::ticked(&dialog.hosts);
+            dialog.pairing.answer_with_hosts(allow, ticked);
             cx.notify();
         }
     }
@@ -259,7 +264,7 @@ impl HerdrWindow {
     pub(crate) fn remote_dialog_open(&self) -> bool {
         matches!(
             self.menu.page,
-            Some(Page::RemoteControl | Page::RevokeDevice)
+            Some(Page::RemoteControl | Page::RevokeDevice | Page::RemoteHostAsk)
         )
     }
 
@@ -268,6 +273,7 @@ impl HerdrWindow {
         match self.menu.page {
             Some(Page::RemoteControl) => Some(self.render_pairing(cx)),
             Some(Page::RevokeDevice) => Some(self.render_revoke(cx)),
+            Some(Page::RemoteHostAsk) => Some(self.render_host_ask(cx)),
             _ => None,
         }
     }
@@ -520,6 +526,7 @@ impl HerdrWindow {
                     .font_weight(FontWeight::SEMIBOLD)
                     .child(spaced(code)),
             )
+            .children(self.pairing_hosts(!waiting, cx))
             .child(
                 div()
                     .flex()

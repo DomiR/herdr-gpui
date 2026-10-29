@@ -151,6 +151,23 @@ final class RemoteClient: Sendable {
         try await send("POST", "/api/v2/workspaces/\(Self.segment(workspace))/chats", body: request, bearer: bearer, timeout: 30)
     }
 
+    // MARK: Hosts
+
+    /// The other hosts this computer may pair the phone with.
+    func hosts(bearer: String) async throws -> [HostLink] {
+        let answer: API.Hosts = try await send("GET", "/api/v2/hosts", bearer: bearer)
+        return answer.hosts
+    }
+
+    /// Hands over the key the phone made for `host`; answers where the
+    /// phone now stands with it.
+    func pairHost(_ host: String, publicKey: String, bearer: String) async throws -> HostState {
+        try await send(
+            "POST", "/api/v2/hosts/\(Self.segment(host))/pair",
+            body: API.HostPairRequest(publicKey: publicKey), bearer: bearer
+        )
+    }
+
     // MARK: Terminals
 
     /// Keys in Herdr's syntax (`TermInput`), at most 64.

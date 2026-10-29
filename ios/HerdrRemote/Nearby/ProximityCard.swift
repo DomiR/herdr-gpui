@@ -45,10 +45,16 @@ struct ProximityCard: View {
                     .buttonStyle(.glass).controlSize(.large)
             case let .paired(name):
                 Label("Paired with \(name)", systemImage: "checkmark.circle.fill").font(.title3.bold()).foregroundStyle(.green)
-                    .task {
-                        try? await Task.sleep(for: .seconds(1.2))
-                        onClose()
+                // The card closes on its own unless the computer pairs the
+                // phone with its hosts too; then the close button does.
+                if let paired = pairing.paired {
+                    AlsoPairing(computer: paired) {
+                        Task {
+                            try? await Task.sleep(for: .seconds(1.2))
+                            onClose()
+                        }
                     }
+                }
             case let .failed(message):
                 Text(message).multilineTextAlignment(.center)
                 Button("Close", action: close).buttonStyle(.glass)

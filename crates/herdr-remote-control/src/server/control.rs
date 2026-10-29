@@ -90,9 +90,14 @@ pub(crate) fn answer(state: &State, stop: &watch::Sender<bool>, request: Request
                 })
         }
         Request::Pairing { id } => state.auth().pairing(&id, now).map(Response::Pairing),
-        Request::Approve { id, allow, code } => state
+        Request::Approve {
+            id,
+            allow,
+            code,
+            hosts,
+        } => state
             .auth()
-            .answer(&id, allow, &code, now)
+            .answer_with_hosts(&id, allow, &code, &hosts, now)
             .map(Response::Pairing),
         Request::CancelPairing { id } => state.auth().cancel(&id).map(|()| Response::Done),
         // Herdr UI relays these from a phone over Bluetooth; the code the
@@ -137,14 +142,37 @@ pub(crate) fn answer(state: &State, stop: &watch::Sender<bool>, request: Request
             Ok(Response::Done)
         }
         Request::Devices => {
-            let connected = state.connected();
+            let connected = state.connected().clone();
             return Response::Devices {
                 devices: state
                     .auth()
-                    .devices()
-                    .list(|device| connected.contains_key(device)),
+                    .device_list(|device| connected.contains_key(device), now),
             };
         }
+        Request::Hosts { hosts } => state.auth().set_hosts(hosts).map(|()| Response::Done),
+        Request::HostPairings => Ok(Response::HostPairings {
+            pairings: state.auth().take_host_pairings(now),
+        }),
+        Request::HostPaired {
+            device,
+            host,
+            outcome,
+        } => state
+            .auth()
+            .host_paired(&device, &host, outcome, now)
+            .map(|()| Response::Done),
+        Request::HostRevokes => Ok(Response::HostRevokes {
+            revokes: state.auth().host_revokes(),
+        }),
+        Request::HostRevoked(revoke) => state.auth().host_revoked(&revoke).map(|()| Response::Done),
+        Request::Enroll(enroll) => state.auth().enroll(&enroll, now).map(|device| {
+            Response::Enrolled(control::hosts::Enrolled {
+                device,
+                computer: state.computer.clone(),
+                fingerprint: state.fingerprint.clone(),
+                origins: state.origins(),
+            })
+        }),
         Request::Revoke { device } => match state.auth().revoke(&device) {
             Ok(true) => Ok(Response::Done),
             Ok(false) => {
@@ -247,6 +275,7 @@ fn status(state: &State) -> Status {
         port: state.port,
         addresses,
         fingerprint: state.fingerprint.clone(),
+        computer: state.computer.clone(),
         herdr: layout.connected,
         chats: layout.chats().count(),
         devices: state.auth().devices().len(),

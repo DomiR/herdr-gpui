@@ -80,6 +80,7 @@ impl Page {
             Self::PrReview => "Pull request",
             Self::RemoteControl => "Remote control",
             Self::RemoteDevices => "Remote control phones",
+            Self::RemoteHostAsk => "Pair another machine",
             Self::RemoveDevice => "Remove device",
             Self::RemoveWsl => "Remove WSL distribution",
             Self::RenameDevice => "Rename device",

@@ -17,6 +17,8 @@ final class PairingModel {
     }
 
     private(set) var step: Step = .idle
+    /// The computer the last pairing kept, for the hosts it pairs next.
+    private(set) var paired: Computer?
     private var task: Task<Void, Never>?
 
     /// How often and how long the claim's state is polled.
@@ -45,6 +47,7 @@ final class PairingModel {
             do {
                 let computer = try await work()
                 onPaired(computer)
+                paired = computer
                 step = .paired(computer.name)
             } catch is CancellationError {
                 step = .idle
@@ -68,6 +71,7 @@ final class PairingModel {
 
     func cancel() {
         task?.cancel()
+        paired = nil
         step = .idle
     }
 

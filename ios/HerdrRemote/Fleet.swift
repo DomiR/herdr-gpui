@@ -157,6 +157,8 @@ final class Fleet {
 
     /// Called after each summary, for Spotlight.
     @ObservationIgnored var onSummary: (() -> Void)?
+    /// Called when a computer's link comes online, for host pairing.
+    @ObservationIgnored var onOnline: ((Computer) -> Void)?
 
     // MARK: Views
 
@@ -252,6 +254,7 @@ final class Fleet {
         case let .status(status):
             machines[index].status = status
             if case .revoked = status { stopLink(device) }
+            if case .online = status { onOnline?(machines[index].computer) }
         case let .event(.home(home)):
             machines[index].home = home
             machines[index].stale = false

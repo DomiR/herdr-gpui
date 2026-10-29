@@ -598,9 +598,14 @@ impl SettingsWindow {
                     crate::notifications::safe_text(&device.name, 64),
                 )
                 .description(if asking {
-                    "Revoke it? Its sessions end and its notifications stop at once.".to_owned()
+                    "Revoke it? Its sessions end and its notifications stop at once, here and \
+                     on the machines it was paired with from here."
+                        .to_owned()
                 } else {
-                    device_line(device, now)
+                    match crate::remote::hosts_line(device) {
+                        Some(hosts) => format!("{} \u{b7} {hosts}", device_line(device, now)),
+                        None => device_line(device, now),
+                    }
                 })
                 .when(asking, |row| row.control(cancel))
                 .control(

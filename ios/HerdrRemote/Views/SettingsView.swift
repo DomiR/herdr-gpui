@@ -14,6 +14,9 @@ struct SettingsView: View {
                 ForEach(model.computers) { computer in
                     VStack(alignment: .leading, spacing: 2) {
                         Text(model.displayName(computer))
+                        if let vouching = model.vouching(computer) {
+                            Text("via \(model.displayName(vouching))").font(.caption).foregroundStyle(.secondary)
+                        }
                         Text(computer.origins.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary)
                         Text(fingerprintLine(computer)).font(.caption2.monospaced()).foregroundStyle(.secondary)
                     }

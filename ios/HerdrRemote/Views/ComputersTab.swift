@@ -66,6 +66,7 @@ struct ComputersTab: View {
                     } label: {
                         Label("New workspace", systemImage: "folder.badge.plus")
                     }
+                    HostRows(computer: machine.computer)
                 } label: {
                     ComputerLabel(machine: machine)
                 }
@@ -92,7 +93,16 @@ struct ComputerLabel: View {
 
     var body: some View {
         HStack {
-            Label(model.displayName(machine.computer), systemImage: "laptopcomputer").font(.headline)
+            Label {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(model.displayName(machine.computer)).font(.headline)
+                    if let vouching = model.vouching(machine.computer) {
+                        Text("via \(model.displayName(vouching))").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            } icon: {
+                Image(systemName: machine.computer.via == nil ? "laptopcomputer" : "server.rack")
+            }
             Spacer()
             switch machine.status {
             case .online:

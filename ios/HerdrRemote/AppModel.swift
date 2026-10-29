@@ -51,6 +51,8 @@ final class AppModel {
     let sessions: Sessions
     let tokens: ActivityTokens
     let fleet: Fleet
+    /// Pairing with the hosts each computer's Herdr UI knows.
+    let hostLinks: HostLinks
     let nearby = NearbyBrowser()
     let shortcuts = ShortcutStore()
     let bluetooth = NearbyBluetooth()
@@ -66,6 +68,7 @@ final class AppModel {
         self.sessions = sessions
         tokens = ActivityTokens(sessions: sessions)
         fleet = Fleet(sessions: sessions)
+        hostLinks = HostLinks(sessions: sessions)
         do {
             computers = try ComputerStore.load()
         } catch {
@@ -82,6 +85,9 @@ final class AppModel {
             Task { await self.tokens.sync() }
         }
         presence.computers = computers
+        hostLinks.computers = { [weak self] in self?.computers ?? [] }
+        hostLinks.onPaired = { [weak self] in self?.add($0) }
+        fleet.onOnline = { [weak self] in self?.hostLinks.check($0) }
         fleet.onSummary = { [spotlight] in
             let summary = WidgetSummary.load()
             spotlight.update(summary)
@@ -102,6 +108,7 @@ final class AppModel {
         save()
         Task { await AppDelegate.enableAlerts() }
         Task { await tokens.sync(only: computer.fingerprint) }
+        hostLinks.check(computer, force: true)
     }
 
     /// Turns Bluetooth presence on or off for one computer.
@@ -125,6 +132,7 @@ final class AppModel {
         computers.removeAll { $0.device == computer.device }
         save()
         try? NotifyKey.forget(computer.fingerprint)
+        hostLinks.forget(computer)
         Task { await sessions.forget(computer) }
     }
 
@@ -158,6 +166,13 @@ final class AppModel {
             candidate.pairing && !dismissedNearby.contains(candidate.id)
                 && !computers.contains { candidate.matches($0.fingerprint) }
         }
+    }
+
+    /// The paired computer that vouched for `computer`, for one paired
+    /// through another.
+    func vouching(_ computer: Computer) -> Computer? {
+        guard let via = computer.via else { return nil }
+        return computers.first { $0.fingerprint == via }
     }
 
     /// The name to show for `computer`: its own, plus the start of its

@@ -9,6 +9,7 @@
 //! in the daemon.
 
 use herdr_chat_protocol::{read_frame, write_frame};
+pub mod hosts;
 pub mod pull_requests;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -102,6 +103,10 @@ pub enum Request {
         id: PairingId,
         allow: bool,
         code: String,
+        /// The hosts ticked in the dialog, for the phone to be paired
+        /// with too (`hosts`).
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        hosts: Vec<hosts::HostId>,
     },
     /// Closes the dialog's pairing; its token stops working.
     CancelPairing {
@@ -157,6 +162,28 @@ pub enum Request {
         device: DeviceId,
         near: bool,
     },
+    /// The SSH and cloud hosts Herdr UI connects to, which a phone paired
+    /// here may be paired with too. Replaces the previous list.
+    Hosts {
+        hosts: Vec<hosts::Host>,
+    },
+    /// Takes the phones' requests to be paired with hosts that Herdr UI
+    /// has not taken yet.
+    HostPairings,
+    /// How Herdr UI's attempt to pair `device` with `host` ended.
+    HostPaired {
+        device: DeviceId,
+        host: hosts::HostId,
+        outcome: hosts::HostOutcome,
+    },
+    /// The devices revoked here that hosts still hold.
+    HostRevokes,
+    /// A host no longer holds the device.
+    HostRevoked(hosts::HostRevoke),
+    /// On a host: adds a phone another computer's user allowed, as
+    /// `herdr-remote-control enroll` asks. Herdr UI never sends it to its
+    /// own daemon.
+    Enroll(hosts::Enroll),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -192,6 +219,13 @@ pub enum Response {
         device: DeviceId,
         addresses: Option<String>,
     },
+    HostPairings {
+        pairings: Vec<hosts::HostPairing>,
+    },
+    HostRevokes {
+        revokes: Vec<hosts::HostRevoke>,
+    },
+    Enrolled(hosts::Enrolled),
 }
 
 /// The daemon's answer to a nearby phone's first step, the same JSON over
@@ -252,6 +286,9 @@ pub struct Status {
     pub addresses: Vec<String>,
     /// SHA-256 of the certificate authority, colon-separated hex.
     pub fingerprint: String,
+    /// The name this computer gives itself, which phones show.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub computer: String,
     /// Whether the daemon reaches a Herdr daemon on this machine.
     pub herdr: bool,
     pub chats: usize,
@@ -344,6 +381,13 @@ pub struct Device {
     pub push: bool,
     /// Whether it has a stream open now.
     pub connected: bool,
+    /// The computer that vouched for it, when another computer's user
+    /// allowed it (`hosts`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub via: Option<String>,
+    /// The other hosts it was paired with from here, or may be.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hosts: Vec<hosts::HostLink>,
 }
 
 #[cfg(test)]

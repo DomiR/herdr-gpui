@@ -148,6 +148,7 @@ async fn a_phone_pairs_nearby_over_the_network_and_the_desktop_sees_its_code() {
             id: offer.id,
             allow: true,
             code,
+            hosts: Vec::new(),
         },
     );
     assert!(

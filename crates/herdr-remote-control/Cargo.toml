@@ -58,6 +58,8 @@ rustix                        = { features = ["system"], workspace = true }
 serde.workspace               = true
 serde_json.workspace          = true
 thiserror.workspace           = true
+# A host's own `[remote]` table, read by `enroll`.
+toml.workspace                = true
 # Settings edits to the `[remote]` table.
 toml_edit.workspace           = true
 tracing.workspace             = true

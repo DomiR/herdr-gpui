@@ -24,10 +24,13 @@ public struct Computer: Codable, Hashable, Identifiable, Sendable {
     /// Whether this phone proves it is near the computer over Bluetooth, so
     /// the computer holds alerts while you are at it. Off until chosen.
     public var presence: Bool
+    /// The paired computer that vouched for this one's fingerprint when it
+    /// paired the phone with one of its hosts; `nil` when paired directly.
+    public var via: Fingerprint?
 
     public var id: String { device }
 
-    enum CodingKeys: String, CodingKey { case device, name, origins, fingerprint, keyKind, keyData, presence }
+    enum CodingKeys: String, CodingKey { case device, name, origins, fingerprint, keyKind, keyData, presence, via }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -39,6 +42,8 @@ public struct Computer: Codable, Hashable, Identifiable, Sendable {
         keyData = try c.decode(Data.self, forKey: .keyData)
         // Records saved before presence existed have it off.
         presence = try c.decodeIfPresent(Bool.self, forKey: .presence) ?? false
+        // Records saved before host pairing were all paired directly.
+        via = try c.decodeIfPresent(Fingerprint.self, forKey: .via)
     }
 
     public init(
@@ -48,7 +53,8 @@ public struct Computer: Codable, Hashable, Identifiable, Sendable {
         fingerprint: Fingerprint,
         keyKind: KeyKind,
         keyData: Data,
-        presence: Bool = false
+        presence: Bool = false,
+        via: Fingerprint? = nil
     ) {
         self.device = device
         self.name = name
@@ -57,6 +63,7 @@ public struct Computer: Codable, Hashable, Identifiable, Sendable {
         self.keyKind = keyKind
         self.keyData = keyData
         self.presence = presence
+        self.via = via
     }
 
     /// The addresses to try, the pairing address first, without repeats.

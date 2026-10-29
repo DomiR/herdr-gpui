@@ -667,7 +667,7 @@ Round 2 picks (2026-10-28):
 | Composer: send and stop, photos, pasted screenshots, `/` completion | Native text view with the keyboard toolbar, `PhotosPicker`, the camera, paste including images (`UIPasteControl`, no Safari prompt), `/` completion, and **dictation** with `SpeechAnalyzer` on device |
 | New workspace and new chat | The project picker with search (recent roots, then folders), a branch for a worktree, and an agent grid with the agents' icons |
 | Terminal tabs | A Core Text view of the runs, fit to width, pinch to zoom, and selection. Two fixed key rows (B) above the keyboard. Hardware keys (Esc, Ctrl, arrows, ⌘V) through `UIKeyCommand` on iPad. The action sheet (A). Paste and image upload as today |
-| Several computers, SSH hosts | All computers merged on home, not one at a time. SSH hosts as their own sections |
+| Several computers, SSH hosts | All computers merged on home, not one at a time. The SSH and cloud machines a computer's Herdr UI connects to are paired directly once that computer allows the phone (`docs/remote-control-plan.md`, "Other machines"), and show "via" that computer |
 | Settings | Notifications (per chat and per computer, privacy), presence, Bonjour, Face ID, the paired computers with their fingerprints, unpair |
 | Reconnecting banner | A thin glass banner that says why, such as "No route to MacBook (LAN, Tailscale tried)" |
 

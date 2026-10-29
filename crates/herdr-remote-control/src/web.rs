@@ -12,12 +12,13 @@
 mod api;
 mod assets;
 mod fragments;
+mod hosts;
 mod indicators;
 mod log;
 mod nearby;
 mod origins;
-mod render;
 mod pace;
+mod render;
 mod stream;
 mod terminal;
 mod uploads;
@@ -27,8 +28,8 @@ pub(crate) use fragments::folders;
 pub(crate) use indicators::{Indicators, Look};
 pub(crate) use log::report_limit;
 pub(crate) use origins::Origins;
-pub(crate) use render::now_ms;
 pub(crate) use pace::Typed;
+pub(crate) use render::now_ms;
 pub(crate) use stream::Connected;
 pub(crate) use terminal::read_screen;
 pub(crate) use uploads::Uploads;
@@ -89,9 +90,9 @@ pub(crate) struct State {
     pub(crate) reports: Mutex<auth::RateLimiter<std::net::IpAddr>>,
     /// Origins served before, which an installed app may still send.
     pub(crate) seen: Mutex<Origins>,
-    pub(crate) uploads: Uploads,
     /// Panes phones type into, so their screens are read again at once.
     pub(crate) typed: Typed,
+    pub(crate) uploads: Uploads,
 }
 
 impl State {
@@ -199,6 +200,8 @@ pub(crate) fn router(state: Shared) -> Router {
         .route("/api/stream", get(stream::stream))
         .route("/api/v2/chat/{pane}", get(crate::native::get_chat))
         .route("/api/v2/home", get(crate::native::get_home))
+        .route("/api/v2/hosts", get(hosts::list))
+        .route("/api/v2/hosts/{host}/pair", post(hosts::pair))
         .route("/api/v2/live", get(crate::native::live))
         .route("/api/v2/new", get(crate::native::new_options))
         .route("/api/v2/workspaces", post(crate::native::create_workspace))
@@ -391,6 +394,12 @@ impl IntoResponse for ApiError {
             }
             Self::Auth(auth::Error::UnknownNearby) => StatusCode::NOT_FOUND,
             Self::Auth(auth::Error::UnknownDevice) => StatusCode::FORBIDDEN,
+            Self::Auth(auth::Error::Links(auth::links::Error::UnknownHost)) => {
+                StatusCode::NOT_FOUND
+            }
+            Self::Auth(auth::Error::Links(
+                auth::links::Error::Busy | auth::links::Error::TooMany,
+            )) => StatusCode::TOO_MANY_REQUESTS,
             Self::Auth(
                 auth::Error::Store { .. }
                 | auth::Error::StoreFormat { .. }

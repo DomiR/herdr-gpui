@@ -5,6 +5,7 @@ use herdr_client::protocol::AgentStatus;
 
 mod create;
 mod fixtures;
+mod hosts;
 #[cfg(unix)]
 mod live_chat;
 mod messages;

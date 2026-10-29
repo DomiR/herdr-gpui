@@ -11,7 +11,9 @@ use gpui::{App, BackgroundExecutor, Global, Task};
 use herdr_remote_control::control::pull_requests::PullRequests;
 use herdr_remote_control::control::{self, Device, DeviceId, Request, Response, Status};
 
+mod links;
 mod pull_requests;
+pub(crate) use links::Links;
 use std::{
     cell::Cell,
     path::{Path, PathBuf},
@@ -95,6 +97,8 @@ pub(crate) struct Supervisor {
     /// The set the running daemon last took.
     indicators_sent: Option<&'static str>,
     last_poll: Option<Instant>,
+    /// Pairing phones with the other hosts this app connects to.
+    links: Links,
     /// Whether the settings were loaded once, before which nothing changes.
     loaded: bool,
     /// Ask now rather than at the next interval.
@@ -127,6 +131,7 @@ impl Default for Supervisor {
             indicators: None,
             indicators_sent: None,
             last_poll: None,
+            links: Links::default(),
             loaded: false,
             poke: false,
             polling: false,
@@ -304,6 +309,7 @@ impl Supervisor {
                     .pull_requests_sent_at
                     .is_none_or(|sent| sent.elapsed() >= Duration::from_secs(30))
         });
+        let outgoing = supervisor.links.outgoing();
         let task = executor.spawn(async move {
             let status = send(&address, &Request::Status);
             // Every poll: the title bar shows whether any phone is paired.
@@ -332,16 +338,20 @@ impl Supervisor {
                         Ok(Response::Done)
                     )
             });
-            (status, devices, sent, sent_prs)
+            let hosts = status
+                .is_ok()
+                .then(|| links::exchange(&address, send, outgoing));
+            (status, devices, sent, sent_prs, hosts)
         });
         cx.spawn(async move |cx| {
-            let (status, devices, sent, sent_prs) = task.await;
+            let (status, devices, sent, sent_prs, hosts) = task.await;
             cx.update(|cx| {
                 let supervisor = cx.global_mut::<Self>();
                 if status.is_err() {
                     supervisor.indicators_sent = None;
                     supervisor.pull_requests_sent = None;
                     supervisor.pull_requests_sent_at = None;
+                    supervisor.links.lost();
                 } else if sent.is_some() {
                     supervisor.indicators_sent = sent;
                 }
@@ -351,6 +361,9 @@ impl Supervisor {
                 }
                 if supervisor.polled(status, devices) {
                     cx.refresh_windows();
+                }
+                if let Some(hosts) = hosts {
+                    Self::take_incoming(cx, hosts);
                 }
             });
         })

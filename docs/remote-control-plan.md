@@ -18,7 +18,7 @@ rules apply throughout.
 | TLS | The daemon's own certificate authority, trusted once on the phone. Works by IP address on the LAN and over Tailscale; no DNS name is required. |
 | Notifications | Web Push from an installed PWA. |
 | UI | Mobile-first server-rendered HTML: Tailwind, Alpine (CSP build), SSE. Mockups: `docs/mockups/remote-control/index.html`. Picked: home F (needs-you strip over lists grouped by computer, Ghostty-style), workspaces and tabs D (attention board), chat C (focus), questions A (bottom sheet). |
-| Computers | One phone app shows every paired computer, plus the SSH hosts a paired computer's Herdr UI connects to. |
+| Computers | One phone app shows every paired computer. Allowing a phone on one computer also pairs it directly with the SSH and cloud machines that computer's Herdr UI connects to. |
 | iOS Live Activities | A PWA cannot start them, so a small native companion app (`ios/`) adds them, updated by the daemon through APNs. |
 
 ## Architecture
@@ -357,9 +357,44 @@ phone never disturbs the desktop's layout.
   Until then the app holds one subscription, for one computer
   (`herdr.push-host`); Settings on any other says where notifications come
   from, and a notification opens its page on the computer shown.
-- SSH hosts a paired computer's Herdr UI connects to appear as their own
-  sections, reached through that computer with `herdr-acp connect ID`, with
-  no pairing of their own.
+- **Other machines.** Allowing a phone on one computer also pairs it with
+  the SSH and cloud machines that computer's Herdr UI connects to. The phone
+  reaches each machine's own daemon directly, so it keeps them while that
+  computer sleeps. They are not reached through it.
+  - **Allow.** The Allow step lists the machines, every one ticked.
+    `Approve` carries the ticked ones, and the daemon keeps them on the
+    device as allowed (`links` in `devices.json`).
+  - **The phone's side.** The phone reads `GET /api/v2/hosts`, which lists
+    each machine as `offered`, `allowed`, `asking`, `pending`, `paired`, or
+    `failed`. For each allowed machine it makes a new Secure Enclave key and
+    sends it with `POST /api/v2/hosts/{host}/pair`.
+  - **Herdr UI's side.**
+    - It takes each request (`HostPairings`) and copies its own
+      `herdr-remote-control` into the machine's home when the machine lacks
+      that build (`~/.local/share/herdr-remote-control/bin/VERSION/`).
+    - It runs `herdr-remote-control enroll` there over SSH. On the way that
+      sends this daemon's APNs key (0600), so the machine notifies the phone
+      itself. It starts the machine's daemon as a user service unless one is
+      installed. It turns on `[remote]` in that machine's Herdr UI settings,
+      if it has any. Then it adds the phone, marked `via` this computer.
+    - It reports the machine's fingerprint and addresses back
+      (`HostPaired`).
+  - **Trust.** The phone pins that fingerprint because the computer it
+    already pinned said so. Herdr UI vouches with the user's own SSH access.
+  - **Machines added later.** The phone offers them with a Pair button.
+    Herdr UI asks on the desktop before pairing one, and closing the
+    question declines.
+  - **Revoking.** Revoking the phone here also revokes it on every machine
+    it was paired with from here. Herdr UI does that once each machine can
+    be reached (`host-revokes.json`). An idle expiry here does not cascade:
+    the phone may be using those machines while this computer sleeps.
+  - **What it needs.** A machine is reachable only at an address its CA
+    covers: a LAN, Tailscale, or `.local` address. A machine reached only
+    through a provider's proxy is paired but unreachable from the phone.
+    Herdr UI copies a build only for a machine of its own platform until
+    the app ships builds for other platforms
+    (`remote-control/TRIPLE/herdr-remote-control` beside the executable).
+    Until then, another platform reports which build is missing.
 
 ## iOS Live Activities
 

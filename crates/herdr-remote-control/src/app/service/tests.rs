@@ -297,6 +297,7 @@ fn status(version: &str) -> Response {
         port: 7443,
         addresses: Vec::new(),
         fingerprint: String::new(),
+        computer: String::new(),
         herdr: true,
         chats: 0,
         devices: 0,
