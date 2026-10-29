@@ -1,29 +1,37 @@
 import HerdrRemoteCore
 import SwiftUI
 
-/// An agent's mark: a rounded tile in its color with a symbol.
+/// An agent's mark: its logo, the one Herdr UI and the web app draw
+/// (`assets/icons/agent-*.svg`), on its brand's color, or on a plain tile
+/// for marks without one.
 struct AgentIcon: View {
     var agent: String?
     var size: CGFloat = 28
 
-    private var look: (symbol: String, tint: Color) {
+    private var look: (mark: String, tile: AnyShapeStyle, ink: Color) {
         let name = (agent ?? "").lowercased()
-        if name.contains("claude") { return ("sparkle", Color(red: 0.85, green: 0.47, blue: 0.34)) }
-        if name.contains("codex") { return ("hexagon.fill", Color(white: 0.5)) }
-        if name.contains("gemini") { return ("diamond.fill", Color(red: 0.36, green: 0.52, blue: 0.96)) }
-        if name.contains("opencode") { return ("chevron.left.forwardslash.chevron.right", .teal) }
-        if name.contains("amp") { return ("bolt.fill", .pink) }
-        if name.contains("copilot") { return ("airplane", Color(red: 0.42, green: 0.36, blue: 0.9)) }
-        if name == "pi" || name.hasPrefix("pi ") { return ("p.circle.fill", .green) }
-        return ("sparkles", .indigo)
+        let plain = AnyShapeStyle(.fill.secondary)
+        // Copilot before Pi: "copilot" holds "pi".
+        if name.contains("claude") { return ("claude", AnyShapeStyle(Color(red: 0xD9 / 255, green: 0x64 / 255, blue: 0x3A / 255)), .white) }
+        if name.contains("codex") { return ("codex", AnyShapeStyle(Color(red: 0x11 / 255, green: 0x11 / 255, blue: 0x11 / 255)), .white) }
+        if name.contains("gemini") { return ("gemini", AnyShapeStyle(Color(red: 0x3B / 255, green: 0x7C / 255, blue: 0xF0 / 255)), .white) }
+        if name.contains("copilot") { return ("copilot", AnyShapeStyle(Color(red: 0x6E / 255, green: 0x40 / 255, blue: 0xC9 / 255)), .white) }
+        if name.contains("opencode") { return ("opencode", plain, .primary) }
+        if name.contains("amp") { return ("amp", plain, .primary) }
+        if name.contains("pi") { return ("pi", plain, .primary) }
+        return ("generic", plain, .primary)
     }
 
     var body: some View {
-        Image(systemName: look.symbol)
-            .font(.system(size: size * 0.5, weight: .semibold))
-            .foregroundStyle(.white)
+        let look = look
+        Image("Agents/\(look.mark)")
+            .resizable()
+            .renderingMode(.template)
+            .scaledToFit()
+            .foregroundStyle(look.ink)
+            .frame(width: size * 0.62, height: size * 0.62)
             .frame(width: size, height: size)
-            .background(look.tint.gradient, in: .rect(cornerRadius: size * 0.28))
+            .background(look.tile, in: .rect(cornerRadius: size * 0.28))
             .accessibilityLabel(agent ?? "Agent")
     }
 }
