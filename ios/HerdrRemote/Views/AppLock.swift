@@ -2,14 +2,13 @@ import SwiftUI
 import UIKit
 
 /// The optional Face ID lock (Settings). While locked, a window above every
-/// other one covers the app, sheets and alerts included, and in the app
-/// switcher, until the owner unlocks it. The setting lives in the App
-/// Group, so the share extension honors it too.
+/// other one covers each of the app's windows, sheets and alerts included,
+/// and in the app switcher, until the owner unlocks it. The setting lives
+/// in the App Group, so the share extension honors it too.
 struct AppLock: ViewModifier {
     @AppStorage(AppLock.setting, store: AppLock.store) private var required = false
     @Environment(\.scenePhase) private var phase
-    @State private var locked = AppLock.isOn
-    @State private var cover: UIWindow?
+    private let state = LockState.shared
 
     nonisolated static let setting = "requireFaceID"
     nonisolated static var store: UserDefaults? { UserDefaults(suiteName: "group.so.pen.herdr-remote") }
@@ -27,33 +26,46 @@ struct AppLock: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .onChange(of: required && (locked || phase != .active), initial: true) { _, covered in
-                if covered { showCover() } else { hideCover() }
+            .onChange(of: required && (state.locked || phase != .active), initial: true) { _, covered in
+                state.cover(covered)
             }
             .onChange(of: phase) { _, phase in
-                if phase == .background, required { locked = true }
-                if phase == .active, locked { Task { await unlock() } }
+                if phase == .background, required { state.locked = true }
+                if phase == .active, state.locked { Task { await state.unlock() } }
             }
-            .task { if locked { await unlock() } }
+            .task { if state.locked { await state.unlock() } }
+    }
+}
+
+/// One lock for every window of the app.
+@MainActor
+@Observable
+final class LockState {
+    static let shared = LockState()
+
+    var locked = AppLock.isOn
+    @ObservationIgnored private var covers: [ObjectIdentifier: UIWindow] = [:]
+    @ObservationIgnored private var unlocking = false
+
+    func cover(_ covered: Bool) {
+        guard covered else {
+            covers.values.forEach { $0.isHidden = true }
+            covers = [:]
+            return
+        }
+        for scene in UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }) where covers[ObjectIdentifier(scene)] == nil {
+            let window = UIWindow(windowScene: scene)
+            window.windowLevel = .alert + 1
+            window.rootViewController = UIHostingController(rootView: LockCover { Task { await self.unlock() } })
+            window.isHidden = false
+            covers[ObjectIdentifier(scene)] = window
+        }
     }
 
-    private func showCover() {
-        guard cover == nil,
-              let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first
-        else { return }
-        let window = UIWindow(windowScene: scene)
-        window.windowLevel = .alert + 1
-        window.rootViewController = UIHostingController(rootView: LockCover { Task { await unlock() } })
-        window.isHidden = false
-        cover = window
-    }
-
-    private func hideCover() {
-        cover?.isHidden = true
-        cover = nil
-    }
-
-    private func unlock() async {
+    func unlock() async {
+        guard !unlocking else { return }
+        unlocking = true
+        defer { unlocking = false }
         if await OwnerCheck.confirm("Unlock Herdr Remote") { locked = false }
     }
 }

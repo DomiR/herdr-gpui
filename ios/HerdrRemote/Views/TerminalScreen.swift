@@ -194,8 +194,10 @@ struct TerminalScreen: View {
 
     static let background = Color(red: 0.07, green: 0.07, blue: 0.09)
 
+    private func fit(columns: Int, width: CGFloat) -> CGFloat { Self.fit(columns: columns, width: width) }
+
     /// The point size at which `columns` monospaced cells fill `width`.
-    private func fit(columns: Int, width: CGFloat) -> CGFloat {
+    static func fit(columns: Int, width: CGFloat) -> CGFloat {
         guard columns > 0 else { return 11 }
         return max(4, min(14, width / (CGFloat(columns) * Self.cellRatio)))
     }

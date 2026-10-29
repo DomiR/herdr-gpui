@@ -12,6 +12,7 @@ struct ChatScreen: View {
     let title: String
     @State private var store: ChatStore?
     @State private var showingSession = false
+    @Environment(\.horizontalSizeClass) private var width
 
     var body: some View {
         Group {
@@ -21,10 +22,16 @@ struct ChatScreen: View {
                 ProgressView("Loading the chat…")
             }
         }
+        // The principal item below draws the header; the title is what the
+        // iPad's split view and the window's name fall back to.
+        .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(removing: width == .regular ? .title : nil)
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
-            ToolbarItem(placement: .principal) {
+            // On an iPad the bar's middle also spans the terminal
+            // inspector, so the header leads there instead.
+            ToolbarItem(placement: width == .regular ? .topBarLeading : .principal) {
                 Button { showingSession = store != nil } label: {
                     VStack(spacing: 0) {
                         HStack(spacing: 4) {
@@ -37,6 +44,7 @@ struct ChatScreen: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .frame(minWidth: width == .regular ? 280 : 0, maxWidth: 360, alignment: width == .regular ? .leading : .center)
                 .accessibilityHint("Shows the session's settings")
             }
             if let usage = store?.transcript?.usage {

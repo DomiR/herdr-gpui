@@ -9,7 +9,7 @@ import UIKit
 /// Activity, a notification, or a list.
 private let log = Logger(subsystem: "so.pen.herdr-remote", category: "app")
 
-enum Route: Hashable {
+enum Route: Codable, Hashable {
     case chat(PaneKey, title: String)
     case term(PaneKey, title: String)
 }

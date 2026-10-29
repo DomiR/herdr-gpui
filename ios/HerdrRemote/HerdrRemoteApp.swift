@@ -35,5 +35,17 @@ struct HerdrRemoteApp: App {
                     }
                 }
         }
+        // A chat or terminal in a window of its own (iPad, Stage Manager).
+        WindowGroup("Chat", for: Route.self) { $route in
+            NavigationStack {
+                switch route {
+                case let .chat(key, title)?: ChatScreen(key: key, title: title).withRoutes()
+                case let .term(key, title)?: TerminalScreen(key: key, title: title)
+                case nil: ContentUnavailableView("Nothing to show", systemImage: "questionmark.bubble")
+                }
+            }
+            .environment(model)
+            .modifier(AppLock())
+        }
     }
 }

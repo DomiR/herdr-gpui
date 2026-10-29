@@ -873,6 +873,14 @@ Phase 7 (system) is built:
 - **Needs a device or hands:** widgets, Controls, Siri, Spotlight, and
   the share sheet need a tap or a device to see.
 
+Phase 8 has begun with the iPad, checked in the iPad simulator against
+a sandbox daemon:
+- **Layout (B):** the attention list beside the chat, with the
+  workspace's newest terminal in an inspector (⌘⌥I).
+- **Windows:** "Open in New Window" for chats and terminals, which Stage
+  Manager shows; the Face ID lock covers every window.
+- **Keyboard:** ⌘N, ⌘⇧B, ⌘, and ⌘⌥↑ / ⌘⌥↓ to move through chats.
+
 0. **Spikes**, each with a written result:
    - A macOS GATT peripheral from Herdr.app through objc2, including the
      TCC prompt.

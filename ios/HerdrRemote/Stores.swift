@@ -3,7 +3,7 @@ import HerdrRemoteCore
 import Observation
 
 /// Which computer and pane a view is about.
-struct PaneKey: Hashable, Sendable {
+struct PaneKey: Codable, Hashable, Sendable {
     let device: String
     let pane: String
 }

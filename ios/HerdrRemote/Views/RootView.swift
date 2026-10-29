@@ -9,23 +9,15 @@ struct RootView: View {
     @State private var tab = RootTab.home
     @State private var homePath = NavigationPath()
     @State private var pairing = false
+    @State private var selection: Route?
+    @Environment(\.horizontalSizeClass) private var width
 
     var body: some View {
-        TabView(selection: $tab) {
-            Tab("Home", systemImage: "house", value: RootTab.home) {
-                NavigationStack(path: $homePath) {
-                    HomeTab(pairing: $pairing).withRoutes()
-                }
-            }
-            .badge(model.fleet.waiting)
-            Tab("Board", systemImage: "square.grid.2x2", value: RootTab.board) {
-                NavigationStack { BoardTab().withRoutes() }
-            }
-            Tab("Computers", systemImage: "desktopcomputer", value: RootTab.computers) {
-                NavigationStack { ComputersTab(pairing: $pairing).withRoutes() }
-            }
-            Tab(value: RootTab.search, role: .search) {
-                NavigationStack { SearchTab().withRoutes() }
+        Group {
+            if width == .regular {
+                IPadRoot(pairing: $pairing, selection: $selection)
+            } else {
+                tabs
             }
         }
         .sheet(isPresented: $pairing) { PairView() }
@@ -60,9 +52,33 @@ struct RootView: View {
         }
         .onChange(of: model.pendingRoute) { _, route in
             guard let route else { return }
-            tab = .home
-            homePath.append(route)
+            if width == .regular {
+                selection = route
+            } else {
+                tab = .home
+                homePath.append(route)
+            }
             model.pendingRoute = nil
+        }
+    }
+
+    private var tabs: some View {
+        TabView(selection: $tab) {
+            Tab("Home", systemImage: "house", value: RootTab.home) {
+                NavigationStack(path: $homePath) {
+                    HomeTab(pairing: $pairing).withRoutes()
+                }
+            }
+            .badge(model.fleet.waiting)
+            Tab("Board", systemImage: "square.grid.2x2", value: RootTab.board) {
+                NavigationStack { BoardTab().withRoutes() }
+            }
+            Tab("Computers", systemImage: "desktopcomputer", value: RootTab.computers) {
+                NavigationStack { ComputersTab(pairing: $pairing).withRoutes() }
+            }
+            Tab(value: RootTab.search, role: .search) {
+                NavigationStack { SearchTab().withRoutes() }
+            }
         }
     }
 }
