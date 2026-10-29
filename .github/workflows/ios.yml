@@ -9,11 +9,21 @@ on:
     branches: [main]
     paths:
       - 'ios/**'
+      - '!ios/**/*.md'
+      # Design mockups: their own project, not built here.
+      - '!ios/Mockups/**'
+      # The daemon's wire types, which write the Swift tests' fixtures.
+      - 'crates/herdr-remote-control/src/native.rs'
       - 'crates/herdr-remote-control/src/native/**'
       - '.github/workflows/ios.yml'
   pull_request:
     paths:
       - 'ios/**'
+      - '!ios/**/*.md'
+      # Design mockups: their own project, not built here.
+      - '!ios/Mockups/**'
+      # The daemon's wire types, which write the Swift tests' fixtures.
+      - 'crates/herdr-remote-control/src/native.rs'
       - 'crates/herdr-remote-control/src/native/**'
       - '.github/workflows/ios.yml'
   workflow_dispatch:
