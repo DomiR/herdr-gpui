@@ -363,7 +363,8 @@ amber with "Needs an answer" when a question waits; ending with the turn
 summary.
 
 A web app cannot do this. Live Activities belong to ActivityKit, so they need
-a native companion app:
+a native companion app. (`docs/ios-app-plan.md` now plans a full native app
+that replaces the companion described here.)
 
 - A small SwiftUI app plus widget extension, paired the same way as the PWA
   (QR, matching code, device key in the Keychain). It does not duplicate the
