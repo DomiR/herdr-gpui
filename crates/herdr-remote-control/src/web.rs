@@ -17,6 +17,7 @@ mod log;
 mod nearby;
 mod origins;
 mod render;
+mod pace;
 mod stream;
 mod terminal;
 mod uploads;
@@ -27,6 +28,7 @@ pub(crate) use indicators::{Indicators, Look};
 pub(crate) use log::report_limit;
 pub(crate) use origins::Origins;
 pub(crate) use render::now_ms;
+pub(crate) use pace::Typed;
 pub(crate) use stream::Connected;
 pub(crate) use terminal::read_screen;
 pub(crate) use uploads::Uploads;
@@ -88,6 +90,8 @@ pub(crate) struct State {
     /// Origins served before, which an installed app may still send.
     pub(crate) seen: Mutex<Origins>,
     pub(crate) uploads: Uploads,
+    /// Panes phones type into, so their screens are read again at once.
+    pub(crate) typed: Typed,
 }
 
 impl State {

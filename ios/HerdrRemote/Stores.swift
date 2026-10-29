@@ -72,3 +72,40 @@ final class TermStore {
 
     func apply(_ screen: TermScreen) { self.screen = screen }
 }
+
+/// The composer's text shortcuts, kept on this phone.
+@MainActor
+@Observable
+final class ShortcutStore {
+    private static let key = "textShortcuts"
+    private(set) var shortcuts: [TextShortcut]
+
+    init() {
+        shortcuts = TextShortcut.load(UserDefaults.standard.data(forKey: Self.key))
+    }
+
+    /// Adds the shortcut, or replaces the one with its id.
+    func save(_ shortcut: TextShortcut) {
+        if let index = shortcuts.firstIndex(where: { $0.id == shortcut.id }) {
+            shortcuts[index] = shortcut
+        } else {
+            shortcuts.append(shortcut)
+        }
+        persist()
+    }
+
+    func delete(at offsets: IndexSet) {
+        shortcuts.remove(atOffsets: offsets)
+        persist()
+    }
+
+    func move(from offsets: IndexSet, to destination: Int) {
+        shortcuts.move(fromOffsets: offsets, toOffset: destination)
+        persist()
+    }
+
+    private func persist() {
+        guard let data = try? TextShortcut.save(shortcuts) else { return }
+        UserDefaults.standard.set(data, forKey: Self.key)
+    }
+}

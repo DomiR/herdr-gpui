@@ -204,10 +204,11 @@ The daemon sends:
   epoch, or a `seq` that is not one more) subscribes again with its
   cursor.
 - `term_screen` is sent only when the screen changed, read every 300 ms
-  while subscribed. A run has `text` and, when set, `fg` and `bg` (one of
-  the 16 names `black`, `red`, `green`, `yellow`, `blue`, `magenta`,
-  `cyan`, `white`, and their `bright_` forms, or `#rrggbb`), `bold`,
-  `dim`, `italic`, `underline`, `inverse` (only when true).
+  while subscribed, and at once, 50 ms, and 150 ms after the pane takes
+  keys, a paste, or a picture. A run has `text` and, when set, `fg` and
+  `bg` (one of the 16 names `black`, `red`, `green`, `yellow`, `blue`,
+  `magenta`, `cyan`, `white`, and their `bright_` forms, or `#rrggbb`),
+  `bold`, `dim`, `italic`, `underline`, `inverse` (only when true).
 - `reload` means the phone lagged or the view went away: it fetches the
   view again (a chat that is gone answers 404). `bye` precedes the close
   when the session expired (`expired`) or the device was revoked

@@ -122,6 +122,7 @@ pub(super) async fn keys(
             json!({"pane_id": pane, "keys": request.keys}),
         )
         .await?;
+    state.typed.typed(&pane);
     Ok(Json(json!({})))
 }
 
@@ -149,6 +150,7 @@ pub(super) async fn paste(
             json!({"pane_id": pane, "text": request.text}),
         )
         .await?;
+    state.typed.typed(&pane);
     Ok(Json(json!({})))
 }
 
@@ -179,6 +181,7 @@ pub(super) async fn upload(
             json!({"pane_id": pane, "text": dropped_path(&path)}),
         )
         .await?;
+    state.typed.typed(&pane);
     Ok(Json(json!({})))
 }
 

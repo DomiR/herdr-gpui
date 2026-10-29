@@ -110,26 +110,39 @@ impl Hub {
     /// for tests that must not reach a real Herdr.
     #[cfg(test)]
     pub(crate) fn offline(layout: Layout) -> Arc<Self> {
-        Arc::new(Self::offline_in(layout, None))
+        Arc::new(Self::offline_in(layout, None, None))
+    }
+
+    /// An offline hub whose API calls go to the socket beside
+    /// `client_socket`, for tests that answer them themselves.
+    #[cfg(all(test, unix))]
+    pub(crate) fn offline_with_api(layout: Layout, client_socket: PathBuf) -> Arc<Self> {
+        Arc::new(Self::offline_in(layout, None, Some(client_socket)))
     }
 
     /// An offline hub that connects to the chats of `layout` in `chat_dir`,
     /// for tests that serve a chat program of their own.
     #[cfg(all(test, unix))]
     pub(crate) fn offline_with_chats(layout: Layout, chat_dir: PathBuf) -> Arc<Self> {
-        let hub = Self::offline_in(layout, Some(chat_dir));
+        let hub = Self::offline_in(layout, Some(chat_dir), None);
         hub.reconcile(&hub.layout());
         Arc::new(hub)
     }
 
     #[cfg(test)]
-    fn offline_in(layout: Layout, chat_dir: Option<PathBuf>) -> Self {
+    fn offline_in(
+        layout: Layout,
+        chat_dir: Option<PathBuf>,
+        client_socket: Option<PathBuf>,
+    ) -> Self {
         let (sender, receiver) = watch::channel(Arc::new(layout));
         let (all, _) = broadcast::channel(ALL_QUEUE);
         Self {
-            // No socket answers here, so a request fails rather than reach
-            // a real Herdr.
-            api: api::Api::new(Some(PathBuf::from("/nonexistent/herdr-client.sock"))),
+            // No socket answers there unless a test serves one, so a request
+            // fails rather than reach a real Herdr.
+            api: api::Api::new(Some(
+                client_socket.unwrap_or_else(|| PathBuf::from("/nonexistent/herdr-client.sock")),
+            )),
             _daemon: daemon::Daemon::offline(sender),
             layout: receiver,
             chats: Mutex::new(HashMap::new()),

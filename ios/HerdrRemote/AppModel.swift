@@ -52,6 +52,7 @@ final class AppModel {
     let tokens: ActivityTokens
     let fleet: Fleet
     let nearby = NearbyBrowser()
+    let shortcuts = ShortcutStore()
     let bluetooth = NearbyBluetooth()
     /// Bluetooth presence with the computers that have it on.
     let presence = PresenceCentral()

@@ -65,6 +65,8 @@ struct TerminalScreen: View {
                     if let reason = problem ?? typing.problem {
                         Text(reason).font(.footnote).foregroundStyle(.orange).padding(6)
                     }
+                    let echo = typing.echo.text
+                    if !echo.isEmpty { TermEchoStrip(text: echo) }
                     TermKeyRows(typing: typing, keyboard: $keyboard)
                 }
             }
@@ -114,6 +116,7 @@ struct TerminalScreen: View {
             if let text = UserDefaults.standard.string(forKey: "type") { typing?.type(text) }
             #endif
         }
+        .onChange(of: store?.screen) { typing?.screenArrived() }
         .onDisappear {
             keyboard = false
             if let store { model.fleet.closeTerm(store) }

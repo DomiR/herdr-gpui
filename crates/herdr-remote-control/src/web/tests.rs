@@ -13,11 +13,14 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use tower::ServiceExt;
 
 mod apps;
+#[cfg(unix)]
+mod echo;
 mod handoff;
 mod indicators;
 mod nearby;
 mod origins;
 mod pairing;
+mod pace;
 mod presence;
 mod pull_requests;
 mod routes;
@@ -67,6 +70,7 @@ pub(crate) fn state_with(dir: &std::path::Path, hub: Arc<Hub>) -> Shared {
         reports: Mutex::new(report_limit()),
         seen: Mutex::new(seen),
         uploads: Uploads::new(dir),
+        typed: Typed::default(),
     })
 }
 

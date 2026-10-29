@@ -36,6 +36,13 @@ struct SettingsView: View {
                     Text("Over Bluetooth, this phone tells the computer when you are near it, and the computer holds phone alerts while you are there and using it. It also keeps the computer's addresses current. The computer needs presence on in Herdr's Remote control settings.")
                 }
             }
+            Section("Chats") {
+                NavigationLink {
+                    TextShortcutsView()
+                } label: {
+                    LabeledContent("Text Shortcuts", value: "\(model.shortcuts.shortcuts.count)")
+                }
+            }
             Section {
                 if !ActivityAuthorizationInfo().areActivitiesEnabled {
                     Label("Live Activities are off for Herdr Remote. Turn them on in Settings.", systemImage: "exclamationmark.triangle")

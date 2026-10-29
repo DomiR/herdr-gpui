@@ -278,9 +278,15 @@ shell connection. It uses Herdr's public API socket (`herdr.sock` beside
 focus nor resize anything:
 
 - **Screen**: `pane.read {source: visible, format: ansi}` while a phone
-  shows the pane, every 300 ms, sent as a patch only when it changed. The
-  ANSI (SGR only) becomes escaped spans on the server. No cursor position
-  comes with it.
+  shows the pane, every 300 ms, sent as a patch only when it changed. Input
+  Herdr takes also reads it at once, then 50 ms and 150 ms later, so an
+  echo does not wait out the timer. The ANSI (SGR only) becomes escaped
+  spans on the server. No cursor position comes with it.
+- **Echo strip**: what was typed but is not on the screen yet shows,
+  dotted, above the key rows (backspace takes back what it can). An input
+  leaves it once Herdr took it and a screen arrived after, or 1 s after
+  Herdr took it when the screen did not change. Typing in place on the
+  screen, as mosh predicts, needs the cursor, which `pane.read` lacks.
 - **Typing**: one key at a time with `pane.send_keys` (Herdr's key syntax:
   `ctrl+c`, `esc`, `up`, `pageup`), because `pane.send_text` arrives as a
   bracketed paste, which an editor inserts rather than runs; a paste uses

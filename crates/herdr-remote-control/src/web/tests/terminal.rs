@@ -25,7 +25,7 @@ fn with_terminal(dir: &std::path::Path) -> Shared {
     })
 }
 
-fn authorized(request: HttpRequest<Body>, token: &str) -> HttpRequest<Body> {
+pub(super) fn authorized(request: HttpRequest<Body>, token: &str) -> HttpRequest<Body> {
     let (mut parts, body) = request.into_parts();
     parts.headers.insert(
         header::AUTHORIZATION,

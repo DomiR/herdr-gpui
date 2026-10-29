@@ -26,8 +26,6 @@ pub(crate) const MAX_VIEWS: usize = 8;
 const HOME_COALESCE: Duration = Duration::from_millis(400);
 /// How long a chat's changes gather before one `chat_changes` goes out.
 const CHAT_COALESCE: Duration = Duration::from_millis(120);
-/// How often a terminal's screen is read while a phone follows it.
-const SCREEN_INTERVAL: Duration = Duration::from_millis(300);
 /// Failed screen reads in a row before the view reloads.
 const SCREEN_FAILURES: u32 = 3;
 /// How often the session is checked, so one that expires ends within this
@@ -353,9 +351,11 @@ async fn follow_chat(state: Shared, link: Arc<Chat>, since: Option<Cursor>, out:
     }
 }
 
-/// Sends the pane's screen whenever it changes, read every
-/// [`SCREEN_INTERVAL`]: Herdr's API has no output events.
+/// Sends the pane's screen whenever it changes, read on a timer and again
+/// at once after typing ([`Typed`](crate::web::Typed)): Herdr's API has no
+/// output events.
 async fn follow_term(state: Shared, pane: String, out: Outbound) {
+    let mut pace = state.typed.pace(&pane);
     let reload = ServerMessage::Reload {
         view: View::Term { pane: pane.clone() },
     };
@@ -391,7 +391,7 @@ async fn follow_term(state: Shared, pane: String, out: Outbound) {
             }
         }
         tokio::select! {
-            () = tokio::time::sleep(SCREEN_INTERVAL) => {}
+            () = pace.wait() => {}
             () = out.closed() => return,
         }
     }

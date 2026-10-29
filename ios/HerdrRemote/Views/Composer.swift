@@ -5,8 +5,8 @@ import UIKit
 import UniformTypeIdentifiers
 
 /// The chat's composer: text with `/` completion, pictures from the
-/// library, the camera, or the clipboard, dictation on the phone, and
-/// send or stop.
+/// library, the camera, or the clipboard, text shortcuts, dictation on
+/// the phone, and send or stop.
 struct Composer: View {
     @Environment(AppModel.self) private var model
     let key: PaneKey
@@ -76,17 +76,28 @@ struct Composer: View {
 
     private var attachMenu: some View {
         Menu {
-            Button("Photo Library", systemImage: "photo.on.rectangle") { choosingPhotos = true }
-            if UIImagePickerController.isSourceTypeAvailable(.camera) {
-                Button("Take Photo", systemImage: "camera") { takingPhoto = true }
+            Section {
+                Button("Photo Library", systemImage: "photo.on.rectangle") { choosingPhotos = true }
+                if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                    Button("Take Photo", systemImage: "camera") { takingPhoto = true }
+                }
+            }
+            .disabled(pictures.count >= 4)
+            let shortcuts = model.shortcuts.shortcuts.filter(\.isUsable)
+            if !shortcuts.isEmpty {
+                Section("Shortcuts") {
+                    ForEach(shortcuts) { shortcut in
+                        Button(shortcut.label, systemImage: "text.bubble") { use(shortcut) }
+                    }
+                }
             }
         } label: {
             Image(systemName: "plus").font(.body.bold()).frame(width: 36, height: 36)
         }
         .buttonStyle(.glass)
         .buttonBorderShape(.circle)
-        .disabled(transcript.readOnly || pictures.count >= 4)
-        .accessibilityLabel("Add a picture")
+        .disabled(transcript.readOnly)
+        .accessibilityLabel("Add a picture or shortcut")
     }
 
     @ViewBuilder
@@ -218,6 +229,18 @@ struct Composer: View {
                 result = .failed
             }
             if let index = pictures.firstIndex(where: { $0.id == id }) { pictures[index].upload = result }
+        }
+    }
+
+    /// Sends the shortcut at once when nothing is drafted; otherwise adds
+    /// it to the draft, so pictures and typed words go with it.
+    private func use(_ shortcut: TextShortcut) {
+        if draft.isEmpty && pictures.isEmpty {
+            draft = shortcut.text
+            sendPrompt()
+        } else {
+            draft = draft.isEmpty || draft.hasSuffix(" ") || draft.hasSuffix("\n") ? draft + shortcut.text : draft + " " + shortcut.text
+            focused = true
         }
     }
 

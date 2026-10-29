@@ -12,6 +12,8 @@ final class TermTyping {
     /// Held by the key row for the next key typed.
     var modifiers: TermInput.Modifiers = []
     private(set) var problem: String?
+    /// What was typed but is not on the screen yet.
+    private(set) var echo = TermEcho()
     private var pending: [TermInput.Send] = []
     private var draining = false
     private weak var fleet: Fleet?
@@ -49,8 +51,14 @@ final class TermTyping {
         enqueue([.paste(String(text.prefix(64 * 1024)))])
     }
 
+    /// A new screen arrived from the computer.
+    func screenArrived() {
+        echo.screen(at: .now)
+    }
+
     private func enqueue(_ sends: [TermInput.Send]) {
         for send in sends {
+            echo.queue(send)
             // Keys typed while a request is out join the last batch.
             if case let .keys(more) = send, case let .keys(queued)? = pending.last, queued.count + more.count <= TermInput.maxKeys {
                 pending[pending.count - 1] = .keys(queued + more)
@@ -68,6 +76,10 @@ final class TermTyping {
         while !pending.isEmpty, let fleet {
             let send = pending.removeFirst()
             let pane = key.pane
+            switch send {
+            case let .keys(keys): echo.sending(keys.count, at: .now)
+            case .paste: echo.sending(1, at: .now)
+            }
             do {
                 try await fleet.call(key.device) { client, token in
                     switch send {
@@ -76,13 +88,39 @@ final class TermTyping {
                     }
                 }
                 problem = nil
+                echo.delivered(at: .now)
+                Task { [weak self] in
+                    try? await Task.sleep(for: TermEcho.linger)
+                    self?.echo.expire(at: .now)
+                }
             } catch {
                 // What failed is dropped rather than replayed later into
                 // a screen that has moved on.
                 problem = error.localizedDescription
                 pending.removeAll()
+                echo.clear()
             }
         }
+    }
+}
+
+/// What was typed but is not on the screen yet, above the key rows: its
+/// end, dotted, as the terminal never draws text.
+struct TermEchoStrip: View {
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Text(text).underline(pattern: .dot)
+            Text("▏").foregroundStyle(.tint)
+        }
+        .font(.system(.footnote, design: .monospaced))
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+        .truncationMode(.head)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12).padding(.vertical, 4)
+        .accessibilityLabel("Typed, not on the screen yet: \(text)")
     }
 }
 
