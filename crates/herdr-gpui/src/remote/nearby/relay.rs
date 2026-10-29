@@ -1,5 +1,5 @@
 //! The relay itself: the helper process, its lines, and the frames it
-//! carries. Built on macOS only, where the helper ships.
+//! carries.
 
 use super::Error;
 use super::Radio;
@@ -16,7 +16,11 @@ use std::{
 };
 
 /// The helper's file name, beside the app's executable.
-pub(crate) const PROGRAM: &str = "herdr-nearby";
+pub(crate) const PROGRAM: &str = if cfg!(windows) {
+    "herdr-nearby.exe"
+} else {
+    "herdr-nearby"
+};
 /// The largest message a phone or the daemon sends through the helper.
 pub(crate) const MAX_MESSAGE: usize = 4096;
 /// The longest line read from the helper: a base64 frame of
@@ -145,9 +149,10 @@ pub(crate) fn refusal() -> Vec<u8> {
 
 /// Starts advertising as `name`, with the first 16 hex digits of the CA
 /// fingerprint so a phone tells new computers from paired ones, and the
-/// daemon's HTTPS port, which the helper also registers with the system's
-/// DNS-SD: the daemon's own Bonjour advertisement is invisible to
-/// mDNSResponder on the same Mac.
+/// daemon's HTTPS port, which the macOS helper also registers with the
+/// system's DNS-SD: the daemon's own Bonjour advertisement is invisible to
+/// mDNSResponder on the same Mac. Elsewhere the daemon advertises Bonjour
+/// itself, and the helper ignores the port.
 pub(crate) fn advertise(name: &str, fingerprint: &str, port: Option<u16>) -> String {
     let prefix: String = fingerprint
         .chars()
@@ -209,7 +214,11 @@ pub(crate) fn host_name() -> String {
             return name.chars().take(64).collect();
         }
     }
-    "Mac".to_owned()
+    std::env::var("COMPUTERNAME")
+        .ok()
+        .map(|name| name.trim().chars().take(64).collect::<String>())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| "Herdr".to_owned())
 }
 
 /// Reads one line of at most [`MAX_LINE`] bytes into `line`. Returns

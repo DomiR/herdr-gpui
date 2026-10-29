@@ -3,9 +3,8 @@
 //! the approval step with the phone's name and matching code. The requests
 //! run off the UI thread; [`super::pairing`] decides what each answer means.
 
-#[cfg(target_os = "macos")]
-use super::nearby;
 use super::{
+    nearby,
     pairing::{Answer, Pairing, Phase, spaced},
     qr::{self, Qr},
     supervisor::{Client, Lease, Supervisor},
@@ -21,10 +20,7 @@ use std::{
 mod addresses;
 
 /// What keeps this computer advertised for nearby pairing.
-#[cfg(target_os = "macos")]
 type NearbyAdvert = nearby::Advert;
-#[cfg(not(target_os = "macos"))]
-type NearbyAdvert = ();
 
 /// How often the dialog looks for a request to send, and redraws its ring.
 const STEP: Duration = Duration::from_millis(250);
@@ -179,20 +175,12 @@ impl HerdrWindow {
     /// through the app's one `herdr-nearby` helper, which relays each
     /// phone's frame to the daemon. Nothing starts when the helper is not
     /// beside the executable.
-    #[cfg(target_os = "macos")]
     fn advertise_nearby(
         (fingerprint, url): (String, String),
         cx: &mut Context<Self>,
     ) -> Option<NearbyAdvert> {
         let line = nearby::advertise(&nearby::host_name(), &fingerprint, nearby::port(&url));
         nearby::Station::advertise_pairing(cx, line)
-    }
-
-    /// Bluetooth pairing needs the macOS helper; elsewhere the network and
-    /// QR paths are the only ones, and nothing starts.
-    #[cfg(not(target_os = "macos"))]
-    fn advertise_nearby(_offer: (String, String), _cx: &mut Context<Self>) -> Option<NearbyAdvert> {
-        None
     }
 
     fn answer_pairing(&mut self, allow: bool, cx: &mut Context<Self>) {
@@ -449,16 +437,21 @@ impl HerdrWindow {
     }
 
     /// One line on Bluetooth pairing, when the helper reported its radio.
-    #[cfg(target_os = "macos")]
     fn nearby_hint(&self, cx: &App) -> Option<Div> {
         self.menu.remote_pairing.as_ref()?;
         let radio = nearby::Station::radio(cx)?;
         let text = match radio {
-            nearby::Radio::On => {
+            nearby::Radio::On if cfg!(target_os = "macos") => {
                 "Or open Herdr Remote on an iPhone nearby: it finds this Mac over Bluetooth."
             }
-            nearby::Radio::Unauthorized => {
+            nearby::Radio::On => {
+                "Or open Herdr Remote on an iPhone nearby: it finds this computer over Bluetooth."
+            }
+            nearby::Radio::Unauthorized if cfg!(target_os = "macos") => {
                 "To pair nearby over Bluetooth, allow Herdr in System Settings > Privacy & Security > Bluetooth."
+            }
+            nearby::Radio::Unauthorized => {
+                "To pair nearby over Bluetooth, allow Herdr to use Bluetooth in your system's settings."
             }
             nearby::Radio::Off | nearby::Radio::Unsupported | nearby::Radio::Unknown => {
                 return None;
@@ -470,12 +463,6 @@ impl HerdrWindow {
                 .text_color(rgb(self.theme.subtext()))
                 .child(text),
         )
-    }
-
-    /// Bluetooth pairing runs only on macOS, where its helper ships.
-    #[cfg(not(target_os = "macos"))]
-    fn nearby_hint(&self, _cx: &App) -> Option<Div> {
-        None
     }
 
     fn pairing_claim(

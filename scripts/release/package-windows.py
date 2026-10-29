@@ -7,8 +7,9 @@ Beside herdr-gpui.exe, which is a console program because it is also the CLI,
 the zip carries herdr-gpui-launcher.exe, the windowed launcher that starts it without a
 console window from Explorer or the Start menu, herdr-acp.exe, which the app
 starts chats with, herdr-remote-control.exe, the remote control daemon the
-app runs as a scheduled task, and herdr-automate.exe, the automation daemon;
-the build leaves all three beside herdr-gpui.exe.
+app runs as a scheduled task, herdr-automate.exe, the automation daemon, and
+herdr-nearby.exe, the Bluetooth helper for nearby pairing and presence; the
+build leaves them all beside herdr-gpui.exe.
 """
 import argparse
 from pathlib import Path
@@ -44,7 +45,7 @@ def package(version, target, binary, launcher, output_dir, notices):
     if not launcher.is_file():
         raise ValueError("Launcher file required")
     companions = [binary.parent / name for name in ("herdr-acp.exe", "herdr-remote-control.exe",
-                                                         "herdr-automate.exe")]
+                                                         "herdr-automate.exe", "herdr-nearby.exe")]
     for companion in companions:
         if not companion.is_file():
             raise ValueError(f"A {companion.name} beside the binary required")

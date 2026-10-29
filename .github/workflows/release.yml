@@ -243,7 +243,7 @@ jobs:
       - name: Require the declared native target
         run: |
           test "$(rustc -vV | sed -n 's/^host: //p')" = "$TARGET"
-      - run: cargo build --locked --release -p herdr-gpui -p herdr-acp -p herdr-remote-control -p herdr-automate --target "$TARGET"
+      - run: cargo build --locked --release -p herdr-gpui -p herdr-acp -p herdr-remote-control -p herdr-automate -p herdr-nearby --target "$TARGET"
       - run: python3 scripts/release/smoke-cli.py "target/$TARGET/release/herdr-gpui"
       # The app starts chats with the herdr-acp beside its executable.
       - run: '"target/$TARGET/release/herdr-acp" --help'
@@ -251,6 +251,8 @@ jobs:
       - run: '"target/$TARGET/release/herdr-remote-control" --version'
       # Automations run in the herdr-automate beside it.
       - run: '"target/$TARGET/release/herdr-automate" --version'
+      # Nearby pairing and presence run the herdr-nearby beside it.
+      - run: '"target/$TARGET/release/herdr-nearby" --version'
       - name: Install the notice generator
         uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
         with:
@@ -324,11 +326,12 @@ jobs:
       - name: Require the declared native target
         run: |
           test "$(rustc -vV | sed -n 's/^host: //p')" = "$TARGET"
-      - run: cargo build --locked --release -p herdr-gpui -p herdr-gpui-launcher -p herdr-acp -p herdr-remote-control -p herdr-automate --target "$TARGET"
+      - run: cargo build --locked --release -p herdr-gpui -p herdr-gpui-launcher -p herdr-acp -p herdr-remote-control -p herdr-automate -p herdr-nearby --target "$TARGET"
       - run: python scripts/release/smoke-cli.py "target/$TARGET/release/herdr-gpui.exe"
       - run: '"target/$TARGET/release/herdr-acp.exe" --help'
       - run: '"target/$TARGET/release/herdr-remote-control.exe" --version'
       - run: '"target/$TARGET/release/herdr-automate.exe" --version'
+      - run: '"target/$TARGET/release/herdr-nearby.exe" --version'
       - name: Install the notice generator
         uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
         with:
@@ -416,6 +419,7 @@ jobs:
             ${{ runner.temp }}\signing\Herdr-${{ needs.validate.outputs.version }}-${{ matrix.target }}\herdr-acp.exe
             ${{ runner.temp }}\signing\Herdr-${{ needs.validate.outputs.version }}-${{ matrix.target }}\herdr-remote-control.exe
             ${{ runner.temp }}\signing\Herdr-${{ needs.validate.outputs.version }}-${{ matrix.target }}\herdr-automate.exe
+            ${{ runner.temp }}\signing\Herdr-${{ needs.validate.outputs.version }}-${{ matrix.target }}\herdr-nearby.exe
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256

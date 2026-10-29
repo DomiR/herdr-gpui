@@ -148,7 +148,8 @@ the Windows target graphs, each the app's joined with those of the programs ship
 The caller must supply the matching release binary; packaging does not cross-build
 or resolve shared libraries. Output is `Herdr-VERSION-TARGET.tar.gz`, with a
 same-named root containing `bin/herdr-gpui`, `bin/herdr-acp`,
-`bin/herdr-remote-control`, and `bin/herdr-automate` (all taken from beside the binary), a scalable SVG icon, desktop entry, license and
+`bin/herdr-remote-control`, `bin/herdr-automate`, and `bin/herdr-nearby`, the
+Bluetooth helper for nearby pairing and presence (all taken from beside the binary), a scalable SVG icon, desktop entry, license and
 notice under `share/`. Install that tree into a chosen prefix with its `bin` on
 PATH. Archives are not promised to be bit-for-bit reproducible.
 
@@ -189,8 +190,9 @@ zip tool) writes one `Herdr-VERSION-TARGET.zip` per target with a same-named roo
 containing `herdr-gpui.exe`, the windowed `herdr-gpui-launcher.exe` that the
 installer's Start menu shortcut opens, `herdr-acp.exe`, which the app starts
 chats with, `herdr-remote-control.exe`, the remote control daemon it runs as a
-scheduled task, and `herdr-automate.exe`, the automation daemon (all taken from
-beside `BINARY`), and `licenses/` holding the same license
+scheduled task, `herdr-automate.exe`, the automation daemon, and
+`herdr-nearby.exe`, the Bluetooth helper for nearby pairing and presence (all
+taken from beside `BINARY`), and `licenses/` holding the same license
 and notice files as the Linux tree. Entries carry a fixed timestamp.
 
 `scripts/release/windows-installer.py` then installs the pinned Inno Setup
@@ -239,7 +241,7 @@ fails instead of falling back to unsigned. When signing is on:
 1. `windows-signing.py unpack` extracts the tested zip without running anything.
 2. `azure/login` signs in to Azure with the job's OIDC token, and
    `azure/artifact-signing-action` signs `herdr-gpui.exe`,
-   `herdr-gpui-launcher.exe`, `herdr-acp.exe`, `herdr-remote-control.exe`, and `herdr-automate.exe` with SHA-256 and an RFC 3161 timestamp from
+   `herdr-gpui-launcher.exe`, `herdr-acp.exe`, `herdr-remote-control.exe`, `herdr-automate.exe`, and `herdr-nearby.exe` with SHA-256 and an RFC 3161 timestamp from
    `http://timestamp.acs.microsoft.com`.
 3. `windows-signing.py repack` refuses unless the tree holds exactly the zip's
    files and each executable differs from the tested one only by its appended

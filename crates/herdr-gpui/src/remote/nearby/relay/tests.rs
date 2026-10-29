@@ -1,7 +1,6 @@
 use super::*;
 use herdr_remote_control::control::{ErrorCode, NearbyRevealed, NearbyStarted};
 use std::io::Cursor;
-use std::path::Path;
 
 mod presence;
 

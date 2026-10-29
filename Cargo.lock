@@ -4944,6 +4944,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "herdr-nearby"
+version = "0.1.0"
+dependencies = [
+ "base64 0.23.1",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "windows 0.62.2",
+ "zbus",
+]
+
+[[package]]
 name = "herdr-orchestrator"
 version = "0.1.0"
 dependencies = [

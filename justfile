@@ -7,9 +7,10 @@ run *args:
     set -euo pipefail
     if [ "$(uname -s)" != Darwin ]; then
         # The app starts chats with the herdr-acp, finds the automation
-        # daemon, and starts Remote control with the herdr-remote-control, all beside
+        # daemon, starts Remote control with the herdr-remote-control, and
+        # Bluetooth pairing and presence with the herdr-nearby, all beside
         # its own executable.
-        cargo build --locked --release -p herdr-acp -p herdr-automate -p herdr-remote-control
+        cargo build --locked --release -p herdr-acp -p herdr-automate -p herdr-nearby -p herdr-remote-control
         exec cargo run --locked --release -p herdr-gpui -- {{args}}
     fi
     {{just_executable()}} bundle release
@@ -31,7 +32,7 @@ run-debug *args:
     #!/usr/bin/env bash
     set -euo pipefail
     if [ "$(uname -s)" != Darwin ]; then
-        cargo build --locked -p herdr-acp -p herdr-automate -p herdr-remote-control
+        cargo build --locked -p herdr-acp -p herdr-automate -p herdr-nearby -p herdr-remote-control
         exec cargo run --locked -p herdr-gpui -- {{args}}
     fi
     {{just_executable()}} bundle debug

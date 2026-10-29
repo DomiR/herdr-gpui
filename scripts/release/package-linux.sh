@@ -7,9 +7,10 @@ case $2 in x86_64-unknown-linux-gnu|aarch64-unknown-linux-gnu) ;; *) fail 'Unsup
 [[ -f $3 && -d $4 ]] || fail 'Binary file and existing output directory required'
 [[ -f $5 && -s $5 ]] || fail 'Nonempty third-party notices file required'
 # The app starts chats with the herdr-acp beside its executable, runs the
-# herdr-remote-control beside it as a user service, and runs automations in
-# the herdr-automate there; the build leaves all three beside herdr-gpui.
-companions=(herdr-acp herdr-remote-control herdr-automate)
+# herdr-remote-control beside it as a user service, runs automations in the
+# herdr-automate there, and starts herdr-nearby for nearby pairing and
+# presence over Bluetooth; the build leaves all four beside herdr-gpui.
+companions=(herdr-acp herdr-remote-control herdr-automate herdr-nearby)
 for companion in "${companions[@]}"; do
     [[ -f $(dirname -- "$3")/$companion ]] || fail "A $companion beside the binary required"
 done

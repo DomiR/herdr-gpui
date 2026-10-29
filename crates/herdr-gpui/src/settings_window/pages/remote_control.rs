@@ -282,20 +282,19 @@ impl SettingsWindow {
                     cx,
                 )),
             )
-            .when(cfg!(target_os = "macos"), |page| {
-                page.child(
-                    ui::row(theme, "remote-presence", "Hold phone alerts while I'm here")
-                        .description(
-                            "Paired iPhones near this Mac over Bluetooth keep their alerts                              until you step away from it.",
-                        )
-                        .switch(self.preference_toggle(
-                            "remote-presence-toggle",
-                            remote.presence,
-                            Preference::Remote(Edit::Presence(!remote.presence)),
-                            cx,
-                        )),
-                )
-            })
+            .child(
+                ui::row(theme, "remote-presence", "Hold phone alerts while I'm here")
+                    .description(
+                        "Paired iPhones near this computer over Bluetooth keep their alerts \
+                         until you step away from it.",
+                    )
+                    .switch(self.preference_toggle(
+                        "remote-presence-toggle",
+                        remote.presence,
+                        Preference::Remote(Edit::Presence(!remote.presence)),
+                        cx,
+                    )),
+            )
             .child(
                 ui::row(theme, "remote-restart", "Restart the daemon")
                     .description(

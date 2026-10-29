@@ -88,7 +88,7 @@ impl Station {
         Self::sync(cx);
     }
 
-    /// The Mac's Bluetooth radio, while a helper runs.
+    /// The computer's Bluetooth radio, while a helper runs.
     pub(crate) fn radio(cx: &App) -> Option<Radio> {
         cx.try_global::<Self>().and_then(|station| station.radio)
     }

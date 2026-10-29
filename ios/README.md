@@ -142,10 +142,13 @@ through the fingerprint alone, so it needs no certificate profile.
 
 While the pairing dialog is open, the computer can also be found nearby:
 
-- **Same network:** the daemon advertises `_herdr-remote._tcp` with
-  `pairing=1` in its TXT record.
-- **Bluetooth (macOS):** the `herdr-nearby` helper advertises the nearby
-  service.
+- **Same network:** `_herdr-remote._tcp` with `pairing=1` in its TXT
+  record.
+  - On macOS, the `herdr-nearby` helper advertises it through the system.
+  - Elsewhere, the daemon advertises it.
+- **Bluetooth:** the `herdr-nearby` helper beside Herdr advertises the
+  nearby service. On macOS it is the Swift helper; on Linux (BlueZ) and
+  Windows (WinRT) it is the Rust crate `crates/herdr-nearby`.
 
 The app shows a card for it (or lists it in the pair sheet). Tap Pair,
 compare the six digits with the computer's dialog, and choose Allow

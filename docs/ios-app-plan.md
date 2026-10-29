@@ -24,7 +24,8 @@ Android and for phones without the app. Both talk to the same daemon,
 ## Decisions
 
 Settled with the user on 2026-10-28: iOS 26 minimum; cache the last
-state and open instantly; Bluetooth pairing on macOS only for now;
+state and open instantly; Bluetooth pairing on macOS only for now
+(Linux and Windows followed in phase 8);
 presence holds phone alerts by default once it is on; TestFlight under
 the user's team, built and uploaded by CI.
 
@@ -438,10 +439,34 @@ connections).
     `nearby_reveal`) and writes the answer back.
   - Running inside the bundle, it is attributed to Herdr.app for the
     Bluetooth permission (`NSBluetoothAlwaysUsageDescription`).
-- **Linux next**: BlueZ's D-Bus GATT server API through `zbus`, in Rust,
-  not `bluer`, because `bluer` brings Tokio into the GUI.
-- **Windows**: WinRT `GattServiceProvider`. Until it is built, the pairing
-  dialog offers the network and QR paths only. Nothing pretends to work.
+- **Linux and Windows: `herdr-nearby`**, a Rust helper in
+  `crates/herdr-nearby`, shipped beside `herdr-gpui` in every Linux format
+  and the Windows zip and installer. It speaks the macOS helper's stdio
+  protocol and serves the same GATT service, so neither Herdr UI nor the
+  phone tells them apart; Herdr UI runs it the same way (`nearby::Station`).
+  - The stdio protocol, the framing, each phone's partial messages and
+    UUID-shaped id, and the idle reports are shared and unit-tested; only
+    the radio differs.
+  - **Linux:** BlueZ over D-Bus with `zbus` on its own executor (no Tokio,
+    and not `bluer`, which brings it). An application object tree
+    (`ObjectManager`, `GattService1`, three `GattCharacteristic1`)
+    registered with `GattManager1`, and an `LEAdvertisement1` carrying
+    only the service UUID. Writes carry the phone's device path and MTU;
+    notifications go out as `PropertiesChanged` on `Value`. BlueZ sends
+    a notification to every subscribed phone, so two phones exchanging at
+    once may each read the other's frames and retry. A phone leaving is
+    seen from `Device1.Connected`. Idle time comes from GNOME's
+    `IdleMonitor` or the freedesktop `ScreenSaver`; where neither
+    answers, the helper reports a year, and presence never holds alerts.
+  - **Windows:** WinRT's `GattServiceProvider`, advertised connectable and
+    discoverable, with `WriteRequested`, `ReadRequested`, and
+    `SubscribedClientsChanged`; each notification goes to its one phone
+    with `NotifyValueForSubscribedClientAsync`. Idle time comes from
+    `GetLastInputInfo`, the helper's one `unsafe` call.
+  - Bonjour stays the daemon's on both, which advertises it there itself.
+  - Only compiled and unit-tested so far (`just lint-linux`,
+    `just lint-windows`); running against BlueZ, Windows, and an iPhone
+    is still to do.
 - GATT service (one fixed 128-bit UUID):
   - `info` (read): protocol version, and the computer's name only while the
     pairing dialog is open.
