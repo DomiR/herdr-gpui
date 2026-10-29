@@ -13,7 +13,17 @@ struct AppLock: ViewModifier {
 
     nonisolated static let setting = "requireFaceID"
     nonisolated static var store: UserDefaults? { UserDefaults(suiteName: "group.so.pen.herdr-remote") }
-    nonisolated static var isOn: Bool { store?.bool(forKey: setting) ?? false }
+    /// Fails closed: settings that cannot be read count as locked.
+    nonisolated static var isOn: Bool { store?.bool(forKey: setting) ?? true }
+
+    /// Moves a setting kept in the app's own defaults, before the App
+    /// Group held it, so turning the lock on is never lost.
+    static func migrate() {
+        let old = UserDefaults.standard
+        guard old.object(forKey: setting) != nil else { return }
+        if old.bool(forKey: setting) { store?.set(true, forKey: setting) }
+        old.removeObject(forKey: setting)
+    }
 
     func body(content: Content) -> some View {
         content
