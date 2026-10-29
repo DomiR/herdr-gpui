@@ -13,7 +13,7 @@ struct AnswerButtons: View {
         if state.phase == .question, let permission = state.permission, let question = state.question, !answers.isEmpty {
             HStack(spacing: 8) {
                 ForEach(answers, id: \.id) { option in
-                    Button(intent: AnswerIntent(computer: attributes.computerId, pane: attributes.pane, permission: permission, option: option.id, question: question)) {
+                    Button(intent: AnswerIntent(computer: attributes.computerId, pane: attributes.pane, permission: permission, option: option, question: question)) {
                         Text(option.name)
                             .font(.subheadline.weight(.semibold))
                             .lineLimit(1)

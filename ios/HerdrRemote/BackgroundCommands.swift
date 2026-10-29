@@ -36,7 +36,7 @@ enum BackgroundCommands {
         computer fingerprint: String,
         pane: String,
         permission: PermissionId,
-        option: String,
+        option: ChatActivityState.Option,
         question: String
     ) async throws {
         let session = try await signIn(fingerprint)
@@ -44,7 +44,7 @@ enum BackgroundCommands {
         guard ActivityAnswer.matches(question: question, permission: permission, option: option, in: chat.transcript) else {
             throw Failure.notWaiting
         }
-        let command = ChatCommand.answer(permission: permission, option: option)
+        let command = ChatCommand.answer(permission: permission, option: option.id)
         if let rejected = try await session.client.command(command, pane: pane, bearer: session.token) {
             throw Failure.rejected(rejected)
         }

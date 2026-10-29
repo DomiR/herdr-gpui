@@ -148,21 +148,42 @@ public struct AlertPresentation: Hashable, Sendable {
 /// Checks a Live Activity's answer against the chat it names. Every paired
 /// computer holds the push-to-start token, so any of them can start an
 /// activity that names another computer's chat; answering only when that
-/// chat really waits on the same question, with the same answer offered,
-/// keeps one computer from steering an answer to another.
+/// chat really waits on the question the activity showed, with the same
+/// answer under the same name and kind, keeps one computer from steering
+/// an answer to another.
 public enum ActivityAnswer {
+    /// The daemon's cut of a question for an activity
+    /// (`push::triggers::EXCERPT_CHARS`), in Unicode scalars as Rust counts.
+    public static let excerptLength = 120
+
     /// Whether `permission` in `transcript` is the question the activity
-    /// showed as `question` (the daemon's excerpt of its title: whitespace
-    /// collapsed, cut with an ellipsis) and offers `option`.
-    public static func matches(question: String, permission: PermissionId, option: String, in transcript: Transcript) -> Bool {
+    /// showed as `question`, and offers `option` exactly as it was shown.
+    /// "Always" answers never go from the lock screen, judged by the real
+    /// chat's kind, not the activity's.
+    public static func matches(
+        question: String,
+        permission: PermissionId,
+        option: ChatActivityState.Option,
+        in transcript: Transcript
+    ) -> Bool {
         guard let waiting = transcript.permissions.first(where: { $0.id == permission }),
-              waiting.options.contains(where: { $0.id == option })
+              let real = waiting.options.first(where: { $0.id == option.id }),
+              real.kind == option.kind, real.name == option.name,
+              real.kind != .allowAlways, real.kind != .rejectAlways
         else { return false }
-        let title = waiting.title.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        if question.hasSuffix("\u{2026}") {
-            let shown = question.dropLast()
-            return !shown.isEmpty && title.hasPrefix(shown) && title.count > shown.count
-        }
-        return title == question
+        return excerpt(waiting.title) == question
+    }
+
+    /// The daemon's `excerpt`: whitespace collapsed to single spaces, and
+    /// past `excerptLength` scalars, cut and ended with an ellipsis.
+    public static func excerpt(_ text: String) -> String {
+        let words = text.unicodeScalars
+            .split(whereSeparator: { $0.properties.isWhitespace })
+            .map { String(String.UnicodeScalarView($0)) }
+        let line = words.joined(separator: " ")
+        guard line.unicodeScalars.count > excerptLength else { return line }
+        var cut = String.UnicodeScalarView(line.unicodeScalars.prefix(excerptLength - 1))
+        while let last = cut.last, last.properties.isWhitespace { cut.removeLast() }
+        return String(cut) + "\u{2026}"
     }
 }

@@ -82,22 +82,46 @@ import Testing
     static func transcript(title: String) throws -> Transcript {
         let json = """
         {"agent":"claude","permissions":[{"id":7,"call_id":"c","title":\(String(reflecting: title)),
-          "options":[{"id":"allow","kind":"allow_once","name":"Allow once"}]}]}
+          "options":[{"id":"allow","kind":"allow_once","name":"Allow once"},
+                     {"id":"always","kind":"allow_always","name":"Always allow"}]}]}
         """
         return try JSONDecoder().decode(Transcript.self, from: Data(json.utf8))
     }
 
-    @Test func theSameQuestionOnTheNamedChatMatches() throws {
+    static let allow = ChatActivityState.Option(id: "allow", name: "Allow once", kind: .allowOnce)
+
+    @Test func theSameQuestionAndAnswerOnTheNamedChatMatch() throws {
         let chat = try Self.transcript(title: "Run  git push\norigin main")
-        #expect(ActivityAnswer.matches(question: "Run git push origin main", permission: 7, option: "allow", in: chat))
-        #expect(ActivityAnswer.matches(question: "Run git push\u{2026}", permission: 7, option: "allow", in: chat))
+        #expect(ActivityAnswer.matches(question: "Run git push origin main", permission: 7, option: Self.allow, in: chat))
+    }
+
+    @Test func aLongQuestionMatchesOnlyTheDaemonsExactCut() throws {
+        let title = String(repeating: "word ", count: 100)
+        let chat = try Self.transcript(title: title)
+        let cut = ActivityAnswer.excerpt(title)
+        #expect(cut.unicodeScalars.count <= ActivityAnswer.excerptLength)
+        #expect(cut.hasSuffix("word\u{2026}"))
+        #expect(ActivityAnswer.matches(question: cut, permission: 7, option: Self.allow, in: chat))
+        // A shorter prefix is not what the daemon would have shown.
+        #expect(!ActivityAnswer.matches(question: "word\u{2026}", permission: 7, option: Self.allow, in: chat))
+    }
+
+    @Test func excerptsMatchTheDaemons() {
+        // As `push/tests/triggers.rs` checks the Rust side.
+        #expect(ActivityAnswer.excerpt("  a\n\nb\tc  ") == "a b c")
+        let exact = String(repeating: "x", count: ActivityAnswer.excerptLength)
+        #expect(ActivityAnswer.excerpt(exact) == exact)
     }
 
     @Test func anotherQuestionIdOrAnswerDoesNot() throws {
         let chat = try Self.transcript(title: "Run git push origin main")
-        #expect(!ActivityAnswer.matches(question: "Delete the repo", permission: 7, option: "allow", in: chat))
-        #expect(!ActivityAnswer.matches(question: "Run git push origin main", permission: 8, option: "allow", in: chat))
-        #expect(!ActivityAnswer.matches(question: "Run git push origin main", permission: 7, option: "always", in: chat))
-        #expect(!ActivityAnswer.matches(question: "\u{2026}", permission: 7, option: "allow", in: chat))
+        let question = "Run git push origin main"
+        #expect(!ActivityAnswer.matches(question: "Delete the repo", permission: 7, option: Self.allow, in: chat))
+        #expect(!ActivityAnswer.matches(question: question, permission: 8, option: Self.allow, in: chat))
+        // The real "always" answer, relabelled as a one-time one.
+        let disguised = ChatActivityState.Option(id: "always", name: "Allow once", kind: .allowOnce)
+        #expect(!ActivityAnswer.matches(question: question, permission: 7, option: disguised, in: chat))
+        let honest = ChatActivityState.Option(id: "always", name: "Always allow", kind: .allowAlways)
+        #expect(!ActivityAnswer.matches(question: question, permission: 7, option: honest, in: chat))
     }
 }
