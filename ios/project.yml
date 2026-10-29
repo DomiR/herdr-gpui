@@ -40,6 +40,9 @@ targets:
     info:
       path: HerdrRemote/Info.plist
       properties:
+        # From the build settings, which the TestFlight upload sets.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleDisplayName: Herdr Remote
         # Only standard algorithms (TLS, AES-GCM, ECDH, the system's
         # signatures), which is exempt: builds skip the export compliance
@@ -98,6 +101,9 @@ targets:
     info:
       path: HerdrRemoteWatch/Info.plist
       properties:
+        # From the build settings, which the TestFlight upload sets.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleDisplayName: Herdr
         CFBundleIconName: AppIcon
         WKApplication: true
@@ -124,6 +130,9 @@ targets:
     info:
       path: HerdrRemoteShare/Info.plist
       properties:
+        # From the build settings, which the TestFlight upload sets.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleDisplayName: Herdr
         NSExtension:
           NSExtensionPointIdentifier: com.apple.share-services
@@ -154,6 +163,9 @@ targets:
     info:
       path: HerdrRemoteNotifications/Info.plist
       properties:
+        # From the build settings, which the TestFlight upload sets.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleDisplayName: Herdr Remote
         NSExtension:
           NSExtensionPointIdentifier: com.apple.usernotifications.service
@@ -180,6 +192,9 @@ targets:
     info:
       path: HerdrRemoteWidgets/Info.plist
       properties:
+        # From the build settings, which the TestFlight upload sets.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleDisplayName: Herdr Remote
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension

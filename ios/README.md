@@ -123,7 +123,8 @@ app, once the repository's `testflight` environment holds these secrets:
   certificates or profiles are stored.
 - **What it uploads:** the export re-signs for distribution and uploads to
   App Store Connect.
-- **Build number:** the workflow's run number.
+- **Build number:** the upload's UTC time (`YYYYMMDDHHMM`), so CI and local
+  uploads always count up together.
 - **Running it locally:** `just ios-testflight` does the same with the same
   variables. Any it does not find set come from `pass`: the issuer ID from
   `apple/app-store-connect-issuer-id` and the key from
