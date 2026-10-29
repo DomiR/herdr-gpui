@@ -37,13 +37,13 @@ pub(super) struct Target {
 }
 
 /// One open stream, counted against its device until it is dropped.
-struct Connected {
+pub(crate) struct Connected {
     state: Shared,
     device: DeviceId,
 }
 
 impl Connected {
-    fn new(state: Shared, device: DeviceId) -> Self {
+    pub(crate) fn new(state: Shared, device: DeviceId) -> Self {
         *state.connected().entry(device.clone()).or_default() += 1;
         Self { state, device }
     }

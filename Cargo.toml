@@ -57,6 +57,8 @@ jiff                 = "0.2.38"
 fontdb               = "0.24"
 foreign-types        = "0.5"
 futures-lite         = "2"
+# Sends frames on herdr-remote-control's WebSocket test client; axum already links it.
+futures-util         = { default-features = false, features = ["sink"], version = "0.3" }
 getrandom            = "0.4.3"
 gpui                 = { package = "gpui-pre", version = "=0.3.6" }
 gpui_platform        = { package = "gpui-pre-platform", version = "=0.3.6" }
@@ -164,9 +166,12 @@ thiserror            = "2"
 tokio                = { features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"], version = "1" }
 # Server-rendered HTML for the remote control web app, escaped by default.
 maud                 = "0.27"
-axum                 = { default-features = false, features = ["http1", "json", "matched-path", "query", "tokio"], version = "0.8" }
+axum                 = { default-features = false, features = ["http1", "json", "matched-path", "query", "tokio", "ws"], version = "0.8" }
 # Drives herdr-remote-control's router in tests without a socket; axum already links it.
 tower                = { default-features = false, features = ["util"], version = "0.5" }
+# A WebSocket client for herdr-remote-control's live socket tests; axum's
+# `ws` feature already links this version.
+tokio-tungstenite    = { default-features = false, features = ["handshake"], version = "0.29" }
 tokio-rustls         = { default-features = false, features = ["ring", "tls12"], version = "0.26" }
 # herdr-remote-control's APNs sender for iOS Live Activities: APNs speaks only
 # HTTP/2, which ureq lacks. hyper's own HTTP/2 client (plus h2) over the

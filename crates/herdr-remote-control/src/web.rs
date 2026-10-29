@@ -24,6 +24,8 @@ pub(crate) use indicators::{Indicators, Look};
 pub(crate) use log::report_limit;
 pub(crate) use origins::Origins;
 pub(crate) use render::now_ms;
+pub(crate) use stream::Connected;
+pub(crate) use terminal::read_screen;
 pub(crate) use uploads::Uploads;
 
 use crate::control::DeviceId;
@@ -179,6 +181,9 @@ pub(crate) fn router(state: Shared) -> Router {
         )
         .route("/api/term/{pane}/action", post(terminal::action))
         .route("/api/stream", get(stream::stream))
+        .route("/api/v2/chat/{pane}", get(crate::native::get_chat))
+        .route("/api/v2/home", get(crate::native::get_home))
+        .route("/api/v2/live", get(crate::native::live))
         .route("/f/home", get(fragments::home))
         .route("/f/board", get(fragments::board))
         .route("/f/chat/{pane}", get(fragments::chat))
@@ -308,7 +313,7 @@ impl FromRequestParts<Shared> for Device {
     }
 }
 
-fn bearer(headers: &HeaderMap) -> Option<&str> {
+pub(crate) fn bearer(headers: &HeaderMap) -> Option<&str> {
     headers
         .get(header::AUTHORIZATION)?
         .to_str()
@@ -337,6 +342,8 @@ pub(crate) enum ApiError {
     NotFound,
     #[error(transparent)]
     Push(#[from] crate::push::Error),
+    #[error("too many connections from this device")]
+    TooManyStreams,
     #[error("sign in again")]
     Unauthorized,
     #[error(transparent)]
@@ -348,6 +355,7 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let status = match &self {
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
+            Self::TooManyStreams => StatusCode::TOO_MANY_REQUESTS,
             Self::NotFound => StatusCode::NOT_FOUND,
             Self::Auth(auth::Error::RateLimited) => StatusCode::TOO_MANY_REQUESTS,
             Self::Auth(auth::Error::UnknownDevice) => StatusCode::FORBIDDEN,
