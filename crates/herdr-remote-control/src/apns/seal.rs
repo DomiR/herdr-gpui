@@ -1,5 +1,5 @@
 //! Notification payloads sealed to one iPhone, so APNs relays bytes it
-//! cannot read (`docs/ios-app-plan.md`, Notifications). The app's
+//! cannot read (`docs/ios-app-plan.md`, "Notifications, exactly"). The app's
 //! Notification Service Extension opens them with a Secure Enclave
 //! key-agreement key whose public half the device registered.
 //!
@@ -8,9 +8,8 @@
 //! with `INFO` as the associated data. CryptoKit's
 //! `hkdfDerivedSymmetricKey(using:salt:sharedInfo:outputByteCount:)` derives
 //! the same key, which the shared fixture checks.
-//!
-//! Phase 0 spike: tested against the Swift side, wired into pushes in phase 5.
 
+use super::{Error, Result};
 use aes_gcm::{Aes256Gcm, KeyInit as _, aead::Aead as _, aead::Payload};
 use hkdf::Hkdf;
 use p256::{PublicKey, SecretKey, elliptic_curve::zeroize::Zeroizing};
@@ -21,10 +20,19 @@ pub(crate) const INFO: &[u8] = b"herdr-remote-notify-v1";
 const POINT_LEN: usize = 65;
 const NONCE_LEN: usize = 12;
 
-#[derive(Debug, thiserror::Error, Eq, PartialEq)]
-pub enum Error {
-    #[error("could not seal the notification")]
-    Seal,
+/// Seals `plaintext` to `device` with a fresh one-time key and nonce.
+pub(crate) fn seal(device: &PublicKey, plaintext: &[u8]) -> Result<Vec<u8>> {
+    let mut nonce = [0; NONCE_LEN];
+    getrandom::fill(&mut nonce).map_err(Error::Random)?;
+    let ephemeral = loop {
+        let mut bytes = Zeroizing::new([0; 32]);
+        getrandom::fill(bytes.as_mut_slice()).map_err(Error::Random)?;
+        // A random 32-byte value is a valid scalar but for odds of about 2^-32.
+        if let Ok(key) = SecretKey::from_slice(bytes.as_slice()) {
+            break key;
+        }
+    };
+    seal_with(device, plaintext, &ephemeral, &nonce)
 }
 
 /// Seals `plaintext` to `device` with the given one-time key and nonce;
@@ -34,7 +42,7 @@ pub(crate) fn seal_with(
     plaintext: &[u8],
     ephemeral: &SecretKey,
     nonce: &[u8; NONCE_LEN],
-) -> Result<Vec<u8>, Error> {
+) -> Result<Vec<u8>> {
     let ephemeral_point = ephemeral.public_key().to_sec1_bytes();
     let device_point = device.to_sec1_bytes();
     let mut salt = Vec::with_capacity(2 * POINT_LEN);

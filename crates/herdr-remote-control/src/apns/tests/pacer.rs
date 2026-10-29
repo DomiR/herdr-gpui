@@ -7,9 +7,12 @@ fn live(pane: &str, event: Event, phase: Phase, step: &str) -> Live {
         pane: pane.to_owned(),
         state: ContentState {
             cost: None,
+            options: Vec::new(),
+            permission: None,
             phase,
             plan_done: None,
             plan_total: None,
+            previous: Vec::new(),
             question: None,
             started_at: 0,
             step: step.to_owned(),

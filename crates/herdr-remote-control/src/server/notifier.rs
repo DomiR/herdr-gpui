@@ -1,10 +1,13 @@
 //! Turns chat changes into push notifications for every device that asked
 //! for them. It keeps its own copy of each transcript, stepped with the
-//! shared reducer, so a trigger sees the state before each change. Sending
-//! is blocking HTTPS, so it runs on the blocking pool; a push service that
-//! says the subscription is gone drops it from the device.
+//! shared reducer, so a trigger sees the state before each change. A
+//! device the native app registered for alerts gets them sealed through
+//! APNs; any other gets Web Push, which is blocking HTTPS on the blocking
+//! pool. A push service that says a token or subscription is gone drops it
+//! from the device.
 
 use crate::{
+    apns::{self, Registration, alert::Sealed},
     control::DeviceId,
     hub::Event,
     push::{Chat, Delivery, Notification, Outcome, Subscription, Throttle, decide},
@@ -137,12 +140,13 @@ fn offer(
     outbox: &mut Outbox,
     notification: Notification,
 ) {
+    let alerted = alert_devices(state);
     let subscribed: Vec<DeviceId> = state
         .auth()
         .devices()
         .list(|_| false)
         .into_iter()
-        .filter(|device| device.push)
+        .filter(|device| device.push || alerted.contains(&device.id))
         .map(|device| device.id)
         .collect();
     throttles.retain(|device, _| subscribed.contains(device));
@@ -196,17 +200,82 @@ impl Outbox {
     }
 }
 
+/// Devices that get sealed alerts through APNs: those that registered an
+/// alert token and a notify key, while the user's APNs key is set up.
+fn alert_devices(state: &State) -> Vec<DeviceId> {
+    if state.apns.is_none() {
+        return Vec::new();
+    }
+    super::live::registrations(state)
+        .into_iter()
+        .filter(|(_, registration)| registration.alerts().is_some())
+        .map(|(device, _)| device)
+        .collect()
+}
+
 /// Starts the task that sends `device`'s notifications one at a time.
 fn deliver(state: Arc<State>, device: DeviceId) -> mpsc::Sender<Notification> {
     let (queue, mut pending) = mpsc::channel(OUTBOX);
     tokio::spawn(async move {
         while let Some(notification) = pending.recv().await {
+            if send_alert(&state, &device, &notification).await {
+                continue;
+            }
             let state = state.clone();
             let device = device.clone();
             let _ = tokio::task::spawn_blocking(move || send(&state, &device, &notification)).await;
         }
     });
     queue
+}
+
+/// Sends `notification` sealed through APNs when `device` registered for
+/// alerts; `false` when it did not, so Web Push carries it instead.
+async fn send_alert(state: &Arc<State>, device: &DeviceId, notification: &Notification) -> bool {
+    let Some(sender) = &state.apns else {
+        return false;
+    };
+    let registration = Registration::from_stored(
+        state
+            .auth()
+            .devices()
+            .get(device)
+            .and_then(|record| record.apns.as_ref()),
+    );
+    let Some((token, key)) = registration.alerts() else {
+        return false;
+    };
+    let (token, key) = (token.clone(), *key);
+    let sealed = Sealed::new(
+        notification,
+        apns::computer_id(&state.fingerprint),
+        waiting(state),
+    );
+    let Ok(push) = apns::alert::push(sealed, &notification.tag, |plaintext| {
+        apns::seal::seal(&key, plaintext)
+    }) else {
+        return true;
+    };
+    if let Ok(apns::Outcome::Gone) = sender.post(&token, &push, now_ms() / 1000).await {
+        let state = state.clone();
+        let device = device.clone();
+        let _ = tokio::task::spawn_blocking(move || forget(&state, &device, &token)).await;
+    }
+    true
+}
+
+/// Drops `token` from `device`'s registration after APNs refused it.
+/// Blocking.
+fn forget(state: &State, device: &DeviceId, token: &apns::DeviceToken) {
+    let mut auth = state.auth();
+    let devices = auth.devices_mut();
+    let mut registration =
+        Registration::from_stored(devices.get(device).and_then(|record| record.apns.as_ref()));
+    if registration.forget(token)
+        && let Ok(value) = registration.to_stored()
+    {
+        let _ = devices.set_apns(device, value);
+    }
 }
 
 /// Sends one notification. Blocking.

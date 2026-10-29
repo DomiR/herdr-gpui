@@ -7,6 +7,8 @@ use herdr_chat_protocol::{
     PlanStatus, Status, Tool, ToolKind, ToolStatus, Transcript, Turn, TurnEnd, TurnSummary, Usage,
 };
 
+mod buttons;
+
 const NOW_MS: u64 = 1_800_000_000_000;
 const STARTED_MS: u64 = 1_799_999_990_000;
 /// `state.fingerprint`'s form: uppercase hex pairs joined by colons (here

@@ -4,9 +4,11 @@ use super::*;
 use crate::push::Chat;
 use p256::{SecretKey, ecdsa::SigningKey};
 
+mod alert;
 mod config;
 mod decide;
 mod jwt;
+mod notify_key;
 mod pacer;
 mod payload;
 mod seal;
