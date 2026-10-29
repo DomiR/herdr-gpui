@@ -29,6 +29,21 @@ struct RootView: View {
             }
         }
         .sheet(isPresented: $pairing) { PairView() }
+        .overlay(alignment: .bottom) {
+            if let offer = model.nearbyOffer {
+                ZStack(alignment: .bottom) {
+                    Color.black.opacity(0.25).ignoresSafeArea()
+                    ProximityCard(computer: offer) { model.dismissedNearby.insert(offer.id) }
+                        .id(offer.id)
+                }
+            }
+        }
+        .animation(.spring(duration: 0.4), value: model.nearbyOffer?.id)
+        // Bluetooth looks for computers only while pairing is likely, so
+        // its permission prompt comes when the person is pairing.
+        .onChange(of: pairing || model.computers.isEmpty, initial: true) { _, looking in
+            if looking { model.bluetooth.start() } else { model.bluetooth.stop() }
+        }
         #if DEBUG
         .task { await followLaunchArguments() }
         #endif
@@ -46,8 +61,9 @@ extension RootView {
     /// For the simulator loop (`ios/README.md`), which cannot tap:
     /// `-pairLink URL` pairs without the camera (the desktop still
     /// approves), `-openLink URL` opens a Live Activity's link as a tap on
-    /// the activity would, `-openTerm PANE` opens a terminal pane of the
-    /// first computer, and `-tab board|computers|search` picks a tab.
+    /// the activity would, `-openTerm PANE` opens the terminal pane of
+    /// whichever computer lists it, and `-tab board|computers|search`
+    /// picks a tab.
     func followLaunchArguments() async {
         let defaults = UserDefaults.standard
         if let link = defaults.string(forKey: "pairLink"),
@@ -66,8 +82,11 @@ extension RootView {
         case "search": tab = .search
         default: break
         }
-        if let pane = defaults.string(forKey: "openTerm"), let computer = model.computers.first {
-            model.pendingRoute = .term(PaneKey(device: computer.device, pane: pane), title: pane)
+        if let pane = defaults.string(forKey: "openTerm") {
+            try? await Task.sleep(for: .seconds(2))
+            if let item = model.fleet.terminalItems.first(where: { $0.terminal.panes.contains { $0.pane == pane } }) {
+                model.pendingRoute = .term(PaneKey(device: item.computer.device, pane: pane), title: item.terminal.label)
+            }
         }
     }
 }

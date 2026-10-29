@@ -176,6 +176,9 @@ jobs:
         if: matrix.arch == 'x86_64'
         run: arch -x86_64 /usr/bin/true || sudo softwareupdate --install-rosetta --agree-to-license
       - run: cargo build --locked --release -p herdr-gpui -p herdr-acp -p herdr-remote-control -p herdr-automate --target "$TARGET"
+      # Nearby pairing's Bluetooth side, in Swift; the app starts it beside
+      # its executable while the pairing dialog is open.
+      - run: bash scripts/release/build-nearby.sh "$TARGET"
       # Rosetta translates an x86_64 executable on its first launch, which can
       # outlast the smoke test's 10 second limit. Launch it once untimed, as
       # CI does, so the smoke test finds it translated.
@@ -204,6 +207,7 @@ jobs:
             target/${{ matrix.target }}/release/herdr-acp
             target/${{ matrix.target }}/release/herdr-remote-control
             target/${{ matrix.target }}/release/herdr-automate
+            target/${{ matrix.target }}/release/herdr-nearby
             target/${{ matrix.target }}/release/THIRD-PARTY-NOTICES.txt
           if-no-files-found: error
           retention-days: 7
@@ -585,7 +589,7 @@ jobs:
       - name: Assemble without executing the downloaded binaries
         run: |
           mkdir dist
-          chmod +x binaries/arm64/herdr-gpui binaries/x86_64/herdr-gpui binaries/arm64/herdr-acp binaries/x86_64/herdr-acp binaries/arm64/herdr-remote-control binaries/x86_64/herdr-remote-control binaries/arm64/herdr-automate binaries/x86_64/herdr-automate
+          chmod +x binaries/arm64/herdr-gpui binaries/x86_64/herdr-gpui binaries/arm64/herdr-acp binaries/x86_64/herdr-acp binaries/arm64/herdr-remote-control binaries/x86_64/herdr-remote-control binaries/arm64/herdr-automate binaries/x86_64/herdr-automate binaries/arm64/herdr-nearby binaries/x86_64/herdr-nearby
           cmp binaries/arm64/THIRD-PARTY-NOTICES.txt binaries/x86_64/THIRD-PARTY-NOTICES.txt
           bash scripts/release/package-macos.sh "$VERSION" binaries/arm64/herdr-gpui binaries/x86_64/herdr-gpui dist binaries/arm64/THIRD-PARTY-NOTICES.txt
       - name: Sign and notarize app and DMG (never launch the app)

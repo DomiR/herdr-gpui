@@ -27,7 +27,7 @@ use std::time::Duration;
 const NEW_CHAT_WAIT: Duration = Duration::from_secs(10);
 
 /// Runs `action` with the auth state on the blocking pool.
-async fn with_auth<T: Send + 'static>(
+pub(super) async fn with_auth<T: Send + 'static>(
     state: &Shared,
     action: impl FnOnce(&mut crate::auth::Auth) -> Result<T, ApiError> + Send + 'static,
 ) -> Result<T, ApiError> {

@@ -53,6 +53,36 @@ struct PairView: View {
 
     private var scan: some View {
         Form {
+            let nearby = (model.nearby.computers + model.bluetooth.computers).filter { candidate in
+                candidate.pairing && !model.computers.contains { candidate.matches($0.fingerprint) }
+            }
+            Section {
+                ForEach(nearby) { computer in
+                    Button {
+                        pairing.pair(nearby: computer, bluetooth: model.bluetooth, deviceName: deviceName) { model.add($0) }
+                    } label: {
+                        HStack {
+                            Label(computer.name, systemImage: "laptopcomputer")
+                            Spacer()
+                            if case .bluetooth = computer.route {
+                                Image(systemName: "dot.radiowaves.left.and.right").accessibilityLabel("Bluetooth")
+                            } else {
+                                Image(systemName: "wifi").accessibilityLabel("Same network")
+                            }
+                        }
+                    }
+                }
+                if nearby.isEmpty {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Looking for computers nearby").foregroundStyle(.secondary)
+                    }
+                }
+            } header: {
+                Text("Nearby")
+            } footer: {
+                Text("A computer appears here while Remote control > Pair device is open on it.")
+            }
             Section {
                 QRScanner { text in start(text) }
                     .frame(height: 280)

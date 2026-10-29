@@ -1,8 +1,11 @@
 import Foundation
 import HerdrRemoteCore
+import os
 
 /// `ComputerLink`'s network for one paired computer: pings, sessions from
 /// the device key, and the live socket over the pinned session.
+private let log = Logger(subsystem: "so.pen.herdr-remote", category: "live")
+
 enum LiveSocket {
     static func io(for computer: Computer, sessions: Sessions) -> LinkIO {
         LinkIO(
@@ -35,9 +38,12 @@ enum LiveSocket {
                     while !Task.isCancelled {
                         let message = try await task.receive()
                         guard case let .string(text) = message else { continue }
+                        log.debug("received \(text.prefix(60), privacy: .public)")
                         // A message a newer daemon adds is skipped, not fatal.
-                        if let event = try? JSONDecoder().decode(LiveEvent.self, from: Data(text.utf8)) {
-                            continuation.yield(event)
+                        do {
+                            continuation.yield(try JSONDecoder().decode(LiveEvent.self, from: Data(text.utf8)))
+                        } catch {
+                            log.error("skipped a live message: \(String(describing: error), privacy: .public)")
                         }
                     }
                     continuation.finish()
@@ -58,6 +64,7 @@ enum LiveSocket {
             events: events,
             send: { request in
                 let data = try JSONEncoder().encode(request)
+                log.debug("sending \(String(decoding: data, as: UTF8.self), privacy: .public)")
                 try await task.send(.string(String(decoding: data, as: UTF8.self)))
             },
             close: { task.cancel(with: .goingAway, reason: nil) }

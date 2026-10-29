@@ -95,6 +95,19 @@ pub(crate) fn answer(state: &State, stop: &watch::Sender<bool>, request: Request
             .answer(&id, allow, &code, now)
             .map(Response::Pairing),
         Request::CancelPairing { id } => state.auth().cancel(&id).map(|()| Response::Done),
+        // Herdr UI relays these from a phone over Bluetooth; the code the
+        // phone shows is what authenticates it, as over the network.
+        Request::NearbyStart { public_key } => state
+            .auth()
+            .nearby_start(None, &public_key, &state.computer, &state.fingerprint, now)
+            .map(Response::NearbyStarted),
+        Request::NearbyReveal { session, nonce } => {
+            let origins = state.origins();
+            state
+                .auth()
+                .nearby_reveal(&session, &nonce, &state.fingerprint, &origins, now)
+                .map(Response::NearbyRevealed)
+        }
         Request::Devices => {
             let connected = state.connected();
             return Response::Devices {

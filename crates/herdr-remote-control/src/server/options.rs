@@ -24,6 +24,8 @@ pub enum Certificate {
 pub struct Options {
     /// Where to listen: every interface (`[::]`, dual stack) or one address.
     pub bind: IpAddr,
+    /// Whether to advertise over Bonjour, for phones nearby to find it.
+    pub bonjour: bool,
     pub certificate: Certificate,
     /// The folder chat sockets live in, as Herdr UI resolved it; `None`
     /// resolves it from this process's environment.
@@ -82,6 +84,9 @@ Options:
                            Whether notifications may quote the chat (default generic)
   --device-idle-days N     Forget devices unseen this long, 0 for never
                            (default 30)
+  --no-bonjour             Do not advertise over Bonjour; phones then pair
+                           by QR code only (on macOS, Herdr UI advertises
+                           while its pairing dialog is open instead)
   -h, --help               Show this help
   -V, --version            Show the version
 ";
@@ -101,6 +106,7 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Invocation, Par
     let mut privacy = Privacy::Generic;
     let mut idle_days = DEFAULT_IDLE_DAYS;
     let (mut herdr_socket, mut chat_dir) = (None, None);
+    let mut bonjour = true;
     while let Some(arg) = args.next() {
         let name = arg.to_str().unwrap_or_default().to_owned();
         let mut value = |option: &'static str| args.next().ok_or(ParseError::Missing(option));
@@ -150,6 +156,7 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Invocation, Par
                         option: "--device-idle-days",
                     })?;
             }
+            "--no-bonjour" => bonjour = false,
             "-h" | "--help" => return Ok(Invocation::Help),
             _ => return Err(ParseError::Unknown(name)),
         }
@@ -161,6 +168,7 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Invocation, Par
     };
     Ok(Invocation::Serve(Options {
         bind,
+        bonjour,
         certificate,
         chat_dir,
         device_idle: (idle_days != 0).then(|| Duration::from_secs(idle_days * 24 * 60 * 60)),

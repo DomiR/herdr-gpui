@@ -121,8 +121,22 @@ app, once the repository's `testflight` environment holds these secrets:
 
 The app keeps the computer's addresses and its CA fingerprint in the
 Keychain, with a device key in the Secure Enclave. It trusts the computer
-through the fingerprint alone, so it needs no certificate profile. Nearby
-pairing over Bluetooth and Bonjour comes in phase 2.
+through the fingerprint alone, so it needs no certificate profile.
+
+### Nearby, without the camera
+
+While the pairing dialog is open, the computer can also be found nearby:
+
+- **Same network:** the daemon advertises `_herdr-remote._tcp` with
+  `pairing=1` in its TXT record.
+- **Bluetooth (macOS):** the `herdr-nearby` helper advertises the nearby
+  service.
+
+The app shows a card for it (or lists it in the pair sheet). Tap Pair,
+compare the six digits with the computer's dialog, and choose Allow
+there. The code comes from a commitment-based exchange
+(`docs/ios-app-plan.md`, "Nearby pairing, exactly"), so it also vouches
+for the CA fingerprint the claim then pins.
 
 ## APNs key for the daemon
 

@@ -26,6 +26,7 @@ server = [
     "dep:hyper-util",
     "dep:if-addrs",
     "dep:maud",
+    "dep:mdns-sd",
     "dep:p256",
     "dep:pulldown-cmark",
     "dep:rcgen",
@@ -74,6 +75,8 @@ hyper          = { optional = true, workspace = true }
 hyper-util     = { optional = true, workspace = true }
 if-addrs       = { optional = true, workspace = true }
 maud           = { optional = true, workspace = true }
+# Advertises the daemon over Bonjour so phones nearby find it to pair.
+mdns-sd        = { optional = true, workspace = true }
 p256           = { optional = true, workspace = true }
 pulldown-cmark = { optional = true, workspace = true }
 rcgen          = { optional = true, workspace = true }

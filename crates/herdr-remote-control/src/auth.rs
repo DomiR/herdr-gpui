@@ -11,16 +11,20 @@
 mod devices;
 mod handoff;
 mod limits;
+pub(crate) mod nearby;
 mod pairing;
 mod session;
 
 pub(crate) use devices::Devices;
 pub(crate) use handoff::{Handoff, Handoffs};
 pub(crate) use limits::RateLimiter;
+pub(crate) use nearby::NearbySessions;
 pub(crate) use pairing::{Claim, ClaimId, NewDevice, Pairings};
 pub(crate) use session::{Challenge, ChallengeId, Session, Sessions};
 
-use crate::control::{self, DeviceId, Offer, PairingId, PairingState};
+use crate::control::{
+    self, DeviceId, NearbyRevealed, NearbyStarted, Offer, PairingId, PairingState,
+};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use p256::ecdsa::VerifyingKey;
 use sha2::{Digest, Sha256};
@@ -56,8 +60,14 @@ pub enum Error {
     InvalidSignature,
     #[error("the pairing token is not valid")]
     InvalidToken,
+    #[error("too many phones are pairing nearby; try again shortly")]
+    NearbyBusy,
+    #[error("the nearby pairing did not check out; start again")]
+    NearbyCrypto,
     #[error("the remote control daemon has no address to offer")]
     NoAddress,
+    #[error("open Remote control > Pair device on the computer first")]
+    NoPairing,
     #[error("the pairing is not waiting for an answer")]
     NotClaimed,
     #[error("could not draw random bytes")]
@@ -83,6 +93,8 @@ pub enum Error {
     UnknownClaim,
     #[error("no such device")]
     UnknownDevice,
+    #[error("no such nearby pairing, or it expired")]
+    UnknownNearby,
     #[error("no such pairing, or it expired")]
     UnknownPairing,
     // keep-sorted end
@@ -120,6 +132,7 @@ impl From<&Error> for control::ErrorCode {
             Error::UnknownPairing => Self::UnknownPairing,
             Error::UnknownDevice => Self::UnknownDevice,
             Error::NotClaimed => Self::NotClaimed,
+            Error::NoPairing => Self::NoPairing,
             _ => Self::Other,
         }
     }
@@ -262,6 +275,7 @@ pub(crate) struct Auth {
     challenge_limit: RateLimiter<IpAddr>,
     devices: Devices,
     handoffs: Handoffs,
+    nearby: NearbySessions,
     pair_limit: RateLimiter<IpAddr>,
     pairings: Pairings,
     /// Bumped whenever sessions end early, so open streams check again.
@@ -282,6 +296,7 @@ impl Auth {
             ),
             devices,
             handoffs: Handoffs::load(state_dir),
+            nearby: NearbySessions::default(),
             pair_limit: RateLimiter::new(
                 limits.pair_burst,
                 limits.pair_refill_ms,
@@ -350,6 +365,54 @@ impl Auth {
             return Err(Error::RateLimited);
         }
         self.pairings.claim(token, device_name, public_key, now_ms)
+    }
+
+    /// Whether a pairing dialog is open and unclaimed, which Bonjour
+    /// advertises so phones nearby offer to pair.
+    pub(crate) fn pairing_open(&mut self, now_ms: u64) -> bool {
+        self.pairings.waiting(now_ms)
+    }
+
+    /// A nearby phone's first step. `client` is its address over the
+    /// network, rate limited as claims are; Herdr UI relaying Bluetooth
+    /// passes `None`.
+    pub(crate) fn nearby_start(
+        &mut self,
+        client: Option<IpAddr>,
+        public_key: &str,
+        computer: &str,
+        fingerprint: &str,
+        now_ms: u64,
+    ) -> Result<NearbyStarted> {
+        if let Some(client) = client
+            && !self.pair_limit.allow(client, now_ms)
+        {
+            return Err(Error::RateLimited);
+        }
+        if !self.pairings.waiting(now_ms) {
+            return Err(Error::NoPairing);
+        }
+        self.nearby.start(public_key, computer, fingerprint, now_ms)
+    }
+
+    /// A nearby phone's second step: seals a fresh token for the open
+    /// pairing, whose claim will carry the code both sides computed.
+    pub(crate) fn nearby_reveal(
+        &mut self,
+        session: &str,
+        nonce: &str,
+        fingerprint: &str,
+        origins: &[String],
+        now_ms: u64,
+    ) -> Result<NearbyRevealed> {
+        let started = self.nearby.take(session, now_ms)?;
+        if !self.pairings.waiting(now_ms) {
+            return Err(Error::NoPairing);
+        }
+        let token = random_bytes::<SECRET_LEN>()?;
+        let (revealed, code) = started.reveal(nonce, fingerprint, &token, origins)?;
+        self.pairings.set_nearby(&token, code, now_ms)?;
+        Ok(revealed)
     }
 
     /// Notes that `claim` came from an app installed from another computer.

@@ -17,8 +17,12 @@ struct HerdrRemoteApp: App {
                 .task { model.tokens.start() }
                 .onChange(of: phase, initial: true) { _, phase in
                     switch phase {
-                    case .active: model.fleet.activate()
-                    case .background: model.fleet.deactivate()
+                    case .active:
+                        model.fleet.activate()
+                        model.nearby.start()
+                    case .background:
+                        model.fleet.deactivate()
+                        model.nearby.stop()
                     default: break
                     }
                 }

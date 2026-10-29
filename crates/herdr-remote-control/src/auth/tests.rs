@@ -5,6 +5,8 @@ mod devices;
 mod handoff;
 mod inputs;
 mod limits;
+mod nearby;
+mod nearby_vectors;
 mod pairing;
 mod session;
 

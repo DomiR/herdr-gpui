@@ -43,6 +43,8 @@ targets:
             CFBundleURLSchemes: [herdr-remote]
         NSCameraUsageDescription: Herdr Remote reads the pairing QR code Herdr shows on your computer.
         NSLocalNetworkUsageDescription: Herdr Remote talks to Herdr on your computers over your local network.
+        NSBonjourServices: [_herdr-remote._tcp]
+        NSBluetoothAlwaysUsageDescription: Herdr Remote finds your computers nearby over Bluetooth when you pair one.
         NSSupportsLiveActivities: true
         NSSupportsLiveActivitiesFrequentUpdates: true
         UILaunchScreen: {}

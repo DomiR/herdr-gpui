@@ -5028,6 +5028,7 @@ dependencies = [
  "hyper-util",
  "if-addrs",
  "maud",
+ "mdns-sd",
  "p256",
  "pulldown-cmark",
  "qrcode",

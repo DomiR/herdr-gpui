@@ -1,6 +1,9 @@
 import Foundation
 import HerdrRemoteCore
 import Observation
+import os
+
+private let log = Logger(subsystem: "so.pen.herdr-remote", category: "fleet")
 
 /// A chat row with where it lives, for lists across computers.
 struct ChatItem: Identifiable, Hashable {
@@ -197,6 +200,8 @@ final class Fleet {
             machines[index].home = home
             machines[index].stale = false
             cache.save(home: home, device: device)
+        case let .event(.error(message)):
+            log.error("\(self.machines[index].computer.name, privacy: .public) refused: \(message, privacy: .public)")
         case let .event(.termScreen(screen)):
             terms[PaneKey(device: device, pane: screen.pane)]?.apply(screen)
         case let .event(event):

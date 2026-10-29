@@ -14,6 +14,7 @@ mod assets;
 mod fragments;
 mod indicators;
 mod log;
+mod nearby;
 mod origins;
 mod render;
 mod stream;
@@ -149,6 +150,8 @@ pub(crate) fn router(state: Shared) -> Router {
         .route(PAIR_CLAIM, post(api::claim))
         .route("/api/pair/claim/{claim}", get(api::claim_status))
         .route("/api/session/challenge", post(api::challenge))
+        .route(nearby::START, post(nearby::start))
+        .route(nearby::REVEAL, post(nearby::reveal))
         .route("/api/origins", get(api::origins))
         .route("/api/session", post(api::session))
         .route("/api/handoff", post(api::handoff))
@@ -234,6 +237,9 @@ async fn security_headers(request: Request, next: Next) -> Response {
 /// `PAIR_CLAIM` or one segment under it, never a path that only starts with
 /// the same letters.
 fn is_pair_claim(path: &str) -> bool {
+    if path == nearby::START || path == nearby::REVEAL {
+        return true;
+    }
     match path.strip_prefix(PAIR_CLAIM) {
         Some("") => true,
         Some(rest) => rest
@@ -245,8 +251,9 @@ fn is_pair_claim(path: &str) -> bool {
 
 /// Admits this computer's own origins across addresses, and apps its paired
 /// devices use. Any other origin may only claim a pairing, which takes the
-/// token from a code the desktop shows, and ask how the claim stands;
-/// everything else is refused outright, so no page elsewhere can drive the
+/// token from a code the desktop shows, ask how the claim stands, and run
+/// nearby pairing's code exchange, which only works while the desktop's
+/// pairing dialog is open; everything else is refused outright, so no page elsewhere can drive the
 /// API.
 async fn cors(Extract(state): Extract<Shared>, request: Request, next: Next) -> Response {
     let origin = request
@@ -357,7 +364,11 @@ impl IntoResponse for ApiError {
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
             Self::TooManyStreams => StatusCode::TOO_MANY_REQUESTS,
             Self::NotFound => StatusCode::NOT_FOUND,
-            Self::Auth(auth::Error::RateLimited) => StatusCode::TOO_MANY_REQUESTS,
+            Self::Auth(auth::Error::RateLimited | auth::Error::NearbyBusy) => {
+                StatusCode::TOO_MANY_REQUESTS
+            }
+            Self::Auth(auth::Error::NoPairing) => StatusCode::CONFLICT,
+            Self::Auth(auth::Error::UnknownNearby) => StatusCode::NOT_FOUND,
             Self::Auth(auth::Error::UnknownDevice) => StatusCode::FORBIDDEN,
             Self::Auth(
                 auth::Error::Store { .. }

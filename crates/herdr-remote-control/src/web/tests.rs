@@ -15,6 +15,7 @@ use tower::ServiceExt;
 mod apps;
 mod handoff;
 mod indicators;
+mod nearby;
 mod origins;
 mod pairing;
 mod pull_requests;

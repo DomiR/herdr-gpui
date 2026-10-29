@@ -4,6 +4,7 @@ use super::{
 };
 use std::{ffi::OsString, net::IpAddr, path::PathBuf};
 
+mod bonjour;
 mod control_socket;
 mod idle;
 mod shutdown;

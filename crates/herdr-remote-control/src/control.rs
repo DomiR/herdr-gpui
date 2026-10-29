@@ -125,6 +125,19 @@ pub enum Request {
     PullRequests {
         snapshot: pull_requests::PullRequests,
     },
+    /// A phone nearby starts pairing over Bluetooth, which Herdr UI relays:
+    /// the first step of the code exchange (`docs/ios-app-plan.md`,
+    /// "Nearby pairing, exactly"). Refused unless a pairing dialog is open.
+    NearbyStart {
+        /// The phone's one-time P-256 key, SEC1 uncompressed, base64url.
+        public_key: String,
+    },
+    /// The second step: the phone's nonce, answered with the daemon's and
+    /// the sealed pairing token.
+    NearbyReveal {
+        session: String,
+        nonce: String,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -142,6 +155,33 @@ pub enum Response {
         code: ErrorCode,
         message: String,
     },
+    NearbyStarted(NearbyStarted),
+    NearbyRevealed(NearbyRevealed),
+}
+
+/// The daemon's answer to a nearby phone's first step, the same JSON over
+/// `POST /api/nearby/start` and the control socket.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct NearbyStarted {
+    pub session: String,
+    /// The name the phone shows for this computer.
+    pub computer: String,
+    /// SHA-256 of the certificate authority, 64 uppercase hex digits.
+    pub fingerprint: String,
+    /// The daemon's one-time P-256 key, SEC1 uncompressed, base64url.
+    pub public_key: String,
+    /// SHA-256 of the domain, both keys, and the daemon's nonce, base64url:
+    /// the daemon cannot change its nonce after seeing the phone's.
+    pub commit: String,
+}
+
+/// The daemon's answer to the second step.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct NearbyRevealed {
+    /// The daemon's nonce, base64url.
+    pub nonce: String,
+    /// AES-256-GCM nonce then ciphertext of `{"token", "origins"}`, base64url.
+    pub sealed: String,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -155,6 +195,8 @@ pub enum ErrorCode {
     NotClaimed,
     /// The request does not fit this daemon's version.
     Unsupported,
+    /// Nearby pairing needs the pairing dialog open on the computer.
+    NoPairing,
     #[serde(other)]
     Other,
 }

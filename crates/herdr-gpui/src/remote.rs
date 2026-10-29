@@ -12,6 +12,7 @@
 mod dialog;
 mod indicator;
 pub(crate) use indicator::MENU_WIDTH;
+pub(crate) mod nearby;
 mod revoke;
 pub(crate) mod supervisor;
 

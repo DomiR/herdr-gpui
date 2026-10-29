@@ -3,6 +3,8 @@
 //! the approval step with the phone's name and matching code. The requests
 //! run off the UI thread; [`super::pairing`] decides what each answer means.
 
+#[cfg(target_os = "macos")]
+use super::nearby;
 use super::{
     pairing::{Answer, Pairing, Phase, spaced},
     qr::{self, Qr},
@@ -20,6 +22,9 @@ mod addresses;
 
 /// How often the dialog looks for a request to send, and redraws its ring.
 const STEP: Duration = Duration::from_millis(250);
+/// How often the nearby relay looks for a phone's frame.
+#[cfg(target_os = "macos")]
+const NEARBY_STEP: Duration = Duration::from_millis(100);
 /// The QR's side.
 const QR_SIDE: f32 = 176.;
 /// The countdown ring's diameter.
@@ -34,8 +39,14 @@ pub(crate) struct PairingDialog {
     addresses_scroll: ScrollHandle,
     other_addresses: crate::motion::Toggle,
     client: Option<Client>,
+    /// The Mac's Bluetooth radio as the nearby helper reports it, for the
+    /// hint under the QR.
+    #[cfg(target_os = "macos")]
+    nearby_radio: Option<nearby::Radio>,
     _addresses_task: Option<Task<()>>,
     _lease: Option<Lease>,
+    /// The nearby relay while an offer shows; dropping it stops the helper.
+    _nearby: Option<Task<()>>,
     _task: Option<Task<()>>,
 }
 
@@ -44,6 +55,7 @@ impl PairingDialog {
     /// does. The dialog may still be drawn as it goes; it asks nothing more,
     /// and no longer keeps the daemon polled at the open dialog's pace.
     pub(crate) fn close(&mut self) {
+        self._nearby = None;
         self._lease = None;
         self._task = None;
         self._addresses_task = None;
@@ -95,8 +107,11 @@ impl HerdrWindow {
             addresses_scroll: ScrollHandle::new(),
             other_addresses: crate::motion::Toggle::default(),
             client,
+            #[cfg(target_os = "macos")]
+            nearby_radio: None,
             _addresses_task: None,
             _lease: Supervisor::lease(cx),
+            _nearby: None,
             _task: task,
         });
         self.menu.page = Some(Page::RemoteControl);
@@ -107,6 +122,7 @@ impl HerdrWindow {
     /// Sends what the pairing asks for, one request at a time, until the
     /// dialog closes.
     fn drive_pairing(client: Client, cx: &mut Context<Self>) -> Task<()> {
+        let relay = client.clone();
         cx.spawn(async move |this, cx| {
             loop {
                 let next = this.update(cx, |view, cx| {
@@ -139,6 +155,22 @@ impl HerdrWindow {
                     if new_offer {
                         dialog.reveal_selected_address();
                     }
+                    // Nearby pairing runs while an offer or its claim shows,
+                    // and stops once the pairing is answered or fails.
+                    match dialog.pairing.phase() {
+                        Phase::Showing { offer, .. } if dialog._nearby.is_none() => {
+                            let offer = (offer.fingerprint.clone(), offer.url.clone());
+                            dialog._nearby = Self::drive_nearby(relay.clone(), offer, cx);
+                        }
+                        Phase::Showing { .. } | Phase::Claimed { .. } => {}
+                        _ => {
+                            dialog._nearby = None;
+                            #[cfg(target_os = "macos")]
+                            {
+                                dialog.nearby_radio = None;
+                            }
+                        }
+                    }
                     if matches!(dialog.pairing.phase(), Phase::Approved { .. }) {
                         Supervisor::refresh(cx);
                     }
@@ -150,6 +182,73 @@ impl HerdrWindow {
                 }
             }
         })
+    }
+
+    /// Runs `herdr-nearby` while the offer shows: advertises this computer
+    /// and relays each phone's frame to the daemon, one at a time. Nothing
+    /// starts when the helper is not beside the executable.
+    #[cfg(target_os = "macos")]
+    fn drive_nearby(
+        client: Client,
+        (fingerprint, url): (String, String),
+        cx: &mut Context<Self>,
+    ) -> Option<Task<()>> {
+        let port = nearby::port(&url);
+        Some(cx.spawn(async move |this, cx| {
+            let started = cx
+                .background_executor()
+                .spawn(async move {
+                    let exe = std::env::current_exe().ok();
+                    let path = nearby::helper_path(exe.as_deref())?;
+                    let helper = nearby::Helper::spawn(&path)
+                        .inspect_err(|error| tracing::warn!(%error, "nearby pairing is off"))
+                        .ok()?;
+                    helper.send(nearby::advertise(&nearby::host_name(), &fingerprint, port));
+                    Some(helper)
+                })
+                .await;
+            let Some(helper) = started else { return };
+            loop {
+                match helper.events.try_recv() {
+                    Ok(nearby::Event::Radio(radio)) => {
+                        let shown = this.update(cx, |view, cx| {
+                            if let Some(dialog) = view.menu.remote_pairing.as_mut() {
+                                dialog.nearby_radio = Some(radio);
+                                cx.notify();
+                            }
+                        });
+                        if shown.is_err() {
+                            return;
+                        }
+                    }
+                    Ok(nearby::Event::Frame { central, data }) => {
+                        let reply = match nearby::request(&data) {
+                            Ok(request) => nearby::answer(client.request(request).await),
+                            Err(_) => nearby::refusal(),
+                        };
+                        helper.send(nearby::frame(&central, &reply));
+                    }
+                    Ok(nearby::Event::Failure(message)) => {
+                        tracing::warn!(%message, "the nearby helper reported a failure");
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Empty) => {
+                        cx.background_executor().timer(NEARBY_STEP).await;
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => return,
+                }
+            }
+        }))
+    }
+
+    /// Bluetooth pairing needs the macOS helper; elsewhere the network and
+    /// QR paths are the only ones, and nothing starts.
+    #[cfg(not(target_os = "macos"))]
+    fn drive_nearby(
+        _client: Client,
+        _offer: (String, String),
+        _cx: &mut Context<Self>,
+    ) -> Option<Task<()>> {
+        None
     }
 
     fn answer_pairing(&mut self, allow: bool, cx: &mut Context<Self>) {
@@ -372,7 +471,8 @@ impl HerdrWindow {
                             "New code in {} s",
                             left.as_secs_f32().ceil() as u64
                         ))
-                })),
+                }))
+                .children(self.nearby_hint()),
             None => div()
                 .text_color(rgb(theme.subtext()))
                 .child("Asking for a pairing code\u{2026}"),
@@ -402,6 +502,35 @@ impl HerdrWindow {
                         )),
                 )
             })
+    }
+
+    /// One line on Bluetooth pairing, when the helper reported its radio.
+    #[cfg(target_os = "macos")]
+    fn nearby_hint(&self) -> Option<Div> {
+        let radio = self.menu.remote_pairing.as_ref()?.nearby_radio?;
+        let text = match radio {
+            nearby::Radio::On => {
+                "Or open Herdr Remote on an iPhone nearby: it finds this Mac over Bluetooth."
+            }
+            nearby::Radio::Unauthorized => {
+                "To pair nearby over Bluetooth, allow Herdr in System Settings > Privacy & Security > Bluetooth."
+            }
+            nearby::Radio::Off | nearby::Radio::Unsupported | nearby::Radio::Unknown => {
+                return None;
+            }
+        };
+        Some(
+            div()
+                .debug_selector(|| "remote-pair-nearby".into())
+                .text_color(rgb(self.theme.subtext()))
+                .child(text),
+        )
+    }
+
+    /// Bluetooth pairing runs only on macOS, where its helper ships.
+    #[cfg(not(target_os = "macos"))]
+    fn nearby_hint(&self) -> Option<Div> {
+        None
     }
 
     fn pairing_claim(

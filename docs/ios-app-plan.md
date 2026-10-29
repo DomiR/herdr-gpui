@@ -279,31 +279,84 @@ The protocol is pure functions in `HerdrRemoteCore` and `auth::sas`, tested
 against shared vectors, including a relayed man-in-the-middle that must
 fail.
 
+### Nearby pairing, exactly
+
+Phone A, daemon B. Keys are P-256, SEC1 uncompressed (65 bytes);
+nonces are 32 random bytes; binary values travel as base64url without
+padding; `||` concatenates bytes; `fp` is the CA fingerprint's 32 raw
+bytes.
+
+1. A sends `start {public_key: PKa}`. B refuses unless a pairing dialog
+   is open (no unclaimed pairing: 409 / `NoPairing`). B makes a fresh key
+   pair and `Nb`, keeps the session for 60 s (at most 4 at once, per-IP
+   rate limit as `/api/pair/claim`), and answers
+   `{session, computer, fingerprint (64 hex), public_key: PKb, commit}`
+   with `commit = SHA-256("herdr-sas-commit-v1" || PKb || PKa || Nb)`.
+2. A sends `reveal {session, nonce: Na}`. B answers `{nonce: Nb, sealed}`
+   and forgets the session. `T = PKa || PKb || Na || Nb || fp`.
+   - `code = u32_be(SHA-256("herdr-sas-code-v1" || T)[0..4]) mod 10^6`,
+     six digits with leading zeros.
+   - `key = HKDF-SHA256(ikm: ECDH, salt: SHA-256(T), info: "herdr-sas-key-v1")`, 32 bytes.
+   - `sealed = nonce (12) || AES-256-GCM(key, plaintext, aad: "herdr-sas-key-v1")`,
+     plaintext `{"token": TOKEN, "origins": [...]}`.
+   - B stores `TOKEN`'s digest on the open pairing as its nearby token,
+     with `code` as the code its claim will carry (60 s, single use; a
+     newer reveal replaces it).
+3. A checks `commit`, computes `code` and `key`, opens `sealed`, and shows
+   `code`. It then claims over TLS pinned to `fingerprint`, exactly as the
+   QR claim does, at the first of `origins` that answers. The claim
+   answers with B's `code`, which A requires to equal its own. The
+   desktop dialog shows that code, and the person approves.
+
+Transports: over the network, `POST /api/nearby/start` and
+`POST /api/nearby/reveal` on the daemon's HTTPS port, which A calls
+without pinning (the code is what authenticates); over Bluetooth, the same
+JSON as `pair` characteristic frames, which Herdr UI relays to the
+daemon's control socket as `nearby_start` and `nearby_reveal`.
+
+Bonjour: `_herdr-remote._tcp` with the computer's name as the instance
+and TXT `v=1`, `fp=` the fingerprint's first 16 hex, and `pairing=1`
+while a pairing dialog is open (`0` otherwise).
+- On macOS, `herdr-nearby` registers it through the system's DNS-SD while
+  the dialog is open. A second mDNS responder beside mDNSResponder (the
+  daemon's `mdns-sd`) is invisible to browsers on the same Mac and
+  contends for its host name, so the daemon does not advertise there.
+- On Linux and Windows, the daemon advertises with `mdns-sd`.
+- `--no-bonjour` turns the daemon's advertising off.
+
+Shared vectors (`Fixtures/nearby/*.json`) fix every key and nonce and
+give `commit`, `code`, `key`, and `sealed`; a relay vector checks that a
+man in the middle who substitutes its own keys yields different codes on
+the two sides.
+
 ### Bluetooth on the desktop
 
 The Mac is the peripheral and the phone the central, because iOS supports
 central mode best in the background (state restoration, long-lived
 connections).
 
-- `crates/herdr-remote-control` (the non-`server` part Herdr UI already
-  uses) gains `nearby/`. It holds the GATT service definition, framing
-  (chunks up to the negotiated MTU, length-prefixed, bounded), and the relay
-  to the control socket. Platform backends:
-  - **macOS first**: `CBPeripheralManager` through `objc2-core-bluetooth`
-    (objc2 is already in the workspace). The delegate class is the only
-    unsafe-adjacent code; keep it tiny and document its invariants. The
-    bundle's Info.plist needs `NSBluetoothAlwaysUsageDescription`. The
-    daemon is a bare LaunchAgent binary with no bundle, which TCC would
-    refuse, so Bluetooth lives in Herdr UI.
-  - **Linux next**: BlueZ's D-Bus GATT server API through `zbus`, not
-    `bluer`, because `bluer` brings Tokio into the GUI.
-  - **Windows**: WinRT `GattServiceProvider`. Until it is built, the pairing
-    dialog says Bluetooth pairing is not available there and offers the
-    network and QR paths. Nothing pretends to work.
+- **macOS: `herdr-nearby`**, a small Swift helper in `macos/herdr-nearby`,
+  shipped inside Herdr.app beside `herdr-acp` (`scripts/release/build-nearby.sh`).
+  Phase 0 found that `objc2-core-bluetooth` makes every Core Bluetooth
+  call an `unsafe fn`, so the peripheral is Swift, not Rust.
+  - Herdr UI starts it while the pairing dialog is open and talks to it in
+    newline-delimited JSON on stdio: `advertise`, `stop`, and `frame`
+    messages each way.
+  - It holds no secrets and decides nothing. Herdr UI relays each `pair`
+    frame to the daemon's control socket (`nearby_start`,
+    `nearby_reveal`) and writes the answer back.
+  - Running inside the bundle, it is attributed to Herdr.app for the
+    Bluetooth permission (`NSBluetoothAlwaysUsageDescription`).
+- **Linux next**: BlueZ's D-Bus GATT server API through `zbus`, in Rust,
+  not `bluer`, because `bluer` brings Tokio into the GUI.
+- **Windows**: WinRT `GattServiceProvider`. Until it is built, the pairing
+  dialog offers the network and QR paths only. Nothing pretends to work.
 - GATT service (one fixed 128-bit UUID):
   - `info` (read): protocol version, and the computer's name only while the
     pairing dialog is open.
-  - `pair` (write and notify): SAS frames.
+  - `pair` (write and notify): SAS messages as JSON, each framed as a
+    2-byte big-endian length and the message (at most 4 KiB), cut into
+    chunks a write or notification carries.
   - `presence` (write and notify): challenge and signed answer for paired
     devices, and encrypted current addresses.
   - `l2cap` (read): the PSM of the fallback channel, when it is on.

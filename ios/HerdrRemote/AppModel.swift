@@ -28,6 +28,10 @@ final class AppModel {
     let sessions: Sessions
     let tokens: ActivityTokens
     let fleet: Fleet
+    let nearby = NearbyBrowser()
+    let bluetooth = NearbyBluetooth()
+    /// Nearby computers the person closed the card for, this launch.
+    var dismissedNearby: Set<String> = []
     private let paths = NWPathMonitor()
 
     init() {
@@ -83,6 +87,16 @@ final class AppModel {
         }
         let title = fleet.chatItems.first { $0.computer.device == computer.device && $0.chat.pane == link.pane }?.chat.title
         pendingRoute = .chat(PaneKey(device: computer.device, pane: link.pane), title: title ?? "Chat")
+    }
+
+    /// A computer nearby with its pairing dialog open that this phone has
+    /// not paired, for the proximity card.
+    var nearbyOffer: NearbyComputer? {
+        // The network first when a computer is found both ways: it is faster.
+        (nearby.computers + bluetooth.computers).first { candidate in
+            candidate.pairing && !dismissedNearby.contains(candidate.id)
+                && !computers.contains { candidate.matches($0.fingerprint) }
+        }
     }
 
     /// The name to show for `computer`: its own, plus the start of its
