@@ -125,7 +125,9 @@ app, once the repository's `testflight` environment holds these secrets:
   App Store Connect.
 - **Build number:** the workflow's run number.
 - **Running it locally:** `just ios-testflight` does the same with the same
-  variables.
+  variables. Any it does not find set come from `pass`: the issuer ID from
+  `apple/app-store-connect-issuer-id` and the key from
+  `herdr-gpui/apple-api-key-KEYID`.
 
 ## Pair
 

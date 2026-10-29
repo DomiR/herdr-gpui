@@ -229,8 +229,23 @@ ios-test:
 ios-build: ios-generate
     cd ios && xcodebuild -project HerdrRemote.xcodeproj -scheme HerdrRemote -destination 'generic/platform=iOS Simulator' -derivedDataPath build CODE_SIGNING_ALLOWED=NO -quiet build
 
-# Archive and upload to TestFlight; needs the App Store Connect key (see the script).
+# Archive and upload to TestFlight, taking the key from `pass` when unset.
 ios-testflight:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # CI sets these from the `testflight` environment's secrets; here what
+    # the environment leaves unset comes from `pass`. The key ID and team
+    # are not secret.
+    export APPLE_TEAM_ID="${APPLE_TEAM_ID:-VJAHQVZ96V}"
+    export ASC_KEY_ID="${ASC_KEY_ID:-VACF2WK94S}"
+    if [ -z "${ASC_ISSUER_ID:-}" ]; then
+        ASC_ISSUER_ID=$(pass show apple/app-store-connect-issuer-id | head -1)
+        export ASC_ISSUER_ID
+    fi
+    if [ -z "${ASC_KEY_P8:-}" ]; then
+        ASC_KEY_P8=$(pass show "herdr-gpui/apple-api-key-$ASC_KEY_ID")
+        export ASC_KEY_P8
+    fi
     sh ios/tools/testflight.sh
 
 # Render the native screen mockups in a headless simulator.
