@@ -3,21 +3,45 @@ import SwiftUI
 
 enum RootTab: Hashable { case home, board, computers }
 
-/// Home B: attention first, with Board, Computers, and Search as tabs.
+/// Home B: attention first, with Board, Computers, and Search as tabs, or
+/// iPad B's split view when the window is wide: an iPad, or a foldable
+/// iPhone opened flat.
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @State private var tab = RootTab.home
-    @State private var homePath = NavigationPath()
+    @State private var homePath: [Route] = []
     @State private var pairing = false
     @State private var selection: Route?
-    @Environment(\.horizontalSizeClass) private var width
+    @State private var windowWidth: CGFloat = 0
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
+    /// The width from which a window gets the split view. An unfolded
+    /// iPhone can report a compact size class while it has an iPad mini's
+    /// width, so the window's own width decides too.
+    static let wideWidth: CGFloat = 600
+
+    private var wide: Bool { sizeClass == .regular || windowWidth >= Self.wideWidth }
 
     var body: some View {
         Group {
-            if width == .regular {
+            if wide {
+                // The split view collapses to one column in a compact size
+                // class, and the chat lays out its header by it.
                 IPadRoot(pairing: $pairing, selection: $selection)
+                    .environment(\.horizontalSizeClass, .regular)
             } else {
                 tabs
+            }
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
+        // Folding or unfolding keeps the open chat or terminal open.
+        .onChange(of: wide) { _, nowWide in
+            if nowWide {
+                if let route = homePath.last { selection = route }
+                homePath = []
+            } else if let route = selection {
+                tab = .home
+                homePath = [route]
             }
         }
         .sheet(isPresented: $pairing) { PairView() }
@@ -52,7 +76,7 @@ struct RootView: View {
         }
         .onChange(of: model.pendingRoute) { _, route in
             guard let route else { return }
-            if width == .regular {
+            if wide {
                 selection = route
             } else {
                 tab = .home

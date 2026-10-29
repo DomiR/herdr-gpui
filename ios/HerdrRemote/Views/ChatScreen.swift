@@ -114,6 +114,10 @@ private struct ChatDocument: View {
     /// A link the agent wrote, shown in full before it opens.
     @State private var pendingLink: URL?
 
+    /// Lines stay this wide at most on an iPad or an unfolded iPhone, so
+    /// the answer reads like a page rather than a banner.
+    static let readableWidth: CGFloat = 680
+
     var body: some View {
         let entries = transcript.entries
         let start = entries.lastIndex { if case .user = $0.kind { true } else { false } } ?? 0
@@ -180,6 +184,8 @@ private struct ChatDocument: View {
                 }
                 if let problem { Text(problem).font(.footnote).foregroundStyle(.red) }
             }
+            .frame(maxWidth: Self.readableWidth, alignment: .leading)
+            .frame(maxWidth: .infinity)
             .padding(.horizontal, 20)
             .padding(.top, transcript.status == .working ? 56 : 16)
             .padding(.bottom, 24)
@@ -189,7 +195,11 @@ private struct ChatDocument: View {
         .overlay(alignment: .top) {
             if transcript.status == .working { RunningCapsule(transcript: transcript, tools: tools) }
         }
-        .safeAreaInset(edge: .bottom) { Composer(key: key, transcript: transcript, problem: $problem) }
+        .safeAreaInset(edge: .bottom) {
+            Composer(key: key, transcript: transcript, problem: $problem)
+                .frame(maxWidth: Self.readableWidth + 40)
+                .frame(maxWidth: .infinity)
+        }
         .environment(\.openURL, OpenURLAction { url in
             guard MarkdownView.webSchemes.contains(url.scheme?.lowercased() ?? "") else { return .discarded }
             pendingLink = url
@@ -252,6 +262,7 @@ private struct RunningCapsule: View {
         }
         .padding(.horizontal, 14).padding(.vertical, 9)
         .glassEffect(.regular, in: .capsule)
+        .frame(maxWidth: ChatDocument.readableWidth)
         .padding(.horizontal, 16)
     }
 }

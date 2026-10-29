@@ -4,6 +4,7 @@ import SwiftUI
 /// iPad B: the attention list beside the open chat, with the chat's
 /// workspace terminal in an inspector. Board, Computers, and Settings open
 /// as sheets; a chat or terminal can also open in a window of its own.
+/// A foldable iPhone opened flat gets it too (`RootView.wideWidth`).
 struct IPadRoot: View {
     @Environment(AppModel.self) private var model
     @Binding var pairing: Bool
@@ -157,7 +158,10 @@ private struct ChatWithTerminal: View {
     @Environment(AppModel.self) private var model
     let key: PaneKey
     let title: String
-    @State private var shown = true
+    /// Set once the person shows or hides the terminal; until then it
+    /// shows when the chat keeps a comfortable width beside it.
+    @State private var chosen: Bool?
+    @State private var width: CGFloat = 0
     @State private var tab: String?
     @State private var path = NavigationPath()
 
@@ -169,12 +173,13 @@ private struct ChatWithTerminal: View {
         // The newest tab first: usually the one started for this work,
         // rather than the workspace's default shell.
         let current = terminals.first { $0.terminal.tab == tab } ?? terminals.last
+        let shown = chosen ?? (width >= 900)
         NavigationStack(path: $path) {
             ChatScreen(key: key, title: title)
                 .toolbar {
                     if !terminals.isEmpty {
                         ToolbarItem(placement: .topBarTrailing) {
-                            Button { shown.toggle() } label: { Image(systemName: "sidebar.trailing") }
+                            Button { chosen = !shown } label: { Image(systemName: "sidebar.trailing") }
                                 .keyboardShortcut("i", modifiers: [.command, .option])
                                 .accessibilityLabel(shown ? "Hide the terminal" : "Show the terminal")
                         }
@@ -184,7 +189,7 @@ private struct ChatWithTerminal: View {
                     if case let .term(key, title) = route { TerminalScreen(key: key, title: title) }
                 }
         }
-        .inspector(isPresented: Binding(get: { shown && !terminals.isEmpty }, set: { shown = $0 })) {
+        .inspector(isPresented: Binding(get: { shown && !terminals.isEmpty }, set: { chosen = $0 })) {
             VStack(spacing: 0) {
                 if let current, let pane = current.terminal.firstPane {
                     HStack {
@@ -211,6 +216,9 @@ private struct ChatWithTerminal: View {
             .environment(\.colorScheme, .dark)
             .inspectorColumnWidth(min: 300, ideal: 420)
         }
+        // Measured with the inspector included, so showing it does not
+        // shrink the width that decided to show it.
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
     }
 }
 
