@@ -499,6 +499,62 @@ sides.
     back to one screen per second.
   - Shown as "Connected over Bluetooth" in the connection banner.
 
+### Presence, exactly
+
+Opt-in on the desktop with `[remote] presence = true` (Settings > Remote
+control, "Hold phone alerts while I'm here"); macOS only for now.
+
+- **Advertising.** While remote control runs with presence on, Herdr UI
+  keeps `herdr-nearby` running and sends it
+  `{"type":"advertise_presence","on":true}`. The advertisement carries
+  only the service UUID. `info` reads `{"v":1}`, without the name or
+  fingerprint, outside the pairing dialog.
+- **GATT.** `presence` (write and notify), UUID
+  `6E3A4F21-8C0B-4D7E-9A55-2F1C0B7D4E93`, framed like `pair`: a 2-byte
+  big-endian length, then at most 4 KiB of JSON, cut into chunks.
+- **Phone to Mac:**
+  - `{"type":"hello","device":ID}`. A phone that does not know which
+    paired computer this is tries each device ID it holds; an unknown one
+    gets an error.
+  - `{"type":"prove","device":ID,"signature":B64URL}`.
+  - `{"type":"near","near":BOOL}`: the phone's own RSSI decision, with
+    hysteresis.
+- **Mac to phone:**
+  - `{"type":"challenge","nonce":B64URL}`.
+  - `{"type":"proven","addresses":B64URL|null}`.
+  - `{"type":"error","message":TEXT}`.
+- **Proof.** ECDSA P-256 with SHA-256, signed by the device key that signs
+  sessions, encoded r||s (IEEE P1363) as base64url. The signed bytes are
+  `"herdr-presence-v1" || nonce`, with the nonce as 32 raw bytes, so a
+  session signature never passes as a presence one. A nonce is single
+  use, one per device at a time, and good for 30 s.
+- **Addresses.** On a valid proof, the daemon seals `{"origins":[...]}` to
+  the device's registered `notify_key`, in the alert seal's format with
+  `herdr-remote-addresses-v1` as HKDF info and AAD. With no key, it sends
+  `null`.
+- **Control socket (Herdr UI only).**
+  - `presence_challenge {device}` answers `presence_challenge {nonce}`.
+  - `presence_prove {device, nonce, signature}` answers
+    `presence_proven {device, addresses}`.
+  - `presence_set {device, near}` answers `done`.
+- **Near.**
+  - Herdr UI marks a device near while a phone that proved it says
+    `near` and the desktop saw input in the last 300 s. `herdr-nearby`
+    reports idle seconds every 30 s.
+  - Herdr UI sends each change, and renews a near mark every 30 s. A mark
+    lapses after 120 s without renewal, so a crashed Herdr UI never holds
+    alerts for long.
+  - A disconnect lifts the mark.
+- **Hold.**
+  - While a device is near, its alerts are held instead of sent, through
+    APNs and Web Push alike. At most 32 are held, the newest per chat
+    wins, and they go in order once the mark is lifted or lapses.
+  - A clear drops the held alert for its chat and still goes.
+  - Live Activity pushes are never held.
+- **Fixture.** `Fixtures/presence/prove.json` holds a fixed device key,
+  nonce, signed bytes, a signature the daemon's verifier accepts, and
+  addresses sealed to a fixed notify key.
+
 ## Feature parity with the web app
 
 Every row ships before the app is called complete. Native mockup picks
@@ -745,6 +801,25 @@ Phase 5 (notifications) is built:
     `simctl push`, opened in the app with the right actions.
 - **Needs a device:** the extension itself (the simulator does not run
   it for `simctl push`), the lock-screen buttons, and APNs delivery.
+
+Phase 6 (Bluetooth after pairing) is built, without the L2CAP fallback.
+That fallback waits for its throughput spike to run on a device.
+- **Presence:** the phone proves itself on the `presence` characteristic
+  and reports near from signal strength with hysteresis. A Mac
+  peripheral cannot read a central's signal, so the phone measures it
+  and its claim only affects its own alerts.
+- **Hold:** the daemon holds that phone's alerts while it is near and the
+  desktop saw input in the last five minutes. The hold lapses after
+  120 s without renewal.
+- **Addresses:** a computer's current addresses come back sealed to the
+  phone, under their own info.
+- **Wake:** state restoration relaunches the app when a computer comes
+  back in range.
+- **Settings:** off by default on both sides, a switch per computer on
+  the phone and `[remote] presence` on the desktop.
+- **Checked:** against shared fixtures (the signed bytes, the signature
+  encoding, the sealed addresses) and unit tests on each side.
+- **Needs a device:** the Bluetooth path itself.
 
 0. **Spikes**, each with a written result:
    - A macOS GATT peripheral from Herdr.app through objc2, including the

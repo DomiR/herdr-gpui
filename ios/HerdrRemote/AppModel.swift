@@ -23,6 +23,7 @@ final class AppModel {
         didSet {
             tokens.computers = computers
             fleet.sync(computers)
+            presence.computers = computers
         }
     }
     var message: String?
@@ -35,6 +36,8 @@ final class AppModel {
     let fleet: Fleet
     let nearby = NearbyBrowser()
     let bluetooth = NearbyBluetooth()
+    /// Bluetooth presence with the computers that have it on.
+    let presence = PresenceCentral()
     /// Nearby computers the person closed the card for, this launch.
     var dismissedNearby: Set<String> = []
     private let paths = NWPathMonitor()
@@ -53,6 +56,13 @@ final class AppModel {
         // Property observers do not run during `init`.
         tokens.computers = computers
         fleet.sync(computers)
+        presence.onAddresses = { [weak self] fingerprint, origins in self?.update(fingerprint, origins: origins) }
+        // Back in range after iOS relaunched the app: tokens may be stale.
+        presence.onWake = { [weak self] in
+            guard let self else { return }
+            Task { await self.tokens.sync() }
+        }
+        presence.computers = computers
         paths.pathUpdateHandler = { [weak self] _ in
             Task { @MainActor in self?.fleet.networkChanged() }
         }
@@ -67,6 +77,23 @@ final class AppModel {
         save()
         Task { await AppDelegate.enableAlerts() }
         Task { await tokens.sync(only: computer.fingerprint) }
+    }
+
+    /// Turns Bluetooth presence on or off for one computer.
+    func setPresence(_ on: Bool, for computer: Computer) {
+        guard let index = computers.firstIndex(where: { $0.device == computer.device }) else { return }
+        computers[index].presence = on
+        save()
+    }
+
+    /// Addresses a computer sent over Bluetooth, sealed to this phone.
+    private func update(_ fingerprint: Fingerprint, origins: [String]) {
+        guard let index = computers.firstIndex(where: { $0.fingerprint == fingerprint }) else { return }
+        let merged = Presence.merged(known: computers[index].origins, received: origins)
+        guard merged != computers[index].origins else { return }
+        computers[index].origins = merged
+        save()
+        fleet.networkChanged()
     }
 
     func forget(_ computer: Computer) {

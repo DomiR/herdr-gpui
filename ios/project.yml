@@ -48,7 +48,10 @@ targets:
         NSSpeechRecognitionUsageDescription: Herdr Remote transcribes your dictated prompts on your phone.
         NSLocalNetworkUsageDescription: Herdr Remote talks to Herdr on your computers over your local network.
         NSBonjourServices: [_herdr-remote._tcp]
-        NSBluetoothAlwaysUsageDescription: Herdr Remote finds your computers nearby over Bluetooth when you pair one.
+        NSBluetoothAlwaysUsageDescription: Herdr Remote finds your computers nearby over Bluetooth when you pair one, and, when you turn it on, tells them you are near so they hold alerts while you are at the desk.
+        # Presence reconnects to computers in the background, and an answer
+        # given elsewhere clears notifications through a background push.
+        UIBackgroundModes: [bluetooth-central, remote-notification]
         NSSupportsLiveActivities: true
         NSSupportsLiveActivitiesFrequentUpdates: true
         UILaunchScreen: {}

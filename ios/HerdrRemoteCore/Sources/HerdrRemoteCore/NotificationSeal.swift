@@ -21,9 +21,12 @@ public enum NotificationSeal {
 
     /// The plaintext of `sealed`. `agree` performs ECDH with the device's
     /// key-agreement key, which may live in the Secure Enclave.
+    /// `info` names what was sealed: alerts use `info`, a computer's
+    /// addresses `Presence.addressesInfo`, so one cannot pass for the other.
     public static func open(
         _ sealed: Data,
         device: P256.KeyAgreement.PublicKey,
+        info: Data = NotificationSeal.info,
         agree: (P256.KeyAgreement.PublicKey) throws -> SharedSecret
     ) throws -> Data {
         let bytes = Data(sealed)

@@ -2,8 +2,7 @@ import ActivityKit
 import HerdrRemoteCore
 import SwiftUI
 
-/// Settings A: one grouped list. Notifications, presence, and Face ID
-/// join it with their phases.
+/// Settings A: one grouped list.
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @State private var cacheSize = 0
@@ -20,6 +19,20 @@ struct SettingsView: View {
                     .swipeActions {
                         Button("Forget", role: .destructive) { model.forget(computer) }
                     }
+                }
+            }
+            if !model.computers.isEmpty {
+                Section {
+                    ForEach(model.computers) { computer in
+                        Toggle(model.displayName(computer), isOn: Binding(
+                            get: { computer.presence },
+                            set: { model.setPresence($0, for: computer) }
+                        ))
+                    }
+                } header: {
+                    Text("Hold alerts at the desk")
+                } footer: {
+                    Text("Over Bluetooth, this phone tells the computer when you are near it, and the computer holds phone alerts while you are there and using it. It also keeps the computer's addresses current. The computer needs presence on in Herdr's Remote control settings.")
                 }
             }
             Section {
