@@ -4,7 +4,8 @@
 # or profiles in the repository) and uploads the export itself.
 #
 # Needs: APPLE_TEAM_ID, ASC_KEY_ID, ASC_ISSUER_ID, and ASC_KEY_P8 (the .p8
-# file's contents). BUILD_NUMBER defaults to the time. Without the key it
+# file's contents). BUILD_NUMBER defaults to one more than the highest
+# build App Store Connect has for the app (next-build.py). Without the key it
 # says so and exits 0, so CI passes before the secrets exist.
 set -eu
 cd "$(dirname "$0")/.."
@@ -19,7 +20,11 @@ trap 'rm -rf "$work"' EXIT
 key="$work/AuthKey.p8"
 umask 077
 printf '%s\n' "$ASC_KEY_P8" > "$key"
-build="${BUILD_NUMBER:-$(date -u +%Y%m%d%H%M)}"
+if [ -z "${BUILD_NUMBER:-}" ]; then
+    echo "Asking App Store Connect for the last build number…"
+    BUILD_NUMBER=$(python3 tools/next-build.py so.pen.herdr.remote)
+fi
+build=$BUILD_NUMBER
 auth="-allowProvisioningUpdates -authenticationKeyPath $key -authenticationKeyID $ASC_KEY_ID -authenticationKeyIssuerID $ASC_ISSUER_ID"
 
 cat > "$work/ExportOptions.plist" <<PLIST

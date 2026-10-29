@@ -123,8 +123,9 @@ app, once the repository's `testflight` environment holds these secrets:
   certificates or profiles are stored.
 - **What it uploads:** the export re-signs for distribution and uploads to
   App Store Connect.
-- **Build number:** the upload's UTC time (`YYYYMMDDHHMM`), so CI and local
-  uploads always count up together.
+- **Build number:** one more than the highest build App Store Connect has
+  for the app, asked for with the same key (`ios/tools/next-build.py`), so
+  CI and local uploads count up together. Set `BUILD_NUMBER` to choose one.
 - **Running it locally:** `just ios-testflight` does the same with the same
   variables. Any it does not find set come from `pass`: the issuer ID from
   `apple/app-store-connect-issuer-id` and the key from
