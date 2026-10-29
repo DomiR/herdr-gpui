@@ -286,6 +286,8 @@ extension. For the simulator loop:
     WatchConnectivity, and the phone checks it against the chats it last
     saw before sending it with its device key.
   - "Always" answers stay on the phone.
+  - With the Face ID lock on, the phone refuses Watch requests, as it
+    refuses Siri's.
   - For the simulator: `-sample YES` shows made-up chats, and
     `-openFirst YES` opens the first.
 

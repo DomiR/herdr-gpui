@@ -47,6 +47,12 @@ final class WatchLink: NSObject, WCSessionDelegate, @unchecked Sendable {
     }
 
     private static func handle(_ data: Data) async -> WatchResponse {
+        // The Face ID lock means nothing reaches a chat without Face ID on
+        // this phone, as Siri also refuses then. Otherwise the Watch being
+        // unlocked on the wrist is the owner's check.
+        guard !AppLock.isOn else {
+            return WatchResponse(sent: false, message: "Herdr Remote is locked. Answer on your iPhone.")
+        }
         guard let request = try? JSONDecoder().decode(WatchRequest.self, from: data) else {
             return WatchResponse(sent: false, message: "The phone could not read that.")
         }
