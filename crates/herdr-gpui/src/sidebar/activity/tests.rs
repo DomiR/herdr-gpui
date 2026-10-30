@@ -11,6 +11,8 @@ mod bubbles;
 mod counts;
 mod layout;
 mod linear_return;
+mod mod_apps;
+mod pulse;
 mod sections;
 mod startup_counts;
 mod tickets;

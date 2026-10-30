@@ -382,10 +382,13 @@ impl HerdrWindow {
                 | Command::RemotePair
                 | Command::ToggleStatusBar
                 | Command::ToggleSidebarPorts
+                | Command::ToggleModPanel
                 | Command::FocusNextRegion
                 | Command::FocusPreviousRegion
                 | Command::ToggleZenMode
                 | Command::DevicesOverview
+                | Command::NewCoreTerminal
+                | Command::MirrorCorePane
                 | Command::IncreaseFontSize
                 | Command::DecreaseFontSize
                 | Command::ResetFontSize
