@@ -9,6 +9,7 @@ mod hosts;
 #[cfg(unix)]
 mod live_chat;
 mod messages;
+mod pictures;
 mod projection;
 mod reducer;
 mod socket;

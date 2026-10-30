@@ -13,7 +13,7 @@ use crate::{
     hub::{Chat, Event},
     web::{Shared, now_ms, read_screen},
 };
-use herdr_chat_protocol::{Change, Cursor, Transcript};
+use herdr_chat_protocol::{Change, Cursor, EntryKind, Transcript};
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::{
     sync::{broadcast::error::RecvError, mpsc},
@@ -239,12 +239,12 @@ impl Batch {
                 transcript: Transcript::clone(&transcript),
             })));
         }
-        if !self.steps.is_empty() {
-            messages.push(ServerMessage::ChatChanges {
+        messages.extend(split_at_pictures(self.steps).into_iter().map(|changes| {
+            ServerMessage::ChatChanges {
                 pane: pane.to_owned(),
-                changes: self.steps,
-            });
-        }
+                changes,
+            }
+        }));
         if self.connection {
             messages.push(ServerMessage::ChatConnection {
                 pane: pane.to_owned(),
@@ -253,6 +253,25 @@ impl Batch {
         }
         messages
     }
+}
+
+/// Gathered changes as the `chat_changes` to send, a new one starting at
+/// each picture. A picture is base64 of up to a few megabytes, so on a
+/// slow link the changes before it, such as the prompt it came with, show
+/// at once rather than after it arrives.
+pub(super) fn split_at_pictures(steps: Vec<Step>) -> Vec<Vec<Step>> {
+    let mut batches: Vec<Vec<Step>> = Vec::new();
+    for step in steps {
+        let picture = matches!(
+            &step.change,
+            Change::Push { entry } if matches!(entry.kind, EntryKind::Image { .. })
+        );
+        match batches.last_mut() {
+            Some(batch) if !picture => batch.push(step),
+            _ => batches.push(vec![step]),
+        }
+    }
+    batches
 }
 
 /// The first answer to a chat subscription: nothing new when the phone's
