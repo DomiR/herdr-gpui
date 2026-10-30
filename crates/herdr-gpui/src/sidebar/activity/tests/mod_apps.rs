@@ -120,3 +120,31 @@ fn leaving_a_mod_app_gives_the_terminal_the_keyboard(cx: &mut gpui::TestAppConte
     draw(cx);
     assert!(focused(cx), "the terminal has the keyboard again");
 }
+
+/// An app whose view returned nil is done: it shows no loading text.
+#[gpui::test]
+fn an_app_that_draws_nothing_is_not_loading(cx: &mut gpui::TestAppContext) {
+    let (view, cx) = fixture(cx, 1, 700.);
+    view.update(cx, |view, _| {
+        view.mods.insert_drawn(
+            Manifest {
+                name: "app00".into(),
+                places: Vec::new(),
+                commands: Vec::new(),
+                activity: Some(Activity {
+                    title: "App 0".into(),
+                    icon: "icon.svg".into(),
+                }),
+                panel: herdr_mods::Panel {
+                    title: None,
+                    order: 500,
+                },
+                needs: Needs::default(),
+            },
+            None,
+        );
+    });
+    click(cx, "activity-mod-app00");
+    assert!(cx.debug_bounds("mod-app-app00").is_some());
+    assert!(cx.debug_bounds("mod-app-loading").is_none());
+}

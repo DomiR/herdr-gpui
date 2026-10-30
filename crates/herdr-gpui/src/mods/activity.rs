@@ -141,10 +141,18 @@ impl HerdrWindow {
         let title = entry.activity()?.title.clone();
         let theme = &self.theme;
         let size = self.config.ui.size;
-        let painter = Painter { theme, name, size };
+        let painter = Painter {
+            theme,
+            name,
+            size,
+            ring: None,
+        };
         let body = match &entry.tree {
             Some(tree) => painter.node(tree, &format!("mod-app-{name}"), Axis::Column, cx),
+            // Its view returned nil: done, with nothing to show.
+            None if entry.drawn => div().into_any_element(),
             None => div()
+                .debug_selector(|| "mod-app-loading".into())
                 .text_color(rgb(theme.muted))
                 .child("Loading…")
                 .into_any_element(),

@@ -2,7 +2,7 @@
 //! last tree a worker left, never Lua; a click becomes a catalog command or
 //! a message queued for the mod's `update`.
 
-use crate::{HerdrWindow, config::Theme, menu::accent};
+use crate::{HerdrWindow, config::Theme, menu::accent, window::chrome_focus::Region};
 use gpui::{prelude::*, *};
 use herdr_mods::{
     Action, Align, Container, Data, Gap, IconSource, Node, Place, Size, Tone, Weight,
@@ -38,6 +38,7 @@ impl HerdrWindow {
                 theme: &self.theme,
                 name,
                 size: self.config.ui.size,
+                ring: self.mod_ring(Region::StatusBar),
             };
             let element = painter.node(tree, &format!("mod-{name}"), Axis::Row, cx);
             items.push(
@@ -87,6 +88,7 @@ impl HerdrWindow {
                 theme: &self.theme,
                 name,
                 size: self.config.ui.size,
+                ring: self.mod_ring(Region::Sidebar),
             };
             let body = painter.node(tree, &format!("mod-side-{name}"), Axis::Column, cx);
             sections.push(
@@ -124,6 +126,12 @@ impl HerdrWindow {
                 .children(sections)
                 .into_any_element()
         })
+    }
+
+    /// The focus ring for mod controls in `region`, while it holds the
+    /// keyboard.
+    pub(super) fn mod_ring(&self, region: Region) -> Option<Rgba> {
+        (self.chrome_region == Some(region)).then(|| rgb(self.theme.primary()))
     }
 
     /// Runs what a mod's control asks for: a catalog command, as the
@@ -178,9 +186,29 @@ pub(super) struct Painter<'a> {
     pub(super) theme: &'a Theme,
     pub(super) name: &'a str,
     pub(super) size: f32,
+    /// The focus ring's color while the place's region holds the keyboard;
+    /// controls are tab stops then, and Enter or Space uses one.
+    pub(super) ring: Option<Rgba>,
 }
 
 impl Painter<'_> {
+    /// `control` as a tab stop with a focus ring, while the region holds the
+    /// keyboard; as the app's own chrome controls are (`chrome_stop`).
+    fn stop(&self, control: Stateful<Div>) -> Stateful<Div> {
+        let Some(ring) = self.ring else {
+            return control;
+        };
+        control.tab_index(0).focus_visible(move |style| {
+            style.shadow(vec![BoxShadow {
+                color: ring.into(),
+                offset: point(px(0.), px(0.)),
+                blur_radius: px(0.),
+                spread_radius: px(2.),
+                inset: true,
+            }])
+        })
+    }
+
     pub(super) fn node(
         &self,
         node: &Node,
@@ -256,7 +284,8 @@ impl Painter<'_> {
                 }
                 if !button.disabled {
                     let (name, action) = (self.name.to_owned(), button.action.clone());
-                    element = element
+                    element = self
+                        .stop(element)
                         .cursor_pointer()
                         .hover(|style| style.bg(rgb(theme.active)))
                         .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
@@ -285,8 +314,7 @@ impl Painter<'_> {
                 .into_any_element(),
             Node::Link(link) => {
                 let url = link.url.clone();
-                div()
-                    .id(SharedString::from(format!("{id}-link")))
+                self.stop(div().id(SharedString::from(format!("{id}-link"))))
                     .role(Role::Link)
                     .cursor_pointer()
                     .text_color(accent(theme))
@@ -301,8 +329,7 @@ impl Painter<'_> {
                 let (name, msg) = (self.name.to_owned(), toggle.msg.clone());
                 let on = toggle.on;
                 let track = if on { accent(theme) } else { rgb(theme.active) };
-                div()
-                    .id(SharedString::from(format!("{id}-toggle")))
+                self.stop(div().id(SharedString::from(format!("{id}-toggle"))))
                     .role(Role::Switch)
                     .aria_toggled(on.into())
                     .aria_label(SharedString::from(toggle.label.clone()))

@@ -7,10 +7,16 @@
 //! and out, and resizes from its left edge like the notes panel.
 
 use super::render::{Axis, Painter};
-use crate::{HerdrWindow, motion, panel_resize::PanelDrag};
+use crate::{HerdrWindow, motion, panel_resize::PanelDrag, window::chrome_focus::Region};
 use gpui::{prelude::*, *};
 use herdr_mods::Place;
 use std::collections::BTreeSet;
+
+/// The least room the terminals keep beside the panel; past this the panel
+/// narrows, and below [`MIN_PANEL`] it steps aside.
+const MIN_CONTENT: f32 = 240.;
+/// The narrowest the panel is drawn.
+const MIN_PANEL: f32 = 160.;
 
 /// Whether the panel shows, and which sections are folded.
 #[derive(Debug, Default)]
@@ -68,6 +74,26 @@ impl HerdrWindow {
         was != open || self.mods.panel.motion.moving(now)
     }
 
+    /// The panel's width in this window: its chosen or default width,
+    /// capped by the room beside the sidebar so the terminals keep
+    /// [`MIN_CONTENT`]; `None` when that leaves less than [`MIN_PANEL`].
+    fn mod_panel_width_now(&self) -> Option<f32> {
+        let beside =
+            self.viewport_width - self.sidebar_column_width(self.viewport_width).unwrap_or(0.);
+        let width = self.mod_panel_width.width(beside).min(beside - MIN_CONTENT);
+        (width >= MIN_PANEL).then_some(width)
+    }
+
+    /// Whether the panel is drawn now, opening or open, for the focus
+    /// regions; only beside the terminals, never over a section or app.
+    pub(crate) fn mod_panel_shown(&self) -> bool {
+        self.mods.panel.motion.is_open()
+            && !self.zen_layout()
+            && self.activity_section().is_none()
+            && self.mod_app().is_none()
+            && self.mod_panel_width_now().is_some()
+    }
+
     /// `content` with the panel beside it on the right, while it shows.
     /// Zen mode keeps the terminals alone, as it does with the sidebar.
     pub(crate) fn with_mod_panel(
@@ -81,17 +107,22 @@ impl HerdrWindow {
         if shown <= 0. || self.zen_layout() {
             return content;
         }
+        let Some(width) = self.mod_panel_width_now() else {
+            return content;
+        };
         if self.mods.panel.motion.moving(now) {
             window.request_animation_frame();
         }
-        let width = self.mod_panel_width.width(self.viewport_width);
-        let panel = self.resizable_panel(
-            self.render_mod_panel(cx),
-            "mod-panel-resize",
-            PanelDrag::ModPanel,
-            None,
-            cx,
-        );
+        let panel = self
+            .resizable_panel(
+                self.render_mod_panel(cx),
+                "mod-panel-resize",
+                PanelDrag::ModPanel,
+                None,
+                cx,
+            )
+            // Narrowed to the room beside the sidebar, past the drag's cap.
+            .w(px(width));
         // Clipped to the share that has slid in, revealed from its left edge.
         let slide = div()
             .relative()
@@ -136,8 +167,11 @@ impl HerdrWindow {
                     .unwrap_or_else(|| name.to_owned());
                 let folded = self.mods.panel.folded.contains(name);
                 let owned = name.to_owned();
-                let header = div()
-                    .id(SharedString::from(format!("mod-panel-{name}-header")))
+                let header = self
+                    .chrome_stop(
+                        Region::ModPanel,
+                        div().id(SharedString::from(format!("mod-panel-{name}-header"))),
+                    )
                     .debug_selector(|| format!("mod-panel-{name}-header"))
                     .role(Role::Button)
                     .aria_expanded(!folded)
@@ -165,7 +199,12 @@ impl HerdrWindow {
                     )
                     .child(SharedString::from(title));
                 let body = (!folded).then(|| {
-                    let painter = Painter { theme, name, size };
+                    let painter = Painter {
+                        theme,
+                        name,
+                        size,
+                        ring: self.mod_ring(Region::ModPanel),
+                    };
                     div()
                         .debug_selector(|| format!("mod-panel-{name}-body"))
                         .child(painter.node(tree, &format!("mod-panel-{name}"), Axis::Column, cx))
