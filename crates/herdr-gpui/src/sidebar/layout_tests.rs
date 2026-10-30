@@ -61,6 +61,8 @@ mod local_counts_chip;
 #[cfg(test)]
 mod mod_places;
 #[cfg(test)]
+mod mutes;
+#[cfg(test)]
 mod nested_agents;
 #[cfg(test)]
 mod other_device_prs;
@@ -84,6 +86,8 @@ mod probes;
 mod repository_icons;
 #[cfg(test)]
 mod row_drag;
+#[cfg(test)]
+mod rtl_layouts;
 #[cfg(test)]
 mod search;
 #[cfg(test)]
@@ -771,6 +775,7 @@ pub(crate) fn fixture_window(window: &mut Window, cx: &mut Context<HerdrWindow>)
         surface_signal: cx.new(|_| crate::window::SurfaceSignal),
         _sidebar_invalidation: HerdrWindow::invalidate_sidebar(cx),
         _host_theme: HerdrWindow::observe_host_theme(cx),
+        _notification_mutes: HerdrWindow::observe_notification_mutes(cx),
         browser: crate::browser::Browser::new(cx),
         _browser_tabs: cx.observe_global::<crate::browser::Store>(|_, cx| cx.notify()),
         _worktree_notes: HerdrWindow::observe_worktree_notes(window, cx),

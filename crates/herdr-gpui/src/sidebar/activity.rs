@@ -14,6 +14,7 @@
 //! sidebar keeps the bar, with the compact rail and the toggle beside it.
 
 use super::{SidebarMode, agents::Indicators, line_height};
+use crate::direction::Logical;
 use crate::fonts::StyledFont;
 use crate::{
     Command, HerdrWindow,
@@ -339,7 +340,7 @@ impl HerdrWindow {
         let focus = self.activity.section_focus.clone();
         Some(
             div()
-                .flex()
+                .row()
                 .flex_1()
                 .size_full()
                 .min_w_0()
@@ -362,7 +363,7 @@ impl HerdrWindow {
         let column = div()
             .id("activity")
             .debug_selector(|| "activity".into())
-            .flex()
+            .row()
             .flex_none()
             .h_full()
             .min_h_0()
@@ -389,12 +390,12 @@ impl HerdrWindow {
             .h_full()
             .min_h_0()
             .child(self.panel_title(ActivityPanel::Workspaces, cx))
-            .child(div().flex().flex_1().min_h_0().child(sidebar));
+            .child(div().row().flex_1().min_h_0().child(sidebar));
         let width = self
             .sidebar_mode()
             .width(self.sidebar_width, f32::from(window.viewport_size().width));
         match self.sidebar_slide_shown().zip(width) {
-            Some((shown, width)) => column.child(crate::window::slide_left(panel, width, shown)),
+            Some((shown, width)) => column.child(crate::window::slide_start(panel, width, shown)),
             None => column.child(panel),
         }
     }
@@ -418,7 +419,7 @@ impl HerdrWindow {
             .gap(px(4.))
             .pb(px(6.))
             .bg(self.fill().panel(theme.sidebar_background()))
-            .border_r_1()
+            .border_e(px(1.))
             .border_color(rgb(theme.active));
         // The sections, then any mod apps, scroll in a short window so
         // Settings stays in reach under them. The top padding sits inside,
@@ -530,7 +531,7 @@ impl HerdrWindow {
                         .debug_selector(move || format!("{id}-bubble"))
                         .absolute()
                         .top(px(-8.))
-                        .right(px(BUBBLE_END))
+                        .inset_e(px(BUBBLE_END))
                         .child(self.count_bubble(bubble)),
                 )
             });
@@ -550,7 +551,7 @@ impl HerdrWindow {
             .relative()
             .size(px(BUTTON))
             .flex_none()
-            .flex()
+            .row()
             .items_center()
             .justify_center()
             .rounded(px(crate::config::corners::CONTROL))
@@ -566,7 +567,7 @@ impl HerdrWindow {
                 button.bg(rgb(theme.primary_wash())).child(
                     div()
                         .absolute()
-                        .left(px(-6.))
+                        .inset_s(px(-6.))
                         .top(px(6.))
                         .bottom(px(6.))
                         .w(px(2.))
@@ -595,7 +596,7 @@ impl HerdrWindow {
             .min_w(px(14.))
             .h(px(14.))
             .px(px(3.))
-            .flex()
+            .row()
             .items_center()
             .justify_center()
             .rounded_full()
@@ -618,16 +619,16 @@ impl HerdrWindow {
             .debug_selector(|| "activity-title".into())
             .flex_none()
             .h(px(self.activity_title_height()))
-            .flex()
+            .row()
             .items_center()
-            .when(expanded, |title| title.pl(px(12.)).pr(px(TITLE_END)))
+            .when(expanded, |title| title.ps(px(12.)).pe(px(TITLE_END)))
             .when(!expanded, |title| title.justify_center())
             .text_font(font)
             .text_size(px(font.size - 1.))
             .font_weight(FontWeight::SEMIBOLD)
             .text_color(rgb(theme.subtext()))
             .bg(self.fill().panel(theme.sidebar_background()))
-            .border_r_1()
+            .border_e(px(1.))
             .border_color(rgb(theme.active))
             .when(expanded, |title| {
                 title.child(
