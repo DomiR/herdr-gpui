@@ -23,7 +23,7 @@ struct PendingCommand: Identifiable {
     var failed: Bool { if case .failed = state { true } else { false } }
 }
 
-/// How far what this phone sent has come back, for the sync dot.
+/// How far what this phone sent has come back, for the sync bar.
 enum SyncState: Equatable {
     /// Every command this phone sent shows in its chat.
     case synced
@@ -42,7 +42,7 @@ final class PendingCommands {
 
     /// How long a sent change may take to show before it counts as failed.
     static let patience: Duration = .seconds(15)
-    /// How long a failure stays listed under the sync dot.
+    /// How long a failure stays listed under the sync bar.
     static let remembered: Duration = .seconds(30)
 
     /// Tracks `command`. A newer pick for the same setting replaces the
@@ -119,7 +119,7 @@ final class PendingCommands {
 }
 
 extension Expected {
-    /// What the sync dot lists it as.
+    /// What the sync bar lists it as.
     var label: String {
         switch self {
         case .mode: "Mode"

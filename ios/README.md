@@ -82,6 +82,8 @@ and nothing goes through your phone.
      (a newline presses Enter).
    - `-tab board|computers` picks a tab.
    - `-newWorkspace YES` opens the new workspace form.
+   - `-syncBar waiting|failed` shows the sync bar as if a change were on
+     its way or had failed.
    - With `-openLink`, `-session YES` opens the chat's session sheet and
      `-draft TEXT` types into its composer (`-draft /` lists the slash
      commands).

@@ -361,7 +361,7 @@ private struct QuestionSheet: View {
     }
 
     /// The sheet leaves once the answer is allowed; a refused answer
-    /// brings the question back, and the sync dot says why.
+    /// brings the question back, and the sync bar says why.
     private func answer(_ option: PermissionOption) {
         Task {
             guard await OwnerCheck.allows(option) else { return }

@@ -24,7 +24,7 @@ struct SessionSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                // Picks show at once; the sync dot says when they are in.
+                // Picks show at once; the sync bar says when they are not in yet.
                 if let transcript = store.transcript.map({ model.fleet.chat($0, for: key) }) {
                     VStack(spacing: 14) {
                         nameCard()
@@ -45,10 +45,7 @@ struct SessionSheet: View {
             }
             .navigationTitle("Session")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) { SyncDot() }
-                    .sharedBackgroundVisibility(.hidden)
-            }
+            .overlay(alignment: .top) { SyncBar().ignoresSafeArea(edges: .top) }
         }
     }
 
