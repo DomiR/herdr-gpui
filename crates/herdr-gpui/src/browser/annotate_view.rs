@@ -17,6 +17,8 @@ use std::{collections::HashMap, sync::Arc, time::Instant};
 
 mod delivery;
 mod panel;
+#[cfg(target_os = "macos")]
+mod recording;
 mod screenshots;
 
 /// What the next note will be about, picked but not yet written, and its
@@ -33,12 +35,27 @@ struct TabNotes {
     armed: bool,
     /// Whether a drag draws a region rather than selecting text.
     regions: bool,
+    /// Whether a drag draws a pen stroke, while the page is recorded.
+    pen: bool,
     pending: Option<Draft>,
     /// The note whose text the composer is changing, instead of a draft.
     editing: Option<usize>,
     notes: Vec<Note>,
     sending: crate::agent_notes::PendingSend,
     input: Option<Entity<SearchInput>>,
+}
+
+impl TabNotes {
+    /// What a press in the page does: the pen wins over regions.
+    fn mode(&self) -> annotate::Mode {
+        if self.pen {
+            annotate::Mode::Pen
+        } else if self.regions {
+            annotate::Mode::Region
+        } else {
+            annotate::Mode::Pick
+        }
+    }
 }
 
 #[derive(Default)]
@@ -51,6 +68,9 @@ pub(crate) struct Annotations {
     drawn: HashMap<TabId, Vec<Option<Instant>>>,
     /// Numbers screenshots, to match each to its draft or note.
     captures: u64,
+    /// The page being recorded, at most one a window.
+    #[cfg(target_os = "macos")]
+    recording: Option<recording::Recording>,
 }
 
 impl Annotations {
@@ -100,6 +120,21 @@ impl Annotations {
         self.tabs.remove(&id);
         self.panels.remove(&id);
         self.drawn.remove(&id);
+        // A closed page's recording stops, and nothing is built from it. One
+        // still starting is dropped when macOS hands it over; one building
+        // finds its page gone.
+        #[cfg(target_os = "macos")]
+        {
+            let closed = self
+                .recording
+                .as_ref()
+                .is_some_and(|recording| recording.tab() == id)
+                .then(|| self.recording.take())
+                .flatten();
+            if let Some(recording::Recording::Live(live)) = closed {
+                recording::discard(live.capture);
+            }
+        }
     }
 
     /// Every listed note's comment and whether it was sent.
@@ -174,10 +209,10 @@ impl HerdrWindow {
         {
             let tab = self.tab_notes(id);
             let script = annotate::arm_script(&tab.notes);
-            let regions = tab.regions;
+            let mode = tab.mode();
             self.browser.pages.script(id, &script);
-            if regions {
-                self.browser.pages.script(id, &annotate::mode_script(true));
+            if mode != annotate::Mode::Pick {
+                self.browser.pages.script(id, &annotate::mode_script(mode));
             }
         }
         #[cfg(not(any(target_os = "macos", windows)))]
@@ -206,6 +241,16 @@ impl HerdrWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // Putting the notes away ends the page's recording.
+        #[cfg(target_os = "macos")]
+        if self.browser.annotations.armed(id)
+            && matches!(
+                &self.browser.annotations.recording,
+                Some(recording::Recording::Live(live)) if live.tab == id
+            )
+        {
+            self.toggle_recording(id, window, cx);
+        }
         let notes = self.tab_notes(id);
         notes.armed = !notes.armed;
         if notes.armed {
@@ -227,12 +272,8 @@ impl HerdrWindow {
     fn toggle_regions(&mut self, id: TabId, cx: &mut Context<Self>) {
         let tab = self.tab_notes(id);
         tab.regions = !tab.regions;
-        let regions = tab.regions;
-        #[cfg(any(target_os = "macos", windows))]
-        self.browser
-            .pages
-            .script(id, &annotate::mode_script(regions));
-        let _ = regions;
+        let mode = tab.mode();
+        self.browser.pages.script(id, &annotate::mode_script(mode));
         cx.notify();
     }
 
@@ -263,6 +304,11 @@ impl HerdrWindow {
         }
         match report {
             Some(Report::Sent { .. }) => {}
+            #[cfg(target_os = "macos")]
+            Some(Report::Stroke(stroke)) => self.page_stroke(id, &stroke),
+            // Only macOS records, so elsewhere no page draws strokes.
+            #[cfg(all(test, not(target_os = "macos")))]
+            Some(Report::Stroke(_)) => {}
             Some(Report::Picked { anchor, shot }) => {
                 self.begin_note(id, anchor, shot, window, cx);
             }

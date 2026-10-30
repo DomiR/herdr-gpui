@@ -126,6 +126,9 @@ objc2-web-kit        = { default-features = false, features = ["WKSnapshotConfig
 # Asks for Dock badge permission; the version GPUI's macOS platform already links.
 objc2-user-notifications ={ default-features = false, features = ["UNUserNotificationCenter", "block2", "std"], version = "0.3.2" }
 raw-window-handle    = "0.6"
+# Records a page review with the microphone straight to an .mp4 (macOS 15+),
+# at the version Scrawl, which builds the review from it, uses.
+screencapturekit     = { default-features = false, features = ["macos_15_0"], version = "=11.0.0" }
 # herdr-acp's in-pane chat view.
 ratatui              = { default-features = false, features = ["crossterm"], version = "0.30" }
 crossterm            = "0.29"

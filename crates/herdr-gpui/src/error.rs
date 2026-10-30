@@ -244,6 +244,9 @@ pub enum Error {
     Processes(#[from] crate::processes::Error),
     #[error(transparent)]
     Px0(#[from] crate::px0::Error),
+    #[cfg(any(target_os = "macos", test))]
+    #[error(transparent)]
+    Record(#[from] crate::browser::record::Error),
     #[error("XDG_CONFIG_HOME must be an absolute path")]
     RelativeConfigRoot,
     /// A cloud machine, provider, sandbox image, or teleport failure from

@@ -2974,6 +2974,45 @@ in view from the keyboard; it has no default key.
   app would refuse, so the page can say so; whether the app kept one it was
   handed shows in the window, as the note or a warning.
 
+#### Recording A Page Review
+
+On macOS 15 and later, **Record** in the notes panel records the page while
+you talk it through and draw on it, and builds what you said and drew into a
+note for the agent. It needs [Scrawl](https://scrawl.kitlangton.com) in
+`/Applications` or `~/Applications`, which does the transcribing and picks the
+keyframes; the button says so when Scrawl is missing.
+
+- Record starts annotating if you were not, then records the page's part of
+  the window with your microphone. macOS asks once for Screen Recording and
+  for the microphone; a Screen Recording grant takes effect once Herdr UI is
+  opened again. The button shows the time and becomes **Stop**.
+- While recording, the **Pen** is on: drag to draw red strokes over the page,
+  which fade a moment after you lift. Turn the pen off to click around the
+  page between marks. Each stroke notes the elements under it, across the area
+  it encloses when it closes on itself, else along its path, with the
+  component and source file and line that drew each one when a dev build says
+  (React, or a `data-source-loc`, react-dev-inspector, or Sentry attribute).
+  Pages you move to while recording are noted too.
+- Stop finishes the video and hands it to `scrawl import` with a timeline of
+  the strokes, the elements, and the pages, in the format Scrawl reads from
+  its iPhone kit. Scrawl transcribes with the transcriber set in Scrawl
+  (Apple's, or Hex), splits the recording into keyframes at the marks and the
+  words, and writes the bundle into its own captures folder, where Scrawl
+  lists it and clears it out with its own. The video and timeline wait in
+  `$XDG_STATE_HOME/herdr/gpui/recordings/` until then and are removed once the
+  bundle is built.
+- The bundle arrives as a **Recording** note and goes with the others when
+  you press Send: the bundle's folder, then Scrawl's summary, each spoken line
+  with its time and the elements marked as it was said, for example
+  `marked <button> "Buy" · PricingCard (src/components/PricingCard.tsx:42)`.
+  The agent opens the contact sheet and keyframes in that folder; Scrawl's
+  agent skill (`bunx skills add kitlangton/scrawl`) teaches it the `scrawl zoom`
+  and `scrawl frames` commands for a closer look.
+- One page records at a time. Closing the page or putting its notes away stops
+  the recording; a closed page's recording is dropped. The strokes show in the
+  video as you drew them and again on Scrawl's keyframes, in the same place.
+  Windows and Linux have no recording.
+
 ### Reviewing An Agent's Changes
 
 **Review Changes** in a group's **…** menu opens a review tab on the focused

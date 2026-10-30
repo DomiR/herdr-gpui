@@ -17,6 +17,8 @@ impl HerdrWindow {
         let notes = self.tab_notes(id);
         let input = notes.input.clone();
         let regions = notes.regions;
+        #[cfg(target_os = "macos")]
+        let pen = notes.pen;
         let editing = notes.editing;
         let pending = notes
             .pending
@@ -202,6 +204,20 @@ impl HerdrWindow {
                         ),
                 )
         });
+        // Record, then Stop with the time while it runs; the pen draws only
+        // while the page is recorded.
+        #[cfg(target_os = "macos")]
+        let recording = match &self.browser.annotations.recording {
+            Some(recording) if recording.tab() == id => Some((
+                recording.label(now),
+                matches!(recording, super::recording::Recording::Live(_)),
+            )),
+            Some(_) => None,
+            None => Some(("Record".to_owned(), false)),
+        };
+        #[cfg(not(target_os = "macos"))]
+        let recording: Option<(String, bool)> = None;
+        let live = recording.as_ref().is_some_and(|(_, live)| *live);
         let has_notes = !self.tab_notes(id).notes.is_empty();
         let panel = div()
             .id("annotations")
@@ -226,6 +242,21 @@ impl HerdrWindow {
                         div()
                             .flex()
                             .gap_1()
+                            .children(recording.map(|(label, live)| {
+                                let record = button("annotation-record", label.into(), live);
+                                #[cfg(target_os = "macos")]
+                                let record = record.on_click(cx.listener(move |this, _, window, cx| {
+                                    this.toggle_recording(id, window, cx);
+                                }));
+                                record
+                            }))
+                            .when(live, |row| {
+                                #[cfg(target_os = "macos")]
+                                let row = row.child(button("annotation-pen", "Pen".into(), pen).on_click(
+                                    cx.listener(move |this, _, _, cx| this.set_pen(id, !pen, cx)),
+                                ));
+                                row
+                            })
                             .child(
                                 // Drag draws a region while this is on;
                                 // Shift-drag draws one either way.
@@ -253,7 +284,11 @@ impl HerdrWindow {
                             div()
                                 .p_2()
                                 .text_color(rgb(theme.muted))
-                                .child("Click an element, select text, or Shift-drag a region in the page, then describe the change."),
+                                .child(if live {
+                                    "Talk through what should change and draw on the page with the pen. Stop builds the recording into a note."
+                                } else {
+                                    "Click an element, select text, or Shift-drag a region in the page, then describe the change."
+                                }),
                         )
                     }),
             )
