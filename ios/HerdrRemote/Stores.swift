@@ -173,6 +173,8 @@ struct Outgoing: Identifiable, Equatable {
 final class TermStore {
     let key: PaneKey
     private(set) var screen: TermScreen?
+    /// The size the terminal was asked to take on this screen.
+    @ObservationIgnored var size: TermSize?
 
     init(key: PaneKey) { self.key = key }
 

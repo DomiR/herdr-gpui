@@ -19,9 +19,9 @@ struct HomeTab: View {
                     } actions: {
                         Button("Pair a computer") { pairing = true }.buttonStyle(.glassProminent)
                     }
-                } else if model.fleet.chatItems.isEmpty {
+                } else if model.fleet.chatItems.isEmpty, model.fleet.agentTerminals.isEmpty {
                     ContentUnavailableView("No chats", systemImage: "bubble.left.and.text.bubble.right",
-                                           description: Text("Chats running in Herdr on your computers appear here."))
+                                           description: Text("Chats and agents running in Herdr on your computers appear here."))
                 }
             }
             .toolbar {

@@ -35,6 +35,7 @@ fn project(summaries: HashMap<String, Summary>, pull_requests: &PullRequests) ->
         computer: "Studio",
         fingerprint: "FP",
         layout: &layout(EndpointId::random()),
+        load: None,
         summaries,
         pull_requests,
     })
@@ -60,7 +61,10 @@ fn home_lists_chats_and_terminals_with_their_summaries() {
     let terminal = &workspace.terminals[0];
     assert_eq!(terminal.panes[0].pane, "p2");
     assert!(terminal.panes[0].focused);
-    assert_eq!(terminal.agent.as_ref().unwrap().status, AgentStatus::Done);
+    let agent = terminal.agent.as_ref().unwrap();
+    assert_eq!(agent.status, AgentStatus::Done);
+    assert_eq!(agent.pane.as_deref(), Some("p2"));
+    assert_eq!(agent.title.as_deref(), Some("Fix the build"));
 }
 
 #[test]

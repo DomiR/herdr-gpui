@@ -5,12 +5,15 @@
 //! daemon data: the same trust boundary as Herdr UI's chat views.
 
 mod api;
+mod attach;
 mod chat;
 mod daemon;
 mod layout;
 
 pub(crate) use api::ApiMethod;
 pub(crate) use chat::{Chat, Event, Summary, View};
+#[cfg(test)]
+pub(crate) use layout::TerminalAgent;
 pub(crate) use layout::{Chat as ChatRow, Layout, Terminal, TerminalPane, Workspace};
 
 use herdr_chat_protocol::{Agent, Command, EndpointId, Rejection};

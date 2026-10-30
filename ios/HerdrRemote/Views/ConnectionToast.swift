@@ -18,6 +18,7 @@ struct ConnectionToast: View {
         case connecting([String])
         case offline(names: [String], since: Date?, reason: String)
         case revoked([String])
+        case outdated([String])
     }
 
     var body: some View {
@@ -39,10 +40,12 @@ struct ConnectionToast: View {
         }
     }
 
-    /// The worst state wins: unpaired, then offline, then connecting.
+    /// The worst state wins: unpaired, then outdated, offline, connecting.
     private func problem(_ machines: [Fleet.Machine], connecting: [String]) -> Problem? {
         let revoked = machines.filter { $0.status == .revoked }.map(\.computer.name)
         if !revoked.isEmpty { return .revoked(revoked) }
+        let outdated = machines.filter { $0.status == .outdated }.map(\.computer.name)
+        if !outdated.isEmpty { return .outdated(outdated) }
         let offline = machines.filter { if case .offline = $0.status { true } else { false } }
         if let first = offline.first {
             let reason = if case let .offline(reason) = first.status { reason } else { "" }
@@ -70,6 +73,18 @@ struct ConnectionToast: View {
                         .font(.subheadline.weight(.medium)).lineLimit(1)
                     Text(since.map { "Showing chats as of \(Self.time($0))" } ?? reason)
                         .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                Button("Retry") { model.fleet.networkChanged() }
+                    .buttonStyle(.glass).controlSize(.small)
+            }
+        case let .outdated(names):
+            capsule(wide: true) {
+                Image(systemName: "arrow.up.circle").foregroundStyle(.orange)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(names.count == 1 ? "\(names[0]) needs a newer Herdr" : "\(names.count) computers need a newer Herdr")
+                        .font(.subheadline.weight(.medium)).lineLimit(1)
+                    Text("Update Herdr there to see its chats").font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer(minLength: 8)
                 Button("Retry") { model.fleet.networkChanged() }

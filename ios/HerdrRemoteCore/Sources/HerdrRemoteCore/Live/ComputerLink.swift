@@ -4,10 +4,14 @@ import Foundation
 public enum LinkStatus: Hashable, Sendable {
     case connecting
     case online(origin: String)
-    /// Nothing answered, or the connection dropped; it retries by itself.
+    /// Nothing answered, or the connection dropped; it retries by itself
+    /// and stays offline until a retry gets through.
     case offline(reason: String)
     /// The computer no longer knows this phone: unpaired or revoked there.
     case revoked
+    /// The computer's Herdr has no live API for this app: update Herdr
+    /// there. It keeps retrying, so an update is picked up by itself.
+    case outdated
 }
 
 /// What a link reports: its status, and what its socket says.
@@ -22,6 +26,8 @@ public enum LinkError: Error, Hashable, Sendable {
     case unauthorized
     /// An address answered as another computer.
     case wrongComputer
+    /// The computer answered, but has no live socket for this app.
+    case outdated
 }
 
 /// An open live socket.
@@ -76,6 +82,8 @@ public actor ComputerLink {
     private let io: LinkIO
     /// What the phone watches, and for chats the cursor it holds.
     private var watched: [LiveView: Cursor?] = [:]
+    /// The size each watched terminal asked for, sent again on reconnect.
+    private var sizes: [LiveView: TermSize] = [:]
     private var connection: LiveConnection?
     private var runner: Task<Void, Never>?
     private var wake: CheckedContinuation<Void, Never>?
@@ -112,13 +120,22 @@ public actor ComputerLink {
 
     /// Watches `view`; for a chat, `since` is the cursor of the cached
     /// transcript, so an unchanged chat costs no snapshot.
-    public func watch(_ view: LiveView, since: Cursor? = nil) async {
+    public func watch(_ view: LiveView, since: Cursor? = nil, size: TermSize? = nil) async {
         watched[view] = .some(since)
-        try? await connection?.send(.subscribe(view, since: since))
+        sizes[view] = size
+        try? await connection?.send(.subscribe(view, since: since, size: size))
+    }
+
+    /// Scrolls a watched terminal; dropped while the link is down, as a
+    /// scroll is only worth anything while the person watches.
+    public func scroll(pane: String, lines: Int) async {
+        guard lines != 0, watched[.term(pane: pane)] != nil else { return }
+        try? await connection?.send(.termScroll(pane: pane, lines: lines))
     }
 
     public func unwatch(_ view: LiveView) async {
         guard watched.removeValue(forKey: view) != nil else { return }
+        sizes[view] = nil
         try? await connection?.send(.unsubscribe(view))
     }
 
@@ -134,8 +151,11 @@ public actor ComputerLink {
     }
 
     private func run() async {
+        // Once offline, a retry stays offline until it gets through, so
+        // what the phone shows does not flicker with every attempt.
+        var offline = false
         while !Task.isCancelled {
-            continuation.yield(.status(.connecting))
+            if !offline { continuation.yield(.status(.connecting)) }
             do {
                 guard let origin = await race() else {
                     throw Offline(reason: "No address answered (\(origins.count) tried)")
@@ -145,9 +165,10 @@ public actor ComputerLink {
                 connection = opened
                 attempt = 0
                 retryNow = false
+                offline = false
                 continuation.yield(.status(.online(origin: origin)))
                 for (view, since) in watched {
-                    try await opened.send(.subscribe(view, since: since))
+                    try await opened.send(.subscribe(view, since: since, size: sizes[view]))
                 }
                 let ending = try await follow(opened)
                 connection = nil
@@ -162,11 +183,18 @@ public actor ComputerLink {
             } catch LinkError.unauthorized {
                 continuation.yield(.status(.revoked))
                 return
+            } catch LinkError.outdated {
+                connection = nil
+                guard !Task.isCancelled else { return }
+                continuation.yield(.status(.outdated))
+                offline = true
+                await pause()
             } catch {
                 connection = nil
                 guard !Task.isCancelled else { return }
                 let reason = (error as? Offline)?.reason ?? "The connection failed"
                 continuation.yield(.status(.offline(reason: reason)))
+                offline = true
                 await pause()
             }
         }
@@ -203,7 +231,7 @@ public actor ComputerLink {
             case let .reload(view):
                 if watched[view] != nil {
                     watched[view] = .some(nil)
-                    try await opened.send(.subscribe(view, since: nil))
+                    try await opened.send(.subscribe(view, since: nil, size: sizes[view]))
                 }
                 continue
             default:

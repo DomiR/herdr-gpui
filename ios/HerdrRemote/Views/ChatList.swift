@@ -2,7 +2,8 @@ import HerdrRemoteCore
 import SwiftUI
 
 /// Every chat across computers grouped by state: what needs you, answered
-/// in place; what is working; the rest. Home shows it.
+/// in place; what is working; the rest. Agents run in terminal tabs join
+/// them, so Home lists every agent the computers run. Home shows it.
 struct ChatList: View {
     @Environment(AppModel.self) private var model
     /// The chat a long press asked to close, waiting for confirmation.
@@ -11,10 +12,11 @@ struct ChatList: View {
 
     var body: some View {
         let items = model.fleet.chatItems
+        let agents = model.fleet.agentTerminals
         List {
-            section("Needs you", items.filter(\.needsYou))
-            section("Working", items.filter(\.working))
-            section("Recent", items.filter { !$0.needsYou && !$0.working })
+            section("Needs you", items.filter(\.needsYou), agents.filter(\.needsYou))
+            section("Working", items.filter(\.working), agents.filter(\.working))
+            section("Recent", items.filter { !$0.needsYou && !$0.working }, agents.filter { !$0.needsYou && !$0.working })
         }
         .refreshable { model.fleet.networkChanged() }
         .confirmationDialog(
@@ -34,8 +36,8 @@ struct ChatList: View {
     }
 
     @ViewBuilder
-    private func section(_ title: String, _ items: [ChatItem]) -> some View {
-        if !items.isEmpty {
+    private func section(_ title: String, _ items: [ChatItem], _ agents: [TerminalItem]) -> some View {
+        if !items.isEmpty || !agents.isEmpty {
             Section(title) {
                 ForEach(items) { item in
                     Group {
@@ -51,6 +53,11 @@ struct ChatList: View {
                     }
                     .contextMenu {
                         Button("Close Chat", systemImage: "xmark.circle", role: .destructive) { closing = item }
+                    }
+                }
+                ForEach(agents) { item in
+                    if let route = item.route {
+                        NavigationLink(value: route) { AgentTerminalRowLabel(item: item) }
                     }
                 }
             }

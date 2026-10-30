@@ -7,26 +7,48 @@ public enum LiveView: Hashable, Sendable {
     case term(pane: String)
 }
 
+/// The columns and rows a terminal fits on this screen. A terminal
+/// subscribed with one is resized to it while the phone watches.
+public struct TermSize: Codable, Hashable, Sendable {
+    public var cols: Int
+    public var rows: Int
+
+    public init(cols: Int, rows: Int) {
+        self.cols = cols
+        self.rows = rows
+    }
+}
+
 /// A message the phone sends on `/api/v2/live`.
 public enum LiveRequest: Encodable, Hashable, Sendable {
     /// `since` is the cursor of a cached transcript, so an unchanged chat
-    /// answers `chat_resumed` instead of a snapshot.
-    case subscribe(LiveView, since: Cursor? = nil)
+    /// answers `chat_resumed` instead of a snapshot; `size` asks for a
+    /// terminal at the phone's size.
+    case subscribe(LiveView, since: Cursor? = nil, size: TermSize? = nil)
     case unsubscribe(LiveView)
+    /// Scrolls a terminal held at the phone's size, as a mouse wheel
+    /// would: `lines` above zero go back into its history.
+    case termScroll(pane: String, lines: Int)
 
-    enum CodingKeys: String, CodingKey { case type, view, pane, since }
+    enum CodingKeys: String, CodingKey { case type, view, pane, since, size, lines }
 
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         let view: LiveView
         switch self {
-        case let .subscribe(subscribed, since):
+        case let .subscribe(subscribed, since, size):
             try c.encode("subscribe", forKey: .type)
             view = subscribed
             try c.encodeIfPresent(since, forKey: .since)
+            try c.encodeIfPresent(size, forKey: .size)
         case let .unsubscribe(unsubscribed):
             try c.encode("unsubscribe", forKey: .type)
             view = unsubscribed
+        case let .termScroll(pane, lines):
+            try c.encode("term_scroll", forKey: .type)
+            try c.encode(pane, forKey: .pane)
+            try c.encode(lines, forKey: .lines)
+            return
         }
         switch view {
         case .home: try c.encode("home", forKey: .view)

@@ -6,12 +6,14 @@ import Testing
 actor FakeComputer {
     var pings: [String: String] = [:]
     var sessionError: Error?
+    var connectError: Error?
     private(set) var connects: [String] = []
     private(set) var sent: [LiveRequest] = []
     private var sockets: [AsyncThrowingStream<LiveEvent, Error>.Continuation] = []
 
     func setPing(_ origin: String, _ fingerprint: String) { pings[origin] = fingerprint }
     func failSessions(_ error: Error?) { sessionError = error }
+    func failConnects(_ error: Error?) { connectError = error }
 
     func io() -> LinkIO {
         LinkIO(
@@ -23,7 +25,7 @@ actor FakeComputer {
                 if let error = await self.sessionError { throw error }
                 return "token"
             },
-            connect: { origin, _ in await self.open(origin) },
+            connect: { origin, _ in try await self.open(origin) },
             sleep: { duration in
                 // Head starts pass at once; backoff waits are long enough
                 // that a test only gets past one by waking the link.
@@ -32,8 +34,9 @@ actor FakeComputer {
         )
     }
 
-    private func open(_ origin: String) -> LiveConnection {
+    private func open(_ origin: String) throws -> LiveConnection {
         connects.append(origin)
+        if let connectError { throw connectError }
         let (events, continuation) = AsyncThrowingStream<LiveEvent, Error>.makeStream()
         sockets.append(continuation)
         return LiveConnection(

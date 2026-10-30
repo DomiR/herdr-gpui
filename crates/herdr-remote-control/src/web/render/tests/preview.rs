@@ -150,7 +150,12 @@ fn write_preview_pages() {
     first.label = "remote control".into();
     first.branch = Some("worktree/remote-control".into());
     let mut agent_tab = crate::hub::layout_terminal("t7", "Review PR 775");
-    agent_tab.agent = Some((Some("codex".into()), AgentStatus::Blocked));
+    agent_tab.agent = Some(crate::hub::TerminalAgent {
+        name: Some("codex".into()),
+        status: AgentStatus::Blocked,
+        pane: "p9".into(),
+        title: None,
+    });
     let mut shell = crate::hub::layout_terminal("t8", "cargo watch");
     shell.cwd = Some("/code/herdr-gpui".into());
     first.terminals = vec![agent_tab, shell];

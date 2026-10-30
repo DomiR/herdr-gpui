@@ -29,6 +29,23 @@ enum LiveSocket {
         sessions: Sessions
     ) async throws -> LiveConnection {
         task.resume()
+        // A socket counts as open once its handshake is done, so a daemon
+        // that refuses it never shows as online in between.
+        do {
+            try await withCheckedThrowingContinuation { (done: CheckedContinuation<Void, Error>) in
+                task.sendPing { error in
+                    if let error { done.resume(throwing: error) } else { done.resume() }
+                }
+            }
+        } catch {
+            task.cancel(with: .goingAway, reason: nil)
+            switch (task.response as? HTTPURLResponse)?.statusCode {
+            case 404: throw LinkError.outdated
+            case 401: await sessions.forget(computer)
+            default: break
+            }
+            throw error
+        }
         let events = AsyncThrowingStream<LiveEvent, Error> { continuation in
             let reader = Task {
                 // Keeps the client, and so its session and pinning, alive
