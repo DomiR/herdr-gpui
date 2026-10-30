@@ -120,6 +120,10 @@ impl TerminalAttach {
                 Err(error) => return Err(error),
             }
         };
+        // Set before asking: Herdr may refuse and close at once, and macOS
+        // refuses a socket option on a socket its peer closed (`EINVAL`),
+        // which would hide the refusal.
+        stream.set_read_timeout(Some(CONFIRM_TIMEOUT))?;
         write_message(
             &mut stream,
             &ClientMessage::AttachTerminal {
@@ -275,10 +279,10 @@ fn hello(stream: &mut Stream, version: u32, cols: u16, rows: u16) -> Result<()> 
     }
 }
 
-/// Waits briefly for Herdr to refuse the attach. Any other frame, or none
-/// in time, means it took it.
+/// Waits up to the stream's read timeout, [`CONFIRM_TIMEOUT`], for Herdr
+/// to refuse the attach. Any other frame, or none in time, means it took
+/// it.
 fn confirm(stream: &mut Stream) -> Result<()> {
-    stream.set_read_timeout(Some(CONFIRM_TIMEOUT))?;
     match read_message::<_, ServerMessage>(stream, MAX_GRAPHICS_FRAME_SIZE) {
         Ok(ServerMessage::ServerShutdown { reason }) => Err(Error::Refused(
             reason.map(|reason| reason.chars().take(512).collect()),
