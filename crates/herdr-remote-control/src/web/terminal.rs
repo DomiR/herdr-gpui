@@ -302,3 +302,69 @@ pub(crate) fn next_pane<'a>(
         _ => Some(pane),
     }
 }
+
+/// The longest name the phone gives a chat or a tab, in characters.
+pub(crate) const MAX_LABEL: usize = 200;
+
+#[derive(Deserialize)]
+pub(super) struct RenameRequest {
+    label: String,
+}
+
+/// What the phone renames: a chat by its pane, whose label the chat's
+/// title reads first, or a terminal by its tab, whose label its row shows.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum RenameTarget<'a> {
+    Chat { pane: &'a str },
+    Tab { tab: &'a str },
+}
+
+/// The Herdr method and parameters that give `target` the name `label`.
+/// An empty name clears a chat's label, so its title is the agent's again;
+/// a tab always has a name.
+pub(crate) fn rename_call(
+    target: RenameTarget<'_>,
+    label: &str,
+) -> Result<(ApiMethod, Value), ApiError> {
+    let label = label.trim();
+    if label.chars().count() > MAX_LABEL {
+        return Err(ApiError::Invalid("that name is too long"));
+    }
+    match target {
+        RenameTarget::Chat { pane } if label.is_empty() => {
+            Ok((ApiMethod::PaneRename, json!({ "pane_id": pane })))
+        }
+        RenameTarget::Chat { pane } => Ok((
+            ApiMethod::PaneRename,
+            json!({ "pane_id": pane, "label": label }),
+        )),
+        RenameTarget::Tab { .. } if label.is_empty() => {
+            Err(ApiError::Invalid("a tab needs a name"))
+        }
+        RenameTarget::Tab { tab } => Ok((
+            ApiMethod::TabRename,
+            json!({ "tab_id": tab, "label": label }),
+        )),
+    }
+}
+
+/// Renames the chat `pane` runs, or the terminal tab it is in.
+pub(super) async fn rename(
+    State(state): State<Shared>,
+    _device: Device,
+    Path(pane): Path<String>,
+    Json(request): Json<RenameRequest>,
+) -> Result<Json<Value>, ApiError> {
+    let (method, params) = {
+        let layout = state.hub.layout();
+        let target = if layout.chat(&pane).is_some() {
+            RenameTarget::Chat { pane: &pane }
+        } else {
+            let (_, terminal) = layout.terminal(&pane).ok_or(ApiError::NotFound)?;
+            RenameTarget::Tab { tab: &terminal.tab }
+        };
+        rename_call(target, &request.label)?
+    };
+    state.hub.call(method, params).await?;
+    Ok(Json(json!({})))
+}

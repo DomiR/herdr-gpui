@@ -286,6 +286,15 @@ final class Fleet {
         }
     }
 
+    /// Names a chat or the terminal tab a pane is in; the next `home` from
+    /// the computer carries the name to every list.
+    func rename(_ key: PaneKey, to label: String) async throws {
+        let pane = key.pane
+        try await call(key.device) { client, token in
+            try await client.rename(label, pane: pane, bearer: token)
+        }
+    }
+
     // MARK: Links
 
     private func startLink(_ computer: Computer) {

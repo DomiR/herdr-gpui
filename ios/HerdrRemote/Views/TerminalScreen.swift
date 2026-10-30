@@ -23,6 +23,8 @@ struct TerminalScreen: View {
     @State private var choosingPhotos = false
     @State private var problem: String?
     @State private var clipboardHasText = UIPasteboard.general.hasStrings
+    @State private var renaming = false
+    @State private var newName = ""
 
     var body: some View {
         GeometryReader { geometry in
@@ -75,7 +77,7 @@ struct TerminalScreen: View {
         .environment(\.colorScheme, .dark)
         .toolbarColorScheme(.dark, for: .navigationBar)
         // Window titles show in Stage Manager and the app switcher.
-        .navigationTitle(LockState.shared.hidesNames ? "Herdr Remote" : title)
+        .navigationTitle(LockState.shared.hidesNames ? "Herdr Remote" : name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
@@ -105,6 +107,10 @@ struct TerminalScreen: View {
             Button("Split Down") { run(.splitDown) }
             Button(item?.terminal.zoomed == true ? "Unzoom" : "Zoom") { run(.zoom) }
             Button("New Tab") { run(.newTab) }
+            Button("Rename Tab…") {
+                newName = item?.terminal.label ?? title
+                renaming = true
+            }
             if let item {
                 Button("New Chat in \(item.workspace.label)") {
                     model.creating = .chat(device: key.device, workspace: item.workspace.id, label: item.workspace.label)
@@ -112,6 +118,15 @@ struct TerminalScreen: View {
             }
             Button("Close Pane", role: .destructive) { run(.closePane) }
             Button("Close Tab", role: .destructive) { run(.closeTab) }
+        }
+        .alert("Rename Tab", isPresented: $renaming) {
+            TextField("Name", text: $newName)
+                .textInputAutocapitalization(.never)
+            Button("Cancel", role: .cancel) {}
+            Button("Rename") { rename(newName) }
+                .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
+        } message: {
+            Text("The name shows in Herdr and in your lists.")
         }
         .photosPicker(isPresented: $choosingPhotos, selection: $picks, maxSelectionCount: 1, matching: .images)
         .onChange(of: picks) { _, chosen in
@@ -140,6 +155,10 @@ struct TerminalScreen: View {
         }
     }
 
+    /// The tab's name as the computer last sent it, so a rename shows at
+    /// once; the route's title until the home arrives.
+    private var name: String { item?.terminal.label ?? title }
+
     /// The terminal tab this pane is in, from the computer's home.
     private var item: TerminalItem? {
         model.fleet.terminalItems.first { $0.computer.device == key.device && $0.terminal.panes.contains { $0.pane == key.pane } }
@@ -155,7 +174,7 @@ struct TerminalScreen: View {
                         let current = pane.pane == key.pane
                         Button {
                             guard !current else { return }
-                            model.pendingRoute = .term(PaneKey(device: key.device, pane: pane.pane), title: title)
+                            model.pendingRoute = .term(PaneKey(device: key.device, pane: pane.pane), title: name)
                         } label: {
                             Text(pane.label ?? "Pane \(index + 1)").font(.caption.weight(.medium)).lineLimit(1)
                                 .padding(.horizontal, 10).padding(.vertical, 5)
@@ -173,6 +192,17 @@ struct TerminalScreen: View {
 
     // MARK: Actions
 
+    private func rename(_ label: String) {
+        Task {
+            do {
+                try await model.fleet.rename(key, to: label)
+                problem = nil
+            } catch {
+                problem = error.localizedDescription
+            }
+        }
+    }
+
     private func run(_ action: TermAction) {
         let pane = key.pane
         Task {
@@ -183,7 +213,7 @@ struct TerminalScreen: View {
                 switch next {
                 case nil: dismiss()
                 case let next? where next != pane:
-                    model.pendingRoute = .term(PaneKey(device: key.device, pane: next), title: title)
+                    model.pendingRoute = .term(PaneKey(device: key.device, pane: next), title: name)
                 default: break
                 }
                 problem = nil

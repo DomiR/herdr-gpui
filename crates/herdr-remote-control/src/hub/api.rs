@@ -24,6 +24,7 @@ pub(crate) enum ApiMethod {
     // keep-sorted start
     PaneClose,
     PaneRead,
+    PaneRename,
     PaneSendInput,
     PaneSendKeys,
     PaneSendText,
@@ -31,6 +32,7 @@ pub(crate) enum ApiMethod {
     PaneZoom,
     TabClose,
     TabCreate,
+    TabRename,
     WorkspaceCreate,
     WorktreeCreate,
     // keep-sorted end
@@ -41,6 +43,7 @@ impl ApiMethod {
         match self {
             Self::PaneClose => "pane.close",
             Self::PaneRead => "pane.read",
+            Self::PaneRename => "pane.rename",
             Self::PaneSendInput => "pane.send_input",
             Self::PaneSendKeys => "pane.send_keys",
             Self::PaneSendText => "pane.send_text",
@@ -48,6 +51,7 @@ impl ApiMethod {
             Self::PaneZoom => "pane.zoom",
             Self::TabClose => "tab.close",
             Self::TabCreate => "tab.create",
+            Self::TabRename => "tab.rename",
             Self::WorkspaceCreate => "workspace.create",
             Self::WorktreeCreate => "worktree.create",
         }

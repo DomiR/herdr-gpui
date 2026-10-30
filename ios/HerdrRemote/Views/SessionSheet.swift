@@ -1,19 +1,25 @@
 import HerdrRemoteCore
 import SwiftUI
 
-/// Session C: cards for the context, the mode, effort, the session's
-/// other settings, and auto-accept, which asks for Face ID before it
-/// turns on, then closing the chat.
+/// Session C: the chat's name, cards for the context, the mode, effort,
+/// the session's other settings, and auto-accept, which asks for Face ID
+/// before it turns on, then closing the chat.
 struct SessionSheet: View {
     @Environment(AppModel.self) private var model
     let key: PaneKey
     let store: ChatStore
+    /// The chat's name as the lists show it.
+    let name: String
     /// The chat's pane is gone; the chat screen leaves with the sheet.
     let onClosed: () -> Void
     @State private var problem: String?
     @State private var effort: Double?
     @State private var confirmingClose = false
     @State private var closing = false
+    /// The name being typed; `nil` until the field is edited.
+    @State private var draft: String?
+    @State private var renaming = false
+    @FocusState private var naming: Bool
 
     var body: some View {
         NavigationStack {
@@ -21,6 +27,7 @@ struct SessionSheet: View {
                 // Picks show at once; the sync dot says when they are in.
                 if let transcript = store.transcript.map({ model.fleet.chat($0, for: key) }) {
                     VStack(spacing: 14) {
+                        nameCard()
                         contextCard(transcript)
                         if let modes = transcript.modes, !modes.available.isEmpty { modeTiles(modes) }
                         if let option = transcript.options.first(where: { $0.category == .thoughtLevel }),
@@ -46,6 +53,28 @@ struct SessionSheet: View {
     }
 
     // MARK: Cards
+
+    private func nameCard() -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Name").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+            HStack {
+                TextField("Name", text: Binding(get: { draft ?? name }, set: { draft = $0 }))
+                    .font(.headline)
+                    .submitLabel(.done)
+                    .focused($naming)
+                    .onSubmit { rename(draft ?? name) }
+                if renaming {
+                    ProgressView()
+                } else if naming {
+                    Button("Save") { rename(draft ?? name) }.font(.subheadline.weight(.semibold))
+                }
+            }
+            Button("Use the Agent's Title") { rename("") }
+                .font(.caption)
+                .disabled(renaming)
+        }
+        .card()
+    }
 
     private func contextCard(_ transcript: Transcript) -> some View {
         HStack(spacing: 18) {
@@ -212,6 +241,22 @@ struct SessionSheet: View {
                 problem = error.localizedDescription
             }
             closing = false
+        }
+    }
+
+    /// An empty name clears the chat's own, so its title is the agent's.
+    private func rename(_ label: String) {
+        naming = false
+        renaming = true
+        Task {
+            do {
+                try await model.fleet.rename(key, to: label)
+                draft = nil
+                problem = nil
+            } catch {
+                problem = error.localizedDescription
+            }
+            renaming = false
         }
     }
 

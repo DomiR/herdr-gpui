@@ -15,6 +15,12 @@ struct ChatScreen: View {
     @Environment(\.horizontalSizeClass) private var width
     @Environment(\.dismiss) private var dismiss
 
+    /// The chat's name as the computer last sent it, so a rename shows at
+    /// once; the route's title until the home arrives.
+    private var name: String {
+        model.fleet.chatItems.first { $0.key == key }?.chat.title ?? title
+    }
+
     var body: some View {
         Group {
             if let store, let transcript = store.transcript {
@@ -26,7 +32,7 @@ struct ChatScreen: View {
         // The principal item below draws the header; the title is what the
         // iPad's split view and the window's name fall back to.
         // Window titles show in Stage Manager and the app switcher.
-        .navigationTitle(LockState.shared.hidesNames ? "Herdr Remote" : title)
+        .navigationTitle(LockState.shared.hidesNames ? "Herdr Remote" : name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(removing: width == .regular ? .title : nil)
         .toolbar(.hidden, for: .tabBar)
@@ -37,7 +43,7 @@ struct ChatScreen: View {
                 Button { showingSession = store != nil } label: {
                     VStack(spacing: 0) {
                         HStack(spacing: 4) {
-                            Text(title).font(.headline).lineLimit(1)
+                            Text(name).font(.headline).lineLimit(1)
                             Image(systemName: "chevron.down.circle.fill").font(.caption).foregroundStyle(.tertiary)
                         }
                         if let line = store?.transcript.map({ sessionLine(model.fleet.chat($0, for: key)) }), !line.isEmpty {
@@ -57,7 +63,7 @@ struct ChatScreen: View {
         }
         .sheet(isPresented: $showingSession) {
             if let store {
-                SessionSheet(key: key, store: store) {
+                SessionSheet(key: key, store: store, name: name) {
                     showingSession = false
                     dismiss()
                 }

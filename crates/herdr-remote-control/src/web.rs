@@ -197,6 +197,7 @@ pub(crate) fn router(state: Shared) -> Router {
             post(terminal::upload).layer(DefaultBodyLimit::max(uploads::MAX_UPLOAD + 1024)),
         )
         .route("/api/term/{pane}/action", post(terminal::action))
+        .route("/api/term/{pane}/rename", post(terminal::rename))
         .route("/api/stream", get(stream::stream))
         .route("/api/v2/chat/{pane}", get(crate::native::get_chat))
         .route("/api/v2/home", get(crate::native::get_home))

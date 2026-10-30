@@ -211,6 +211,13 @@ final class RemoteClient: Sendable {
         return answer.pane
     }
 
+    /// Names the chat `pane` runs, or the terminal tab it is in; an empty
+    /// name gives a chat its agent's title back.
+    func rename(_ label: String, pane: String, bearer: String) async throws {
+        struct Body: Encodable { let label: String }
+        let _: EmptyAnswer = try await send("POST", "/api/term/\(Self.segment(pane))/rename", body: Body(label: label), bearer: bearer)
+    }
+
     /// The live socket, authenticated like every other call.
     func live(bearer: String) -> URLSessionWebSocketTask {
         let url = URL(string: origin.replacingOccurrences(of: "https://", with: "wss://") + "/api/v2/live")

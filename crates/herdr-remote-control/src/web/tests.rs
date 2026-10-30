@@ -24,6 +24,7 @@ mod pace;
 mod pairing;
 mod presence;
 mod pull_requests;
+mod rename;
 mod routes;
 mod stream;
 #[cfg(unix)]
