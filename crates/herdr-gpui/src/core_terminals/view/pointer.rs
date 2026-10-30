@@ -122,12 +122,11 @@ impl CoreTerminalView {
             // every motion (mode 1003); the encoder drops it otherwise.
             None if event.pressed_button.is_none()
                 && self.screen.mouse_reporting
-                && !event.modifiers.shift =>
+                && !event.modifiers.shift
+                && self.hovered != Some(cell) =>
             {
-                if self.hovered != Some(cell) {
-                    self.hovered = Some(cell);
-                    self.report(ClientMouseKind::Moved, cell, event.modifiers, 1);
-                }
+                self.hovered = Some(cell);
+                self.report(ClientMouseKind::Moved, cell, event.modifiers, 1);
             }
             _ => {}
         }
