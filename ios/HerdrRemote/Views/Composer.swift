@@ -10,6 +10,7 @@ import UniformTypeIdentifiers
 struct Composer: View {
     @Environment(AppModel.self) private var model
     let key: PaneKey
+    let store: ChatStore
     let transcript: Transcript
     @Binding var problem: String?
     @State private var draft = ""
@@ -130,7 +131,7 @@ struct Composer: View {
                 Image(systemName: stopping ? "stop.fill" : "arrow.up").font(.body.bold()).frame(width: 36, height: 36)
             }
             .buttonStyle(.glassProminent).buttonBorderShape(.circle)
-            .disabled(transcript.readOnly || pictures.contains { $0.upload == .sending })
+            .disabled(transcript.readOnly)
             .accessibilityLabel(stopping ? "Stop" : "Send")
         }
     }
@@ -142,10 +143,13 @@ struct Composer: View {
                     Image(uiImage: picture.thumbnail).resizable().scaledToFill()
                         .frame(width: 56, height: 56).clipShape(.rect(cornerRadius: 10))
                         .overlay {
-                            switch picture.upload {
-                            case .sending: ProgressView().tint(.white)
-                            case .failed: Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.yellow)
-                            case .sent: EmptyView()
+                            if picture.upload == .failed {
+                                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.yellow)
+                            }
+                        }
+                        .overlay(alignment: .bottom) {
+                            if picture.upload == .sending {
+                                ThinProgress(value: picture.progress.fraction).padding(5)
                             }
                         }
                         .overlay(alignment: .topTrailing) {
@@ -209,27 +213,46 @@ struct Composer: View {
     /// so sending does not wait on it.
     private func add(_ image: UIImage) {
         guard pictures.count < 4, let prepared = PreparedImage(image) else { return }
-        let picture = Picture(thumbnail: prepared.thumbnail, jpeg: prepared.jpeg)
+        let progress = UploadProgress()
+        let picture = Picture(
+            thumbnail: prepared.thumbnail,
+            jpeg: prepared.jpeg,
+            progress: progress,
+            task: upload(prepared.jpeg, progress: progress)
+        )
         pictures.append(picture)
-        upload(picture.id)
-    }
-
-    private func upload(_ id: UUID) {
-        guard let jpeg = pictures.first(where: { $0.id == id })?.jpeg else { return }
-        let pane = key.pane
+        let id = picture.id
         Task {
             let result: Picture.Upload
             do {
-                let uploaded = try await model.fleet.call(key.device) { client, token in
-                    try await client.upload(jpeg, pane: pane, bearer: token)
-                }
-                result = .sent(uploaded)
+                result = .sent(try await picture.task.value)
             } catch {
                 problem = error.localizedDescription
                 result = .failed
             }
             if let index = pictures.firstIndex(where: { $0.id == id }) { pictures[index].upload = result }
         }
+    }
+
+    private func upload(_ jpeg: Data, progress: UploadProgress) -> Task<String, Error> {
+        let pane = key.pane
+        let device = key.device
+        let fleet = model.fleet
+        progress.fraction = 0
+        return Task {
+            try await fleet.call(device) { client, token in
+                try await client.upload(jpeg, pane: pane, bearer: token) { fraction in
+                    Task { @MainActor in progress.fraction = fraction }
+                }
+            }
+        }
+    }
+
+    /// The picture's upload id, trying a failed upload once more rather
+    /// than sending the prompt without it.
+    private func uploaded(_ picture: Picture) async throws -> String {
+        if let id = try? await picture.task.value { return id }
+        return try await upload(picture.jpeg, progress: picture.progress).value
     }
 
     /// Sends the shortcut at once when nothing is drafted; otherwise adds
@@ -244,21 +267,25 @@ struct Composer: View {
         }
     }
 
+    /// Clears the composer and shows the prompt as sending at once; the
+    /// pictures still uploading finish before the prompt goes out.
     private func sendPrompt() {
-        // A failed upload is tried again rather than sent without it.
-        for picture in pictures where picture.upload == .failed {
-            if let index = pictures.firstIndex(where: { $0.id == picture.id }) { pictures[index].upload = .sending }
-            upload(picture.id)
-        }
-        let ids = pictures.compactMap { if case let .sent(id) = $0.upload { id } else { nil } }
-        guard ids.count == pictures.count else { return }
         let text = draft
         let sentPictures = pictures
         draft = ""
         pictures = []
         dictation.reset()
+        let outgoing = store.sending(text, uploads: sentPictures.map(\.progress))
         Task {
-            problem = await model.fleet.send(.prompt(text: text, attachments: ids), to: key)
+            do {
+                var ids: [String] = []
+                for picture in sentPictures { ids.append(try await uploaded(picture)) }
+                if !sentPictures.isEmpty { store.uploaded(outgoing) }
+                problem = await model.fleet.send(.prompt(text: text, attachments: ids), to: key)
+            } catch {
+                problem = error.localizedDescription
+            }
+            store.sent(outgoing, failed: problem != nil)
             if problem != nil {
                 draft = text
                 pictures = sentPictures
@@ -282,7 +309,21 @@ private struct Picture: Identifiable {
     let id = UUID()
     let thumbnail: UIImage
     let jpeg: Data
+    let progress: UploadProgress
+    let task: Task<String, Error>
     var upload = Upload.sending
+}
+
+/// A thin bar for how far an upload or a send has come.
+struct ThinProgress: View {
+    let value: Double
+
+    var body: some View {
+        ProgressView(value: min(max(value, 0), 1))
+            .progressViewStyle(.linear)
+            .scaleEffect(y: 0.6, anchor: .center)
+            .animation(.easeOut(duration: 0.25), value: value)
+    }
 }
 
 /// An image from the clipboard, through `PasteButton`, which reads it

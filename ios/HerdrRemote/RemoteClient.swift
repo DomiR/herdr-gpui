@@ -125,17 +125,23 @@ final class RemoteClient: Sendable {
     }
 
     /// Uploads a picture for a prompt (JPEG, PNG, GIF, or WebP, at most
-    /// 3.5 MB); answers the id a prompt's attachments name it by.
-    func upload(_ image: Data, pane: String, bearer: String) async throws -> String {
+    /// 3.5 MB); answers the id a prompt's attachments name it by, and
+    /// reports the share of its bytes sent as they go.
+    func upload(
+        _ image: Data,
+        pane: String,
+        bearer: String,
+        progress: @escaping @Sendable (Double) -> Void = { _ in }
+    ) async throws -> String {
         struct Answer: Decodable { let id: String }
         guard let url = URL(string: origin + "/api/chat/\(Self.segment(pane))/upload") else { throw RemoteError.unreachable }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.timeoutInterval = 60
-        request.httpBody = image
         request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
-        let answer: Answer = try await perform(request)
+        let (data, response) = try await session.upload(for: request, from: image, delegate: UploadWatcher(report: progress))
+        let answer: Answer = try decode(data, response)
         return answer.id
     }
 
@@ -276,12 +282,37 @@ final class RemoteClient: Sendable {
 
     private func perform<Answer: Decodable>(_ request: URLRequest) async throws -> Answer {
         let (data, response) = try await session.data(for: request)
+        return try decode(data, response)
+    }
+
+    private func decode<Answer: Decodable>(_ data: Data, _ response: URLResponse) throws -> Answer {
         guard let http = response as? HTTPURLResponse else { throw RemoteError.notHTTP }
         guard (200..<300).contains(http.statusCode) else {
             let text = String(decoding: data.prefix(300), as: UTF8.self)
             throw RemoteError.status(http.statusCode, text)
         }
         return try JSONDecoder().decode(Answer.self, from: data)
+    }
+}
+
+/// Reports an upload's share of bytes sent; the session's delegate still
+/// answers the server trust challenge.
+private final class UploadWatcher: NSObject, URLSessionTaskDelegate, Sendable {
+    let report: @Sendable (Double) -> Void
+
+    init(report: @escaping @Sendable (Double) -> Void) {
+        self.report = report
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didSendBodyData bytesSent: Int64,
+        totalBytesSent: Int64,
+        totalBytesExpectedToSend: Int64
+    ) {
+        guard totalBytesExpectedToSend > 0 else { return }
+        report(Double(totalBytesSent) / Double(totalBytesExpectedToSend))
     }
 }
 

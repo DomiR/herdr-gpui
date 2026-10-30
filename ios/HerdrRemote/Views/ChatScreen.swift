@@ -187,8 +187,12 @@ private struct ChatDocument: View {
                         }
                     }
                 }
+                ForEach(store.outgoing) { outgoing in
+                    OutgoingRow(outgoing: outgoing, computer: computerName, agent: transcript.agent)
+                }
                 if let problem { Text(problem).font(.footnote).foregroundStyle(.red) }
             }
+            .animation(.snappy, value: store.outgoing)
             .frame(maxWidth: Self.readableWidth, alignment: .leading)
             .frame(maxWidth: .infinity)
             .padding(.horizontal, 20)
@@ -205,7 +209,7 @@ private struct ChatDocument: View {
                     RunningCapsule(transcript: transcript, tools: tools)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-                Composer(key: key, transcript: transcript, problem: $problem)
+                Composer(key: key, store: store, transcript: transcript, problem: $problem)
                     .frame(maxWidth: Self.readableWidth + 40)
                     .frame(maxWidth: .infinity)
             }
@@ -232,6 +236,10 @@ private struct ChatDocument: View {
         }
     }
 
+    private var computerName: String {
+        model.fleet.machines.first { $0.id == key.device }?.computer.name ?? "your computer"
+    }
+
     /// The oldest question, shown until answered or swiped away.
     private var question: Binding<Permission?> {
         Binding(
@@ -255,7 +263,44 @@ private struct ChatDocument: View {
     }
 }
 
-/// What the agent is doing now, pinned under the header.
+/// A prompt on its way, until the transcript shows it as a turn or queued.
+private struct OutgoingRow: View {
+    let outgoing: Outgoing
+    let computer: String
+    let agent: String
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            VStack(alignment: .leading, spacing: 6) {
+                if !outgoing.text.isEmpty { Text(outgoing.text).lineLimit(6) }
+                let pictures = outgoing.uploads.count
+                if pictures > 0 {
+                    Label("\(pictures) picture\(pictures == 1 ? "" : "s")", systemImage: "photo")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .background(.tint.opacity(0.18), in: .rect(cornerRadius: 16))
+            ThinProgress(value: outgoing.progress).frame(width: 140)
+            Text(stageLine).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+        }
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .accessibilityElement(children: .combine)
+    }
+
+    private var stageLine: String {
+        switch outgoing.stage {
+        case .uploading:
+            let pictures = outgoing.uploads.count == 1 ? "picture" : "pictures"
+            return "Uploading \(pictures)… \(Int((outgoing.progress / 0.8 * 100).rounded()))%"
+        case .toComputer: return "Sending to \(computer)…"
+        case .toAgent: return "Sending to \(agent)…"
+        }
+    }
+}
+
+/// What the agent is doing now, pinned above the composer.
 private struct RunningCapsule: View {
     let transcript: Transcript
     let tools: [Tool]
