@@ -16,6 +16,7 @@ pub(super) fn run(command: ModCommand, context: &Context) -> crate::Result<Outpu
         ModCommand::List => ModOp::List,
         ModCommand::Reload { name } => ModOp::Reload { name },
         ModCommand::Logs { name, lines } => ModOp::Logs { name, lines },
+        ModCommand::Open { name } => ModOp::Open { name },
     };
     match context.call(Request::Mod, op)? {
         Response::Mod {
@@ -54,6 +55,12 @@ pub(super) fn run(command: ModCommand, context: &Context) -> crate::Result<Outpu
             &serde_json::json!({ "name": name, "reloading": true }),
         ),
         Response::Mod {
+            reply: Reply::Opened { name },
+        } => Output::data(
+            format!("Showing {name}"),
+            &serde_json::json!({ "name": name, "shown": true }),
+        ),
+        Response::Mod {
             reply: Reply::Logs { name, lines },
         } => {
             let json = serde_json::json!({ "name": name, "lines": lines });
@@ -78,7 +85,10 @@ fn check(dir: &Path) -> crate::Result<Output> {
         .view(&herdr_mods::State::default(), now)
         .map_err(failed)?;
     let manifest = &sources.manifest;
-    let places: Vec<_> = manifest.places.iter().map(|place| place.name()).collect();
+    let mut places: Vec<_> = manifest.places.iter().map(|place| place.name()).collect();
+    if manifest.activity.is_some() {
+        places.push("activity_bar");
+    }
     let log: Vec<_> = module
         .take_log()
         .into_iter()

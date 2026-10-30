@@ -9,6 +9,7 @@
 //! log lines, and the catalog commands a click asked for. A scanner thread
 //! lists the folder, so a new mod starts and a removed one stops by itself.
 
+mod activity;
 mod config;
 mod error;
 mod render;
@@ -67,6 +68,10 @@ impl Default for Mods {
 pub(crate) struct Entry {
     worker: worker::Handle,
     pub(crate) manifest: Option<Manifest>,
+    /// The activity bar icon's SVG text, when the mod declares `[activity]`.
+    pub(crate) icon: Option<String>,
+    /// That icon tinted for the bar, by the color it was drawn in.
+    icon_image: std::cell::RefCell<Option<(u32, Arc<gpui::Image>)>>,
     pub(crate) tree: Option<Node>,
     pub(crate) error: Option<herdr_mods::Error>,
     pub(crate) log: VecDeque<LogLine>,
@@ -115,6 +120,8 @@ impl Mods {
                         Entry {
                             worker,
                             manifest: None,
+                            icon: None,
+                            icon_image: Default::default(),
                             tree: None,
                             error: None,
                             log: VecDeque::new(),
@@ -127,6 +134,10 @@ impl Mods {
         for entry in self.entries.values_mut() {
             let report = entry.worker.take();
             polled.changed |= report.changed();
+            if let Some(icon) = report.icon {
+                entry.icon = icon;
+                entry.icon_image.replace(None);
+            }
             if let Some(manifest) = report.manifest {
                 entry.manifest = Some(manifest);
             }
@@ -237,6 +248,11 @@ impl HerdrWindow {
 }
 
 impl Entry {
+    /// The activity bar app the mod declares, once it loaded.
+    pub(crate) fn activity(&self) -> Option<&herdr_mods::Activity> {
+        self.manifest.as_ref()?.activity.as_ref()
+    }
+
     pub(crate) fn places(&self) -> &[herdr_mods::Place] {
         self.manifest
             .as_ref()

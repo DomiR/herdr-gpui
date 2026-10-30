@@ -36,6 +36,8 @@ struct Inbox {
 #[derive(Default)]
 pub(super) struct Report {
     pub manifest: Option<Manifest>,
+    /// The activity bar icon's SVG, sent with each manifest.
+    pub icon: Option<Option<String>>,
     pub tree: Option<Node>,
     /// `Some(None)` clears an error once the mod works again.
     pub error: Option<Option<Error>>,
@@ -239,7 +241,14 @@ impl Worker {
                 self.module = Some(module);
                 self.timers.clear();
                 self.dirty = true;
+                let icon = sources
+                    .manifest
+                    .activity
+                    .as_ref()
+                    .and_then(|activity| sources.icon(&activity.icon))
+                    .map(str::to_owned);
                 let mut outbox = lock(&self.link.outbox);
+                outbox.icon = Some(icon);
                 outbox.manifest = Some(sources.manifest);
                 outbox.error = Some(None);
             }

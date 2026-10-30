@@ -12,6 +12,10 @@ pub enum ModCommand {
         name: String,
         lines: usize,
     },
+    /// Show a mod's activity bar app.
+    Open {
+        name: String,
+    },
     /// Load a mod folder and run its view once here, without the app.
     Check {
         dir: PathBuf,
@@ -29,6 +33,9 @@ pub(super) fn command(args: &mut Args) -> Result<ModCommand, CliError> {
         },
         Some("logs") => ModCommand::Logs {
             lines: args.number("--lines", 1..=200)?.unwrap_or(50),
+            name: args.required_text("NAME")?,
+        },
+        Some("open") => ModCommand::Open {
             name: args.required_text("NAME")?,
         },
         Some("check") => ModCommand::Check {

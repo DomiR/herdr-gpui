@@ -47,6 +47,12 @@ fn mod_reload_logs_and_check_take_their_arguments() {
         })
     );
     assert_eq!(
+        command(&["mod", "open", "dashboard"]),
+        ControlCommand::Mod(ModCommand::Open {
+            name: "dashboard".into()
+        })
+    );
+    assert_eq!(
         command(&["mod", "check", "/tmp/agents"]),
         ControlCommand::Mod(ModCommand::Check {
             dir: "/tmp/agents".into()
@@ -58,6 +64,7 @@ fn mod_reload_logs_and_check_take_their_arguments() {
 fn mod_refuses_bad_arguments() {
     assert!(parse(&["mod", "reload"]).is_err());
     assert!(parse(&["mod", "check"]).is_err());
+    assert!(parse(&["mod", "open"]).is_err());
     assert!(parse(&["mod", "logs", "agents", "--lines", "500"]).is_err());
     assert!(parse(&["mod", "remove", "agents"]).is_err());
 }

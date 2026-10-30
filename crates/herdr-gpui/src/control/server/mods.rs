@@ -1,6 +1,6 @@
 //! `mod list`, `mod reload`, and `mod logs`.
 use crate::control::protocol::{
-    Call, Response,
+    Call, ErrorCode, Response,
     mods::{MAX_LOG_LINES, ModInfo, ModOp, Reply},
 };
 use gpui::App;
@@ -21,7 +21,9 @@ pub(super) fn serve(call: Call<ModOp>, cx: &mut App) -> Response {
                         places: entry
                             .places()
                             .iter()
-                            .map(|place| place.name().to_owned())
+                            .map(|place| place.name())
+                            .chain(entry.activity().map(|_| "activity_bar"))
+                            .map(str::to_owned)
                             .collect(),
                         commands: entry
                             .manifest
@@ -43,6 +45,27 @@ pub(super) fn serve(call: Call<ModOp>, cx: &mut App) -> Response {
                 Err(error) => not_found(error.to_string()),
             })
         }
+        ModOp::Open { name } => in_window(&caller, cx, |view, window, cx| {
+            if view
+                .mods
+                .get(&name)
+                .is_none_or(|entry| entry.activity().is_none())
+            {
+                return not_found(format!(
+                    "No running mod named {name} has an activity bar app"
+                ));
+            }
+            if !view.activity_bar_shown() {
+                return Response::error(
+                    ErrorCode::Unsupported,
+                    "The activity bar is off in Settings",
+                );
+            }
+            view.select_mod_app(&name, window, cx);
+            Response::Mod {
+                reply: Reply::Opened { name },
+            }
+        }),
         ModOp::Logs { name, lines } => in_window(&caller, cx, |view, _, _| {
             let Some(entry) = view.mods.get(&name) else {
                 return not_found(format!("No mod named {name} is running"));

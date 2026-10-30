@@ -1,6 +1,7 @@
 use super::*;
 use std::{fs, path::Path};
 
+mod activity;
 mod config;
 mod example;
 mod mods;

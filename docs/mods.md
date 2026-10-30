@@ -1,7 +1,8 @@
 # Mods
 
 A mod adds to Herdr UI without changing its code: a status bar item, a
-sidebar section, or palette commands. It is a folder of sandboxed Luau that
+sidebar section, palette commands, or an app with its own icon in the
+activity bar. It is a folder of sandboxed Luau that
 describes what to draw as plain tables; the app draws it in your theme.
 Saving a file reloads the mod. The design and what comes next are in
 [the plan](mods-plan.md).
@@ -21,8 +22,9 @@ Saving a file reloads the mod. The design and what comes next are in
 subfolders and symbolic links are never read. A mod has at most 64 such
 files, 256 KiB each and 1 MiB in all.
 
-`crates/herdr-gpui/mods/agents` is a complete example: copy it into the
-mods folder to try it.
+`crates/herdr-gpui/mods/agents` (a status bar item) and
+`crates/herdr-gpui/mods/dashboard` (an activity bar app) are complete
+examples: copy one into the mods folder to try it.
 
 ### `mod.toml`
 
@@ -35,6 +37,21 @@ commands = [{ id = "names", title = "Show agent names in the status bar" }]
 
 Each command appears in the palette as `agents: Show agent names...`, and
 choosing it sends the mod the message `command:<id>`.
+
+### An activity bar app
+
+```toml
+[activity]
+title = "Dashboard"
+icon = "icon.svg"   # an SVG in the mod's folder
+```
+
+A mod with an `[activity]` table gets an icon after the activity bar's own
+sections; picking it shows the mod's `view` across the window's body, under
+its title, as Overview or Usage show theirs. Draw the icon with
+`currentColor` (as a 24×24 stroke icon) and the bar tints it like its own.
+`herdr-gpui mod open <name>` shows it from a script. Picking another section
+leaves it; the mod keeps running meanwhile.
 
 ## `main.luau`
 
@@ -124,8 +141,16 @@ herdr-gpui mod check ~/.config/herdr/gpui-mods/agents   # load and draw once
 herdr-gpui mod                                          # what runs, any error
 herdr-gpui mod logs agents
 herdr-gpui mod reload agents
+herdr-gpui mod open dashboard                           # show an app
 ```
 
 A broken save keeps the last working version drawn and shows the error in
 `herdr-gpui mod`. Turn mods off with `[mods] enabled = false`, or one with
 `[mods] disabled = ["agents"]`, in `config-gpui.toml`.
+
+## For agents
+
+Herdr UI installs a `herdr-mods` skill beside its browser and automations
+skills (once you agree), so agents in your panes know how to write a mod,
+check it, and read its errors and logs. Its source is
+[`skills/herdr-mods/SKILL.md`](../skills/herdr-mods/SKILL.md).

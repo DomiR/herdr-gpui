@@ -17,13 +17,17 @@ pub enum ModOp {
         name: String,
         lines: usize,
     },
+    /// Shows a mod's activity bar app in the window's body.
+    Open {
+        name: String,
+    },
 }
 
 /// One mod the window runs.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModInfo {
     pub name: String,
-    /// Where it draws: `status_bar`, `sidebar`, `tab`.
+    /// Where it draws: `status_bar`, `sidebar`, `tab`, `activity_bar`.
     pub places: Vec<String>,
     /// The palette commands it declares, by ID.
     pub commands: Vec<String>,
@@ -47,5 +51,8 @@ pub enum Reply {
     Logs {
         name: String,
         lines: Vec<String>,
+    },
+    Opened {
+        name: String,
     },
 }

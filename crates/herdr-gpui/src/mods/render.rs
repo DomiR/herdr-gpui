@@ -15,7 +15,7 @@ const STATUS_ITEM_WIDTH: f32 = 280.;
 const SIDEBAR_SECTION_HEIGHT: f32 = 240.;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Axis {
+pub(super) enum Axis {
     Row,
     Column,
 }
@@ -137,14 +137,20 @@ impl HerdrWindow {
     }
 }
 
-struct Painter<'a> {
-    theme: &'a Theme,
-    name: &'a str,
-    size: f32,
+pub(super) struct Painter<'a> {
+    pub(super) theme: &'a Theme,
+    pub(super) name: &'a str,
+    pub(super) size: f32,
 }
 
 impl Painter<'_> {
-    fn node(&self, node: &Node, id: &str, axis: Axis, cx: &mut Context<HerdrWindow>) -> AnyElement {
+    pub(super) fn node(
+        &self,
+        node: &Node,
+        id: &str,
+        axis: Axis,
+        cx: &mut Context<HerdrWindow>,
+    ) -> AnyElement {
         let theme = self.theme;
         match node {
             Node::Row(container) => self.container(container, id, Axis::Row, cx),
@@ -333,13 +339,19 @@ impl Painter<'_> {
             })
             .gap(px(gap))
             .min_w_0()
-            .children(
-                container
-                    .children
-                    .iter()
-                    .enumerate()
-                    .map(|(index, child)| self.node(child, &format!("{id}-{index}"), axis, cx)),
-            )
+            .children(container.children.iter().enumerate().map(|(index, child)| {
+                let element = self.node(child, &format!("{id}-{index}"), axis, cx);
+                // In a row, children keep their natural width so text never
+                // wraps a letter at a time; only text asked to truncate, and
+                // spacers, give way.
+                let yields = matches!(child, Node::Spacer)
+                    || matches!(child, Node::Text(text) if text.truncate);
+                if axis == Axis::Row && !yields {
+                    div().flex_none().child(element).into_any_element()
+                } else {
+                    element
+                }
+            }))
             .into_any_element()
     }
 

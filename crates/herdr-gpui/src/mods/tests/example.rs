@@ -45,3 +45,36 @@ fn the_shipped_example_works() {
     assert!(matches!(&row.children[0], Node::Badge(badge) if badge.text == "1 waiting"));
     assert_eq!(text(&row.children[1]), "claude");
 }
+
+/// The shipped activity bar app loads, declares its icon, and draws.
+#[test]
+fn the_shipped_dashboard_app_works() {
+    let sources = Sources::new([
+        (
+            "mod.toml".to_owned(),
+            include_bytes!("../../../mods/dashboard/mod.toml").to_vec(),
+        ),
+        (
+            "main.luau".to_owned(),
+            include_bytes!("../../../mods/dashboard/main.luau").to_vec(),
+        ),
+        (
+            "icon.svg".to_owned(),
+            include_bytes!("../../../mods/dashboard/icon.svg").to_vec(),
+        ),
+    ])
+    .unwrap();
+    let activity = sources.manifest.activity.clone().unwrap();
+    assert_eq!(activity.title, "Dashboard");
+    assert!(
+        sources
+            .icon(&activity.icon)
+            .unwrap()
+            .contains("currentColor")
+    );
+    let now = SystemTime::now();
+    let mut module = Mod::load(&sources, Limits::default(), now).unwrap();
+    let tree = module.view(&State::default(), now).unwrap();
+    assert!(matches!(tree, Node::Column(_)));
+    module.update(&Data::from("reviewed"), now).unwrap();
+}

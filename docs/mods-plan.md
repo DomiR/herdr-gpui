@@ -248,9 +248,9 @@ Usage, and the other built-in sections.
   - `herdr-gpui mod logs NAME`: the bounded `herdr.log` output.
   - `herdr-gpui mod approve NAME`: opens the app's approval dialog; it never
     approves by itself.
-- **Skill:** a section in `skills/herdr-gpui-browser/SKILL.md` explaining
-  when to write a mod instead of asking for a feature. Its `description` is
-  updated so agents find it.
+- **Skill:** a managed `herdr-mods` skill (`skills/herdr-mods/SKILL.md`),
+  installed beside the browser and automations skills, on when to write a mod
+  and how to check it. (Built with phase 3.)
 
 ## Phases
 
@@ -270,7 +270,8 @@ Each phase is its own pull request, with `just ci` passing.
    switches moved to phase 4, `[mods] disabled` covers them until then.) Headless GPUI tests for rendering and reload, and a worker
    test that a stuck mod cannot block the window. Native QA in light and dark
    themes and a narrow window.
-4. **Activity bar apps.** `Section`, mod icons in the bar with count and
+4. **Activity bar apps.** (Started: mod icons in the bar, tinted from the
+   mod's SVG; the app body; `mod open`. The rest below remains.) `Section`, mod icons in the bar with count and
    busy, the app body, the app elements (`scroll`, `split`, `table`, `tabs`,
    `input`, `select`, `markdown`, `code`, `empty`, `dialog`), routes, keys,
    `herdr.store`, and `activity show --mod`. Tests: section switching and
