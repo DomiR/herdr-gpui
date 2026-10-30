@@ -22,14 +22,14 @@ pub enum Error {
     #[error("The page is not on screen")]
     PageHidden,
     #[cfg(target_os = "macos")]
-    #[error("Recording needs macOS 15 or later")]
-    RecordingUnavailable,
-    #[cfg(target_os = "macos")]
     #[error("The recording did not finish: {0}")]
     RecordingFailed(String),
     #[cfg(target_os = "macos")]
     #[error("The recording did not finish in time")]
     RecordingTimeout,
+    #[cfg(target_os = "macos")]
+    #[error("Recording needs macOS 15 or later")]
+    RecordingUnavailable,
     #[cfg(target_os = "macos")]
     #[error("Install Scrawl to record page reviews: scrawl.kitlangton.com")]
     ScrawlMissing,
