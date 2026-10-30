@@ -22,6 +22,7 @@ struct TerminalScreen: View {
     @State private var picks: [PhotosPickerItem] = []
     @State private var choosingPhotos = false
     @State private var problem: String?
+    @State private var clipboardHasText = UIPasteboard.general.hasStrings
 
     var body: some View {
         GeometryReader { geometry in
@@ -78,11 +79,21 @@ struct TerminalScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                PasteButton(payloadType: String.self) { strings in
-                    typing?.paste(strings.joined(separator: "\n"))
+            // `PasteButton` draws its own tinted fill and greys out with
+            // nothing to paste, so it stands apart from the glass group and
+            // only while the clipboard holds text.
+            if clipboardHasText {
+                ToolbarItem(placement: .topBarTrailing) {
+                    PasteButton(payloadType: String.self) { strings in
+                        typing?.paste(strings.joined(separator: "\n"))
+                    }
+                    .labelStyle(.iconOnly)
+                    .buttonBorderShape(.circle)
                 }
-                .labelStyle(.iconOnly)
+                .sharedBackgroundVisibility(.hidden)
+                ToolbarSpacer(.fixed, placement: .topBarTrailing)
+            }
+            ToolbarItemGroup(placement: .topBarTrailing) {
                 Button { choosingPhotos = true } label: { Image(systemName: "photo") }
                     .accessibilityLabel("Send a picture")
                 Button { actions = true } label: { Image(systemName: "diamond.fill") }
@@ -117,6 +128,12 @@ struct TerminalScreen: View {
             #endif
         }
         .onChange(of: store?.screen) { typing?.screenArrived() }
+        .onReceive(NotificationCenter.default.publisher(for: UIPasteboard.changedNotification)) { _ in
+            clipboardHasText = UIPasteboard.general.hasStrings
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            clipboardHasText = UIPasteboard.general.hasStrings
+        }
         .onDisappear {
             keyboard = false
             if let store { model.fleet.closeTerm(store) }
