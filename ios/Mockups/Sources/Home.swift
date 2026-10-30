@@ -119,26 +119,8 @@ struct AttentionList: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    SectionTitle(title: "Needs you", count: 2, tint: .orange)
-                    ForEach(Sample.questions) { question in
-                        AnswerCard(question: question)
-                    }
-                    SectionTitle(title: "Working", count: 2, tint: .blue)
-                    ForEach(Sample.allChats.filter { $0.chat.status == .working }, id: \.chat.id) { item in
-                        WorkingRow(computer: item.computer, workspace: item.workspace, chat: item.chat)
-                    }
-                    SectionTitle(title: "Recent", count: nil, tint: .secondary)
-                    VStack(spacing: 0) {
-                        ForEach(Sample.allChats.filter { [.unread, .done, .idle].contains($0.chat.status) }.prefix(4), id: \.chat.id) { item in
-                            ChatRowView(chat: item.chat, label: item.computer.name)
-                                .padding(.horizontal, 14).padding(.vertical, 8)
-                            Divider().padding(.leading, 54)
-                        }
-                    }
-                    .background(.background.secondary, in: .rect(cornerRadius: 18))
-                }
-                .padding(.horizontal, 16)
+                AttentionBody()
+                    .padding(.horizontal, 16)
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Herdr")
@@ -147,6 +129,31 @@ struct AttentionList: View {
                     Button {} label: { Image(systemName: "plus") }
                 }
             }
+        }
+    }
+}
+
+/// Home B's sections, for mockups that change what sits around them.
+struct AttentionBody: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SectionTitle(title: "Needs you", count: 2, tint: .orange)
+            ForEach(Sample.questions) { question in
+                AnswerCard(question: question)
+            }
+            SectionTitle(title: "Working", count: 2, tint: .blue)
+            ForEach(Sample.allChats.filter { $0.chat.status == .working }, id: \.chat.id) { item in
+                WorkingRow(computer: item.computer, workspace: item.workspace, chat: item.chat)
+            }
+            SectionTitle(title: "Recent", count: nil, tint: .secondary)
+            VStack(spacing: 0) {
+                ForEach(Sample.allChats.filter { [.unread, .done, .idle].contains($0.chat.status) }.prefix(4), id: \.chat.id) { item in
+                    ChatRowView(chat: item.chat, label: item.computer.name)
+                        .padding(.horizontal, 14).padding(.vertical, 8)
+                    Divider().padding(.leading, 54)
+                }
+            }
+            .background(.background.secondary, in: .rect(cornerRadius: 18))
         }
     }
 }

@@ -54,6 +54,15 @@ struct Mockup: View {
         case ("ipad", "A"): IPadColumns()
         case ("ipad", "B"): IPadInspector()
         case ("ipad", "C"): IPadBoard()
+        case ("connect", "Now"): ConnectionNow(state: state)
+        case ("connect", "A"): ConnectionSubtitle(state: state)
+        case ("connect", "B"): ConnectionCapsule(state: state)
+        case ("connect", "C"): ConnectionToast(state: state)
+        case ("connect", "D"): ConnectionQuiet(state: state)
+        case ("sync", "A"): SyncEdge(state: state)
+        case ("sync", "B"): SyncStrip(state: state)
+        case ("sync", "C"): SyncTab(state: state)
+        case ("sync", "D"): SyncIsland(state: state)
         default: Text("No mockup \(screen) \(variant)")
         }
     }
@@ -71,6 +80,7 @@ struct Catalog: View {
         ("term", "A", 0), ("term", "B", 0), ("term", "C", 0),
         ("settings", "A", 0), ("settings", "B", 0), ("settings", "C", 0),
         ("ipad", "A", 0), ("ipad", "B", 0), ("ipad", "C", 0),
+        ("connect", "Now", 0), ("connect", "A", 0), ("connect", "B", 0), ("connect", "C", 0), ("connect", "D", 0),
     ]
 
     var body: some View {

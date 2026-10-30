@@ -10,6 +10,10 @@ case "$round" in
      ipad="" ;;
   2) phone="computers-A-0 computers-B-0 computers-C-0 new-A-0 new-B-0 new-C-0 session-A-0 session-B-0 session-C-0 term-A-0 term-B-0 term-C-0 settings-A-0 settings-B-0 settings-C-0"
      ipad="ipad-A-0 ipad-B-0 ipad-C-0" ;;
+  3) phone="connect-Now-0 connect-Now-1 connect-A-0 connect-A-1 connect-B-0 connect-B-1 connect-C-0 connect-C-1 connect-D-0 connect-D-1"
+     ipad="" ;;
+  sync) phone="sync-A-0 sync-A-1 sync-B-0 sync-B-1 sync-C-0 sync-C-1 sync-D-0 sync-D-1"
+     ipad="" ;;
   *) echo "unknown round $round" >&2; exit 2 ;;
 esac
 
