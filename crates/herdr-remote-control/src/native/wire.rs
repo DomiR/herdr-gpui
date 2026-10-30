@@ -25,11 +25,41 @@ pub(crate) enum ClientMessage {
         /// The cursor of the chat transcript the phone holds already.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         since: Option<Cursor>,
+        /// The terminal the phone draws, for `term`: while it follows the
+        /// view, Herdr sizes the pane's terminal to it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        size: Option<TermSize>,
     },
     Unsubscribe {
         #[serde(flatten)]
         view: View,
     },
+    /// Swiped a followed terminal: positive `lines` scroll up toward its
+    /// history, negative down. Only a terminal followed at the phone's
+    /// size scrolls.
+    TermScroll { pane: String, lines: i32 },
+}
+
+/// The most lines one `term_scroll` moves; more is moved this far.
+pub(crate) const MAX_SCROLL_LINES: i32 = 50;
+
+/// A terminal size in cells, as the phone fits it to its screen.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+pub(crate) struct TermSize {
+    pub(crate) cols: u16,
+    pub(crate) rows: u16,
+}
+
+impl TermSize {
+    /// The columns a phone may ask for; narrower is unreadable as a
+    /// terminal, wider is no phone.
+    pub(crate) const COLS: std::ops::RangeInclusive<u16> = 20..=400;
+    pub(crate) const ROWS: std::ops::RangeInclusive<u16> = 5..=200;
+
+    /// Whether Herdr may be asked to size a terminal to it.
+    pub(crate) fn is_valid(self) -> bool {
+        Self::COLS.contains(&self.cols) && Self::ROWS.contains(&self.rows)
+    }
 }
 
 /// One change and the cursor it leads to.

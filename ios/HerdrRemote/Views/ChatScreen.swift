@@ -344,7 +344,7 @@ private struct QuestionSheet: View {
             ForEach(permission.options.filter { !always.contains($0) }) { option in
                 if option.kind == .allowOnce {
                     Button { answer(option) } label: { Text(option.name).frame(maxWidth: .infinity) }
-                        .buttonStyle(.glassProminent).controlSize(.large).tint(.orange)
+                        .buttonStyle(.glassProminent).controlSize(.large).tint(Home.AgentStatus.blocked.color)
                 } else {
                     Button { answer(option) } label: { Text(option.name).frame(maxWidth: .infinity) }
                         .buttonStyle(.glass).controlSize(.large)

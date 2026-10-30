@@ -81,6 +81,7 @@ fn chat(since: Option<Cursor>) -> ClientMessage {
     ClientMessage::Subscribe {
         view: View::Chat { pane: "p1".into() },
         since,
+        size: None,
     }
 }
 

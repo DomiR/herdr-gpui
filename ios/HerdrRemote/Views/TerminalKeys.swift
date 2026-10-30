@@ -51,14 +51,9 @@ final class TermTyping {
         enqueue([.paste(String(text.prefix(64 * 1024)))])
     }
 
-    /// A new screen arrived from the computer.
-    func screenArrived() {
-        echo.screen(at: .now)
-    }
-
     private func enqueue(_ sends: [TermInput.Send]) {
         for send in sends {
-            echo.queue(send)
+            echo.queue(send, at: .now)
             // Keys typed while a request is out join the last batch.
             if case let .keys(more) = send, case let .keys(queued)? = pending.last, queued.count + more.count <= TermInput.maxKeys {
                 pending[pending.count - 1] = .keys(queued + more)
@@ -90,8 +85,10 @@ final class TermTyping {
                 problem = nil
                 echo.delivered(at: .now)
                 Task { [weak self] in
-                    try? await Task.sleep(for: TermEcho.linger)
-                    self?.echo.expire(at: .now)
+                    // Typing since pushes this back: a later delivery
+                    // tries again after its own wait.
+                    try? await Task.sleep(for: TermEcho.quiet)
+                    self?.echo.settle(at: .now)
                 }
             } catch {
                 // What failed is dropped rather than replayed later into
@@ -119,7 +116,10 @@ struct TermEchoStrip: View {
         .lineLimit(1)
         .truncationMode(.head)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12).padding(.vertical, 4)
+        .padding(.horizontal, 12).padding(.vertical, 6)
+        // Part of the key rows below, not the terminal above: its own
+        // background keeps it legible over a light themed program.
+        .background(.bar)
         .accessibilityLabel("Typed, not on the screen yet: \(text)")
     }
 }

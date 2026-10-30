@@ -15,14 +15,16 @@ fn every_view_subscribes_and_unsubscribes() {
         parse(json!({"type": "subscribe", "view": "home"})),
         Some(ClientMessage::Subscribe {
             view: View::Home,
-            since: None
+            since: None,
+            size: None,
         })
     );
     assert_eq!(
         parse(json!({"type": "subscribe", "view": "term", "pane": "p2"})),
         Some(ClientMessage::Subscribe {
             view: View::Term { pane: "p2".into() },
-            since: None
+            since: None,
+            size: None,
         })
     );
     assert_eq!(
@@ -40,7 +42,7 @@ fn a_chat_subscription_carries_the_cursor_the_phone_holds() {
         "type": "subscribe", "view": "chat", "pane": "p1",
         "since": {"epoch": epoch, "seq": 4},
     }));
-    let Some(ClientMessage::Subscribe { view, since }) = message else {
+    let Some(ClientMessage::Subscribe { view, since, .. }) = message else {
         panic!("{message:?}");
     };
     assert_eq!(view, View::Chat { pane: "p1".into() });

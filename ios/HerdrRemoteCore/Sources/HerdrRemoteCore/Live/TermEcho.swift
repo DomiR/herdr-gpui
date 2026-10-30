@@ -1,15 +1,15 @@
 import Foundation
 
-/// What was typed into a terminal but is not on its screen yet, shown so a
-/// slow network does not leave typing blind. Each input keeps one entry,
-/// in the order sent. An entry goes once the computer took it and a screen
-/// arrived after, or `linger` after it was taken when the screen did not
-/// change (a password, a program that draws nothing).
+/// What was just typed into a terminal, shown above the keys so typing is
+/// never blind. Each input keeps one entry, in the order sent. The line
+/// stays whole while typing goes on, rather than losing each character as
+/// the screen shows it, which flickers on a fast network; it clears once
+/// the computer took everything and typing paused for `quiet`.
 public struct TermEcho: Sendable {
     public typealias Instant = ContinuousClock.Instant
 
-    /// How long a taken input stays with no new screen.
-    public static let linger: Duration = .seconds(1)
+    /// How long typing must pause before a fully taken line clears.
+    public static let quiet: Duration = .seconds(2)
 
     private enum State: Sendable, Equatable {
         case queued
@@ -25,9 +25,8 @@ public struct TermEcho: Sendable {
     }
 
     private var entries: [Entry] = []
-    /// When the request out now left.
-    private var sentAt: Instant?
-    private var screenAt: Instant?
+    /// When the last input was typed.
+    private var typedAt: Instant?
 
     public init() {}
 
@@ -45,8 +44,15 @@ public struct TermEcho: Sendable {
         return String(shown)
     }
 
-    /// Input waiting for its request, one entry per key or paste.
-    public mutating func queue(_ send: TermInput.Send) {
+    /// Whether the computer has taken every input on the line.
+    public var allTaken: Bool {
+        entries.allSatisfy { if case .taken = $0.state { true } else { false } }
+    }
+
+    /// Input waiting for its request, one entry per key or paste, typed
+    /// at `now`.
+    public mutating func queue(_ send: TermInput.Send, at now: Instant) {
+        typedAt = now
         switch send {
         case let .keys(keys): entries += keys.map { Entry(glyph: Self.glyph(for: $0), state: .queued) }
         case .paste: entries.append(Entry(glyph: "", state: .queued))
@@ -60,42 +66,25 @@ public struct TermEcho: Sendable {
             entries[index].state = .sent
             left -= 1
         }
-        sentAt = now
     }
 
-    /// The computer took the request out. A screen that arrived meanwhile
-    /// was read after it, as the computer reads one at once.
+    /// The computer took the request out.
     public mutating func delivered(at now: Instant) {
         for index in entries.indices where entries[index].state == .sent {
             entries[index].state = .taken(now)
         }
-        if let screenAt, let sentAt, screenAt > sentAt { dropTaken(by: now) }
-        sentAt = nil
     }
 
-    /// A new screen arrived: whatever the computer took is on it.
-    public mutating func screen(at now: Instant) {
-        screenAt = now
-        dropTaken(by: now)
-    }
-
-    /// Drops what was taken `linger` ago and never showed.
-    public mutating func expire(at now: Instant) {
-        dropTaken(by: now - Self.linger)
+    /// Clears the line when the computer took all of it and nothing was
+    /// typed for `quiet` before `now`.
+    public mutating func settle(at now: Instant) {
+        guard allTaken, let typedAt, now - typedAt >= Self.quiet else { return }
+        entries.removeAll()
     }
 
     /// A request failed: what followed it is dropped too.
     public mutating func clear() {
         entries.removeAll()
-        sentAt = nil
-    }
-
-    private mutating func dropTaken(by moment: Instant) {
-        let kept = entries.firstIndex {
-            guard case let .taken(at) = $0.state else { return true }
-            return at > moment
-        }
-        entries.removeFirst(kept ?? entries.count)
     }
 
     /// What a key in Herdr's syntax shows.

@@ -21,7 +21,11 @@ fn terminals(count: usize) -> Layout {
 }
 
 fn subscribe(view: View) -> ClientMessage {
-    ClientMessage::Subscribe { view, since: None }
+    ClientMessage::Subscribe {
+        view,
+        since: None,
+        size: None,
+    }
 }
 
 #[tokio::test]

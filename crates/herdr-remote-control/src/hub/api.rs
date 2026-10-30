@@ -23,6 +23,7 @@ const MAX_ANSWER: u64 = 4 * 1024 * 1024;
 pub(crate) enum ApiMethod {
     // keep-sorted start
     PaneClose,
+    PaneGet,
     PaneRead,
     PaneRename,
     PaneSendInput,
@@ -42,6 +43,7 @@ impl ApiMethod {
     pub(crate) fn name(self) -> &'static str {
         match self {
             Self::PaneClose => "pane.close",
+            Self::PaneGet => "pane.get",
             Self::PaneRead => "pane.read",
             Self::PaneRename => "pane.rename",
             Self::PaneSendInput => "pane.send_input",
@@ -68,6 +70,13 @@ pub(crate) struct Api {
 impl Api {
     pub(crate) fn new(client_socket: Option<PathBuf>) -> Self {
         Self { client_socket }
+    }
+
+    /// The client socket itself, where a direct terminal attach connects.
+    pub(crate) fn target(&self) -> ConnectTarget {
+        self.client_socket
+            .clone()
+            .map_or(ConnectTarget::Local, ConnectTarget::Socket)
     }
 
     fn path(&self) -> Result<PathBuf> {

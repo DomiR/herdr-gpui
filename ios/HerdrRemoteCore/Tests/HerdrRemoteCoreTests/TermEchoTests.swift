@@ -6,63 +6,55 @@ struct TermEchoTests {
 
     func at(_ milliseconds: Int) -> TermEcho.Instant { start + .milliseconds(milliseconds) }
 
-    @Test func showsTypedKeysUntilTheScreenHasThem() {
+    @Test func keepsTheLineWhileTypingAndClearsAfterAPause() {
         var echo = TermEcho()
-        echo.queue(.keys(["l", "s", "space", "minus", "l", "enter"]))
+        echo.queue(.keys(["l", "s", "space", "minus", "l", "enter"]), at: at(0))
         #expect(echo.text == "ls -l⏎")
         echo.sending(6, at: at(0))
-        echo.screen(at: at(10))
-        // The screen came before the computer took the keys, read from
-        // the regular timer: they stay until it answers.
+        echo.delivered(at: at(40))
+        #expect(echo.allTaken)
+        // Taken, but typing paused only just now: the line stays whole.
+        echo.settle(at: at(1000))
         #expect(echo.text == "ls -l⏎")
-        echo.delivered(at: at(40))
-        echo.screen(at: at(60))
+        echo.settle(at: at(2000))
         #expect(echo.text.isEmpty)
     }
 
-    @Test func aScreenReadWhileTheRequestWasOutCountsOnceItIsTaken() {
+    @Test func typingAgainKeepsWhatWasTakenOnTheLine() {
         var echo = TermEcho()
-        echo.queue(.keys(["a"]))
+        echo.queue(.keys(["a"]), at: at(0))
         echo.sending(1, at: at(0))
-        echo.screen(at: at(30))
         echo.delivered(at: at(40))
-        #expect(echo.text.isEmpty)
+        echo.queue(.keys(["b"]), at: at(1500))
+        echo.settle(at: at(2040))
+        #expect(echo.text == "ab")
     }
 
-    @Test func keysTypedAfterTheRequestStayForTheirOwn() {
+    @Test func aLineWithInputNotTakenYetNeverClears() {
         var echo = TermEcho()
-        echo.queue(.keys(["a"]))
+        echo.queue(.keys(["a"]), at: at(0))
         echo.sending(1, at: at(0))
-        echo.queue(.keys(["b"]))
-        echo.delivered(at: at(40))
-        echo.screen(at: at(50))
-        #expect(echo.text == "b")
+        #expect(!echo.allTaken)
+        echo.settle(at: at(10_000))
+        #expect(echo.text == "a")
+        echo.delivered(at: at(10_040))
+        echo.settle(at: at(10_040))
+        #expect(echo.text.isEmpty)
     }
 
     @Test func backspaceTakesBackWhatItCanAndMarksTheRest() {
         var echo = TermEcho()
-        echo.queue(.keys(["a", "b", "backspace"]))
+        echo.queue(.keys(["a", "b", "backspace"]), at: at(0))
         #expect(echo.text == "a")
-        echo.queue(.keys(["backspace", "backspace", "ctrl+c", "up"]))
+        echo.queue(.keys(["backspace", "backspace", "ctrl+c", "up"]), at: at(10))
         #expect(echo.text == "⌫")
-    }
-
-    @Test func aScreenThatNeverChangesLetsGoAfterTheLinger() {
-        var echo = TermEcho()
-        echo.queue(.keys(["s", "e", "c", "r", "e", "t"]))
-        echo.sending(6, at: at(0))
-        echo.delivered(at: at(40))
-        echo.expire(at: at(500))
-        #expect(echo.text == "secret")
-        echo.expire(at: at(1040))
-        #expect(echo.text.isEmpty)
     }
 
     @Test func aFailedRequestDropsEverything() {
         var echo = TermEcho()
-        echo.queue(.keys(["a"]))
-        echo.queue(.paste("long text"))
-        echo.queue(.keys(["b"]))
+        echo.queue(.keys(["a"]), at: at(0))
+        echo.queue(.paste("long text"), at: at(0))
+        echo.queue(.keys(["b"]), at: at(0))
         #expect(echo.text == "ab")
         echo.sending(1, at: at(0))
         echo.clear()
