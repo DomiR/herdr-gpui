@@ -18,7 +18,8 @@ struct SessionSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                if let transcript = store.transcript {
+                // Picks show at once; the sync dot says when they are in.
+                if let transcript = store.transcript.map({ model.fleet.chat($0, for: key) }) {
                     VStack(spacing: 14) {
                         contextCard(transcript)
                         if let modes = transcript.modes, !modes.available.isEmpty { modeTiles(modes) }
@@ -37,6 +38,10 @@ struct SessionSheet: View {
             }
             .navigationTitle("Session")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) { SyncDot() }
+                    .sharedBackgroundVisibility(.hidden)
+            }
         }
     }
 

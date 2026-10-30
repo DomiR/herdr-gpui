@@ -67,10 +67,12 @@ enum RemoteError: Error, LocalizedError {
 /// The daemon's API at one address, trusting only the pinned CA.
 final class RemoteClient: Sendable {
     let origin: String
+    let fingerprint: Fingerprint
     let session: URLSession
 
     init(origin: String, fingerprint: Fingerprint) {
         self.origin = origin
+        self.fingerprint = fingerprint
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 10
         configuration.waitsForConnectivity = false

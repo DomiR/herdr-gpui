@@ -34,6 +34,8 @@ struct RootView: View {
             }
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
+        // Below the status bar on every screen; sheets carry their own.
+        .overlay(alignment: .topLeading) { SyncDot() }
         // Folding or unfolding keeps the open chat or terminal open.
         .onChange(of: wide) { _, nowWide in
             if nowWide {

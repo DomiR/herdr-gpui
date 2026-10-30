@@ -18,7 +18,7 @@ struct ChatScreen: View {
     var body: some View {
         Group {
             if let store, let transcript = store.transcript {
-                ChatDocument(key: key, store: store, transcript: transcript)
+                ChatDocument(key: key, store: store, transcript: model.fleet.chat(transcript, for: key))
             } else {
                 ProgressView("Loading the chat…")
             }
@@ -40,7 +40,7 @@ struct ChatScreen: View {
                             Text(title).font(.headline).lineLimit(1)
                             Image(systemName: "chevron.down.circle.fill").font(.caption).foregroundStyle(.tertiary)
                         }
-                        if let line = store?.transcript.map(sessionLine), !line.isEmpty {
+                        if let line = store?.transcript.map({ sessionLine(model.fleet.chat($0, for: key)) }), !line.isEmpty {
                             Text(line).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                         }
                     }
@@ -279,7 +279,6 @@ private struct QuestionSheet: View {
     @Environment(\.dismiss) private var dismiss
     let key: PaneKey
     let permission: Permission
-    @State private var problem: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -300,16 +299,18 @@ private struct QuestionSheet: View {
                     Button(option.name) { answer(option) }.font(.subheadline)
                 }
             }
-            if let problem { Text(problem).font(.footnote).foregroundStyle(.red) }
         }
         .padding(24)
     }
 
+    /// The sheet leaves once the answer is allowed; a refused answer
+    /// brings the question back, and the sync dot says why.
     private func answer(_ option: PermissionOption) {
         Task {
             guard await OwnerCheck.allows(option) else { return }
-            problem = await model.fleet.send(.answer(permission: permission.id, option: option.id), to: key)
-            if problem == nil { dismiss() }
+            let fleet = model.fleet
+            Task { _ = await fleet.send(.answer(permission: permission.id, option: option.id), to: key) }
+            dismiss()
         }
     }
 }

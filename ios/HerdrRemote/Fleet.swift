@@ -11,13 +11,15 @@ struct ChatItem: Identifiable, Hashable {
     let computer: Computer
     let workspace: Home.Workspace
     let chat: Home.ChatRow
+    /// This phone answered its question; the answer is on its way.
+    var answered = false
 
     var id: String { "\(computer.device)/\(chat.pane)" }
     var key: PaneKey { PaneKey(device: computer.device, pane: chat.pane) }
 
     /// The question waiting, with its options.
-    var question: Permission? { chat.summary?.question }
-    var needsYou: Bool { question != nil || chat.status == .blocked }
+    var question: Permission? { answered ? nil : chat.summary?.question }
+    var needsYou: Bool { question != nil || (!answered && chat.status == .blocked) }
     var working: Bool { !needsYou && (chat.status == .working || chat.summary?.status == .working) }
 }
 
@@ -59,6 +61,10 @@ final class Fleet {
     private var readers: [String: Task<Void, Never>] = [:]
     private var chats: [PaneKey: ChatStore] = [:]
     private var terms: [PaneKey: TermStore] = [:]
+    /// One client per computer, kept while its address and CA stay.
+    @ObservationIgnored private var clients: [String: RemoteClient] = [:]
+    /// Commands sent to chats that have not come back yet.
+    let pending = PendingCommands()
     private var active = false
     let sessions: Sessions
     let cache: Cache
@@ -110,7 +116,11 @@ final class Fleet {
     var chatItems: [ChatItem] {
         machines.flatMap { machine in
             (machine.home?.workspaces ?? []).flatMap { workspace in
-                workspace.chats.map { ChatItem(computer: machine.computer, workspace: workspace, chat: $0) }
+                workspace.chats.map { chat in
+                    let key = PaneKey(device: machine.computer.device, pane: chat.pane)
+                    let answered = chat.summary?.question.map { pending.answered(key, permission: $0.id) } ?? false
+                    return ChatItem(computer: machine.computer, workspace: workspace, chat: chat, answered: answered)
+                }
             }
         }
     }
@@ -195,18 +205,42 @@ final class Fleet {
     }
 
     /// Sends a command to a chat; answers a reason to show when it failed
-    /// or the chat refused it.
+    /// or the chat refused it. Until the chat shows it, `chat(_:for:)`
+    /// draws it as done; a prompt has its own outgoing row instead.
     func send(_ command: ChatCommand, to key: PaneKey) async -> String? {
+        let tracked: PendingCommand.ID? = if case .prompt = command { nil } else { pending.start(command, to: key) }
+        let failure: String?
         do {
-            return try await call(key.device) { client, token in
+            failure = try await call(key.device) { client, token in
                 try await client.command(command, pane: key.pane, bearer: token)
             }
         } catch {
-            return error.localizedDescription
+            failure = error.localizedDescription
         }
+        if let tracked {
+            pending.finished(tracked, failure: failure) { shown($0) }
+        }
+        return failure
     }
 
-    /// Calls the daemon of `device` at the address its link is using.
+    /// The chat with the changes this phone sent that it does not show yet.
+    func chat(_ transcript: Transcript, for key: PaneKey) -> Transcript {
+        pending.apply(to: transcript, for: key)
+    }
+
+    /// Whether the chat shows what `command` changes: its open transcript,
+    /// or for an answer from the home list, the question it lists.
+    private func shown(_ command: PendingCommand) -> Bool {
+        guard let expected = command.expected else { return true }
+        if let transcript = chats[command.key]?.transcript { return expected.shown(in: transcript) }
+        guard case let .answer(permission) = expected else { return false }
+        let item = machines.first { $0.id == command.key.device }?.home?.workspaces
+            .flatMap(\.chats).first { $0.pane == command.key.pane }
+        return item?.summary?.question?.id != permission
+    }
+
+    /// Calls the daemon of `device` at the address its link is using, over
+    /// one session per computer so later calls skip the TLS handshake.
     func call<Answer: Sendable>(
         _ device: String,
         _ body: @Sendable (RemoteClient, String) async throws -> Answer
@@ -215,7 +249,13 @@ final class Fleet {
               case let .online(origin) = machine.status
         else { throw FleetError.offline(machines.first { $0.id == device }?.computer.name ?? "The computer") }
         let token = try await sessions.token(for: machine.computer, at: origin)
-        let client = RemoteClient(origin: origin, fingerprint: machine.computer.fingerprint)
+        let client: RemoteClient
+        if let known = clients[device], known.origin == origin, known.fingerprint == machine.computer.fingerprint {
+            client = known
+        } else {
+            client = RemoteClient(origin: origin, fingerprint: machine.computer.fingerprint)
+            clients[device] = client
+        }
         return try await body(client, token)
     }
 
@@ -252,6 +292,7 @@ final class Fleet {
     }
 
     private func stopLink(_ device: String) {
+        clients[device] = nil
         readers.removeValue(forKey: device)?.cancel()
         if let link = links.removeValue(forKey: device) { Task { await link.stop() } }
     }
@@ -267,6 +308,9 @@ final class Fleet {
             machines[index].home = home
             machines[index].stale = false
             cache.save(home: home, device: device)
+            for key in Set(pending.items.filter { $0.key.device == device }.map(\.key)) {
+                pending.settle(key) { shown($0) }
+            }
             publishSummary()
         case let .event(.error(message)):
             log.error("\(self.machines[index].computer.name, privacy: .public) refused: \(message, privacy: .public)")
@@ -276,6 +320,7 @@ final class Fleet {
             guard let pane = event.pane, let store = chats[PaneKey(device: device, pane: pane)] else { return }
             let before = store.diverged
             store.apply(event)
+            pending.settle(store.key) { shown($0) }
             if store.diverged, !before {
                 // A change that did not fit: start over from a snapshot.
                 Task { await links[device]?.watch(.chat(pane: pane), since: nil) }
