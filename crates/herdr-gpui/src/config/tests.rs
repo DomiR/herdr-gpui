@@ -30,6 +30,7 @@ mod font_weight;
 mod fonts;
 mod github;
 mod github_accounts;
+mod herdr_2_terminals;
 mod icon_font;
 mod keybindings;
 mod line_height;

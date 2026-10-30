@@ -488,6 +488,11 @@ impl HerdrWindow {
             }
             // Every interactive creation path ends here, so Herdr's name prompt
             // covers buttons, menus, shortcuts, and the palette alike.
+            // With Herdr 2 chosen for new terminals, a new tab is herdr-core's.
+            Command::Tab if self.config.herdr_2_terminals => {
+                self.new_core_terminal(window, cx);
+                return;
+            }
             Command::Tab | Command::Workspace if self.open_name_prompt(command, window, cx) => {
                 return;
             }
