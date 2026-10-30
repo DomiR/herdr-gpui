@@ -51,7 +51,9 @@ sections; picking it shows the mod's `view` across the window's body, under
 its title, as Overview or Usage show theirs. Draw the icon with
 `currentColor` (as a 24×24 stroke icon) and the bar tints it like its own.
 `herdr-gpui mod open <name>` shows it from a script. Picking another section
-leaves it; the mod keeps running meanwhile.
+leaves it, as does an app command the mod runs or a link it opens in a
+browser tab, so what they open shows; the mod keeps running meanwhile. Many
+app icons scroll in a short window, with Settings kept under them.
 
 ## `main.luau`
 

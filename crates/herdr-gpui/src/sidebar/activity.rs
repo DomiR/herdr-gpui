@@ -402,7 +402,7 @@ impl HerdrWindow {
     fn render_activity_bar(&self, cx: &mut Context<Self>) -> Stateful<Div> {
         let theme = &self.theme;
         let counts = self.activity_counts(cx);
-        let mut bar = div()
+        let bar = div()
             .id("activity-bar")
             .debug_selector(|| "activity-bar".into())
             // Each panel replaces the column beside the bar, as a tab does.
@@ -416,10 +416,25 @@ impl HerdrWindow {
             .flex_col()
             .items_center()
             .gap(px(4.))
-            .py(px(6.))
+            .pb(px(6.))
             .bg(self.fill().panel(theme.sidebar_background()))
             .border_r_1()
             .border_color(rgb(theme.active));
+        // The sections, then any mod apps, scroll in a short window so
+        // Settings stays in reach under them. The top padding sits inside,
+        // leaving a count bubble room above the first icon.
+        let mut tabs = div()
+            .id("activity-tabs")
+            .debug_selector(|| "activity-tabs".into())
+            .flex()
+            .flex_col()
+            .items_center()
+            .gap(px(4.))
+            .pt(px(6.))
+            .w_full()
+            .flex_1()
+            .min_h_0()
+            .overflow_y_scroll();
         let shown = self.activity_panel();
         for &panel in ActivityPanel::ALL {
             if !self.activity_panel_listed(panel) {
@@ -454,10 +469,9 @@ impl HerdrWindow {
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.select_activity_panel(panel, window, cx);
                 }));
-            bar = bar.child(button);
+            tabs = tabs.child(button);
         }
-        bar.children(self.mod_activity_buttons(cx))
-            .child(div().flex_1())
+        bar.child(tabs.children(self.mod_activity_buttons(cx)))
             .child(
                 self.bar_button(
                     "activity-settings",

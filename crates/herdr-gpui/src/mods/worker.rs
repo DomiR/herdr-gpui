@@ -134,6 +134,10 @@ impl Drop for Handle {
     }
 }
 
+/// A loaded mod's sources, state, and first view, before it may replace
+/// the running one.
+type Candidate = (Sources, Mod, Result<Node, Error>);
+
 struct Worker {
     dir: PathBuf,
     link: Arc<Link>,
@@ -175,10 +179,7 @@ impl Worker {
                 return;
             };
             let now = Instant::now();
-            if inbox.reload || now >= self.next_scan {
-                self.next_scan = now + SCAN;
-                self.check_files(inbox.reload);
-            }
+            // State first, so a load in this pass draws against it.
             if let Some(state) = inbox.state {
                 let watched = self.module.as_ref().is_some_and(|module| {
                     module
@@ -188,6 +189,10 @@ impl Worker {
                 });
                 self.dirty |= watched;
                 self.state = state;
+            }
+            if inbox.reload || now >= self.next_scan {
+                self.next_scan = now + SCAN;
+                self.check_files(inbox.reload);
             }
             for msg in inbox.messages {
                 self.update(&msg, true);
@@ -229,10 +234,12 @@ impl Worker {
         }
     }
 
-    /// Loads the mod again when its files changed. The candidate replaces
-    /// the running mod only once it loaded and drew its first view against
-    /// the current state; until then the last good mod keeps running, and
-    /// why the new files failed stays reported until a reload succeeds.
+    /// Loads the mod again when its files changed. A candidate replaces a
+    /// running mod only once it loaded and drew its first view against the
+    /// current state; until then the last good mod keeps running, and why
+    /// the new files failed stays reported until a reload succeeds. With no
+    /// mod running yet, a candidate that loaded is kept even when its first
+    /// view fails, so it draws again once a topic it watches changes.
     fn check_files(&mut self, force: bool) {
         let stamp = match Stamp::take(&self.dir) {
             Ok(stamp) => stamp,
@@ -246,8 +253,12 @@ impl Worker {
         let candidate = self.candidate(&mut log);
         push_log(&mut lock(&self.link.outbox), log);
         let (sources, module, tree) = match candidate {
-            Ok(candidate) => candidate,
-            Err(error) => return self.fail_load(error),
+            Ok((sources, module, Ok(tree))) => (sources, module, Some(tree)),
+            Ok((sources, module, Err(error))) if self.module.is_none() => {
+                self.fail(error);
+                (sources, module, None)
+            }
+            Ok((_, _, Err(error))) | Err(error) => return self.fail_load(error),
         };
         self.module = Some(module);
         self.timers.clear();
@@ -261,20 +272,23 @@ impl Worker {
         let mut outbox = lock(&self.link.outbox);
         outbox.icon = Some(icon);
         outbox.manifest = Some(sources.manifest);
-        outbox.tree = Some(tree);
         outbox.load_error = Some(None);
-        outbox.error = Some(None);
+        if let Some(tree) = tree {
+            outbox.tree = Some(tree);
+            outbox.error = Some(None);
+        }
     }
 
-    /// Reads, loads, and draws the mod's files once, leaving what it logged
-    /// in `log` whether or not it works.
-    fn candidate(&self, log: &mut Vec<LogLine>) -> Result<(Sources, Mod, Node), Error> {
+    /// Reads and loads the mod's files and draws them once, leaving what
+    /// it logged in `log`. Loading must work; the first view's result is
+    /// the caller's to judge.
+    fn candidate(&self, log: &mut Vec<LogLine>) -> Result<Candidate, Error> {
         let sources = Sources::read(&self.dir)?;
         let now = SystemTime::now();
         let mut module = Mod::load(&sources, limits(), now)?;
         let tree = module.view(&self.state, now);
         log.extend(module.take_log());
-        Ok((sources, module, tree?))
+        Ok((sources, module, tree))
     }
 
     fn update(&mut self, msg: &Data, from_user: bool) {

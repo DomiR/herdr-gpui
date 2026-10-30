@@ -26,6 +26,13 @@ impl HerdrWindow {
         (self.activity_bar_leads() && offered).then_some(name)
     }
 
+    /// Stops showing a mod app, back to the section under it.
+    pub(crate) fn leave_mod_app(&mut self, cx: &mut Context<Self>) {
+        if self.activity.app.take().is_some() {
+            cx.notify();
+        }
+    }
+
     pub(crate) fn select_mod_app(
         &mut self,
         name: &str,

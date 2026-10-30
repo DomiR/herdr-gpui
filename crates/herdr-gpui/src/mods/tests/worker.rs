@@ -177,3 +177,18 @@ fn messages_are_bounded() {
             .any(|result| matches!(result, Err(Error::Busy(name)) if name == "slow"))
     );
 }
+
+#[test]
+fn a_first_view_that_fails_draws_once_state_arrives() {
+    let root = tempfile::tempdir().unwrap();
+    let main = "local ui = require(\"@herdr/ui\")\n\
+        return herdr.mod({ watch = { \"agents\" }, view = function(_, app)\n\
+          assert(#app.agents.all > 0, \"no agents yet\")\n\
+          return ui.text(\"agents: \" .. #app.agents.all) end })";
+    let worker = Handle::spawn(write_mod(root.path(), "late", main)).unwrap();
+    let error = eventually(|| worker.take().error.flatten());
+    assert!(format!("{error}").contains("no agents yet"), "{error}");
+    worker.offer(agents(2));
+    let mut seen = Vec::new();
+    assert_eq!(text(&next_tree(&worker, &mut seen)), "agents: 2");
+}

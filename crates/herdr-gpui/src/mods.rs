@@ -277,7 +277,7 @@ impl HerdrWindow {
         }
         let polled = self.mods.poll(&self.config.mods);
         for command in polled.commands {
-            self.command(command, window, cx);
+            self.run_mod_command(command, window, cx);
         }
         if polled.changed {
             cx.notify();

@@ -136,9 +136,22 @@ impl HerdrWindow {
         cx: &mut Context<Self>,
     ) {
         match action {
-            Action::Command(command) => self.command(*command, window, cx),
+            Action::Command(command) => self.run_mod_command(*command, window, cx),
             Action::Message(msg) => self.send_to_mod(name, msg.clone(), cx),
         }
+    }
+
+    /// Runs a catalog command a mod's control or `update` asked for. The
+    /// command acts on the window's terminals and tabs, so a mod app shown
+    /// over them steps aside first, or what the command opened stays hidden.
+    pub(crate) fn run_mod_command(
+        &mut self,
+        command: crate::controls::Command,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.leave_mod_app(cx);
+        self.command(command, window, cx);
     }
 
     pub(crate) fn send_to_mod(&mut self, name: &str, msg: Data, cx: &mut Context<Self>) {
@@ -152,6 +165,8 @@ impl HerdrWindow {
             return;
         };
         if crate::browser::EMBEDDED {
+            // The tab opens in the window, which a mod app would cover.
+            self.leave_mod_app(cx);
             self.open_browser_tab(Some(url), window, cx);
         } else {
             cx.open_url(url.as_str());
