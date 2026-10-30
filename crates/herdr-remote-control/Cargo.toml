@@ -33,6 +33,7 @@ server = [
     "dep:rustls",
     "dep:sha2",
     "dep:socket2",
+    "dep:sysinfo",
     "dep:time",
     "dep:tokio",
     "dep:tokio-rustls",
@@ -85,6 +86,8 @@ rcgen          = { optional = true, workspace = true }
 rustls         = { optional = true, workspace = true }
 sha2           = { optional = true, workspace = true }
 socket2        = { optional = true, workspace = true }
+# This computer's CPU and memory, shown above its workspaces on a phone.
+sysinfo        = { optional = true, workspace = true }
 time           = { optional = true, workspace = true }
 tokio          = { optional = true, workspace = true }
 tokio-rustls   = { optional = true, workspace = true }

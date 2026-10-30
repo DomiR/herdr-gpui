@@ -62,6 +62,7 @@ pub(crate) fn state_with(dir: &std::path::Path, hub: Arc<Hub>) -> Shared {
         fingerprint: authority.fingerprint().to_owned(),
         authority: Some(authority),
         hub,
+        load: tokio::sync::watch::channel(None).1,
         look: Look::load(dir),
         names: RwLock::new(names),
         near: Mutex::default(),

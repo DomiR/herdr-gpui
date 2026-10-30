@@ -5,12 +5,14 @@ use super::*;
 use crate::{
     control::pull_requests::{PullRequests, Tone, WorkspacePullRequest},
     hub::Summary,
+    load::Load,
 };
 use herdr_chat_protocol::{Cursor, Entry, EntryId, EntryKind, Status, Transcript, Turn, Usage};
+use herdr_client::protocol::ClientShellWorktree;
 use model::{ChatSnapshot, Home, Sources};
 use serde::Serialize;
 use std::path::PathBuf;
-use wire::{ByeReason, Step, View};
+use wire::{ByeReason, Step, TermSize, View};
 
 /// Where the Swift package keeps its v2 fixtures.
 pub(super) fn dir() -> PathBuf {
@@ -82,6 +84,22 @@ fn home() -> Home {
         label: "moltis".into(),
         branch: None,
         cwd: "/moltis".into(),
+        worktree: None,
+        chats: Vec::new(),
+        terminals: Vec::new(),
+    });
+    let worktree = |linked| ClientShellWorktree {
+        key: "/work/.git".into(),
+        label: "work".into(),
+        is_linked_worktree: linked,
+    };
+    layout.workspaces[0].worktree = Some(worktree(false));
+    layout.workspaces.push(Workspace {
+        id: "w3".into(),
+        label: "spaces tab".into(),
+        branch: Some("worktree/spaces-tab".into()),
+        cwd: "/work-spaces-tab".into(),
+        worktree: Some(worktree(true)),
         chats: Vec::new(),
         terminals: Vec::new(),
     });
@@ -119,6 +137,10 @@ fn home() -> Home {
         computer: "MacBook Pro",
         fingerprint: &"AB".repeat(32),
         layout: &layout,
+        load: Some(Load {
+            cpu: 47,
+            memory: 67,
+        }),
         summaries: [("p1".to_owned(), summary)].into(),
         pull_requests: &pull_requests,
     })
@@ -223,6 +245,7 @@ fn client_messages_match_the_swift_fixtures() {
         &ClientMessage::Subscribe {
             view: View::Home,
             since: None,
+            size: None,
         },
     );
     check(
@@ -230,6 +253,7 @@ fn client_messages_match_the_swift_fixtures() {
         &ClientMessage::Subscribe {
             view: View::Chat { pane: "p1".into() },
             since: Some(cursor(41)),
+            size: None,
         },
     );
     check(
@@ -237,12 +261,28 @@ fn client_messages_match_the_swift_fixtures() {
         &ClientMessage::Subscribe {
             view: View::Term { pane: "p2".into() },
             since: None,
+            size: None,
+        },
+    );
+    check(
+        "subscribe_term_sized",
+        &ClientMessage::Subscribe {
+            view: View::Term { pane: "p2".into() },
+            since: None,
+            size: Some(TermSize { cols: 46, rows: 30 }),
         },
     );
     check(
         "unsubscribe_chat",
         &ClientMessage::Unsubscribe {
             view: View::Chat { pane: "p1".into() },
+        },
+    );
+    check(
+        "term_scroll",
+        &ClientMessage::TermScroll {
+            pane: "p2".into(),
+            lines: 3,
         },
     );
 }
@@ -273,6 +313,8 @@ fn every_fixture_reads_back_as_what_wrote_it() {
         "subscribe_home",
         "subscribe_chat",
         "subscribe_term",
+        "subscribe_term_sized",
+        "term_scroll",
         "unsubscribe_chat",
     ] {
         let text = std::fs::read_to_string(dir().join(format!("{name}.json"))).unwrap();

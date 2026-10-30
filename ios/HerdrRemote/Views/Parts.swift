@@ -36,6 +36,48 @@ struct AgentIcon: View {
     }
 }
 
+/// Herdr UI's working orbit: a faint ring with an arc turning on it once
+/// every `period`. Every orbit reads the same clock, so all working
+/// agents turn in step, as on the desktop. Held still under Reduce Motion.
+struct WorkingOrbit: View {
+    var color: Color = Home.AgentStatus.working.color
+    var lineWidth: CGFloat = 1.8
+    @Environment(\.accessibilityReduceMotion) private var still
+
+    /// One turn, as the desktop's spinner takes.
+    static let period = 0.9
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: still)) { context in
+            let turn = still ? 0 : context.date.timeIntervalSinceReferenceDate
+                .truncatingRemainder(dividingBy: Self.period) / Self.period
+            ZStack {
+                Circle().stroke(color.opacity(0.3), lineWidth: lineWidth)
+                // A quarter of the way round, as `status-orbit.svg` draws it.
+                Circle().trim(from: 0, to: 0.25)
+                    .stroke(color, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                    .rotationEffect(.degrees(-90 + 360 * turn))
+            }
+        }
+        .accessibilityLabel("Working")
+    }
+}
+
+extension Home.AgentStatus {
+    /// The color Herdr UI's sidebar gives this status in its default
+    /// palette: red for blocked, yellow for working, teal for done, green
+    /// for idle.
+    var color: Color {
+        switch self {
+        case .blocked: .red
+        case .working: .yellow
+        case .done: .teal
+        case .idle: .green
+        case .unknown: .secondary
+        }
+    }
+}
+
 /// The status a row shows after its title.
 struct StatusMark: View {
     var status: Home.AgentStatus
@@ -44,14 +86,14 @@ struct StatusMark: View {
     var body: some View {
         Group {
             if asking || status == .blocked {
-                Circle().fill(.orange).frame(width: 9, height: 9).accessibilityLabel("Needs you")
+                Circle().fill(Home.AgentStatus.blocked.color).frame(width: 9, height: 9).accessibilityLabel("Needs you")
             } else {
                 switch status {
                 case .working:
-                    Image(systemName: "ellipsis").foregroundStyle(.secondary).symbolEffect(.variableColor.iterative)
+                    Image(systemName: "ellipsis").foregroundStyle(status.color).symbolEffect(.variableColor.iterative)
                         .accessibilityLabel("Working")
                 case .done:
-                    Image(systemName: "checkmark").font(.caption2.bold()).foregroundStyle(.green).accessibilityLabel("Done")
+                    Image(systemName: "checkmark").font(.caption2.bold()).foregroundStyle(status.color).accessibilityLabel("Done")
                 default:
                     EmptyView()
                 }
@@ -60,9 +102,34 @@ struct StatusMark: View {
     }
 }
 
+/// An agent's status as a filled round icon, centered on a row as the
+/// pull request's state is.
+struct StatusBadge: View {
+    var status: Home.AgentStatus
+
+    var body: some View {
+        Group {
+            switch status {
+            case .blocked:
+                Image(systemName: "exclamationmark.circle.fill").foregroundStyle(status.color).accessibilityLabel("Needs you")
+            case .working:
+                Image(systemName: "ellipsis.circle.fill").foregroundStyle(status.color).symbolEffect(.pulse)
+                    .accessibilityLabel("Working")
+            case .done:
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(status.color).accessibilityLabel("Done")
+            case .idle, .unknown:
+                EmptyView()
+            }
+        }
+        .imageScale(.large)
+    }
+}
+
 struct ChatRowLabel: View {
     var item: ChatItem
     var showsComputer = true
+    /// Off on the workspace's own screen, which names it already.
+    var showsWorkspace = true
 
     var body: some View {
         // The timer and status share the title's line, so the detail
@@ -89,10 +156,47 @@ struct ChatRowLabel: View {
     }
 
     private var detail: String {
-        let place = showsComputer ? "\(item.computer.name) · \(item.workspace.label)" : item.workspace.label
-        if let question = item.question { return "\(place) · \(question.title)" }
-        if let text = item.chat.summary?.lastText { return "\(place) · \(text)" }
-        return place
+        let place = [showsComputer ? item.computer.name : nil, showsWorkspace ? item.workspace.label : nil].compactMap { $0 }
+        let said = item.question?.title ?? item.chat.summary?.lastText
+        return (place + [said].compactMap { $0 }).joined(separator: " · ")
+    }
+}
+
+/// A terminal tab with an agent in it, such as `claude` run in a shell,
+/// drawn like a chat row; it opens the terminal.
+struct AgentTerminalRowLabel: View {
+    var item: TerminalItem
+    var showsComputer = true
+    /// Off on the workspace's own screen, which shows the tab's name
+    /// instead.
+    var showsWorkspace = true
+
+    var body: some View {
+        HStack(spacing: 12) {
+            AgentIcon(agent: item.agent?.name)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.title).lineLimit(1)
+                Text(place)
+                    .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            // Centered on the row, beside the chevron.
+            StatusBadge(status: item.agent?.status ?? .unknown)
+        }
+    }
+
+    private var place: String {
+        guard showsWorkspace else { return tabName }
+        return showsComputer ? "\(item.computer.name) · \(item.workspace.label)" : item.workspace.label
+    }
+
+    /// The tab's name, unless Herdr only numbered it or it repeats the
+    /// title: then the agent's name says more.
+    private var tabName: String {
+        let label = item.terminal.label
+        let agent = item.agent?.name ?? "Agent"
+        if label.allSatisfy(\.isNumber) || label == item.title { return agent }
+        return "\(agent) · \(label)"
     }
 }
 
@@ -144,7 +248,7 @@ struct AnswerCard: View {
                 HStack {
                     ForEach(question.options) { option in
                         if option.kind == .allowOnce {
-                            Button(option.name) { answer(option) }.buttonStyle(.glassProminent).tint(.orange).lineLimit(1)
+                            Button(option.name) { answer(option) }.buttonStyle(.glassProminent).tint(Home.AgentStatus.blocked.color).lineLimit(1)
                         } else {
                             Button(option.name) { answer(option) }.buttonStyle(.glass).lineLimit(1)
                         }
@@ -161,7 +265,7 @@ struct AnswerCard: View {
         .disabled(sending)
         .padding(14)
         .background(.background.secondary, in: .rect(cornerRadius: 22))
-        .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(.orange.opacity(0.35)))
+        .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(Home.AgentStatus.blocked.color.opacity(0.35)))
     }
 
     private func answer(_ option: PermissionOption) {

@@ -60,6 +60,7 @@ fn home(state: &Shared) -> Home {
         computer: &state.computer,
         fingerprint: &state.fingerprint,
         layout: &layout,
+        load: *state.load.borrow(),
         summaries,
         pull_requests: &pull_requests,
     })

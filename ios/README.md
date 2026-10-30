@@ -80,7 +80,8 @@ and nothing goes through your phone.
      opens a chat, as tapping a Live Activity does.
    - `-openTerm PANE` opens a terminal; `-type TEXT` then types into it
      (a newline presses Enter).
-   - `-tab computers|settings` opens that tab.
+   - `-tab workspaces|settings` opens that tab, and `-openWorkspace ID`
+     opens that workspace's screen in it.
    - `-newWorkspace YES` opens the new workspace form.
    - `-syncBar waiting|failed` shows the sync bar as if a change were on
      its way or had failed.

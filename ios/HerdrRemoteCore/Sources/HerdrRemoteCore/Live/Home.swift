@@ -9,14 +9,24 @@ public struct Home: Codable, Hashable, Sendable {
     public var connected: Bool
     /// Permission requests waiting across its chats: the badge.
     public var waiting: Int
+    /// The computer's CPU and memory; absent until it first read them, and
+    /// from older computers.
+    public var load: Load?
     public var workspaces: [Workspace]
 
-    public init(computer: String, fingerprint: String, connected: Bool, waiting: Int, workspaces: [Workspace]) {
+    public init(computer: String, fingerprint: String, connected: Bool, waiting: Int, load: Load? = nil, workspaces: [Workspace]) {
         self.computer = computer
         self.fingerprint = fingerprint
         self.connected = connected
         self.waiting = waiting
+        self.load = load
         self.workspaces = workspaces
+    }
+
+    /// Whole percentages, 0 to 100.
+    public struct Load: Codable, Hashable, Sendable {
+        public var cpu: Int
+        public var memory: Int
     }
 
     public struct Workspace: Codable, Hashable, Sendable, Identifiable {
@@ -24,13 +34,30 @@ public struct Home: Codable, Hashable, Sendable {
         public var label: String
         public var branch: String?
         public var cwd: String
+        /// The repository checkout it is; older computers leave it out.
+        public var worktree: Worktree?
         public var pullRequest: PullRequest?
         public var chats: [ChatRow]
         public var terminals: [TerminalRow]
 
         enum CodingKeys: String, CodingKey {
-            case id, label, branch, cwd, chats, terminals
+            case id, label, branch, cwd, worktree, chats, terminals
             case pullRequest = "pull_request"
+        }
+    }
+
+    /// The repository a workspace's checkout belongs to, as Herdr reports
+    /// it: every checkout of one repository shares `key`.
+    public struct Worktree: Codable, Hashable, Sendable {
+        public var key: String
+        /// The repository's name.
+        public var label: String
+        /// A linked worktree rather than the repository's own checkout.
+        public var linked: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case key, label
+            case linked = "is_linked_worktree"
         }
     }
 
@@ -110,6 +137,16 @@ public struct Home: Codable, Hashable, Sendable {
         public struct DetectedAgent: Codable, Hashable, Sendable {
             public var name: String?
             public var status: AgentStatus
+            /// The pane it runs in; older computers leave it out.
+            public var pane: String?
+            /// What it works on, from its terminal title.
+            public var title: String?
+        }
+
+        /// The pane a phone opens for the tab's agent: its own, else the
+        /// first.
+        public var agentPane: Pane? {
+            agent?.pane.flatMap { pane in panes.first { $0.pane == pane } } ?? firstPane
         }
     }
 

@@ -63,6 +63,11 @@ struct Mockup: View {
         case ("sync", "B"): SyncStrip(state: state)
         case ("sync", "C"): SyncTab(state: state)
         case ("sync", "D"): SyncIsland(state: state)
+        case ("spaces", "A"): SpacesSidebar(state: state)
+        case ("spaces", "B"): SpacesTerminal(state: state)
+        case ("spaces", "C"): SpacesOneComputer(state: state)
+        case ("spaces", "D"): SpacesFolded(state: state)
+        case ("spaces", "Mix"): SpacesMix(state: state)
         default: Text("No mockup \(screen) \(variant)")
         }
     }
@@ -81,6 +86,8 @@ struct Catalog: View {
         ("settings", "A", 0), ("settings", "B", 0), ("settings", "C", 0),
         ("ipad", "A", 0), ("ipad", "B", 0), ("ipad", "C", 0),
         ("connect", "Now", 0), ("connect", "A", 0), ("connect", "B", 0), ("connect", "C", 0), ("connect", "D", 0),
+        ("spaces", "A", 0), ("spaces", "A", 1), ("spaces", "B", 0), ("spaces", "B", 1),
+        ("spaces", "C", 0), ("spaces", "C", 1), ("spaces", "D", 0), ("spaces", "D", 1), ("spaces", "Mix", 0), ("spaces", "Mix", 1),
     ]
 
     var body: some View {

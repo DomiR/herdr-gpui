@@ -14,6 +14,10 @@ case "$round" in
      ipad="" ;;
   sync) phone="sync-A-0 sync-A-1 sync-B-0 sync-B-1 sync-C-0 sync-C-1 sync-D-0 sync-D-1"
      ipad="" ;;
+  spaces) phone="spaces-A-0 spaces-A-1 spaces-B-0 spaces-B-1 spaces-C-0 spaces-C-1 spaces-D-0 spaces-D-1"
+     ipad="" ;;
+  mix) phone="spaces-Mix-0 spaces-Mix-1"
+     ipad="" ;;
   *) echo "unknown round $round" >&2; exit 2 ;;
 esac
 

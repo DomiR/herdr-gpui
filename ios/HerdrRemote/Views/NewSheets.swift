@@ -3,13 +3,15 @@ import SwiftUI
 
 /// What the app is creating, shown as a sheet over every tab.
 enum Creating: Identifiable, Hashable {
-    /// A workspace, on `device` when the person came from that computer.
-    case workspace(device: String?)
+    /// A workspace, on `device` when the person came from that computer,
+    /// as a new worktree of the checkout in `folder` when they came from
+    /// its repository.
+    case workspace(device: String?, folder: String? = nil)
     case chat(device: String, workspace: String, label: String)
 
     var id: String {
         switch self {
-        case let .workspace(device): "workspace/\(device ?? "")"
+        case let .workspace(device, folder): "workspace/\(device ?? "")/\(folder ?? "")"
         case let .chat(device, workspace, _): "chat/\(device)/\(workspace)"
         }
     }
@@ -33,8 +35,14 @@ struct NewWorkspaceSheet: View {
     @State private var problem: String?
     @State private var creating = false
 
-    init(device: String?) {
+    /// The checkout the person came from, chosen once its computer's
+    /// folders load, unless they pick another computer.
+    private let preset: (device: String, folder: String)?
+
+    init(device: String?, folder: String? = nil) {
         _device = State(initialValue: device)
+        _worktree = State(initialValue: folder != nil)
+        preset = device.flatMap { device in folder.map { (device, $0) } }
     }
 
     var body: some View {
@@ -124,7 +132,7 @@ struct NewWorkspaceSheet: View {
             let loaded = try await model.fleet.call(device) { client, token in try await client.newOptions(bearer: token) }
             options = loaded
             loadedFrom = device
-            folder = loaded.recent.first
+            folder = (preset?.device == device ? preset?.folder : nil) ?? loaded.recent.first
             if !loaded.agents.contains(where: { $0.id == agent }), let first = loaded.agents.first { agent = first.id }
         } catch where !Task.isCancelled {
             problem = error.localizedDescription

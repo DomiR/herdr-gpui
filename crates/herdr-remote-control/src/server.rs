@@ -96,6 +96,7 @@ pub async fn run(options: Options) -> Result<()> {
     };
     let hub = Hub::start(options.herdr_socket.clone(), options.chat_dir.clone())?;
     let (pull_requests, _) = watch::channel(Arc::new(Default::default()));
+    let load = crate::load::start();
     let state = Arc::new(State {
         apns,
         apps,
@@ -105,6 +106,7 @@ pub async fn run(options: Options) -> Result<()> {
         connected: Mutex::new(HashMap::new()),
         fingerprint,
         hub,
+        load,
         look: web::Look::load(&options.state_dir),
         names: RwLock::new(names),
         near: Mutex::default(),

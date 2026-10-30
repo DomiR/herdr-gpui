@@ -95,7 +95,8 @@ This is a new module beside `web/`. It reads the same hub and uses the same
   with its revision.
 - `GET /api/v2/live` (WebSocket):
   - The client sends `subscribe {home}`, `{chat, pane, after_revision}`, or
-    `{term, pane}`, and their `unsubscribe`s.
+    `{term, pane, size?}`, and their `unsubscribe`s, and `term_scroll
+    {pane, lines}`.
   - The server sends `home` (whole value, coalesced at 400 ms),
     `chat_changes {pane, revision, changes: [Change]}` (coalesced at 120 ms),
     `term_screen {pane, rows: [[Run]]}` (only when it changed, 300 ms), and
@@ -131,8 +132,10 @@ mirrored. Bearer auth as today (`Authorization: Bearer TOKEN`).
   "fingerprint": "64 uppercase hex",
   "connected": true,
   "waiting": 1,
+  "load": {"cpu": 47, "memory": 67},
   "workspaces": [{
     "id": "w1", "label": "herdr-gpui", "branch": "main", "cwd": "/Users/me/code/herdr-gpui",
+    "worktree": {"key": "/Users/me/code/herdr-gpui/.git", "label": "herdr-gpui", "is_linked_worktree": false},
     "pull_request": {"number": 870, "url": "https://github.com/...", "tone": "success"},
     "chats": [{
       "pane": "p1", "tab": "t1", "title": "Equalize splits", "agent": "claude",
@@ -147,7 +150,7 @@ mirrored. Bearer auth as today (`Authorization: Bearer TOKEN`).
     "terminals": [{
       "tab": "t2", "label": "zsh", "cwd": "/Users/me/code/herdr-gpui", "zoomed": false,
       "panes": [{"pane": "p2", "label": null, "cwd": "/Users/me/code/herdr-gpui", "focused": true}],
-      "agent": {"name": "claude", "status": "done"}
+      "agent": {"name": "claude", "status": "done", "pane": "p2", "title": "Fix the build"}
     }]
   }]
 }
@@ -157,6 +160,18 @@ mirrored. Bearer auth as today (`Authorization: Bearer TOKEN`).
   `working`, `blocked`, or `done`. `summary` is absent while the chat's
   connection is not linked yet. `question` is a `Permission`. `waiting` is
   the badge: chats whose transcript has a permission waiting.
+- A terminal's `agent` is the agent Herdr detects in the tab, such as
+  `claude` run in a shell: `pane` is the pane it runs in and `title` its
+  terminal title, both absent from older daemons. Home lists these tabs
+  with the chats, by status, and opens the agent's pane.
+- `load` is the computer's CPU and memory in whole percentages, read
+  every five seconds; it is absent until the first reading and from older
+  daemons. A home goes out again when either figure moves by a point.
+- `worktree` is Herdr's `ClientShellWorktree`: every checkout of one
+  repository shares `key`, and `label` is the repository's name. The
+  Workspaces tab lists a repository's own checkouts, then its linked
+  worktrees, under that name. It is absent for a folder outside a
+  repository and from older daemons.
 - `pull_request` is absent when the workspace has none; `tone` is
   `herdr_github::pull_request::Tone` as serde writes it.
 - As built: `waiting` counts every waiting permission request, as the web
@@ -188,11 +203,40 @@ The phone sends:
 ```json
 {"type": "subscribe", "view": "home"}
 {"type": "subscribe", "view": "chat", "pane": "p1", "since": {"epoch": "uuid", "seq": 41}}
-{"type": "subscribe", "view": "term", "pane": "p2"}
+{"type": "subscribe", "view": "term", "pane": "p2", "size": {"cols": 46, "rows": 30}}
 {"type": "unsubscribe", "view": "chat", "pane": "p1"}
+{"type": "term_scroll", "pane": "p2", "lines": 3}
 ```
 
 `since` is optional: the cursor of the transcript the phone has cached.
+
+`size` is optional and only read for `term`: the columns and rows the
+phone draws. While the view runs, the daemon holds a direct terminal
+attach to Herdr at that size (without taking the terminal from another
+attached client), so Herdr resizes the pane's terminal to the phone and
+`term_screen` comes back at that width; Herdr UI shows the pane at the
+smaller size meanwhile. Unsubscribing, closing the socket, or the view
+ending detaches, and Herdr sizes the terminal back to its layout.
+Subscribing to the same terminal again with another `size` (a rotation)
+resizes the same attach and sends the screen again; again without `size`
+releases it. `cols` must be 20 to 400 and `rows` 5 to 200: another size
+answers `error` "terminal size out of range" and follows at the layout's
+size. A Herdr that refuses the attach (another client holds the terminal,
+or an older Herdr) leaves the view at the layout's size, logged by the
+daemon and never an error to the phone.
+
+`term_scroll` scrolls a terminal the phone follows with `size`: `lines`
+is a signed integer, positive up toward history and negative down. The
+daemon sends it over the held attach as one mouse wheel scroll at the
+middle of the terminal, so Herdr hands it to an app that reports the
+mouse (`less`, `vim`, an agent's TUI) or scrolls the terminal's own
+history otherwise, and reads the screen again at once and shortly after,
+as after typing. `lines` of 0 answers `error` "scroll out of range"; more
+than 50 either way moves 50. A terminal the view follows without an
+attach (no `size`, or Herdr refused it) answers `error` "this terminal
+cannot scroll from the phone" once per subscription and ignores later
+scrolls; scrolling a terminal the socket does not follow answers it each
+time.
 
 The daemon sends:
 
@@ -669,6 +713,22 @@ Round 2 picks (2026-10-28):
   storage, about and diagnostics.
 - **iPad B**: the attention list and chat B, with the pane's terminal in an
   inspector beside the chat.
+
+Workspaces round (2026-10-29) replaces the Computers tab with a
+**Workspaces** tab laid out like Herdr UI's sidebar (`spaces-Mix` in
+`ios/Mockups`):
+
+- Search on top, then every computer: a header with its name, connection,
+  and CPU and memory, then its repositories as inset sections (initial,
+  name, and + for a new worktree of it). Rows show the most pressing
+  agent's mark, the checkout's branch or the worktree's name, its agent
+  and terminal counts, and the pull request's number in its tone.
+- A workspace opens on its own screen: branch, pull request, and place on
+  top, its tabs (chats, agents in terminals, terminals) below, and a glass
+  row docked at the bottom that starts a terminal or an agent with one
+  tap; a long press on an agent opens the form with a first prompt.
+- GPU use is not sent yet: the desktop's GPU reader lives in Herdr UI, and
+  sharing it with the daemon means moving it to a crate both can use.
 
 | Web app | Native |
 | --- | --- |

@@ -43,6 +43,17 @@ struct TerminalItem: Identifiable, Hashable {
     let terminal: Home.TerminalRow
 
     var id: String { "\(computer.device)/\(terminal.tab)" }
+
+    /// The agent Herdr detects in it, such as `claude` run in a shell.
+    var agent: Home.TerminalRow.DetectedAgent? { terminal.agent }
+    var title: String { agent?.title ?? terminal.label }
+    var needsYou: Bool { agent?.status == .blocked }
+    var working: Bool { agent?.status == .working }
+
+    /// Where a list opens it: the agent's pane, else the focused one.
+    var route: Route? {
+        terminal.agentPane.map { .term(PaneKey(device: computer.device, pane: $0.pane), title: terminal.label) }
+    }
 }
 
 /// Every paired computer's link and what it last showed. Launch draws the
@@ -159,6 +170,9 @@ final class Fleet {
         }
     }
 
+    /// Terminal tabs with an agent in them, listed beside the chats.
+    var agentTerminals: [TerminalItem] { terminalItems.filter { $0.agent != nil } }
+
     var waiting: Int { machines.reduce(0) { $0 + ($1.home?.waiting ?? 0) } }
 
     /// Writes what widgets, Controls, Siri, Spotlight, and the share
@@ -222,6 +236,20 @@ final class Fleet {
         terms[key] = store
         Task { await links[key.device]?.watch(.term(pane: key.pane)) }
         return store
+    }
+
+    /// Scrolls a terminal's history by `lines`, above zero going back.
+    func scrollTerm(_ key: PaneKey, lines: Int) {
+        Task { await links[key.device]?.scroll(pane: key.pane, lines: lines) }
+    }
+
+    /// Asks the computer to size the terminal to fit this screen while
+    /// it is watched; Herdr gives it back to the desktop afterwards.
+    func sizeTerm(_ store: TermStore, to size: TermSize) {
+        guard terms[store.key] === store, store.size != size else { return }
+        store.size = size
+        let key = store.key
+        Task { await links[key.device]?.watch(.term(pane: key.pane), size: size) }
     }
 
     func closeTerm(_ store: TermStore) {
@@ -314,11 +342,11 @@ final class Fleet {
         links[computer.device] = link
         let device = computer.device
         let watching = chats.filter { $0.key.device == device }.map { ($0.key.pane, $0.value.cursor) }
-        let terminals = terms.keys.filter { $0.device == device }.map(\.pane)
+        let terminals = terms.filter { $0.key.device == device }.map { ($0.key.pane, $0.value.size) }
         readers[device] = Task {
             await link.watch(.home)
             for (pane, cursor) in watching { await link.watch(.chat(pane: pane), since: cursor) }
-            for pane in terminals { await link.watch(.term(pane: pane)) }
+            for (pane, size) in terminals { await link.watch(.term(pane: pane), size: size) }
             await link.start()
             for await update in link.updates {
                 self.handle(update, from: device)
@@ -341,6 +369,14 @@ final class Fleet {
             if case .revoked = status { stopLink(device) }
             if case .online = status { onOnline?(machines[index].computer) }
         case let .event(.home(home)):
+            // The computer's load moves every few seconds; only the header
+            // shows it, so the cache, widgets, and Spotlight wait for a
+            // change to the workspaces.
+            if machines[index].watching, machines[index].home?.sameApartFromLoad(home) == true {
+                machines[index].home = home
+                machines[index].updated = .now
+                return
+            }
             // Only a change seen between two live homes is dated now.
             if machines[index].watching, let previous = machines[index].home {
                 let before = machines[index].answers

@@ -15,6 +15,8 @@ mod error;
 #[cfg(feature = "server")]
 mod hub;
 #[cfg(feature = "server")]
+mod load;
+#[cfg(feature = "server")]
 mod native;
 #[cfg(feature = "server")]
 mod push;

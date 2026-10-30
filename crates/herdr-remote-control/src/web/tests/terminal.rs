@@ -14,6 +14,7 @@ fn with_terminal(dir: &std::path::Path) -> Shared {
             label: "app".into(),
             branch: None,
             cwd: "/code/app".into(),
+            worktree: None,
             chats: vec![crate::hub::ChatRow {
                 pane: "c1".into(),
                 tab: "t1".into(),

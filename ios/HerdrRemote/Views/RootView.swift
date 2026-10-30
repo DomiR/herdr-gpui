@@ -1,16 +1,17 @@
 import HerdrRemoteCore
 import SwiftUI
 
-enum RootTab: Hashable { case home, computers, settings }
+enum RootTab: Hashable { case home, workspaces, settings }
 
-/// Home B: attention first, with Computers and its search, and Settings, as
-/// tabs, or
+/// Home B: attention first, with Workspaces and its search, and Settings,
+/// as tabs, or
 /// iPad B's split view when the window is wide: an iPad, or a foldable
 /// iPhone opened flat.
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @State private var tab = RootTab.home
     @State private var homePath: [Route] = []
+    @State private var workspacesPath = NavigationPath()
     @State private var pairing = false
     @State private var selection: Route?
     @State private var windowWidth: CGFloat = 0
@@ -50,7 +51,7 @@ struct RootView: View {
         .sheet(isPresented: $pairing) { PairView() }
         .sheet(item: Bindable(model).creating) { creating in
             switch creating {
-            case let .workspace(device): NewWorkspaceSheet(device: device)
+            case let .workspace(device, folder): NewWorkspaceSheet(device: device, folder: folder)
             case let .chat(device, workspace, label): NewChatSheet(device: device, workspace: workspace, label: label)
             }
         }
@@ -97,8 +98,8 @@ struct RootView: View {
                 }
             }
             .badge(model.fleet.waiting)
-            Tab("Computers", systemImage: "desktopcomputer", value: RootTab.computers) {
-                NavigationStack { ComputersTab(pairing: $pairing).withRoutes() }
+            Tab("Workspaces", systemImage: "square.stack.3d.up", value: RootTab.workspaces) {
+                NavigationStack(path: $workspacesPath) { WorkspacesTab(pairing: $pairing).withRoutes() }
             }
             Tab("Settings", systemImage: "gearshape", value: RootTab.settings) {
                 NavigationStack { SettingsView() }
@@ -113,8 +114,9 @@ extension RootView {
     /// `-pairLink URL` pairs without the camera (the desktop still
     /// approves), `-openLink URL` opens a Live Activity's link as a tap on
     /// the activity would, `-openTerm PANE` opens the terminal pane of
-    /// whichever computer lists it, `-tab computers|settings` picks
-    /// that tab, and `-newWorkspace YES` opens the new workspace form. In a
+    /// whichever computer lists it, `-tab workspaces|settings` picks
+    /// that tab, `-openWorkspace ID` opens that workspace in the Workspaces
+    /// tab, and `-newWorkspace YES` opens the new workspace form. In a
     /// chat, `-session YES` opens its session sheet and `-draft TEXT`
     /// types into the composer.
     func followLaunchArguments() async {
@@ -130,13 +132,20 @@ extension RootView {
             model.open(url)
         }
         switch defaults.string(forKey: "tab") {
-        case "computers": tab = .computers
+        case "workspaces": tab = .workspaces
         case "settings": tab = .settings
         default: break
         }
         if defaults.bool(forKey: "newWorkspace") {
             try? await Task.sleep(for: .seconds(2))
             model.creating = .workspace(device: nil)
+        }
+        if let workspace = defaults.string(forKey: "openWorkspace") {
+            try? await Task.sleep(for: .seconds(2))
+            if let machine = model.fleet.machines.first(where: { $0.home?.workspaces.contains { $0.id == workspace } == true }) {
+                tab = .workspaces
+                workspacesPath.append(WorkspaceKey(device: machine.id, workspace: workspace))
+            }
         }
         if let pane = defaults.string(forKey: "openTerm") {
             try? await Task.sleep(for: .seconds(2))
@@ -150,11 +159,15 @@ extension RootView {
 
 extension View {
     func withRoutes() -> some View {
-        navigationDestination(for: Route.self) { route in
-            switch route {
-            case let .chat(key, title): ChatScreen(key: key, title: title)
-            case let .term(key, title): TerminalScreen(key: key, title: title)
-            }
+        navigationDestination(for: Route.self) { $0.screen }
+    }
+}
+
+extension Route {
+    @ViewBuilder var screen: some View {
+        switch self {
+        case let .chat(key, title): ChatScreen(key: key, title: title)
+        case let .term(key, title): TerminalScreen(key: key, title: title)
         }
     }
 }

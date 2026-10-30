@@ -14,6 +14,8 @@ mod pictures;
 mod projection;
 mod reducer;
 mod socket;
+mod term_scroll;
+mod term_size;
 mod views;
 
 /// A layout with one workspace holding chat `p1` and terminal `t2`.
@@ -26,6 +28,7 @@ pub(super) fn layout(endpoint: EndpointId) -> Layout {
             label: "herdr-gpui".into(),
             branch: Some("main".into()),
             cwd: "/work".into(),
+            worktree: None,
             chats: vec![ChatRow {
                 pane: "p1".into(),
                 tab: "t1".into(),
@@ -45,7 +48,12 @@ pub(super) fn layout(endpoint: EndpointId) -> Layout {
                     focused: true,
                 }],
                 zoomed: false,
-                agent: Some((Some("claude".into()), AgentStatus::Done)),
+                agent: Some(crate::hub::TerminalAgent {
+                    name: Some("claude".into()),
+                    status: AgentStatus::Done,
+                    pane: "p2".into(),
+                    title: Some("Fix the build".into()),
+                }),
             }],
         }],
     }

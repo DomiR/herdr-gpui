@@ -2,7 +2,7 @@ import HerdrRemoteCore
 import SwiftUI
 
 /// iPad B: the attention list beside the open chat, with the chat's
-/// workspace terminal in an inspector. Computers and Settings open
+/// workspace terminal in an inspector. Workspaces and Settings open
 /// as sheets; a chat or terminal can also open in a window of its own.
 /// A foldable iPhone opened flat gets it too (`RootView.wideWidth`).
 struct IPadRoot: View {
@@ -13,7 +13,7 @@ struct IPadRoot: View {
     @State private var showing: Panel?
 
     enum Panel: String, Identifiable {
-        case computers, settings
+        case workspaces, settings
         var id: String { rawValue }
     }
 
@@ -35,7 +35,7 @@ struct IPadRoot: View {
                     }
                     ToolbarItemGroup(placement: .bottomBar) {
                         Spacer()
-                        Button("Computers", systemImage: "desktopcomputer") { showing = .computers }
+                        Button("Workspaces", systemImage: "square.stack.3d.up") { showing = .workspaces }
                         Button("Settings", systemImage: "gearshape") { showing = .settings }
                             .keyboardShortcut(",", modifiers: .command)
                     }
@@ -55,7 +55,7 @@ struct IPadRoot: View {
         .sheet(item: $showing) { panel in
             NavigationStack {
                 switch panel {
-                case .computers: ComputersTab(pairing: $pairing).withRoutes()
+                case .workspaces: WorkspacesTab(pairing: $pairing).withRoutes()
                 case .settings: SettingsView()
                 }
             }
@@ -75,10 +75,13 @@ private struct AttentionList: View {
     var body: some View {
         let chats = model.fleet.chatItems.filter(matches)
         let terminals = model.fleet.terminalItems.filter(matches)
+        // Tabs with an agent list with the chats; the rest under Terminals.
+        let agents = terminals.filter { $0.agent != nil }
+        let shells = terminals.filter { $0.agent == nil }
         List(selection: $selection) {
-            section("Needs you", chats.filter(\.needsYou))
-            section("Working", chats.filter(\.working))
-            section("Recent", chats.filter { !$0.needsYou && !$0.working })
+            section("Needs you", chats.filter(\.needsYou), agents.filter(\.needsYou))
+            section("Working", chats.filter(\.working), agents.filter(\.working))
+            section("Recent", chats.filter { !$0.needsYou && !$0.working }, agents.filter { !$0.needsYou && !$0.working })
             if !query.isEmpty, !messages.isEmpty {
                 Section("Messages") {
                     ForEach(messages) { hit in
@@ -87,9 +90,9 @@ private struct AttentionList: View {
                     }
                 }
             }
-            if !terminals.isEmpty {
+            if !shells.isEmpty {
                 Section("Terminals") {
-                    ForEach(terminals) { item in
+                    ForEach(shells) { item in
                         if let pane = item.terminal.firstPane {
                             let route = Route.term(PaneKey(device: item.computer.device, pane: pane.pane), title: item.terminal.label)
                             Label("\(item.terminal.label) · \(item.workspace.label)", systemImage: "apple.terminal")
@@ -111,12 +114,17 @@ private struct AttentionList: View {
     }
 
     @ViewBuilder
-    private func section(_ title: String, _ items: [ChatItem]) -> some View {
-        if !items.isEmpty {
+    private func section(_ title: String, _ items: [ChatItem], _ agents: [TerminalItem]) -> some View {
+        if !items.isEmpty || !agents.isEmpty {
             Section(title) {
                 ForEach(items) { item in
                     let route = Route.chat(item.key, title: item.chat.title)
                     ChatRowLabel(item: item).tag(route).contextMenu { windowButton(route) }
+                }
+                ForEach(agents) { item in
+                    if let route = item.route {
+                        AgentTerminalRowLabel(item: item).tag(route).contextMenu { windowButton(route) }
+                    }
                 }
             }
         }
@@ -133,7 +141,8 @@ private struct AttentionList: View {
     }
 
     private func matches(_ item: TerminalItem) -> Bool {
-        query.isEmpty || item.terminal.label.localizedCaseInsensitiveContains(query) || item.workspace.label.localizedCaseInsensitiveContains(query)
+        query.isEmpty || item.title.localizedCaseInsensitiveContains(query) || item.terminal.label.localizedCaseInsensitiveContains(query)
+            || item.workspace.label.localizedCaseInsensitiveContains(query)
     }
 }
 

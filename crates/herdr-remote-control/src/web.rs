@@ -75,6 +75,8 @@ pub(crate) struct State {
     pub(crate) connected: Mutex<HashMap<DeviceId, usize>>,
     pub(crate) fingerprint: String,
     pub(crate) hub: Arc<Hub>,
+    /// This computer's CPU and memory, as `load` last read them.
+    pub(crate) load: tokio::sync::watch::Receiver<Option<crate::load::Load>>,
     /// The status marks the lists draw, as Herdr UI last sent them.
     pub(crate) look: Look,
     pub(crate) names: RwLock<Names>,

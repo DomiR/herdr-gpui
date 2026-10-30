@@ -5,12 +5,21 @@
     "fingerprint": "ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB",
     "connected": true,
     "waiting": 1,
+    "load": {
+      "cpu": 47,
+      "memory": 67
+    },
     "workspaces": [
       {
         "id": "w1",
         "label": "herdr-gpui",
         "branch": "main",
         "cwd": "/work",
+        "worktree": {
+          "key": "/work/.git",
+          "label": "work",
+          "is_linked_worktree": false
+        },
         "pull_request": {
           "number": 870,
           "url": "https://github.com/penso/herdr-gpui/pull/870",
@@ -75,7 +84,9 @@
             ],
             "agent": {
               "name": "claude",
-              "status": "done"
+              "status": "done",
+              "pane": "p2",
+              "title": "Fix the build"
             }
           }
         ]
@@ -85,6 +96,19 @@
         "label": "moltis",
         "branch": null,
         "cwd": "/moltis",
+        "chats": [],
+        "terminals": []
+      },
+      {
+        "id": "w3",
+        "label": "spaces tab",
+        "branch": "worktree/spaces-tab",
+        "cwd": "/work-spaces-tab",
+        "worktree": {
+          "key": "/work/.git",
+          "label": "work",
+          "is_linked_worktree": true
+        },
         "chats": [],
         "terminals": []
       }

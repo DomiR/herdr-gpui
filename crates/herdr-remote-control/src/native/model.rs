@@ -6,9 +6,10 @@ use crate::{
     ansi::{self, Color, Style},
     control::pull_requests::{PullRequests, Tone, WorkspacePullRequest},
     hub::{self, ChatRow, Layout, Summary},
+    load::Load,
 };
 use herdr_chat_protocol::{Cursor, Permission, Status, Transcript};
-use herdr_client::protocol::AgentStatus;
+use herdr_client::protocol::{AgentStatus, ClientShellWorktree};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -21,6 +22,10 @@ pub(crate) struct Home {
     pub(crate) connected: bool,
     /// Permission requests waiting across every chat: the app's badge.
     pub(crate) waiting: usize,
+    /// This computer's CPU and memory; absent until first read, and from
+    /// older servers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) load: Option<Load>,
     pub(crate) workspaces: Vec<Workspace>,
 }
 
@@ -30,6 +35,10 @@ pub(crate) struct Workspace {
     pub(crate) label: String,
     pub(crate) branch: Option<String>,
     pub(crate) cwd: String,
+    /// The repository checkout it is, as Herdr reports it: a phone lists a
+    /// repository's linked worktrees under it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) worktree: Option<ClientShellWorktree>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) pull_request: Option<PullRequest>,
     pub(crate) chats: Vec<Chat>,
@@ -94,6 +103,12 @@ pub(crate) struct Pane {
 pub(crate) struct TerminalAgent {
     pub(crate) name: Option<String>,
     pub(crate) status: AgentStatus,
+    /// The pane it runs in; absent from older servers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) pane: Option<String>,
+    /// What it works on, from its terminal title.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) title: Option<String>,
 }
 
 /// A chat's whole transcript and the stream position it includes.
@@ -252,9 +267,11 @@ fn terminal(terminal: &hub::Terminal) -> Terminal {
                 focused: pane.focused,
             })
             .collect(),
-        agent: terminal.agent.as_ref().map(|(name, status)| TerminalAgent {
-            name: name.clone(),
-            status: *status,
+        agent: terminal.agent.as_ref().map(|agent| TerminalAgent {
+            name: agent.name.clone(),
+            status: agent.status,
+            pane: Some(agent.pane.clone()),
+            title: agent.title.clone(),
         }),
     }
 }
@@ -265,6 +282,7 @@ pub(crate) struct Sources<'a> {
     pub(crate) computer: &'a str,
     pub(crate) fingerprint: &'a str,
     pub(crate) layout: &'a Layout,
+    pub(crate) load: Option<Load>,
     pub(crate) summaries: HashMap<String, Summary>,
     pub(crate) pull_requests: &'a PullRequests,
 }
@@ -275,6 +293,7 @@ impl Home {
             computer,
             fingerprint,
             layout,
+            load,
             mut summaries,
             pull_requests,
         } = sources;
@@ -287,6 +306,7 @@ impl Home {
                 label: workspace.label.clone(),
                 branch: workspace.branch.clone(),
                 cwd: workspace.cwd.clone(),
+                worktree: workspace.worktree.clone(),
                 pull_request: pull_request(pull_requests, &layout.boot, workspace).map(|pr| {
                     PullRequest {
                         number: pr.number,
@@ -307,6 +327,7 @@ impl Home {
             fingerprint: fingerprint.to_owned(),
             connected: layout.connected,
             waiting,
+            load,
             workspaces,
         }
     }

@@ -22,6 +22,7 @@ fn home_with(agent: Option<&str>, summary: Option<&str>) -> Home {
         computer: "Studio",
         fingerprint: "FP",
         layout: &layout,
+        load: None,
         summaries,
         pull_requests: &PullRequests::default(),
     })
