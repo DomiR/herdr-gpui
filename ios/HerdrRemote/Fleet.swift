@@ -219,6 +219,14 @@ final class Fleet {
         return try await body(client, token)
     }
 
+    /// Closes the pane a chat runs in, which stops its agent in Herdr.
+    func closeChatPane(_ key: PaneKey) async throws {
+        let pane = key.pane
+        _ = try await call(key.device) { client, token in
+            try await client.termAction(.closePane, pane: pane, bearer: token)
+        }
+    }
+
     // MARK: Links
 
     private func startLink(_ computer: Computer) {

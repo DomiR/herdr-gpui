@@ -3,13 +3,17 @@ import SwiftUI
 
 /// Session C: cards for the context, the mode, effort, the session's
 /// other settings, and auto-accept, which asks for Face ID before it
-/// turns on.
+/// turns on, then closing the chat.
 struct SessionSheet: View {
     @Environment(AppModel.self) private var model
     let key: PaneKey
     let store: ChatStore
+    /// The chat's pane is gone; the chat screen leaves with the sheet.
+    let onClosed: () -> Void
     @State private var problem: String?
     @State private var effort: Double?
+    @State private var confirmingClose = false
+    @State private var closing = false
 
     var body: some View {
         NavigationStack {
@@ -25,6 +29,7 @@ struct SessionSheet: View {
                         let others = transcript.options.filter { $0.category != .thoughtLevel }
                         if !others.isEmpty { optionsCard(others) }
                         autoAcceptCard(transcript)
+                        closeButton(transcript)
                         if let problem { Text(problem).font(.footnote).foregroundStyle(.red) }
                     }
                     .padding(16)
@@ -167,7 +172,43 @@ struct SessionSheet: View {
         .card(tint: transcript.autoAccept ? .red : nil)
     }
 
+    private func closeButton(_ transcript: Transcript) -> some View {
+        Button(role: .destructive) { confirmingClose = true } label: {
+            HStack {
+                Label("Close Chat", systemImage: "xmark.circle")
+                Spacer()
+                if closing { ProgressView() }
+            }
+            .font(.headline)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
+            .background(.red.opacity(0.12), in: .rect(cornerRadius: 20))
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.red)
+        .disabled(closing)
+        .confirmationDialog("Close this chat?", isPresented: $confirmingClose, titleVisibility: .visible) {
+            Button("Close Chat", role: .destructive) { close() }
+        } message: {
+            Text("Its pane closes in Herdr and \(transcript.agent) stops.")
+        }
+    }
+
     // MARK: Actions
+
+    private func close() {
+        closing = true
+        Task {
+            do {
+                try await model.fleet.closeChatPane(key)
+                onClosed()
+            } catch {
+                problem = error.localizedDescription
+            }
+            closing = false
+        }
+    }
 
     private func setAutoAccept(_ on: Bool) {
         Task {

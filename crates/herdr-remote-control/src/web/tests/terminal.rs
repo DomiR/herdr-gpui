@@ -14,7 +14,14 @@ fn with_terminal(dir: &std::path::Path) -> Shared {
             label: "app".into(),
             branch: None,
             cwd: "/code/app".into(),
-            chats: Vec::new(),
+            chats: vec![crate::hub::ChatRow {
+                pane: "c1".into(),
+                tab: "t1".into(),
+                endpoint: herdr_chat_protocol::EndpointId::random(),
+                agent: Some("claude".into()),
+                title: "Claude".into(),
+                status: herdr_client::protocol::AgentStatus::Idle,
+            }],
             terminals: vec![crate::hub::layout_terminal("t2", "zsh")],
         }],
     };
@@ -110,6 +117,30 @@ fn an_action_answers_the_pane_to_show_next() {
     assert_eq!(next_pane(Action::Zoom, "p1", None), Some("p1"));
     assert_eq!(next_pane(Action::ClosePane, "p1", None), None);
     assert_eq!(next_pane(Action::CloseTab, "p1", Some("p9")), None);
+}
+
+#[tokio::test]
+async fn actions_reach_terminal_and_chat_panes_only() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = with_terminal(dir.path());
+    let (_, token) = signed_in(&state, 7);
+    let close = |pane: &str| {
+        authorized(
+            post(
+                &format!("/api/term/{pane}/action"),
+                json!({ "action": "close_pane" }),
+            ),
+            &token,
+        )
+    };
+    assert_eq!(send(&state, close("p9")).await.0, StatusCode::NOT_FOUND);
+    // A terminal's pane and a chat's pane both reach Herdr, which this
+    // test has none of.
+    for pane in ["t2-p1", "c1"] {
+        let (status, _, body) = send(&state, close(pane)).await;
+        assert_ne!(status, StatusCode::NOT_FOUND, "{pane}: {body}");
+        assert_ne!(status, StatusCode::OK, "{pane}: {body}");
+    }
 }
 
 #[tokio::test]

@@ -5,6 +5,9 @@ import SwiftUI
 struct HomeTab: View {
     @Environment(AppModel.self) private var model
     @Binding var pairing: Bool
+    /// The chat a long press asked to close, waiting for confirmation.
+    @State private var closing: ChatItem?
+    @State private var problem: String?
 
     var body: some View {
         let items = model.fleet.chatItems
@@ -46,6 +49,20 @@ struct HomeTab: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemGroupedBackground))
         .opacity(model.fleet.machines.allSatisfy(\.stale) && !items.isEmpty ? 0.6 : 1)
+        .confirmationDialog(
+            "Close \(closing?.chat.title ?? "this chat")?",
+            isPresented: Binding(get: { closing != nil }, set: { if !$0 { closing = nil } }),
+            titleVisibility: .visible,
+            presenting: closing
+        ) { item in
+            Button("Close Chat", role: .destructive) { close(item) }
+        } message: { _ in
+            Text("Its pane closes in Herdr and the agent stops.")
+        }
+        .alert("The chat did not close", isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) {
+        } message: {
+            Text(problem ?? "")
+        }
         .navigationTitle("Herdr")
         .refreshable { model.fleet.networkChanged() }
         .overlay {
@@ -84,6 +101,19 @@ struct HomeTab: View {
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            Button("Close Chat", systemImage: "xmark.circle", role: .destructive) { closing = item }
+        }
+    }
+
+    private func close(_ item: ChatItem) {
+        Task {
+            do {
+                try await model.fleet.closeChatPane(item.key)
+            } catch {
+                problem = error.localizedDescription
+            }
+        }
     }
 }
 

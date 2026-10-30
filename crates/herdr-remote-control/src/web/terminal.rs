@@ -2,7 +2,7 @@
 //! and what the phone types or asks of Herdr. Everything goes through
 //! Herdr's public API, which neither focuses nor resizes anything, so a
 //! phone watching or typing leaves the desktop's layout alone. Only panes
-//! of terminal tabs in the layout are reachable, never a chat's pane.
+//! of the layout's terminal tabs and chats are reachable.
 
 use super::{ApiError, Device, Shared, render, render::now_ms};
 use crate::hub::{ApiMethod, Layout};
@@ -254,7 +254,8 @@ pub(crate) fn action_call(
 }
 
 /// Runs an action from the sheet; answers where the phone goes next: the
-/// new pane or tab, or home when the pane is gone.
+/// new pane or tab, or home when the pane is gone. A chat's pane is a
+/// Herdr pane too, so the phone closes an agent the same way.
 pub(super) async fn action(
     State(state): State<Shared>,
     _device: Device,
@@ -263,8 +264,15 @@ pub(super) async fn action(
 ) -> Result<Json<Value>, ApiError> {
     let (tab, workspace) = {
         let layout = state.hub.layout();
-        let (workspace, terminal) = layout.terminal(&pane).ok_or(ApiError::NotFound)?;
-        (terminal.tab.clone(), workspace.id.clone())
+        layout
+            .terminal(&pane)
+            .map(|(workspace, terminal)| (terminal.tab.clone(), workspace.id.clone()))
+            .or_else(|| {
+                layout
+                    .chat(&pane)
+                    .map(|(workspace, chat)| (chat.tab.clone(), workspace.id.clone()))
+            })
+            .ok_or(ApiError::NotFound)?
     };
     let (method, params) = action_call(request.action, &pane, &tab, &workspace);
     let result = state.hub.call(method, params).await?;

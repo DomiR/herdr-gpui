@@ -13,6 +13,7 @@ struct ChatScreen: View {
     @State private var store: ChatStore?
     @State private var showingSession = false
     @Environment(\.horizontalSizeClass) private var width
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         Group {
@@ -56,7 +57,11 @@ struct ChatScreen: View {
         }
         .sheet(isPresented: $showingSession) {
             if let store {
-                SessionSheet(key: key, store: store).presentationDetents([.medium, .large])
+                SessionSheet(key: key, store: store) {
+                    showingSession = false
+                    dismiss()
+                }
+                .presentationDetents([.medium, .large])
             }
         }
         .onAppear {
