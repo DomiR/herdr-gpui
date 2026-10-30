@@ -76,11 +76,61 @@ fn saving_reloads_and_a_broken_save_keeps_the_last_tree() {
     assert_eq!(text(&next_tree(&worker, &mut seen)), "two  0/0");
 
     fs::write(dir.join("main.luau"), "return herdr.mod {").unwrap();
-    let error = eventually(|| worker.take().error.flatten());
+    let error = eventually(|| worker.take().load_error.flatten());
     assert!(matches!(error, herdr_mods::Error::Lua(_)), "{error:?}");
-    // The old mod still answers.
+    // The old mod still answers, and its good tree does not clear the
+    // broken save's error.
     worker.send(Data::from("add")).unwrap();
-    assert_eq!(text(&next_tree(&worker, &mut seen)), "two  1/0");
+    let mut after = Vec::new();
+    assert_eq!(text(&next_tree(&worker, &mut after)), "two  1/0");
+    assert!(after.iter().all(|report| report.load_error.is_none()));
+}
+
+#[test]
+fn a_reload_whose_first_view_fails_keeps_the_running_mod() {
+    let root = tempfile::tempdir().unwrap();
+    let dir = write_mod(root.path(), "live", &counter("good "));
+    let worker = Handle::spawn(dir.clone()).unwrap();
+    let mut seen = Vec::new();
+    assert_eq!(text(&next_tree(&worker, &mut seen)), "good 0/0");
+
+    // Loads and runs init, but its view returns an unknown element.
+    let broken = counter("bad ").replace(
+        "return ui.text(",
+        "return ui.text({ type = \"canvas\" }) or ui.text(",
+    );
+    fs::write(dir.join("main.luau"), broken).unwrap();
+    let error = eventually(|| worker.take().load_error.flatten());
+    assert!(matches!(error, herdr_mods::Error::Tree { .. }), "{error:?}");
+
+    // Clicks still reach the old mod, which draws its own tree.
+    worker.send(Data::from("add")).unwrap();
+    assert_eq!(text(&next_tree(&worker, &mut seen)), "good 1/0");
+
+    // A good save replaces it and clears the error.
+    fs::write(dir.join("main.luau"), counter("fixed ")).unwrap();
+    let mut fixed = Vec::new();
+    assert_eq!(text(&next_tree(&worker, &mut fixed)), "fixed 0/0");
+    assert!(
+        fixed
+            .iter()
+            .any(|report| matches!(report.load_error, Some(None)))
+    );
+}
+
+#[test]
+fn an_unreadable_folder_is_reported_and_the_mod_keeps_running() {
+    let root = tempfile::tempdir().unwrap();
+    let dir = write_mod(root.path(), "gone", &counter("kept "));
+    let worker = Handle::spawn(dir.clone()).unwrap();
+    let mut seen = Vec::new();
+    next_tree(&worker, &mut seen);
+    fs::remove_dir_all(&dir).unwrap();
+    worker.reload();
+    let error = eventually(|| worker.take().load_error.flatten());
+    assert!(matches!(error, herdr_mods::Error::Read { .. }), "{error:?}");
+    worker.send(Data::from("add")).unwrap();
+    assert_eq!(text(&next_tree(&worker, &mut seen)), "kept 1/0");
 }
 
 #[test]

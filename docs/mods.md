@@ -128,6 +128,11 @@ a mod's own `.svg` files (`file = "x.svg"`) are accepted but not drawn yet.
 
 ## Limits
 
+Mods share their places with the app: every mod's status bar items fit in
+one area of at most 360 px (280 px each) that gives way before the app's own
+controls, and every mod's sidebar section shares one area of at most 40% of
+the sidebar's height, which scrolls.
+
 Mods run in a sandbox: no files, network, processes, `os`, `io`, `print`,
 `load`, or `require` beyond the mod's own modules. Each call (loading,
 `init`, `update`, `view`) gets 2 million instruction checks and 16 MiB of

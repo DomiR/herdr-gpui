@@ -131,7 +131,7 @@ impl HerdrWindow {
                 .child("Loading…")
                 .into_any_element(),
         };
-        let error = entry.error.as_ref().map(|error| {
+        let error = entry.error().map(|error| {
             div()
                 .px(px(10.))
                 .py(px(6.))

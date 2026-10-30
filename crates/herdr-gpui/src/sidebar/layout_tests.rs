@@ -59,6 +59,8 @@ mod listening_ports;
 #[cfg(test)]
 mod local_counts_chip;
 #[cfg(test)]
+mod mod_places;
+#[cfg(test)]
 mod nested_agents;
 #[cfg(test)]
 mod other_device_prs;

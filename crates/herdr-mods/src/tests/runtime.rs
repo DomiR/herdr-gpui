@@ -200,3 +200,19 @@ fn globals_and_libraries_are_sealed() {
     ))
     .unwrap();
 }
+
+#[test]
+fn log_lines_are_bounded_without_copying_whole_arguments() {
+    // A 1 MiB string passed 1,024 times would be about 1 GiB if copied.
+    let main = format!(
+        "local s = string.rep(\"x\", 1024 * 1024)\n\
+         local args = table.create(1024, s)\n\
+         herdr.log(table.unpack(args))\n\
+         herdr.log(\"n\", 1, 2.5, true, nil, {{}}, setmetatable({{}}, {{ __tostring = function() return string.rep(\"y\", 1e6) end }}))\n{}",
+        view_mod("ui.spacer()")
+    );
+    let mut demo = load(&main).unwrap();
+    let log = demo.take_log();
+    assert_eq!(log[0].text.len(), 1024);
+    assert_eq!(log[1].text, "n 1 2.5 true nil table table");
+}

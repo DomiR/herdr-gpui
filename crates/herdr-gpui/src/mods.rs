@@ -36,6 +36,9 @@ use std::{
 /// How often the window's state is offered to mods at most; they run again
 /// only when a topic they watch changed.
 const STATE_GAP: Duration = Duration::from_millis(250);
+/// Mods run at once, whatever the folder holds: the first by name of those
+/// not turned off.
+const MAX_MODS: usize = 32;
 /// Log lines kept per mod for `herdr-gpui mod logs`.
 const LOG_LINES: usize = 200;
 
@@ -73,7 +76,10 @@ pub(crate) struct Entry {
     /// That icon tinted for the bar, by the color it was drawn in.
     icon_image: std::cell::RefCell<Option<(u32, Arc<gpui::Image>)>>,
     pub(crate) tree: Option<Node>,
-    pub(crate) error: Option<herdr_mods::Error>,
+    /// Why the last `update` or `view` failed.
+    call_error: Option<herdr_mods::Error>,
+    /// Why the mod's files last failed to load; the last good mod runs on.
+    load_error: Option<herdr_mods::Error>,
     pub(crate) log: VecDeque<LogLine>,
 }
 
@@ -93,6 +99,31 @@ impl Mods {
             dir: Some(dir),
             ..Self::default()
         }
+    }
+
+    /// Adds a mod that already drew `tree`, for layout tests. Its worker
+    /// watches a folder that does not exist, so it never draws again.
+    #[cfg(test)]
+    pub(crate) fn insert_drawn(&mut self, manifest: Manifest, tree: Node) {
+        let missing = std::env::temp_dir()
+            .join("herdr-mods-test-missing")
+            .join(&manifest.name);
+        let Ok(worker) = worker::Handle::spawn(missing) else {
+            return;
+        };
+        self.entries.insert(
+            manifest.name.clone(),
+            Entry {
+                worker,
+                manifest: Some(manifest),
+                icon: None,
+                icon_image: Default::default(),
+                tree: Some(tree),
+                call_error: None,
+                load_error: None,
+                log: VecDeque::new(),
+            },
+        );
     }
 
     /// Starts and stops workers to match the folder and `config`, and takes
@@ -123,7 +154,8 @@ impl Mods {
                             icon: None,
                             icon_image: Default::default(),
                             tree: None,
-                            error: None,
+                            call_error: None,
+                            load_error: None,
                             log: VecDeque::new(),
                         },
                     );
@@ -144,8 +176,11 @@ impl Mods {
             if let Some(tree) = report.tree {
                 entry.tree = Some(tree);
             }
+            if let Some(error) = report.load_error {
+                entry.load_error = error;
+            }
             if let Some(error) = report.error {
-                entry.error = error;
+                entry.call_error = error;
             }
             for line in report.log {
                 if entry.log.len() == LOG_LINES {
@@ -222,9 +257,12 @@ impl Mods {
         let scanner = self
             .scanner
             .get_or_insert_with(|| scan::Scanner::spawn(dir.clone()));
-        let mut names = scanner.names();
-        names.retain(|name| !config.disabled.contains(name));
-        names
+        scanner
+            .names()
+            .into_iter()
+            .filter(|name| !config.disabled.contains(name))
+            .take(MAX_MODS)
+            .collect()
     }
 }
 
@@ -248,6 +286,12 @@ impl HerdrWindow {
 }
 
 impl Entry {
+    /// What is wrong with the mod now: its files first, since a broken save
+    /// matters more than the old mod's last call.
+    pub(crate) fn error(&self) -> Option<&herdr_mods::Error> {
+        self.load_error.as_ref().or(self.call_error.as_ref())
+    }
+
     /// The activity bar app the mod declares, once it loaded.
     pub(crate) fn activity(&self) -> Option<&herdr_mods::Activity> {
         self.manifest.as_ref()?.activity.as_ref()

@@ -31,12 +31,7 @@ pub(super) fn install(lua: &Lua, sources: &Sources, shared: &Rc<Shared>) -> Resu
     herdr.raw_set(
         "log",
         lua.create_function(move |_, values: MultiValue| {
-            let text = values
-                .iter()
-                .map(Value::to_string)
-                .collect::<mlua::Result<Vec<_>>>()?
-                .join(" ");
-            log.log(&text);
+            log.log(&super::log_line(&values));
             Ok(())
         })?,
     )?;

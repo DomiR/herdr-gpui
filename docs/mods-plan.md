@@ -143,8 +143,10 @@ Only `herdr-luau`, `mlua`, `serde`, `toml`, `thiserror`, and `herdr-commands`
   tree needs.
 - **`places`:** the status bar item (`window/status_bar.rs`), the sidebar
   section, and palette entries for each manifest command. Each place has a
-  size budget: a status bar item is clipped to its width, and a sidebar
-  section scrolls within a maximum height.
+  size budget shared by every mod there: status bar items fit in one area
+  that shrinks before the app's own controls, and sidebar sections share one
+  scrolling area of at most 40% of the sidebar, so the built-in lists keep
+  the rest.
 - **`approve`:** the approval dialog, listing the mod's `needs`, the files
   and hash, and the diff from the last approved version when there is one.
   Approvals are stored per host like automation approvals, with the same

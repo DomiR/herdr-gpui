@@ -79,20 +79,53 @@ struct Shared {
 }
 
 impl Shared {
+    /// Keeps `text`, already bounded by [`log_line`], dropping the oldest
+    /// line once the log is full.
     fn log(&self, text: &str) {
-        let mut end = text.len().min(MAX_LOG_LINE);
-        while !text.is_char_boundary(end) {
-            end -= 1;
-        }
         let mut log = self.log.borrow_mut();
         if log.len() == MAX_LOG_LINES {
             log.pop_front();
         }
         log.push_back(LogLine {
             at: self.now.get().unwrap_or(SystemTime::UNIX_EPOCH),
-            text: text[..end].to_owned(),
+            text: text.to_owned(),
         });
     }
+}
+
+/// `herdr.log`'s arguments as one line of at most [`MAX_LOG_LINE`] bytes,
+/// built within that bound: Lua strings outside the mod's memory limit are
+/// never copied whole, so a mod cannot make the app allocate past it.
+/// Values other than strings, numbers, and booleans print as their type,
+/// without running a `__tostring` that could build a large string.
+pub(super) fn log_line(values: &MultiValue) -> String {
+    let mut line = String::new();
+    for (index, value) in values.iter().enumerate() {
+        if line.len() >= MAX_LOG_LINE {
+            break;
+        }
+        if index > 0 {
+            line.push(' ');
+        }
+        let room = MAX_LOG_LINE.saturating_sub(line.len());
+        match value {
+            Value::String(text) => {
+                let bytes = text.as_bytes();
+                line.push_str(&String::from_utf8_lossy(&bytes[..bytes.len().min(room)]));
+            }
+            Value::Nil => line.push_str("nil"),
+            Value::Boolean(value) => line.push_str(if *value { "true" } else { "false" }),
+            Value::Integer(value) => line.push_str(&value.to_string()),
+            Value::Number(value) => line.push_str(&value.to_string()),
+            other => line.push_str(other.type_name()),
+        }
+    }
+    let mut end = line.len().min(MAX_LOG_LINE);
+    while !line.is_char_boundary(end) {
+        end -= 1;
+    }
+    line.truncate(end);
+    line
 }
 
 impl Mod {

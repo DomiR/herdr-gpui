@@ -12,8 +12,9 @@ use std::{
 };
 
 const INTERVAL: Duration = Duration::from_secs(2);
-/// Mods run at once, whatever the folder holds.
-pub(super) const MAX_MODS: usize = 32;
+/// Mod folders listed at most, the first by name; `Mods` runs at most
+/// [`super::MAX_MODS`] of those it does not turn off.
+const MAX_LISTED: usize = 256;
 
 pub(super) struct Scanner {
     stop: Arc<Stop>,
@@ -56,17 +57,24 @@ impl Drop for Scanner {
     }
 }
 
-/// Folders holding a `mod.toml`, by name; a missing folder lists none.
+/// Folders holding a `mod.toml`, the first [`MAX_LISTED`] by name whatever
+/// order the directory lists them in; a missing folder lists none.
 pub(super) fn list(dir: &Path) -> BTreeSet<String> {
     let Ok(entries) = fs::read_dir(dir) else {
         return BTreeSet::new();
     };
-    entries
+    let mut names = BTreeSet::new();
+    for name in entries
         .filter_map(|entry| entry.ok())
         .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
         .filter(|entry| entry.path().join("mod.toml").is_file())
         .filter_map(|entry| entry.file_name().into_string().ok())
         .filter(|name| !name.starts_with('.'))
-        .take(MAX_MODS)
-        .collect()
+    {
+        names.insert(name);
+        if names.len() > MAX_LISTED {
+            names.pop_last();
+        }
+    }
+    names
 }

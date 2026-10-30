@@ -39,15 +39,22 @@ pub(super) struct Report {
     /// The activity bar icon's SVG, sent with each manifest.
     pub icon: Option<Option<String>>,
     pub tree: Option<Node>,
-    /// `Some(None)` clears an error once the mod works again.
+    /// Why the last `update` or `view` failed; `Some(None)` clears it once
+    /// the mod draws again.
     pub error: Option<Option<Error>>,
+    /// Why the mod's files did not load; `Some(None)` clears it once a
+    /// reload succeeds.
+    pub load_error: Option<Option<Error>>,
     pub log: Vec<LogLine>,
     pub commands: Vec<herdr_commands::Command>,
 }
 
 impl Report {
     pub(super) fn changed(&self) -> bool {
-        self.manifest.is_some() || self.tree.is_some() || self.error.is_some()
+        self.manifest.is_some()
+            || self.tree.is_some()
+            || self.error.is_some()
+            || self.load_error.is_some()
     }
 }
 
@@ -222,38 +229,52 @@ impl Worker {
         }
     }
 
-    /// Loads the mod again when its files changed. A broken save keeps the
-    /// last good mod running and reports why.
+    /// Loads the mod again when its files changed. The candidate replaces
+    /// the running mod only once it loaded and drew its first view against
+    /// the current state; until then the last good mod keeps running, and
+    /// why the new files failed stays reported until a reload succeeds.
     fn check_files(&mut self, force: bool) {
-        let Ok(stamp) = Stamp::take(&self.dir) else {
-            return;
+        let stamp = match Stamp::take(&self.dir) {
+            Ok(stamp) => stamp,
+            Err(error) => return self.fail_load(error),
         };
         if !force && self.stamp.as_ref() == Some(&stamp) {
             return;
         }
         self.stamp = Some(stamp);
-        let loaded = Sources::read(&self.dir).and_then(|sources| {
-            Mod::load(&sources, limits(), SystemTime::now()).map(|m| (sources, m))
-        });
-        match loaded {
-            Ok((sources, mut module)) => {
-                self.publish_log(&mut module);
-                self.module = Some(module);
-                self.timers.clear();
-                self.dirty = true;
-                let icon = sources
-                    .manifest
-                    .activity
-                    .as_ref()
-                    .and_then(|activity| sources.icon(&activity.icon))
-                    .map(str::to_owned);
-                let mut outbox = lock(&self.link.outbox);
-                outbox.icon = Some(icon);
-                outbox.manifest = Some(sources.manifest);
-                outbox.error = Some(None);
-            }
-            Err(error) => self.fail(error),
-        }
+        let mut log = Vec::new();
+        let candidate = self.candidate(&mut log);
+        push_log(&mut lock(&self.link.outbox), log);
+        let (sources, module, tree) = match candidate {
+            Ok(candidate) => candidate,
+            Err(error) => return self.fail_load(error),
+        };
+        self.module = Some(module);
+        self.timers.clear();
+        self.dirty = false;
+        let icon = sources
+            .manifest
+            .activity
+            .as_ref()
+            .and_then(|activity| sources.icon(&activity.icon))
+            .map(str::to_owned);
+        let mut outbox = lock(&self.link.outbox);
+        outbox.icon = Some(icon);
+        outbox.manifest = Some(sources.manifest);
+        outbox.tree = Some(tree);
+        outbox.load_error = Some(None);
+        outbox.error = Some(None);
+    }
+
+    /// Reads, loads, and draws the mod's files once, leaving what it logged
+    /// in `log` whether or not it works.
+    fn candidate(&self, log: &mut Vec<LogLine>) -> Result<(Sources, Mod, Node), Error> {
+        let sources = Sources::read(&self.dir)?;
+        let now = SystemTime::now();
+        let mut module = Mod::load(&sources, limits(), now)?;
+        let tree = module.view(&self.state, now);
+        log.extend(module.take_log());
+        Ok((sources, module, tree?))
     }
 
     fn update(&mut self, msg: &Data, from_user: bool) {
@@ -319,12 +340,16 @@ impl Worker {
         }
     }
 
-    fn publish_log(&self, module: &mut Mod) {
-        push_log(&mut lock(&self.link.outbox), module.take_log());
-    }
-
+    /// A failed `update` or `view`; the next good view clears it.
     fn fail(&self, error: Error) {
         lock(&self.link.outbox).error = Some(Some(error));
+    }
+
+    /// Files that could not be read, loaded, or drawn; only a successful
+    /// reload clears it, so a broken save stays reported while the last
+    /// good mod runs on.
+    fn fail_load(&self, error: Error) {
+        lock(&self.link.outbox).load_error = Some(Some(error));
     }
 }
 

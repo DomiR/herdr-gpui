@@ -8,11 +8,14 @@ use herdr_mods::{
     Action, Align, Container, Data, Gap, IconSource, Node, Place, Size, Tone, Weight,
 };
 
-/// The widest one mod's status bar item gets, so a mod cannot crowd out the
-/// app's own items.
+/// The widest one mod's status bar item gets.
 const STATUS_ITEM_WIDTH: f32 = 280.;
-/// The tallest a mod's sidebar section grows before it scrolls.
-const SIDEBAR_SECTION_HEIGHT: f32 = 240.;
+/// The widest every mod's status bar items get together, so mods cannot
+/// crowd out the app's own controls; the area shrinks before them.
+const STATUS_AREA_WIDTH: f32 = 360.;
+/// The share of the sidebar's height every mod section gets together, so
+/// the workspace and agent lists always keep the rest.
+const SIDEBAR_SHARE: f32 = 0.4;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Axis {
@@ -22,7 +25,7 @@ pub(super) enum Axis {
 
 impl HerdrWindow {
     /// The status bar items of the mods placed there, in name order.
-    pub(crate) fn render_mod_status_items(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
+    pub(crate) fn render_mod_status_items(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let mut items = Vec::new();
         for (name, entry) in self.mods.entries() {
             if !entry.places().contains(&Place::StatusBar) {
@@ -42,7 +45,8 @@ impl HerdrWindow {
                     .id(SharedString::from(format!("mod-status-{name}")))
                     .debug_selector(|| format!("mod-status-{name}"))
                     .flex()
-                    .flex_none()
+                    .flex_shrink(1.)
+                    .min_w_0()
                     .items_center()
                     .h_full()
                     .max_w(px(STATUS_ITEM_WIDTH))
@@ -52,12 +56,25 @@ impl HerdrWindow {
                     .into_any_element(),
             );
         }
-        items
+        (!items.is_empty()).then(|| {
+            div()
+                .id("mod-status")
+                .debug_selector(|| "mod-status".into())
+                .flex()
+                .flex_shrink(1.)
+                .min_w_0()
+                .max_w(px(STATUS_AREA_WIDTH))
+                .h_full()
+                .overflow_hidden()
+                .children(items)
+                .into_any_element()
+        })
     }
 
-    /// A section per mod placed in the sidebar, under the lists: its name,
-    /// then its tree, scrolling past [`SIDEBAR_SECTION_HEIGHT`].
-    pub(crate) fn render_mod_sidebar_sections(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
+    /// The mods placed in the sidebar, under the lists: a section each, its
+    /// name then its tree, in one area that scrolls past
+    /// [`SIDEBAR_SHARE`] of the sidebar's height.
+    pub(crate) fn render_mod_sidebar_sections(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let mut sections = Vec::new();
         for (name, entry) in self.mods.entries() {
             if !entry.places().contains(&Place::Sidebar) {
@@ -90,18 +107,23 @@ impl HerdrWindow {
                             .text_color(rgb(self.theme.muted))
                             .child(SharedString::from(name.to_owned())),
                     )
-                    .child(
-                        div()
-                            .id(SharedString::from(format!("mod-sidebar-{name}-scroll")))
-                            .max_h(px(SIDEBAR_SECTION_HEIGHT))
-                            .overflow_y_scroll()
-                            .text_color(rgb(self.theme.foreground))
-                            .child(body),
-                    )
+                    .child(div().text_color(rgb(self.theme.foreground)).child(body))
                     .into_any_element(),
             );
         }
-        sections
+        (!sections.is_empty()).then(|| {
+            div()
+                .id("mod-sidebar")
+                .debug_selector(|| "mod-sidebar".into())
+                .flex()
+                .flex_col()
+                .flex_shrink(1.)
+                .min_h_0()
+                .max_h(relative(SIDEBAR_SHARE))
+                .overflow_y_scroll()
+                .children(sections)
+                .into_any_element()
+        })
     }
 
     /// Runs what a mod's control asks for: a catalog command, as the

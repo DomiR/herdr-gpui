@@ -32,7 +32,7 @@ pub(super) fn serve(call: Call<ModOp>, cx: &mut App) -> Response {
                             .map(|command| command.id.clone())
                             .collect(),
                         drawn: entry.tree.is_some(),
-                        error: entry.error.as_ref().map(ToString::to_string),
+                        error: entry.error().map(ToString::to_string),
                     })
                     .collect(),
             },
