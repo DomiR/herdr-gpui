@@ -18,8 +18,7 @@ struct EntryView: View {
             Text(text).font(.callout.italic()).foregroundStyle(.secondary).lineLimit(4)
         case let .image(_, image):
             if let data = Data(base64Encoded: image.data), let picture = UIImage(data: data) {
-                Image(uiImage: picture).resizable().scaledToFit().frame(maxHeight: 280)
-                    .clipShape(.rect(cornerRadius: 12))
+                ChatPicture(image: picture)
             }
         case let .tool(tool):
             ToolRow(tool: tool)
