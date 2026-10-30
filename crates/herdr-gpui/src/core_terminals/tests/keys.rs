@@ -44,4 +44,8 @@ fn composing_and_shortcut_keys_stay_out() {
     assert!(printable_key(&key("e", None), false).is_none());
     assert!(printable_key(&key("cmd-a", Some("a")), false).is_none());
     assert!(printable_key(&key("left", None), false).is_none());
+    // AltGr on Windows arrives as Control-Alt, and macOS Option typing a
+    // character as Alt; both type the character, so they stay text.
+    assert!(printable_key(&key("ctrl-alt-q", Some("@")), false).is_none());
+    assert!(printable_key(&key("alt-p", Some("π")), false).is_none());
 }

@@ -213,8 +213,12 @@ impl HerdrWindow {
         if self.core_terminals.hub.poll() {
             // A lost connection ended every pane's worker. Their views go, so
             // the next sync joins the core again and attaches each terminal
-            // anew; nothing is started or replayed.
+            // anew; nothing is started or replayed. A pane that held the
+            // keyboard has its tab take it back once the new view is there.
             if connected && self.core_terminals.hub.backend().is_none() {
+                if let Some((tab, _)) = self.core_terminals.focused_pane(window, cx) {
+                    self.core_terminals.focus_wanted = Some(tab);
+                }
                 self.core_terminals.views.clear();
             }
             if let State::Unavailable(error) = self.core_terminals.hub.state()

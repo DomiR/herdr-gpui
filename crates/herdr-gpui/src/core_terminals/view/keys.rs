@@ -8,11 +8,14 @@ use gpui::{prelude::*, *};
 use herdr_backend::{ClientKeyCode, ClientKeyKind, ClientPaneInputEvent};
 
 /// A printable key as a key event, for a program that asked for every key.
-/// None for a key that composes (a dead key types nothing yet), which stays
-/// with the input handler.
+/// Only a key typed bare or with Shift: `key_input` already sends Control
+/// and Alt chords it means as keys, so one with Control or Alt that reaches
+/// here types a character (Windows AltGr, macOS Option typing characters)
+/// and stays text, as does a key that composes (a dead key types nothing
+/// yet).
 pub(crate) fn printable_key(keystroke: &Keystroke, is_held: bool) -> Option<ClientPaneInputEvent> {
     let modifiers = keystroke.modifiers;
-    if modifiers.platform || modifiers.function {
+    if modifiers.platform || modifiers.function || modifiers.control || modifiers.alt {
         return None;
     }
     let text = keystroke.key_char.as_deref()?;
@@ -30,9 +33,7 @@ pub(crate) fn printable_key(keystroke: &Keystroke, is_held: bool) -> Option<Clie
         .map(u32::from);
     Some(ClientPaneInputEvent::Key {
         code: ClientKeyCode::Char(code),
-        modifiers: u8::from(modifiers.shift)
-            | (u8::from(modifiers.control) << 1)
-            | (u8::from(modifiers.alt) << 2),
+        modifiers: u8::from(modifiers.shift),
         kind: if is_held {
             ClientKeyKind::Repeat
         } else {
