@@ -118,6 +118,17 @@ impl CoreTerminalView {
                     cx.notify();
                 }
             }
+            // Movement with no button held, for a program that asks for
+            // every motion (mode 1003); the encoder drops it otherwise.
+            None if event.pressed_button.is_none()
+                && self.screen.mouse_reporting
+                && !event.modifiers.shift =>
+            {
+                if self.hovered != Some(cell) {
+                    self.hovered = Some(cell);
+                    self.report(ClientMouseKind::Moved, cell, event.modifiers, 1);
+                }
+            }
             _ => {}
         }
     }

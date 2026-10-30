@@ -199,3 +199,27 @@ fn dropping_the_link_stops_the_worker() {
     // The worker's clones of the backend go when its thread ends.
     until(|| (Arc::strong_count(&backend.received) == 1).then_some(()));
 }
+
+#[test]
+fn an_ended_terminal_keeps_its_screen_and_stops_its_worker() {
+    let backend = Scripted::default();
+    backend
+        .updates
+        .lock()
+        .unwrap()
+        .push(vec![SurfaceUpdate::Ended(herdr_backend::Exit {
+            code: Some(0),
+        })]);
+    let link = worker::spawn(
+        backend.clone(),
+        TerminalId::new("t1").unwrap(),
+        size(80, 24),
+        Role::Active,
+    )
+    .unwrap();
+    let screen = until(|| link.mailbox.take());
+    assert_eq!(screen.ended, Some(herdr_backend::Exit { code: Some(0) }));
+    // The link is still held: the worker ended on its own.
+    until(|| (Arc::strong_count(&backend.received) == 1).then_some(()));
+    drop(link);
+}

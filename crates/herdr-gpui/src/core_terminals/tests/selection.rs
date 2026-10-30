@@ -77,3 +77,13 @@ fn a_wide_character_is_copied_once() {
     selection.extend(at(0, 3));
     assert_eq!(selection.text(&shown), "界 a");
 }
+
+#[test]
+fn a_one_letter_word_or_line_is_still_selected() {
+    let shown = frame(3, &["x y"]);
+    let word = Selection::word(&shown, at(0, 0));
+    assert!(!word.is_empty());
+    assert_eq!(word.text(&shown), "x");
+    let narrow = frame(1, &["z"]);
+    assert_eq!(Selection::line(&narrow, at(0, 0)).text(&narrow), "z");
+}

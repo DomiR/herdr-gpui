@@ -2,17 +2,19 @@
 //! text, painted with the window's terminal painter. One per tab showing it;
 //! any number may show the same terminal, as observers.
 
+pub(super) mod keys;
+pub(super) mod paste;
 mod pointer;
 
 use super::{
     screen::Screen,
-    selection::Selection,
+    selection::{Cell, Selection},
     worker::{Command, Link},
 };
 use crate::{
     config::{OptionAsAlt, Padding},
     i18n::fl,
-    terminal::{key_input, viewport},
+    terminal::{HeldKeys, key_input, viewport},
     terminal_painter::{Ground, TerminalPainter},
 };
 use gpui::{prelude::*, *};
@@ -50,6 +52,11 @@ pub(crate) struct CoreTerminalView {
     /// Where the cells were last painted, for the IME's candidate window.
     bounds: Option<Bounds<Pixels>>,
     focus: FocusHandle,
+    /// Releases for keys pressed while the program asked for them.
+    held_keys: HeldKeys,
+    /// The cell a button-less pointer last reported, so movement inside
+    /// one cell is not reported again.
+    hovered: Option<Cell>,
     id: TerminalId,
     link: Link,
     look: Look,
@@ -85,6 +92,8 @@ impl CoreTerminalView {
         Self {
             bounds: None,
             focus: cx.focus_handle(),
+            held_keys: HeldKeys::default(),
+            hovered: None,
             id,
             link,
             look,
@@ -199,7 +208,21 @@ impl CoreTerminalView {
             window.prevent_default();
             return;
         }
+        // Pasting reads the clipboard here, as the window does for a Herdr
+        // pane; the Herdr pane behind this one must not take it.
+        let has_text = || {
+            cx.read_from_clipboard()
+                .and_then(|item| item.text())
+                .is_some_and(|text| !text.is_empty())
+        };
+        if paste::pastes(&event.keystroke, cfg!(target_os = "windows"), has_text) {
+            self.paste_clipboard(cx);
+            cx.stop_propagation();
+            window.prevent_default();
+            return;
+        }
         // The window's own shortcuts keep working over the terminal.
+        self.held_keys.forget(&event.keystroke.key);
         if modifiers.platform {
             return;
         }
@@ -220,8 +243,18 @@ impl CoreTerminalView {
         }
         // Printable text must bubble on: macOS calls the input handler only
         // for a key nothing handled. The window ignores keys while this view
-        // holds focus, so none reach a Herdr 1 pane behind it.
-        if let Some(input) = key_input(event, alt_keys) {
+        // holds focus, so none reach a Herdr 1 pane behind it. A program that
+        // asked for every key gets printable keys as key events instead.
+        let keys = self.screen.keys;
+        let input = key_input(event, alt_keys).or_else(|| {
+            keys.every_key
+                .then(|| keys::printable_key(&event.keystroke, event.is_held))
+                .flatten()
+        });
+        if let Some(input) = input {
+            let input = self
+                .held_keys
+                .press(&event.keystroke.key, input, keys.releases);
             self.send(input);
             window.prevent_default();
             cx.stop_propagation();
@@ -353,6 +386,10 @@ impl Render for CoreTerminalView {
                     .rounded_b(px(pane.corners.1))
             })
             .on_key_down(cx.listener(Self::key_down))
+            .on_key_up(cx.listener(Self::key_up))
+            .on_action(cx.listener(|this, _: &crate::actions::Paste, _, cx| {
+                this.paste_clipboard(cx);
+            }))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::mouse_down))
             .on_mouse_down(MouseButton::Right, cx.listener(Self::mouse_down))
             .on_mouse_down(MouseButton::Middle, cx.listener(Self::mouse_down))

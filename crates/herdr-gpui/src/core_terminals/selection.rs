@@ -17,6 +17,9 @@ pub(crate) struct Cell {
 pub(crate) struct Selection {
     anchor: Cell,
     head: Cell,
+    /// A double- or triple-clicked word or line, which selects its cells
+    /// even when it is one cell wide.
+    picked: bool,
 }
 
 impl Selection {
@@ -25,6 +28,7 @@ impl Selection {
         Self {
             anchor: at,
             head: at,
+            picked: false,
         }
     }
 
@@ -52,6 +56,7 @@ impl Selection {
                 row: at.row,
                 column: end,
             },
+            picked: true,
         }
     }
 
@@ -66,6 +71,7 @@ impl Selection {
                 row: at.row,
                 column: frame.width.saturating_sub(1),
             },
+            picked: true,
         }
     }
 
@@ -73,9 +79,10 @@ impl Selection {
         self.head = to;
     }
 
-    /// Whether the pointer never left the cell it pressed.
+    /// Whether this is a press whose pointer never left the cell it
+    /// pressed, rather than a word or line, however short.
     pub(crate) fn is_empty(&self) -> bool {
-        self.anchor == self.head
+        !self.picked && self.anchor == self.head
     }
 
     fn ordered(&self) -> (Cell, Cell) {

@@ -4,7 +4,9 @@
 //! Nothing here runs on the UI thread, and the UI never waits for it.
 
 use super::screen::Screen;
-use herdr_backend::{Backend, ClientPaneInputEvent, Role, Size, Terminal, TerminalId};
+use herdr_backend::{
+    Backend, ClientPaneInputEvent, Role, Size, SurfaceUpdate, Terminal, TerminalId,
+};
 use std::{
     sync::{
         Arc, Mutex, PoisonError,
@@ -121,7 +123,16 @@ fn run<B: Backend>(
         match terminal.next(POLL) {
             Ok(updates) if updates.is_empty() => {}
             Ok(updates) => {
-                mailbox.update(|screen| updates.into_iter().for_each(|update| screen.apply(update)))
+                let ended = updates
+                    .iter()
+                    .any(|update| matches!(update, SurfaceUpdate::Ended(_)));
+                mailbox
+                    .update(|screen| updates.into_iter().for_each(|update| screen.apply(update)));
+                // An ended terminal's last screen stays shown; its stream
+                // answers at once from here on, so waiting again would spin.
+                if ended {
+                    return;
+                }
             }
             Err(error) => return fail(&error),
         }

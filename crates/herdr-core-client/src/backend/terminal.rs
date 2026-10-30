@@ -1,13 +1,20 @@
 use crate::{Attachment, Core, End, Error, Result, wire::Attach};
 use herdr_backend::{
-    ClientMouseKind, ClientPaneInputEvent, Exit, Role, Size, SurfaceUpdate, TerminalId,
+    ClientMouseKind, ClientPaneInputEvent, Exit, KeyReporting, Role, Size, SurfaceUpdate,
+    TerminalId,
 };
 use herdr_terminal::{Damage, Emulator, Event, MouseReporting, Scroll};
-use std::time::{Duration, Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 /// How long a synchronized update (DEC 2026) may hold the screen before it
 /// is shown anyway, as terminals bound it.
 const SYNC_TIMEOUT: Duration = Duration::from_millis(150);
+/// How often an observer asks the core for its terminal's size, which the
+/// active viewer sets and nothing on an attachment reports.
+const SIZE_CHECK: Duration = Duration::from_millis(500);
 
 /// An attached herdr-core terminal, emulated here: its raw output becomes
 /// cells, and semantic input becomes bytes for its program's modes.
@@ -15,16 +22,21 @@ pub struct CoreTerminal {
     attachment: Attachment,
     emulator: Emulator,
     end: Option<End>,
+    /// The key events the program asked for when the view was last told.
+    keys: Option<KeyReporting>,
     /// Whether the program read the mouse when the view was last told.
     reporting: Option<bool>,
     role: Role,
+    /// An observer's core and when it last read the terminal's size there;
+    /// an active view sets the size itself.
+    sizing: Option<(Arc<Core>, Instant)>,
     /// When the synchronized update the emulator holds began.
     sync_since: Option<Instant>,
 }
 
 impl CoreTerminal {
     pub(super) fn attach(
-        core: &Core,
+        core: &Arc<Core>,
         id: &TerminalId,
         size: Size,
         role: Role,
@@ -48,10 +60,42 @@ impl CoreTerminal {
             attachment,
             emulator: Emulator::new(emulated, scrollback),
             end: None,
+            keys: None,
             reporting: None,
             role,
+            sizing: (role == Role::Observer).then(|| (Arc::clone(core), Instant::now())),
             sync_since: None,
         })
+    }
+
+    /// Keeps an observer's screen at the size the active viewer set, read
+    /// from the core now and then. A failed read leaves the size as it is;
+    /// a lost connection ends the attachment too, which reports it.
+    fn follow_size(&mut self) {
+        let Some((core, checked)) = &mut self.sizing else {
+            return;
+        };
+        if checked.elapsed() < SIZE_CHECK {
+            return;
+        }
+        *checked = Instant::now();
+        let address = &self.attachment.terminal.address;
+        let size = match core.list(false) {
+            Ok(list) => list
+                .terminals
+                .iter()
+                .find(|terminal| terminal.address == *address)
+                .and_then(|terminal| Size::new(terminal.cols, terminal.rows).ok()),
+            Err(error) => {
+                tracing::debug!(%error, "herdr-core observer size unread");
+                None
+            }
+        };
+        if let Some(size) = size
+            && size != self.emulator.size()
+        {
+            self.emulator.resize(size);
+        }
     }
 
     fn drives(&self) -> bool {
@@ -100,13 +144,14 @@ impl herdr_backend::Terminal for CoreTerminal {
         self.attachment.write(&bytes)
     }
 
-    /// An active view sizes the program's terminal; an observer only
-    /// follows the size the terminal already has, as its `size` events say.
+    /// An active view sizes the program's terminal. An observer keeps the
+    /// size the program draws at, whatever its own view's bounds, so its
+    /// output wraps where the program's does.
     fn resize(&mut self, size: Size) -> Result<()> {
-        self.emulator.resize(size);
         if !self.drives() {
             return Ok(());
         }
+        self.emulator.resize(size);
         self.attachment.resize(size.cols(), size.rows())
     }
 
@@ -131,6 +176,7 @@ impl herdr_backend::Terminal for CoreTerminal {
             }
             None => timeout,
         };
+        self.follow_size();
         let chunk = self.attachment.read(timeout)?;
         self.emulator.feed(&chunk.bytes);
         self.release_stale_sync();
@@ -143,7 +189,16 @@ impl herdr_backend::Terminal for CoreTerminal {
                 Event::Title(title) => SurfaceUpdate::Title(title.unwrap_or_default()),
             })
             .collect();
-        let reporting = self.emulator.modes().mouse != MouseReporting::Off;
+        let modes = self.emulator.modes();
+        let keys = KeyReporting {
+            every_key: modes.reports_every_key(),
+            releases: modes.reports_key_releases(),
+        };
+        if self.keys != Some(keys) {
+            self.keys = Some(keys);
+            updates.push(SurfaceUpdate::KeyReporting(keys));
+        }
+        let reporting = modes.mouse != MouseReporting::Off;
         if self.reporting != Some(reporting) {
             self.reporting = Some(reporting);
             updates.push(SurfaceUpdate::MouseReporting(reporting));

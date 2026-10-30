@@ -144,6 +144,16 @@ pub struct Spawn {
     pub name: Option<String>,
 }
 
+/// Key events a program asked for, as the kitty keyboard protocol lets it:
+/// the default asks for neither, and typing arrives as text.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct KeyReporting {
+    /// Every key, printable ones too, as a key event rather than text.
+    pub every_key: bool,
+    /// Releases as well as presses.
+    pub releases: bool,
+}
+
 /// What an attached terminal shows now.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SurfaceUpdate {
@@ -152,6 +162,8 @@ pub enum SurfaceUpdate {
     Ended(Exit),
     /// The whole visible screen.
     Frame(FrameData),
+    /// Which key events the program asked for beyond typed text.
+    KeyReporting(KeyReporting),
     /// Whether the program reads the mouse: presses and drags go to it,
     /// rather than selecting text, until it stops.
     MouseReporting(bool),

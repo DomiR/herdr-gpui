@@ -52,6 +52,17 @@ pub struct Modes {
 }
 
 impl Modes {
+    /// Whether the program asked for key releases (kitty flag 2).
+    pub fn reports_key_releases(&self) -> bool {
+        self.kitty_keyboard & 2 != 0
+    }
+
+    /// Whether the program asked for every key as an escape, printable
+    /// ones too (kitty flag 8).
+    pub fn reports_every_key(&self) -> bool {
+        self.kitty_keyboard & 8 != 0
+    }
+
     pub(crate) fn new(mode: TermMode, win32_input: bool) -> Self {
         let mouse = if mode.contains(TermMode::MOUSE_MOTION) {
             MouseReporting::Motion

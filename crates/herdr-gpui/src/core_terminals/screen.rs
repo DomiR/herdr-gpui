@@ -1,6 +1,6 @@
 //! What one attached terminal shows, built from its backend's updates.
 
-use herdr_backend::{Exit, FrameData, SurfaceUpdate};
+use herdr_backend::{Exit, FrameData, KeyReporting, SurfaceUpdate};
 use std::sync::Arc;
 
 /// The latest screen of one terminal. The worker applies updates to it and
@@ -13,6 +13,8 @@ pub(crate) struct Screen {
     /// Why the terminal could not be shown, for its tab to say.
     pub(crate) failure: Option<String>,
     pub(crate) frame: Option<Arc<FrameData>>,
+    /// The key events the program asked for beyond typed text.
+    pub(crate) keys: KeyReporting,
     /// Whether the program reads the mouse, so presses go to it.
     pub(crate) mouse_reporting: bool,
     pub(crate) title: Option<String>,
@@ -24,6 +26,7 @@ impl Screen {
             SurfaceUpdate::Bell => self.bells = self.bells.saturating_add(1),
             SurfaceUpdate::Ended(exit) => self.ended = Some(exit),
             SurfaceUpdate::Frame(frame) => self.frame = Some(Arc::new(frame)),
+            SurfaceUpdate::KeyReporting(keys) => self.keys = keys,
             SurfaceUpdate::MouseReporting(reporting) => self.mouse_reporting = reporting,
             SurfaceUpdate::Rows { cursor, rows } => {
                 // Rows only patch a frame already shown.

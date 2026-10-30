@@ -1,8 +1,8 @@
 use super::{MockCore, connected, terminal};
 use crate::{CoreBackend, frame::Kind};
 use herdr_backend::{
-    AgentStatus, Backend, Change, Changes, ClientPaneInputEvent, Exit, Role, RunState, Size,
-    SurfaceUpdate, Terminal as _, TerminalId,
+    AgentStatus, Backend, Change, Changes, ClientPaneInputEvent, Exit, KeyReporting, Role,
+    RunState, Size, SurfaceUpdate, Terminal as _, TerminalId,
 };
 use serde_json::{Value, json};
 use std::{thread, time::Duration};
@@ -332,4 +332,63 @@ fn a_wheel_the_program_ignores_scrolls_history_and_typing_returns_live() {
         .find(|frame| frame.kind == Kind::Data)
         .unwrap();
     assert_eq!(written.payload.as_slice(), b"x");
+}
+
+#[test]
+fn an_observer_draws_at_the_size_the_active_viewer_set() {
+    let (backend, mut mock) = backend();
+    let mut observer = attached(&backend, &mut mock, Role::Observer);
+    // Its own view's bounds do not size it.
+    observer.resize(Size::new(8, 2).unwrap()).unwrap();
+    mock.send(5, Kind::Data, b"x");
+    let first = observer.next(WAIT).unwrap();
+    assert!(first.iter().any(|update| matches!(update,
+        SurfaceUpdate::Frame(frame) if (frame.width, frame.height) == (20, 4))));
+    // The active viewer widened the terminal; the observer follows.
+    thread::sleep(Duration::from_millis(600));
+    let resized = thread::scope(|scope| {
+        let next = scope.spawn(|| observer.next(Duration::from_millis(50)));
+        let request = mock.request();
+        assert_eq!(request["method"], "terminal.list");
+        let mut t1 = terminal("t1");
+        (t1["cols"], t1["rows"]) = (json!(30), json!(6));
+        mock.answer(&request, json!({"terminals": [t1]}));
+        next.join().unwrap().unwrap()
+    });
+    assert!(resized.iter().any(|update| matches!(update,
+        SurfaceUpdate::Frame(frame) if (frame.width, frame.height) == (30, 6))));
+}
+
+#[test]
+fn the_view_is_told_which_key_events_the_program_asks_for() {
+    let (backend, mut mock) = backend();
+    let mut terminal = attached(&backend, &mut mock, Role::Active);
+    mock.send(5, Kind::Data, b"hi");
+    let first = terminal.next(WAIT).unwrap();
+    assert!(first.contains(&SurfaceUpdate::KeyReporting(KeyReporting::default())));
+    // kitty: push event types (2) and all keys as escapes (8).
+    mock.send(5, Kind::Data, b"\x1b[>10u");
+    let updates = terminal.next(WAIT).unwrap();
+    assert!(updates.contains(&SurfaceUpdate::KeyReporting(KeyReporting {
+        every_key: true,
+        releases: true,
+    })));
+    // Its releases encode as kitty release events.
+    let release = ClientPaneInputEvent::Key {
+        code: herdr_backend::ClientKeyCode::Char('a'),
+        modifiers: 0,
+        kind: herdr_backend::ClientKeyKind::Release,
+        repeat_count: 1,
+        shifted_codepoint: None,
+        generated_text: None,
+        tracks_release: true,
+        physical_key_id: None,
+        windows_record: None,
+    };
+    terminal.input(&release).unwrap();
+    let typed = (0..4)
+        .map(|_| mock.frame())
+        .find(|frame| frame.kind == Kind::Data)
+        .unwrap();
+    assert_eq!(typed.payload, b"\x1b[97;1:3u");
 }

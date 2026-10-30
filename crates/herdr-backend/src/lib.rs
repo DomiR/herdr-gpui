@@ -11,12 +11,12 @@ use std::time::Duration;
 
 pub use error::{Error, Result};
 pub use herdr_protocol::{
-    AgentStatus, ClientMouseButton, ClientMouseKind, ClientMousePosition, ClientPaneInputEvent,
-    CursorState, FrameData, PaneSurfacePatchRow,
+    AgentStatus, ClientKeyCode, ClientKeyKind, ClientMouseButton, ClientMouseKind,
+    ClientMousePosition, ClientPaneInputEvent, CursorState, FrameData, PaneSurfacePatchRow,
 };
 pub use terminal::{
-    Change, Exit, MAX_CELLS, MAX_SIDE, MAX_TERMINAL_ID, Role, RunState, Size, Spawn, SurfaceUpdate,
-    TerminalId, TerminalInfo,
+    Change, Exit, KeyReporting, MAX_CELLS, MAX_SIDE, MAX_TERMINAL_ID, Role, RunState, Size, Spawn,
+    SurfaceUpdate, TerminalId, TerminalInfo,
 };
 
 /// Which Herdr runs a host's terminals.

@@ -209,7 +209,14 @@ impl HerdrWindow {
     /// Runs every window tick: connects for restored tabs, places a started
     /// terminal, gives each shown pane its view, and takes new screens.
     pub(crate) fn poll_core_terminals(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let connected = self.core_terminals.hub.backend().is_some();
         if self.core_terminals.hub.poll() {
+            // A lost connection ended every pane's worker. Their views go, so
+            // the next sync joins the core again and attaches each terminal
+            // anew; nothing is started or replayed.
+            if connected && self.core_terminals.hub.backend().is_none() {
+                self.core_terminals.views.clear();
+            }
             if let State::Unavailable(error) = self.core_terminals.hub.state()
                 && self.core_terminals.wanted.take().is_some()
             {
