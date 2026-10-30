@@ -121,10 +121,19 @@ fn an_issue_reads_as_an_item() {
             { "url": "https://github.com/acme/app/pull/10807" },
         ] },
         "children": { "pageInfo": { "hasNextPage": false }, "nodes": [
-            { "state": { "type": "completed" } },
-            { "state": { "type": "started" } },
-            { "state": { "type": "canceled" } },
-            { "state": { "type": "unstarted" } },
+            { "identifier": "ENG-13", "title": "Write tests",
+              "url": "https://linear.app/acme/issue/ENG-13/write-tests",
+              "state": { "id": "s-done", "name": "Done", "type": "completed", "position": 3, "color": "#5E6AD2" },
+              "assignee": { "displayName": "Dominique Rau" } },
+            { "identifier": "ENG-14", "title": "Fix redirect",
+              "url": "https://linear.app/acme/issue/ENG-14/fix-redirect",
+              "state": { "id": "s-doing", "name": "In Progress", "type": "started", "position": 2, "color": "#F2C94C" },
+              "assignee": null },
+            { "identifier": "ENG-15", "title": "Old idea", "url": "",
+              "state": { "id": "s-gone", "name": "Canceled", "type": "canceled", "position": 4, "color": null } },
+            { "identifier": "ENG-16", "title": "Docs",
+              "url": "https://linear.app/acme/issue/ENG-16/docs",
+              "state": { "id": "s-todo", "name": "Todo", "type": "unstarted", "position": 1, "color": "#E2E2E2" } },
         ] },
         "labels": { "nodes": [{ "name": "Bug" }, { "name": "Auth" }] },
         "inverseRelations": { "nodes": [
@@ -211,6 +220,62 @@ fn an_issue_reads_as_an_item() {
                     total: 3,
                     more: false,
                 }),
+                // Every sub-issue is listed, canceled ones too, in Linear's
+                // order; an empty address is none.
+                children: vec![
+                    SubItem {
+                        identifier: "ENG-13".into(),
+                        title: "Write tests".into(),
+                        url: Some("https://linear.app/acme/issue/ENG-13/write-tests".into()),
+                        status: Some(Status {
+                            name: "Done".into(),
+                            kind: StatusKind::Completed,
+                            rank: 3000,
+                            color: Some(0x5E6AD2),
+                            id: Some("s-done".into()),
+                        }),
+                        assignee: Some("Dominique Rau".into()),
+                    },
+                    SubItem {
+                        identifier: "ENG-14".into(),
+                        title: "Fix redirect".into(),
+                        url: Some("https://linear.app/acme/issue/ENG-14/fix-redirect".into()),
+                        status: Some(Status {
+                            name: "In Progress".into(),
+                            kind: StatusKind::Started,
+                            rank: 2000,
+                            color: Some(0xF2C94C),
+                            id: Some("s-doing".into()),
+                        }),
+                        assignee: None,
+                    },
+                    SubItem {
+                        identifier: "ENG-15".into(),
+                        title: "Old idea".into(),
+                        url: None,
+                        status: Some(Status {
+                            name: "Canceled".into(),
+                            kind: StatusKind::Canceled,
+                            rank: 4000,
+                            color: None,
+                            id: Some("s-gone".into()),
+                        }),
+                        assignee: None,
+                    },
+                    SubItem {
+                        identifier: "ENG-16".into(),
+                        title: "Docs".into(),
+                        url: Some("https://linear.app/acme/issue/ENG-16/docs".into()),
+                        status: Some(Status {
+                            name: "Todo".into(),
+                            kind: StatusKind::Unstarted,
+                            rank: 1000,
+                            color: Some(0xE2E2E2),
+                            id: Some("s-todo".into()),
+                        }),
+                        assignee: None,
+                    },
+                ],
             }),
         }
     );

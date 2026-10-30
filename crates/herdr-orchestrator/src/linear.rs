@@ -31,7 +31,7 @@ pub use key::{VARIABLE, read as read_key, save as save_key, valid};
 
 use super::{
     Cycle, Error, Item, ItemKey, LinkState, LinkedPullRequest, Progress, Project, Provider, Result,
-    SortOrder, SourceKey, Status, StatusKind, Tracker,
+    SortOrder, SourceKey, Status, StatusKind, SubItem, Tracker,
 };
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
@@ -65,7 +65,10 @@ pub const QUERY: &str = r#"query($filter: IssueFilter!, $after: String) {
       labels(first: 10) { nodes { name } }
       inverseRelations(first: 10) { nodes { type issue { identifier } } }
       attachments(first: 10) { nodes { url metadata } }
-      children(first: 10) { pageInfo { hasNextPage } nodes { state { type } } }
+      children(first: 10) {
+        pageInfo { hasNextPage }
+        nodes { identifier title url state { id name type position color } assignee { displayName } }
+      }
     }
   }
 }"#;
@@ -475,17 +478,29 @@ impl Attachment {
 /// A sub-issue, read only for its state's kind.
 #[derive(Deserialize)]
 struct Child {
-    state: Kind,
+    #[serde(default)]
+    identifier: String,
+    #[serde(default)]
+    title: String,
+    url: Option<String>,
+    state: StateNode,
+    assignee: Option<Person>,
 }
 
-#[derive(Deserialize)]
-struct Kind {
-    #[serde(rename = "type", default)]
-    kind: String,
+impl Child {
+    fn into_sub_item(self) -> SubItem {
+        SubItem {
+            status: Some(self.state.status()),
+            identifier: self.identifier,
+            title: self.title,
+            url: self.url.filter(|url| !url.is_empty()),
+            assignee: self.assignee.map(|person| person.display_name),
+        }
+    }
 }
 
 /// How many of `children` are done.
-fn progress(children: Connection<Child>) -> Option<Progress> {
+fn progress(children: &Connection<Child>) -> Option<Progress> {
     let kinds: Vec<StatusKind> = children
         .nodes
         .iter()
@@ -629,7 +644,15 @@ impl Node {
                 }),
                 parent: parent.flatten().filter(|title| !title.is_empty()),
                 pull_requests,
-                progress: self.children.and_then(progress),
+                progress: self.children.as_ref().and_then(progress),
+                children: self
+                    .children
+                    .map(|children| children.nodes)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|child| !child.identifier.is_empty())
+                    .map(Child::into_sub_item)
+                    .collect(),
             }),
         }
     }
