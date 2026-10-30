@@ -34,6 +34,9 @@ final class AppModel {
     /// A tab to switch to, from a Control or an intent; the root view
     /// shows it and clears it.
     var pendingTab: RootTab?
+    /// What each chat's composer held when the person left it, kept
+    /// until they come back, for as long as the app runs.
+    @ObservationIgnored var drafts: [PaneKey: ComposerDraft] = [:]
 
     /// The one model, for intents iOS runs in the app's process.
     static var current: AppModel?

@@ -24,6 +24,13 @@ struct PreparedImage {
         thumbnail = Self.scaled(image, to: 160)
     }
 
+    /// A picture prepared before, from a saved draft.
+    init?(jpeg: Data) {
+        guard let image = UIImage(data: jpeg) else { return nil }
+        self.jpeg = jpeg
+        thumbnail = Self.scaled(image, to: 160)
+    }
+
     static func scaled(_ image: UIImage, to side: CGFloat) -> UIImage {
         let longest = max(image.size.width, image.size.height)
         guard longest > side else { return image }

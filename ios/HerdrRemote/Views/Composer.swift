@@ -9,6 +9,7 @@ import UniformTypeIdentifiers
 /// the phone, and send or stop.
 struct Composer: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.scenePhase) private var scenePhase
     let key: PaneKey
     let store: ChatStore
     let transcript: Transcript
@@ -67,10 +68,32 @@ struct Composer: View {
             clipboardHasImage = UIPasteboard.general.hasImages
         }
         .sensoryFeedback(.start, trigger: dictation.phase == .listening) { _, now in now }
-        #if DEBUG
-        // The simulator loop's `-draft TEXT` types into the composer.
-        .onAppear { if let text = UserDefaults.standard.string(forKey: "draft") { draft = text } }
-        #endif
+        .onAppear {
+            // Memory first, which keeps uploads already under way; the
+            // saved draft after a relaunch uploads its pictures again.
+            if let saved = model.drafts.removeValue(forKey: key) {
+                draft = saved.text
+                pictures = saved.pictures
+            } else if let saved = model.fleet.cache.draft(key.device, pane: key.pane) {
+                draft = saved.text
+                for jpeg in saved.pictures {
+                    if let prepared = PreparedImage(jpeg: jpeg) { add(prepared) }
+                }
+            }
+            #if DEBUG
+            // The simulator loop's `-draft TEXT` types into the composer.
+            if let text = UserDefaults.standard.string(forKey: "draft") { draft = text }
+            #endif
+        }
+        .onDisappear {
+            if !draft.isEmpty || !pictures.isEmpty {
+                model.drafts[key] = ComposerDraft(text: draft, pictures: pictures)
+            }
+            saveDraft()
+        }
+        // The app may be ended while in the background, with no
+        // disappearing first.
+        .onChange(of: scenePhase) { _, phase in if phase == .background { saveDraft() } }
     }
 
     // MARK: Parts
@@ -78,6 +101,9 @@ struct Composer: View {
     private var attachMenu: some View {
         Menu {
             Section {
+                if clipboardHasImage {
+                    Button("Paste Photo", systemImage: "doc.on.clipboard") { pastePhotos() }
+                }
                 Button("Photo Library", systemImage: "photo.on.rectangle") { choosingPhotos = true }
                 if UIImagePickerController.isSourceTypeAvailable(.camera) {
                     Button("Take Photo", systemImage: "camera") { takingPhoto = true }
@@ -212,7 +238,12 @@ struct Composer: View {
     /// Shrinks a picture to what the daemon takes and uploads it at once,
     /// so sending does not wait on it.
     private func add(_ image: UIImage) {
-        guard pictures.count < 4, let prepared = PreparedImage(image) else { return }
+        guard let prepared = PreparedImage(image) else { return }
+        add(prepared)
+    }
+
+    private func add(_ prepared: PreparedImage) {
+        guard pictures.count < 4 else { return }
         let progress = UploadProgress()
         let picture = Picture(
             thumbnail: prepared.thumbnail,
@@ -255,6 +286,18 @@ struct Composer: View {
         return try await upload(picture.jpeg, progress: picture.progress).value
     }
 
+    /// Keeps the draft on disk for after a relaunch, or removes it once empty.
+    private func saveDraft() {
+        let saved = draft.isEmpty && pictures.isEmpty ? nil : Cache.Draft(text: draft, pictures: pictures.map(\.jpeg))
+        model.fleet.cache.save(draft: saved, device: key.device, pane: key.pane)
+    }
+
+    /// The clipboard's pictures, read from the attach menu. Unlike the
+    /// strip's `PasteButton`, iOS may ask before letting the app read them.
+    private func pastePhotos() {
+        for image in (UIPasteboard.general.images ?? []).prefix(4 - pictures.count) { add(image) }
+    }
+
     /// Sends the shortcut at once when nothing is drafted; otherwise adds
     /// it to the draft, so pictures and typed words go with it.
     private func use(_ shortcut: TextShortcut) {
@@ -275,6 +318,7 @@ struct Composer: View {
         draft = ""
         pictures = []
         dictation.reset()
+        saveDraft()
         let outgoing = store.sending(text, uploads: sentPictures.map(\.progress))
         Task {
             do {
@@ -289,6 +333,8 @@ struct Composer: View {
             if problem != nil {
                 draft = text
                 pictures = sentPictures
+                // Kept on disk too, in case the person left the chat meanwhile.
+                saveDraft()
             }
         }
     }
@@ -296,6 +342,13 @@ struct Composer: View {
     private func send(_ command: ChatCommand) {
         Task { problem = await model.fleet.send(command, to: key) }
     }
+}
+
+/// A chat's unsent words and pictures, kept while the person is away
+/// from it (`AppModel.drafts`).
+struct ComposerDraft {
+    let text: String
+    fileprivate let pictures: [Picture]
 }
 
 /// A picture waiting in the composer.

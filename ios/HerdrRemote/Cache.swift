@@ -19,6 +19,12 @@ struct Cache: Sendable {
         var transcript: Transcript
     }
 
+    /// A chat's unsent words and pictures, as the composer prepared them.
+    struct Draft: Codable, Sendable {
+        var text: String
+        var pictures: [Data]
+    }
+
     /// The app group's folder, which the cache and the message index share.
     static let base = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.so.pen.herdr.remote")
         ?? URL.applicationSupportDirectory
@@ -91,6 +97,24 @@ struct Cache: Sendable {
         return (files?.allObjects as? [URL] ?? []).reduce(MessageIndex.shared.size()) {
             $0 + ((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
         }
+    }
+
+    func draft(_ device: String, pane: String) -> Draft? {
+        read(Draft.self, at: draftFile(device, pane))
+    }
+
+    /// Keeps the draft across launches; `nil` removes it, as sending does.
+    func save(draft: Draft?, device: String, pane: String) {
+        let file = draftFile(device, pane)
+        guard let draft else {
+            Task.detached(priority: .utility) { try? FileManager.default.removeItem(at: file) }
+            return
+        }
+        write(draft, to: file)
+    }
+
+    private func draftFile(_ device: String, _ pane: String) -> URL {
+        computerFolder(device).appending(path: "drafts/\(Self.name(pane)).json")
     }
 
     private func chatFile(_ device: String, _ pane: String) -> URL {
