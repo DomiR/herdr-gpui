@@ -150,7 +150,7 @@ impl HerdrWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.leave_mod_app(cx);
+        self.leave_mod_app(window, cx);
         self.command(command, window, cx);
     }
 
@@ -166,7 +166,7 @@ impl HerdrWindow {
         };
         if crate::browser::EMBEDDED {
             // The tab opens in the window, which a mod app would cover.
-            self.leave_mod_app(cx);
+            self.leave_mod_app(window, cx);
             self.open_browser_tab(Some(url), window, cx);
         } else {
             cx.open_url(url.as_str());

@@ -26,11 +26,22 @@ impl HerdrWindow {
         (self.activity_bar_leads() && offered).then_some(name)
     }
 
-    /// Stops showing a mod app, back to the section under it.
-    pub(crate) fn leave_mod_app(&mut self, cx: &mut Context<Self>) {
-        if self.activity.app.take().is_some() {
-            cx.notify();
+    /// Stops showing a mod app, back to the section under it, and gives
+    /// the keyboard back to what now shows: the terminal under Workspaces,
+    /// or that section. Picking the app moved it to the section's handle,
+    /// which nothing else would move back.
+    pub(crate) fn leave_mod_app(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.activity.app.take().is_none() {
+            return;
         }
+        let focus = match self.activity_section() {
+            None => Some(self.focus.clone()),
+            Some(_) => self.activity.section_focus.clone(),
+        };
+        if let Some(focus) = focus {
+            window.focus(&focus, cx);
+        }
+        cx.notify();
     }
 
     pub(crate) fn select_mod_app(

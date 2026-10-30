@@ -96,3 +96,23 @@ fn a_mod_app_steps_aside_for_sections_and_commands(cx: &mut gpui::TestAppContext
     assert!(cx.debug_bounds("mod-app-app00").is_none());
     assert!(view.read_with(cx, |view, _| view.mod_app().is_none()));
 }
+
+/// Leaving an app over Workspaces gives the keyboard back to the terminal,
+/// even for a command that moves no focus of its own.
+#[gpui::test]
+fn leaving_a_mod_app_gives_the_terminal_the_keyboard(cx: &mut gpui::TestAppContext) {
+    let (view, cx) = fixture(cx, 1, 700.);
+    click(cx, "activity-workspaces");
+    click(cx, "activity-mod-app00");
+    let focused =
+        |cx: &mut VisualTestContext| cx.update(|window, cx| view.read(cx).focus.is_focused(window));
+    assert!(!focused(cx), "the app holds the keyboard");
+    cx.update(|window, cx| {
+        view.update(cx, |view, cx| {
+            // Moves no focus of its own, unlike most window commands.
+            view.run_mod_command(crate::controls::Command::EqualizeSplits, window, cx);
+        });
+    });
+    draw(cx);
+    assert!(focused(cx), "the terminal has the keyboard again");
+}
