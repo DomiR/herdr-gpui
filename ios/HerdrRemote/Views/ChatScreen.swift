@@ -192,18 +192,24 @@ private struct ChatDocument: View {
             .frame(maxWidth: Self.readableWidth, alignment: .leading)
             .frame(maxWidth: .infinity)
             .padding(.horizontal, 20)
-            .padding(.top, transcript.status == .working ? 56 : 16)
+            .padding(.top, 16)
             .padding(.bottom, 24)
         }
         .defaultScrollAnchor(.bottom)
         .opacity(store.stale ? 0.6 : 1)
-        .overlay(alignment: .top) {
-            if transcript.status == .working { RunningCapsule(transcript: transcript, tools: tools) }
-        }
         .safeAreaInset(edge: .bottom) {
-            Composer(key: key, transcript: transcript, problem: $problem)
-                .frame(maxWidth: Self.readableWidth + 40)
-                .frame(maxWidth: .infinity)
+            // The running turn's status sits where the turn grows, just
+            // above the composer, not over the earlier answers at the top.
+            VStack(spacing: 8) {
+                if transcript.status == .working {
+                    RunningCapsule(transcript: transcript, tools: tools)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                Composer(key: key, transcript: transcript, problem: $problem)
+                    .frame(maxWidth: Self.readableWidth + 40)
+                    .frame(maxWidth: .infinity)
+            }
+            .animation(.snappy, value: transcript.status == .working)
         }
         .environment(\.openURL, OpenURLAction { url in
             guard MarkdownView.webSchemes.contains(url.scheme?.lowercased() ?? "") else { return .discarded }
