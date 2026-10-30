@@ -22,6 +22,9 @@ struct NewWorkspaceSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var device: String?
     @State private var options: NewOptions?
+    /// The computer `options` came from. The form reappears after the
+    /// folder picker, which restarts `load`; this keeps the chosen folder.
+    @State private var loadedFrom: String?
     @State private var folder: String?
     @State private var worktree = false
     @State private var branch = ""
@@ -113,13 +116,14 @@ struct NewWorkspaceSheet: View {
     private func load() async {
         // Choosing the computer here would change the task's id and
         // cancel this load; `onAppear` chooses it first.
-        guard let device else { return }
+        guard let device, device != loadedFrom else { return }
         options = nil
         folder = nil
         problem = nil
         do {
             let loaded = try await model.fleet.call(device) { client, token in try await client.newOptions(bearer: token) }
             options = loaded
+            loadedFrom = device
             folder = loaded.recent.first
             if !loaded.agents.contains(where: { $0.id == agent }), let first = loaded.agents.first { agent = first.id }
         } catch where !Task.isCancelled {
