@@ -764,7 +764,14 @@ impl OrchestratorView {
             if let Some(error) = &snapshot.error {
                 banners.push(banner(look, RED, "icons/x.svg", of(error.to_string())));
             }
-            for status in &snapshot.sources {
+            // Each section reports only its own sources' trouble, as its
+            // header shows only their chips: GitHub's failures are not the
+            // Linear board's, nor Linear's the projects'.
+            let sources = snapshot
+                .sources
+                .iter()
+                .filter(|status| self.issue_source.lists(status.key.provider));
+            for status in sources {
                 let text = match &status.state {
                     SyncState::Failed(error) => failure_text(status.key.provider, error),
                     SyncState::Capped { count } => format!(

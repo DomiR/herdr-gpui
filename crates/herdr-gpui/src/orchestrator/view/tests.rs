@@ -37,6 +37,7 @@ mod pr_empty;
 mod refresh;
 mod row_start;
 mod rows;
+mod section_banners;
 mod sessions;
 mod sign_in;
 mod source_chip;
