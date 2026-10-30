@@ -12,6 +12,7 @@ HerdrRemoteWatch/Info.plist
 
 # Xcode and SwiftPM build output.
 build/
+build-device/
 DerivedData/
 HerdrRemoteCore/.build/
 HerdrRemoteCore/.swiftpm/
