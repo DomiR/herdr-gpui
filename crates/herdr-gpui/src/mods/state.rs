@@ -54,10 +54,20 @@ impl HerdrWindow {
                     status: status(agent.agent_status),
                 }));
             if index == self.selected_endpoint {
+                let workspace = snapshot.focused_workspace_id.as_deref().and_then(|id| {
+                    snapshot
+                        .workspaces
+                        .iter()
+                        .find(|workspace| workspace.workspace_id == id)
+                });
                 state.focus = Some(Focus {
                     host: endpoint.id.clone(),
                     workspace: snapshot.focused_workspace_id.clone(),
                     tab: snapshot.focused_tab_id.clone(),
+                    name: workspace.map(|workspace| workspace.label.clone()),
+                    path: workspace
+                        .map(|workspace| workspace.new_workspace_cwd.clone())
+                        .filter(|path| !path.is_empty()),
                 });
             }
         }

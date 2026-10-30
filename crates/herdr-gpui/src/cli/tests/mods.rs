@@ -68,3 +68,25 @@ fn mod_refuses_bad_arguments() {
     assert!(parse(&["mod", "logs", "agents", "--lines", "500"]).is_err());
     assert!(parse(&["mod", "remove", "agents"]).is_err());
 }
+
+#[test]
+fn mod_panel_reports_or_switches_the_panel() {
+    use control::Switch;
+    assert_eq!(
+        command(&["mod", "panel"]),
+        ControlCommand::Mod(ModCommand::Panel { switch: None })
+    );
+    for (word, switch) in [
+        ("show", Switch::On),
+        ("hide", Switch::Off),
+        ("toggle", Switch::Toggle),
+    ] {
+        assert_eq!(
+            command(&["mod", "panel", word]),
+            ControlCommand::Mod(ModCommand::Panel {
+                switch: Some(switch)
+            })
+        );
+    }
+    assert!(parse(&["mod", "panel", "sideways"]).is_err());
+}

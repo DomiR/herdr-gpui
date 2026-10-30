@@ -31,7 +31,7 @@ pub(super) fn serve(call: Call<ModOp>, cx: &mut App) -> Response {
                             .flat_map(|manifest| &manifest.commands)
                             .map(|command| command.id.clone())
                             .collect(),
-                        drawn: entry.tree.is_some(),
+                        drawn: entry.drawn,
                         error: entry.error().map(ToString::to_string),
                     })
                     .collect(),
@@ -64,6 +64,24 @@ pub(super) fn serve(call: Call<ModOp>, cx: &mut App) -> Response {
             view.select_mod_app(&name, window, cx);
             Response::Mod {
                 reply: Reply::Opened { name },
+            }
+        }),
+        ModOp::Panel { switch } => in_window(&caller, cx, |view, _, cx| {
+            if let Some(switch) = switch {
+                let shown = switch.apply(!view.mods.panel_hidden());
+                view.mods.set_panel_hidden(!shown);
+                cx.notify();
+            }
+            Response::Mod {
+                reply: Reply::Panel {
+                    shown: !view.mods.panel_hidden(),
+                    sections: view
+                        .mods
+                        .panel_sections()
+                        .into_iter()
+                        .map(|(name, _)| name.to_owned())
+                        .collect(),
+                },
             }
         }),
         ModOp::Logs { name, lines } => in_window(&caller, cx, |view, _, _| {

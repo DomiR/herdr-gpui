@@ -76,6 +76,10 @@ pub struct Focus {
     pub host: String,
     pub workspace: Option<String>,
     pub tab: Option<String>,
+    /// The focused workspace's name.
+    pub name: Option<String>,
+    /// The focused workspace's checkout or folder, on its host.
+    pub path: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -132,6 +136,8 @@ impl State {
                         table.raw_set("host", focus.host.as_str())?;
                         table.raw_set("workspace", focus.workspace.as_deref())?;
                         table.raw_set("tab", focus.tab.as_deref())?;
+                        table.raw_set("name", focus.name.as_deref())?;
+                        table.raw_set("path", focus.path.as_deref())?;
                         frozen(table)
                     }
                     None => continue,

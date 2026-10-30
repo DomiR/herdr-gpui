@@ -25,9 +25,13 @@ fn fixture(
                             title: format!("App {index}"),
                             icon: "icon.svg".into(),
                         }),
+                        panel: herdr_mods::Panel {
+                            title: None,
+                            order: 500,
+                        },
                         needs: Needs::default(),
                     },
-                    Node::Spacer,
+                    Some(Node::Spacer),
                 );
             }
             view

@@ -39,11 +39,11 @@ fn messages_update_the_state_views_read() {
     let mut demo = load(COUNTER).unwrap();
     assert_eq!(demo.topics(), [Topic::Agents]);
     let now = SystemTime::UNIX_EPOCH;
-    assert_eq!(demo.view(&agents(), now).unwrap(), text("0/2"));
+    assert_eq!(demo.view(&agents(), now).unwrap(), Some(text("0/2")));
     assert!(demo.update(&"add".into(), now).unwrap().is_empty());
     assert!(demo.update(&"keep".into(), now).unwrap().is_empty());
     demo.update(&"add".into(), now).unwrap();
-    assert_eq!(demo.view(&agents(), now).unwrap(), text("2/2"));
+    assert_eq!(demo.view(&agents(), now).unwrap(), Some(text("2/2")));
 }
 
 #[test]
@@ -89,7 +89,7 @@ fn unwatched_topics_are_absent_and_the_app_is_read_only() {
     let mut demo = load(&main).unwrap();
     assert_eq!(
         demo.view(&agents(), SystemTime::UNIX_EPOCH).unwrap(),
-        text("nil")
+        Some(text("nil"))
     );
     let main = "local ui = require(\"@herdr/ui\")\n\
         return herdr.mod { watch = { \"agents\" },\n\
@@ -107,7 +107,7 @@ fn now_is_the_callers_time() {
     let at = SystemTime::UNIX_EPOCH + Duration::from_secs(90);
     assert_eq!(
         load(&main).unwrap().view(&State::default(), at).unwrap(),
-        text("90")
+        Some(text("90"))
     );
 }
 
@@ -130,7 +130,7 @@ fn require_loads_the_mods_own_modules_once() {
     assert_eq!(
         demo.view(&State::default(), SystemTime::UNIX_EPOCH)
             .unwrap(),
-        text("part")
+        Some(text("part"))
     );
 }
 
@@ -187,7 +187,10 @@ fn a_view_error_keeps_the_mod_usable() {
     let error = demo.view(&State::default(), now).unwrap_err();
     assert!(format!("{error}").contains("main.luau:4: boom"), "{error}");
     demo.update(&Data::Nil, now).unwrap();
-    assert_eq!(demo.view(&State::default(), now).unwrap(), Node::Spacer);
+    assert_eq!(
+        demo.view(&State::default(), now).unwrap(),
+        Some(Node::Spacer)
+    );
 }
 
 #[test]
@@ -215,4 +218,16 @@ fn log_lines_are_bounded_without_copying_whole_arguments() {
     let log = demo.take_log();
     assert_eq!(log[0].text.len(), 1024);
     assert_eq!(log[1].text, "n 1 2.5 true nil table table");
+}
+
+#[test]
+fn a_view_that_returns_nil_draws_nothing() {
+    let main = "return herdr.mod({ view = function() return nil end })";
+    assert_eq!(
+        load(main)
+            .unwrap()
+            .view(&State::default(), SystemTime::UNIX_EPOCH)
+            .unwrap(),
+        None
+    );
 }

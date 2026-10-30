@@ -565,6 +565,11 @@ impl HerdrWindow {
                 cx.notify();
                 return;
             }
+            Command::ToggleModPanel => {
+                self.mods.set_panel_hidden(!self.mods.panel_hidden());
+                cx.notify();
+                return;
+            }
             Command::ToggleZenMode => {
                 self.toggle_zen(window, cx);
                 return;

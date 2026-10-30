@@ -1,4 +1,5 @@
 //! Mods: the sandboxed Luau folders the app runs (`docs/mods-plan.md`).
+use super::app::Switch;
 use serde::{Deserialize, Serialize};
 
 /// The most log lines one request returns.
@@ -20,6 +21,11 @@ pub enum ModOp {
     /// Shows a mod's activity bar app in the window's body.
     Open {
         name: String,
+    },
+    /// Shows, hides, or toggles the mod panel; `None` only reports it.
+    Panel {
+        #[serde(default)]
+        switch: Option<Switch>,
     },
 }
 
@@ -54,5 +60,12 @@ pub enum Reply {
     },
     Opened {
         name: String,
+    },
+    Panel {
+        /// The user has not hidden it.
+        shown: bool,
+        /// The mods with a section, in the panel's order. The panel shows
+        /// only while there is one.
+        sections: Vec<String>,
     },
 }

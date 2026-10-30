@@ -1,8 +1,8 @@
 # Mods
 
 A mod adds to Herdr UI without changing its code: a status bar item, a
-sidebar section, palette commands, or an app with its own icon in the
-activity bar. It is a folder of sandboxed Luau that
+sidebar section, a section of the panel on the window's right, palette
+commands, or an app with its own icon in the activity bar. It is a folder of sandboxed Luau that
 describes what to draw as plain tables; the app draws it in your theme.
 Saving a file reloads the mod. The design and what comes next are in
 [the plan](mods-plan.md).
@@ -22,7 +22,8 @@ Saving a file reloads the mod. The design and what comes next are in
 subfolders and symbolic links are never read. A mod has at most 64 such
 files, 256 KiB each and 1 MiB in all.
 
-`crates/herdr-gpui/mods/agents` (a status bar item) and
+`crates/herdr-gpui/mods/agents` (a status bar item),
+`crates/herdr-gpui/mods/workspace` (a mod panel section), and
 `crates/herdr-gpui/mods/dashboard` (an activity bar app) are complete
 examples: copy one into the mods folder to try it.
 
@@ -31,12 +32,32 @@ examples: copy one into the mods folder to try it.
 ```toml
 name = "agents"          # lowercase letters, digits, and hyphens
 api = 1                  # the mod API it was written for
-places = ["status_bar"]  # "status_bar", "sidebar"
+places = ["status_bar"]  # "status_bar", "sidebar", "panel"
 commands = [{ id = "names", title = "Show agent names in the status bar" }]
 ```
 
 Each command appears in the palette as `agents: Show agent names...`, and
 choosing it sends the mod the message `command:<id>`.
+
+### A mod panel section
+
+```toml
+places = ["panel"]
+
+[panel]
+title = "Todo"    # the section's header; the mod's name when unset
+order = 400       # sections are ordered by this, then by name
+```
+
+The mod panel is a column on the window's right, beside the terminals, as
+opencode's sidebar sits beside a session. Each mod placed there gets a
+section under its title; clicking the header folds it. A view that returns
+`nil` has no section, so a mod can show itself only when it has something to
+say. The panel shows while any mod has a section; Toggle Mod Panel in the
+palette (`toggle_mod_panel`, bindable to a key) or `herdr-gpui mod panel
+hide` hides it, and its left edge resizes it. Watch `focus` to describe the
+focused workspace: its `name`, `path`, and IDs to match against `agents` and
+`workspaces`.
 
 ### An activity bar app
 
@@ -83,7 +104,7 @@ return herdr.mod({
     palette would (`herdr-gpui commands` lists them). Only a click or a
     palette command may run one; from a timer it is ignored and logged.
   - `herdr.timer(seconds, msg)` sends `msg` once, after 1 to 86400 seconds.
-- `view(state, app)` returns the tree to draw. It runs when a watched topic
+- `view(state, app)` returns the tree to draw, or `nil` to draw nothing. It runs when a watched topic
   changes or `update` ran, at most ten times a second.
 - `herdr.log(...)` writes a line that `herdr-gpui mod logs <name>` shows, and
   `herdr.now()` gives the time in Unix seconds.
@@ -100,7 +121,7 @@ of those. Functions cannot be messages, so a tree stays plain data.
 | `hosts` | List of `{ id, name, connected }` |
 | `workspaces` | List of `{ id, host, name, focused, tabs = { { id, name, focused } } }` |
 | `agents` | `{ all, idle, working, blocked, done }`, each a list of `{ id, host, workspace, name, status }` |
-| `focus` | `{ host, workspace, tab }` of the window's selected host |
+| `focus` | `{ host, workspace, tab, name, path }`: the selected host's focused workspace, its name and folder |
 | `usage`, `pull_request` | Not filled yet |
 
 ### Elements

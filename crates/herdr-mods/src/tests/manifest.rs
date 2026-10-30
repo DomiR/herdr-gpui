@@ -101,3 +101,33 @@ fn needs_are_bounded() {
         ("needs.exec", Problem::Entries { limit: 16 })
     );
 }
+
+#[test]
+fn a_panel_section_takes_a_title_and_order() {
+    let manifest = Manifest::parse(
+        "name = \"todo\"\napi = 1\nplaces = [\"panel\"]\n[panel]\ntitle = \"Todo\"\norder = 400\n",
+    )
+    .unwrap();
+    assert_eq!(manifest.places, [Place::Panel]);
+    assert_eq!(
+        manifest.panel,
+        Panel {
+            title: Some("Todo".into()),
+            order: 400
+        }
+    );
+    let default = Manifest::parse("name = \"todo\"\napi = 1\nplaces = [\"panel\"]\n").unwrap();
+    assert_eq!(default.panel.title, None);
+}
+
+#[test]
+fn a_panel_table_needs_the_panel_place_and_a_bounded_order() {
+    assert_eq!(
+        problem("name = \"todo\"\napi = 1\n[panel]\ntitle = \"Todo\"\n").0,
+        "panel"
+    );
+    assert_eq!(
+        problem("name = \"todo\"\napi = 1\nplaces = [\"panel\"]\n[panel]\norder = 99999\n").0,
+        "panel.order"
+    );
+}

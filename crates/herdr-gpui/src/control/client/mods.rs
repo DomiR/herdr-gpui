@@ -17,6 +17,7 @@ pub(super) fn run(command: ModCommand, context: &Context) -> crate::Result<Outpu
         ModCommand::Reload { name } => ModOp::Reload { name },
         ModCommand::Logs { name, lines } => ModOp::Logs { name, lines },
         ModCommand::Open { name } => ModOp::Open { name },
+        ModCommand::Panel { switch } => ModOp::Panel { switch },
     };
     match context.call(Request::Mod, op)? {
         Response::Mod {
@@ -54,6 +55,17 @@ pub(super) fn run(command: ModCommand, context: &Context) -> crate::Result<Outpu
             format!("Reloading {name}"),
             &serde_json::json!({ "name": name, "reloading": true }),
         ),
+        Response::Mod {
+            reply: Reply::Panel { shown, sections },
+        } => {
+            let json = serde_json::json!({ "shown": shown, "sections": sections });
+            let text = match (shown, sections.is_empty()) {
+                (_, true) => "The mod panel has no sections".to_owned(),
+                (true, false) => format!("The mod panel shows {}", sections.join(", ")),
+                (false, false) => format!("The mod panel is hidden ({})", sections.join(", ")),
+            };
+            Output::data(text, &json)
+        }
         Response::Mod {
             reply: Reply::Opened { name },
         } => Output::data(
@@ -94,10 +106,12 @@ fn check(dir: &Path) -> crate::Result<Output> {
         .into_iter()
         .map(|line| line.text)
         .collect();
+    // A view that returns nil draws nothing, which is valid.
+    let elements = tree.as_ref().map_or(0, herdr_mods::Node::count);
     let mut text = format!(
         "{} is valid: {} elements, drawn in {}",
         manifest.name,
-        tree.count(),
+        elements,
         if places.is_empty() {
             "no place (palette commands only)".to_owned()
         } else {
@@ -116,7 +130,7 @@ fn check(dir: &Path) -> crate::Result<Output> {
         &serde_json::json!({
             "name": manifest.name,
             "valid": true,
-            "elements": tree.count(),
+            "elements": elements,
             "places": places,
             "hash": sources.hash,
             "log": log,

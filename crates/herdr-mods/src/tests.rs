@@ -37,8 +37,11 @@ fn view_mod(tree: &str) -> String {
     )
 }
 
+/// The tree a view draws; a view that draws nothing fails the test.
 fn view(tree: &str) -> Result<Node> {
-    load(&view_mod(tree))?.view(&State::default(), SystemTime::UNIX_EPOCH)
+    load(&view_mod(tree))?
+        .view(&State::default(), SystemTime::UNIX_EPOCH)
+        .map(|node| node.unwrap())
 }
 
 fn tree_problem(tree: &str) -> (String, Problem) {

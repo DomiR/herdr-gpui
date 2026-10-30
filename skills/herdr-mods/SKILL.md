@@ -1,6 +1,6 @@
 ---
 name: herdr-mods
-description: "Write Herdr UI mods: small sandboxed Luau extensions that add a status bar item, a sidebar section, palette commands, or an app with its own activity bar icon to Herdr UI without changing its code, reloaded live when saved. Use it inside Herdr (HERDR_ENV=1) when the user asks to extend, customize, or add to Herdr UI's own interface: show a count, a list, a meter, or a button in the status bar or sidebar, add a palette command, add an activity bar app such as a dashboard of agents or workspaces, or write a mod, plugin, extension, or widget for Herdr UI. It covers the folder layout, the element tree, checking a mod with herdr-gpui mod check, and reading its errors and logs."
+description: "Write Herdr UI mods: small sandboxed Luau extensions that add a status bar item, a sidebar section, a section of the right-hand mod panel, palette commands, or an app with its own activity bar icon to Herdr UI without changing its code, reloaded live when saved. Use it inside Herdr (HERDR_ENV=1) when the user asks to extend, customize, or add to Herdr UI's own interface: show a count, a list, a meter, or a button in the status bar, the sidebar, or a panel beside the terminals (like opencode's sidebar), add a palette command, add an activity bar app such as a dashboard of agents or workspaces, or write a mod, plugin, extension, or widget for Herdr UI. It covers the folder layout, the element tree, checking a mod with herdr-gpui mod check, and reading its errors and logs."
 ---
 <!-- herdr-gpui-managed-skill v1: Herdr UI keeps this file up to date. Edit a copy under another name to keep your changes. -->
 
@@ -15,7 +15,8 @@ commands when the user clicks. Saving a file reloads the mod.
 ## How to make one
 
 1. Ask only what you cannot infer: what it shows, where (`status_bar`,
-   `sidebar`, or its own app in the activity bar), and what a click does.
+   `sidebar`, `panel` beside the terminals, or its own app in the activity
+   bar), and what a click does.
 2. Create `~/.config/herdr/gpui-mods/NAME/` (`$XDG_CONFIG_HOME/herdr/gpui-mods`
    when that is set; `%APPDATA%\herdr\gpui-mods` on Windows) with `mod.toml`
    and `main.luau`. The folder name must equal `name`.
@@ -67,6 +68,11 @@ return herdr.mod({
 })
 ```
 
+A mod panel section uses `places = ["panel"]` and an optional `[panel]`
+table with `title` and `order` (sections are ordered by it, then by name).
+Its view may return `nil` to show no section; watch `focus` to describe the
+focused workspace. `herdr-gpui mod panel show` shows the panel.
+
 An activity bar app adds this to `mod.toml`, with `icon.svg` beside it (a
 24x24 stroke icon drawn with `currentColor`, which the bar tints); its
 `view` fills the window's body under the title:
@@ -85,7 +91,7 @@ icon = "icon.svg"
   palette would (`herdr-gpui commands` lists them; it runs only after a
   click or palette pick, never from a timer), and `herdr.timer(seconds, msg)`
   sends `msg` once after 1 to 86400 seconds.
-- `view(state, app)` returns the tree. It runs when a watched topic changes
+- `view(state, app)` returns the tree, or `nil` to draw nothing. It runs when a watched topic changes
   or `update` ran.
 - A palette command declared in `mod.toml` sends `command:ID`.
 - A message is nil, a boolean, a number, a string, or a table of those;
@@ -101,7 +107,7 @@ icon = "icon.svg"
 | `hosts` | `{ id, name, connected }` list |
 | `workspaces` | `{ id, host, name, focused, tabs = { { id, name, focused } } }` list |
 | `agents` | `{ all, idle, working, blocked, done }`, each a list of `{ id, host, workspace, name, status }` |
-| `focus` | `{ host, workspace, tab }` |
+| `focus` | `{ host, workspace, tab, name, path }` of the focused workspace |
 
 | Element | Keys |
 | --- | --- |

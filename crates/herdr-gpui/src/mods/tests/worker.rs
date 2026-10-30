@@ -6,7 +6,8 @@ use herdr_mods::{Agent, AgentStatus};
 fn next_tree(worker: &Handle, seen: &mut Vec<Report>) -> Node {
     eventually(|| {
         let report = worker.take();
-        let tree = report.tree.clone();
+        // A tree drawn; these mods never draw nothing.
+        let tree = report.tree.clone().flatten();
         seen.push(report);
         tree
     })
@@ -191,4 +192,13 @@ fn a_first_view_that_fails_draws_once_state_arrives() {
     worker.offer(agents(2));
     let mut seen = Vec::new();
     assert_eq!(text(&next_tree(&worker, &mut seen)), "agents: 2");
+}
+
+#[test]
+fn a_view_that_draws_nothing_reports_an_empty_tree() {
+    let root = tempfile::tempdir().unwrap();
+    let main = "return herdr.mod({ view = function() return nil end })";
+    let worker = Handle::spawn(write_mod(root.path(), "quiet", main)).unwrap();
+    let tree = eventually(|| worker.take().tree);
+    assert_eq!(tree, None, "drew nothing, not a tree");
 }

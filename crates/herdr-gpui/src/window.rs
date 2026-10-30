@@ -243,6 +243,8 @@ pub(crate) struct HerdrWindow {
     pub(crate) menu: menu::MenuState,
     /// Removing worktrees whose pull request is merged, when enabled.
     pub(crate) merged_cleanup: crate::merged_cleanup::Cleanup,
+    /// The mod panel's width; see `crate::mods::panel`.
+    pub(crate) mod_panel_width: crate::panel_resize::PanelWidth,
     pub(crate) mods: crate::mods::Mods,
     /// The focus changes asked of the daemon, for the native GUI harness.
     #[cfg(feature = "integration-test")]
@@ -502,6 +504,9 @@ impl HerdrWindow {
         }
         if self.notes_width.chosen().is_none() {
             self.notes_width.restore(chrome.notes_width);
+        }
+        if self.mod_panel_width.chosen().is_none() {
+            self.mod_panel_width.restore(chrome.mod_panel_width);
         }
         if self.review_files_width.chosen().is_none() {
             self.review_files_width.restore(chrome.review_files_width);

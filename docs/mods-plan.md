@@ -272,7 +272,11 @@ Each phase is its own pull request, with `just ci` passing.
    switches moved to phase 4, `[mods] disabled` covers them until then.) Headless GPUI tests for rendering and reload, and a worker
    test that a stuck mod cannot block the window. Native QA in light and dark
    themes and a narrow window.
-4. **Activity bar apps.** (Started: mod icons in the bar, tinted from the
+4. **Mod panel.** (Built.) A `panel` place: sections in a resizable panel
+   on the window's right beside the terminals, ordered by `[panel] order`,
+   foldable, hidden when a view returns nil; Toggle Mod Panel and `mod
+   panel`; `focus` carries the focused workspace's name and folder.
+5. **Activity bar apps.** (Started: mod icons in the bar, tinted from the
    mod's SVG; the app body; `mod open`. The rest below remains.) `Section`, mod icons in the bar with count and
    busy, the app body, the app elements (`scroll`, `split`, `table`, `tabs`,
    `input`, `select`, `markdown`, `code`, `empty`, `dialog`), routes, keys,
@@ -281,13 +285,13 @@ Each phase is its own pull request, with `just ci` passing.
    input that keeps the text while the worker is busy, lazy rows, and that a
    hidden app runs `badge` but not `view`. Native QA of focus, IME, and
    narrow windows. A shipped example app.
-5. **Capabilities.** `needs`, the approval dialog, `mod approve`, `exec` and
+6. **Capabilities.** `needs`, the approval dialog, `mod approve`, `exec` and
    `fetch` through the grant, with hash pinning. Tests: an edited mod loses
    its approval, an ungranted call is refused with a typed error, and
    approving from an agent pane is refused.
-6. **More places and agents.** The mod tab kind, toasts, `herdr.d.luau`
+7. **More places and agents.** The mod tab kind, toasts, `herdr.d.luau`
    generation, and the skill section.
-7. **Later.** Sidebar row cells through `RowLayout`, the `terminal` element
+8. **Later.** Sidebar row cells through `RowLayout`, the `terminal` element
    on herdr-core's observer terminals, and state from the `herdr-backend`
    traits.
 

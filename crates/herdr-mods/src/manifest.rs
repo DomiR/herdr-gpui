@@ -11,6 +11,10 @@
 //! title = "Deploys"
 //! icon = "icon.svg"
 //!
+//! [panel]
+//! title = "Todo"
+//! order = 400
+//!
 //! [needs]
 //! exec = ["gh"]
 //! ```
@@ -26,10 +30,16 @@ const MAX_TITLE: usize = 60;
 const MAX_COMMANDS: usize = 16;
 const MAX_NEEDS: usize = 16;
 const MAX_NEED: usize = 256;
+/// Panel sections are ordered by this, then by name; the default leaves
+/// room on both sides.
+const DEFAULT_ORDER: i32 = 500;
+const ORDER_RANGE: std::ops::RangeInclusive<i32> = -10_000..=10_000;
 
 named! {
     /// Where a mod's view is drawn. Activity bar apps are `[activity]`.
     pub enum Place {
+        /// A section of the right-hand panel beside the terminals.
+        Panel = "panel",
         Sidebar = "sidebar",
         StatusBar = "status_bar",
         Tab = "tab",
@@ -42,7 +52,26 @@ pub struct Manifest {
     pub places: Vec<Place>,
     pub commands: Vec<CommandDecl>,
     pub activity: Option<Activity>,
+    /// How the mod's section shows in the right-hand panel, when `places`
+    /// has `panel`.
+    pub panel: Panel,
     pub needs: Needs,
+}
+
+/// A mod's section in the right-hand panel, as `[panel]` sets it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Panel {
+    /// The section's header; the mod's name when unset.
+    pub title: Option<String>,
+    /// Sections are ordered by this, then by name.
+    pub order: i32,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawPanel {
+    title: Option<String>,
+    order: Option<i32>,
 }
 
 /// A palette command; running it sends the mod the message `command:<id>`.
@@ -91,6 +120,7 @@ struct Raw {
     #[serde(default)]
     commands: Vec<CommandDecl>,
     activity: Option<Activity>,
+    panel: Option<RawPanel>,
     #[serde(default)]
     needs: Needs,
 }
@@ -148,11 +178,44 @@ impl Manifest {
                 text(need, MAX_NEED).map_err(|p| invalid(&format!("{field}[{index}]"), p))?;
             }
         }
+        let panel = match raw.panel {
+            None => Panel {
+                title: None,
+                order: DEFAULT_ORDER,
+            },
+            Some(_) if !places.contains(&Place::Panel) => {
+                return Err(invalid(
+                    "panel",
+                    Problem::Expected {
+                        expected: "set only when places has \"panel\"",
+                    },
+                ));
+            }
+            Some(panel) => {
+                if let Some(title) = &panel.title {
+                    self::title(title).map_err(|p| invalid("panel.title", p))?;
+                }
+                let order = panel.order.unwrap_or(DEFAULT_ORDER);
+                if !ORDER_RANGE.contains(&order) {
+                    return Err(invalid(
+                        "panel.order",
+                        Problem::Expected {
+                            expected: "from -10000 to 10000",
+                        },
+                    ));
+                }
+                Panel {
+                    title: panel.title,
+                    order,
+                }
+            }
+        };
         Ok(Self {
             name: raw.name,
             places,
             commands: raw.commands,
             activity: raw.activity,
+            panel,
             needs: raw.needs,
         })
     }

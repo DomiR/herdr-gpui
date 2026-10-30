@@ -8,6 +8,8 @@ fn changes_are_per_topic() {
             host: "local".to_owned(),
             workspace: None,
             tab: None,
+            name: None,
+            path: None,
         }),
         ..State::default()
     };
@@ -62,6 +64,8 @@ fn every_topic_reaches_the_view() {
             host: "F".to_owned(),
             workspace: None,
             tab: None,
+            name: None,
+            path: None,
         }),
         usage: vec![Usage {
             provider: "claude".to_owned(),
@@ -81,5 +85,5 @@ fn every_topic_reaches_the_view() {
         .unwrap()
         .view(&state, SystemTime::UNIX_EPOCH)
         .unwrap();
-    assert_eq!(node, text("HTAF0.57"));
+    assert_eq!(node, Some(text("HTAF0.57")));
 }

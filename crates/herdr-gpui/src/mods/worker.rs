@@ -38,7 +38,8 @@ pub(super) struct Report {
     pub manifest: Option<Manifest>,
     /// The activity bar icon's SVG, sent with each manifest.
     pub icon: Option<Option<String>>,
-    pub tree: Option<Node>,
+    /// The latest tree; `Some(None)` when the view drew nothing.
+    pub tree: Option<Option<Node>>,
     /// Why the last `update` or `view` failed; `Some(None)` clears it once
     /// the mod draws again.
     pub error: Option<Option<Error>>,
@@ -136,7 +137,7 @@ impl Drop for Handle {
 
 /// A loaded mod's sources, state, and first view, before it may replace
 /// the running one.
-type Candidate = (Sources, Mod, Result<Node, Error>);
+type Candidate = (Sources, Mod, Result<Option<Node>, Error>);
 
 struct Worker {
     dir: PathBuf,

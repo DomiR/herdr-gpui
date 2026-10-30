@@ -197,15 +197,21 @@ impl Mod {
         Ok(effects)
     }
 
-    /// Runs `view` against the app's state and checks the tree it returns.
-    pub fn view(&mut self, app: &State, now: SystemTime) -> Result<Node> {
+    /// Runs `view` against the app's state and checks the tree it returns;
+    /// `None` when it returns nil, drawing nothing.
+    pub fn view(&mut self, app: &State, now: SystemTime) -> Result<Option<Node>> {
         self.begin(now);
         let view = self.lua.registry_value::<Function>(&self.view)?;
         let state = self.lua.registry_value::<Value>(&self.state)?;
         let app = app.to_lua(&self.lua, &self.topics)?;
         let tree = view.call::<Value>((state, app))?;
         self.shared.now.set(None);
-        node::read(&tree, self.limits.nodes).map_err(|(at, problem)| Error::Tree { at, problem })
+        if tree.is_nil() {
+            return Ok(None);
+        }
+        node::read(&tree, self.limits.nodes)
+            .map(Some)
+            .map_err(|(at, problem)| Error::Tree { at, problem })
     }
 
     /// The lines written with `herdr.log` since the last call.

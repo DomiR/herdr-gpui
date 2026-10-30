@@ -12,6 +12,7 @@
 mod activity;
 mod config;
 mod error;
+mod panel;
 mod render;
 mod scan;
 mod state;
@@ -49,6 +50,8 @@ pub(crate) struct Mods {
     entries: BTreeMap<String, Entry>,
     offered: Option<Arc<State>>,
     pace: Pace,
+    /// The right-hand panel's sections and motion; see `panel`.
+    panel: panel::PanelState,
 }
 
 impl Default for Mods {
@@ -63,6 +66,7 @@ impl Default for Mods {
             entries: BTreeMap::new(),
             offered: None,
             pace: Pace::new(STATE_GAP),
+            panel: panel::PanelState::default(),
         }
     }
 }
@@ -75,7 +79,10 @@ pub(crate) struct Entry {
     pub(crate) icon: Option<String>,
     /// That icon tinted for the bar, by the color it was drawn in.
     icon_image: std::cell::RefCell<Option<(u32, Arc<gpui::Image>)>>,
+    /// What it last drew; `None` while loading or when it draws nothing.
     pub(crate) tree: Option<Node>,
+    /// It drew at least once, possibly nothing.
+    pub(crate) drawn: bool,
     /// Why the last `update` or `view` failed.
     call_error: Option<herdr_mods::Error>,
     /// Why the mod's files last failed to load; the last good mod runs on.
@@ -101,10 +108,11 @@ impl Mods {
         }
     }
 
-    /// Adds a mod that already drew `tree`, for layout tests. Its worker
-    /// watches a folder that does not exist, so it never draws again.
+    /// Adds a mod that already drew `tree` (nothing, when `None`), for
+    /// layout tests. Its worker watches a folder that does not exist, so it
+    /// never draws again.
     #[cfg(test)]
-    pub(crate) fn insert_drawn(&mut self, manifest: Manifest, tree: Node) {
+    pub(crate) fn insert_drawn(&mut self, manifest: Manifest, tree: Option<Node>) {
         let missing = std::env::temp_dir()
             .join("herdr-mods-test-missing")
             .join(&manifest.name);
@@ -118,7 +126,8 @@ impl Mods {
                 manifest: Some(manifest),
                 icon: None,
                 icon_image: Default::default(),
-                tree: Some(tree),
+                tree,
+                drawn: true,
                 call_error: None,
                 load_error: None,
                 log: VecDeque::new(),
@@ -154,6 +163,7 @@ impl Mods {
                             icon: None,
                             icon_image: Default::default(),
                             tree: None,
+                            drawn: false,
                             call_error: None,
                             load_error: None,
                             log: VecDeque::new(),
@@ -174,7 +184,8 @@ impl Mods {
                 entry.manifest = Some(manifest);
             }
             if let Some(tree) = report.tree {
-                entry.tree = Some(tree);
+                entry.tree = tree;
+                entry.drawn = true;
             }
             if let Some(error) = report.load_error {
                 entry.load_error = error;
@@ -271,6 +282,9 @@ impl HerdrWindow {
     /// commands clicks asked for.
     pub(crate) fn poll_mods(&mut self, window: &mut gpui::Window, cx: &mut gpui::Context<Self>) {
         let now = Instant::now();
+        if self.update_mod_panel() {
+            cx.notify();
+        }
         if self.mods.wants_state(now) {
             let state = self.mods_state();
             self.mods.offer(state, now);
