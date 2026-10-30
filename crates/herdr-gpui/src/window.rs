@@ -243,6 +243,7 @@ pub(crate) struct HerdrWindow {
     pub(crate) menu: menu::MenuState,
     /// Removing worktrees whose pull request is merged, when enabled.
     pub(crate) merged_cleanup: crate::merged_cleanup::Cleanup,
+    pub(crate) mods: crate::mods::Mods,
     /// The focus changes asked of the daemon, for the native GUI harness.
     #[cfg(feature = "integration-test")]
     pub(crate) navigations: smoke::Navigations,
@@ -676,6 +677,7 @@ impl HerdrWindow {
         if self.update_system_load() {
             cx.notify();
         }
+        self.poll_mods(window, cx);
         let network_quality = crate::network_quality::poll(self.config.show_network_quality, cx);
         if network_quality != self.network_quality_seen {
             self.network_quality_seen = network_quality;
