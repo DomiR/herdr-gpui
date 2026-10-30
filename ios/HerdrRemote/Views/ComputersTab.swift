@@ -15,7 +15,7 @@ struct ComputersTab: View {
             if query.isEmpty { outline } else { SearchResults(query: query) }
         }
         .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Chats, messages, terminals")
-        .navigationTitle("Computers")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 NavigationLink { SettingsView() } label: { Image(systemName: "gearshape") }

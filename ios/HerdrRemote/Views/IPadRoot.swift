@@ -22,7 +22,7 @@ struct IPadRoot: View {
             AttentionList(selection: $selection, query: query)
                 .safeAreaInset(edge: .bottom) { ConnectionToast(pairing: $pairing) }
                 .searchable(text: $query, placement: .sidebar, prompt: "Chats, messages, terminals")
-                .navigationTitle("Herdr")
+                .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
                         Menu {

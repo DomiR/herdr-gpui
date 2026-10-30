@@ -270,6 +270,7 @@ struct FolderPicker: View {
         }
         .searchable(text: $query, prompt: "Folders")
         .navigationTitle("Project")
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     private func filter(_ folders: [String]) -> [String] {

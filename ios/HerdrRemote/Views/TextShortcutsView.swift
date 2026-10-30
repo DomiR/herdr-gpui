@@ -34,6 +34,7 @@ struct TextShortcutsView: View {
             }
         }
         .navigationTitle("Text Shortcuts")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Add", systemImage: "plus") { editing = TextShortcut(title: "", text: "") }

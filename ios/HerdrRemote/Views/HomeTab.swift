@@ -56,7 +56,7 @@ struct HomeTab: View {
         } message: {
             Text(problem ?? "")
         }
-        .navigationTitle("Herdr")
+        .navigationBarTitleDisplayMode(.inline)
         .refreshable { model.fleet.networkChanged() }
         .overlay {
             if model.computers.isEmpty {
@@ -150,7 +150,7 @@ struct BoardTab: View {
             group("Working", items.filter(\.working))
             group("Idle", items.filter { !$0.needsYou && !$0.working })
         }
-        .navigationTitle("Board")
+        .navigationBarTitleDisplayMode(.inline)
         .refreshable { model.fleet.networkChanged() }
     }
 

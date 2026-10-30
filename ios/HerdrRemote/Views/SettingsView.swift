@@ -88,6 +88,7 @@ struct SettingsView: View {
             }
         }
         .navigationTitle("Settings")
+        .navigationBarTitleDisplayMode(.inline)
         .task { cacheSize = model.fleet.cache.size() }
     }
 
