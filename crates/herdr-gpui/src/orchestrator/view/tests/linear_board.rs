@@ -78,6 +78,7 @@ fn open_view(cx: &mut TestAppContext) -> (Entity<OrchestratorView>, &mut VisualT
         workspace_id: "w1".into(),
         token: None,
         data_root: Some(dir.path().join("data")),
+        gitlab_store: Default::default(),
         timing: Timing::default(),
         linear: None,
     };

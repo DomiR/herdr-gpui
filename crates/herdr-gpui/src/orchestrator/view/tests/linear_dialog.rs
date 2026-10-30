@@ -16,6 +16,7 @@ fn the_linear_chip_opens_a_dialog_that_refuses_a_non_key(cx: &mut TestAppContext
         workspace_id: "w1".into(),
         token: None,
         data_root: Some(dir.path().join("data")),
+        gitlab_store: Default::default(),
         timing: Timing::default(),
         linear: None,
     };
@@ -75,6 +76,7 @@ fn the_issues_section_shows_no_linear_chip(cx: &mut TestAppContext) {
         workspace_id: "w1".into(),
         token: None,
         data_root: Some(dir.path().join("data")),
+        gitlab_store: Default::default(),
         timing: Timing::default(),
         linear: None,
     };

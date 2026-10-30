@@ -114,6 +114,7 @@ fn view(cx: &mut TestAppContext) -> gpui::Entity<OrchestratorView> {
         workspace_id: "w1".into(),
         token: None,
         data_root: Some(dir.path().join("data")),
+        gitlab_store: Default::default(),
         timing: Timing::default(),
         linear: None,
     };

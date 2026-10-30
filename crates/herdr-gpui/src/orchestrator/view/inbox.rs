@@ -471,8 +471,11 @@ impl OrchestratorView {
                         el.child(div().text_color(rgb(theme.muted)).child(text))
                     })
                     .when(sign_in, |el| {
-                        el.cursor_pointer()
-                            .on_click(cx.listener(|_, _, _, cx| cx.emit(Event::SignIn)))
+                        el.debug_selector(move || {
+                            format!("orchestrator-sign-in-{}", provider.name().to_lowercase())
+                        })
+                        .cursor_pointer()
+                        .on_click(cx.listener(move |_, _, _, cx| cx.emit(Event::SignIn(provider))))
                     })
                     .when(provider == Provider::Linear, |el| {
                         el.cursor_pointer().on_click(
@@ -763,9 +766,7 @@ impl OrchestratorView {
             }
             for status in &snapshot.sources {
                 let text = match &status.state {
-                    SyncState::Failed(error) => {
-                        format!("{}: {error}", status.key.provider.name())
-                    }
+                    SyncState::Failed(error) => failure_text(status.key.provider, error),
                     SyncState::Capped { count } => format!(
                         "{} has more than {count} items; the newest are shown and not cached.",
                         status.key.provider.name()
@@ -868,6 +869,18 @@ pub(super) fn source_summary(states: &[(&SyncState, usize)]) -> (SourceState, St
     }
 }
 
+/// A failed sync's banner text, led by its backend's name unless the error
+/// already starts with it, as "Beads is not installed…" does.
+pub(super) fn failure_text(provider: Provider, error: &impl std::fmt::Display) -> String {
+    let name = provider.name();
+    let error = error.to_string();
+    if error.starts_with(name) {
+        error
+    } else {
+        format!("{name}: {error}")
+    }
+}
+
 /// A backend's chip: its mark and name, for its state to follow.
 fn source_chip(look: &Look, id: (&'static str, usize), provider: Provider) -> Stateful<Div> {
     let theme = &look.theme;
@@ -887,14 +900,16 @@ fn source_chip(look: &Look, id: (&'static str, usize), provider: Provider) -> St
         .child(provider.name())
 }
 
-/// A backend's mark: GitHub's logo, else a short colored tag.
+/// A backend's mark: GitHub's or GitLab's logo, else a short colored tag.
 pub(super) fn provider_mark(look: &Look, provider: Provider) -> AnyElement {
     match provider {
         Provider::Github => look
             .icon("icons/github.svg", 12., look.theme.subtext())
             .into_any_element(),
+        Provider::Gitlab => look
+            .icon("icons/gitlab.svg", 12., look.theme.subtext())
+            .into_any_element(),
         Provider::Beads => look.badge("bd", MAGENTA).into_any_element(),
-        Provider::Gitlab => look.badge("gl", RED).into_any_element(),
         Provider::Linear => look.badge("ln", BLUE).into_any_element(),
     }
 }

@@ -652,6 +652,10 @@ impl HerdrWindow {
                 cx.notify();
                 return;
             }
+            Command::EqualizeSplits => {
+                self.equalize_splits(cx);
+                return;
+            }
             Command::ResizeMode => {
                 self.prefix_armed = false;
                 self.resize_mode = true;

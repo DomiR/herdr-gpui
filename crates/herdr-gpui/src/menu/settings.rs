@@ -26,7 +26,7 @@ impl HerdrWindow {
                 endpoint.toasts.enabled_since = Some(now);
             }
         }
-        self.tick_toasts(self.menu.page.is_some() || self.toasts_hidden, now);
+        self.tick_toasts(self.menu.page.is_some() || self.toasts_hidden, now, cx);
         cx.notify();
     }
 
@@ -186,6 +186,7 @@ impl HerdrWindow {
                             error: None,
                         });
                         crate::caffeine::set_scope(config.status_bar.keep_awake_scope, cx);
+                        crate::i18n::follow_config(&config.language, cx);
                         let menus_changed = crate::menus::changed(&this.config, &config);
                         if config.keybindings != this.config.keybindings {
                             crate::actions::rebind_keys(cx);
@@ -228,6 +229,7 @@ impl HerdrWindow {
                         this.tick_toasts(
                             this.menu.page.is_some() || this.toasts_hidden,
                             std::time::Instant::now(),
+                            cx,
                         );
                         crate::log_window::set_appearance(&this.config, &this.theme, cx);
                         this.wheel = Default::default();
@@ -346,6 +348,7 @@ impl HerdrWindow {
                 | Command::ResizeUp
                 | Command::ResizeDown
                 | Command::ResizeMode
+                | Command::EqualizeSplits
                 | Command::RenamePane
                 | Command::MovePane
                 | Command::RenameWorkspace
@@ -408,7 +411,7 @@ impl HerdrWindow {
                 keys.into_iter()
                     .map(|key| (Cow::Borrowed(key), None))
                     .collect(),
-                Cow::Borrowed(info.label),
+                Cow::Owned(crate::i18n::command(info)),
                 Some(info),
             ));
         }
@@ -431,7 +434,9 @@ impl HerdrWindow {
                         // are generated per boot and mean nothing to a reader.
                         let earlier = usize::from(
                             description == PASTE_LABEL
-                                || COMMANDS.iter().any(|info| info.label == description),
+                                || COMMANDS
+                                    .iter()
+                                    .any(|info| crate::i18n::command(info) == description),
                         ) + commands[..index]
                             .iter()
                             .filter(|other| command_name(other) == description)

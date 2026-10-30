@@ -3,6 +3,7 @@
 //! split by responsibility across the submodules below; the fields live here
 //! because every one of them describes this window's own presentation state.
 
+mod accessibility;
 mod annotate;
 mod announcement;
 mod backdrop;
@@ -22,9 +23,9 @@ mod find;
 mod flash;
 pub(crate) use commands::run_window_command;
 pub(crate) use flash::Flash;
-pub(crate) use zen::slide_left;
+pub(crate) use zen::slide_start;
 mod function_keys;
-mod image_source;
+pub(crate) mod image_source;
 mod images;
 mod input;
 mod layout_save;
@@ -100,6 +101,8 @@ pub(crate) struct HerdrWindow {
     pub(crate) _appearance: Subscription,
     pub(crate) _browser_tabs: Subscription,
     pub(crate) _host_theme: Subscription,
+    /// Another window may mute or unmute what this one shows.
+    pub(crate) _notification_mutes: Subscription,
     pub(crate) _poll: Task<()>,
     pub(crate) _prefix_interceptor: Subscription,
     pub(crate) _sidebar_invalidation: Subscription,
@@ -455,6 +458,12 @@ impl HerdrWindow {
         })
     }
 
+    /// Another window may mute or unmute a workspace or tab: redraw its
+    /// marks, and re-count the Dock badge on the next tick.
+    pub(crate) fn observe_notification_mutes(cx: &mut Context<Self>) -> Subscription {
+        cx.observe_global::<crate::notification_mutes::Mutes>(|_, cx| cx.notify())
+    }
+
     /// Theme and appearance changes all notify this view, so each one reaches
     /// the daemon without every place that sets a theme having to report it.
     pub(crate) fn observe_host_theme(cx: &mut Context<Self>) -> Subscription {
@@ -659,9 +668,13 @@ impl HerdrWindow {
             self.discard_composition(cx);
         }
         self.poll_github(window, cx);
+        if self.poll_gitlab_avatars() {
+            cx.notify();
+        }
         if self.update_workspace_pr() {
             cx.notify();
         }
+        self.publish_remote_pull_requests(cx);
         self.update_merged_cleanup(window, cx);
         if self.update_git() {
             cx.notify();

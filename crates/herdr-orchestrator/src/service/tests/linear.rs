@@ -51,6 +51,7 @@ pub(super) fn worker(dir: &std::path::Path) -> Worker {
         workspace_id: "w1".into(),
         token: None,
         data_root: None,
+        gitlab_store: Default::default(),
         timing: Timing::default(),
         linear: Some(herdr_credentials::Store::Environment),
     };

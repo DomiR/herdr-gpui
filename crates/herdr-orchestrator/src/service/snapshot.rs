@@ -37,7 +37,8 @@ pub enum SyncState {
     Capped {
         count: usize,
     },
-    /// GitHub needs a signed-in account, or Linear an API key.
+    /// GitHub needs a signed-in account, GitLab a token that works, or Linear
+    /// an API key.
     SignIn,
     /// A provider or host this build cannot read yet, such as GitHub Enterprise.
     Unsupported,

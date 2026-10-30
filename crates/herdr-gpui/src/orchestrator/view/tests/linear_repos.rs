@@ -21,6 +21,7 @@ fn spec(dir: &Path, name: &str) -> RepoSpec {
             workspace_id: name.into(),
             token: None,
             data_root: Some(dir.join("data")),
+            gitlab_store: Default::default(),
             timing: Timing::default(),
             linear: Some(Store::Environment),
         },
