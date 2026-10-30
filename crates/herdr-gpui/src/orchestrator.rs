@@ -12,8 +12,8 @@ pub(crate) use herdr_orchestrator::*;
 pub(crate) use host::{LiveCache, Orchestrator, ViewId};
 pub(crate) use linear_link::open_link as open_linear_link;
 pub(crate) use view::{
-    Event, GitLabRead, IssueSource, List, LiveAgent, Look, OrchestratorView, RepoSpec, key_label,
-    pane, without_html,
+    Event, GitLabRead, IssueLayout, IssueSource, List, LiveAgent, Look, OrchestratorView, RepoSpec,
+    key_label, pane, without_html,
 };
 
 #[cfg(test)]

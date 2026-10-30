@@ -70,7 +70,9 @@ fn lanes_follow_the_kind_then_the_teams_order() {
     assert_eq!(todo, ["ENG-2", "ENG-5"]);
 }
 
-fn open_view(cx: &mut TestAppContext) -> (Entity<OrchestratorView>, &mut VisualTestContext) {
+pub(super) fn open_view(
+    cx: &mut TestAppContext,
+) -> (Entity<OrchestratorView>, &mut VisualTestContext) {
     let dir = tempfile::tempdir().unwrap();
     let request = Request {
         target: herdr_client::ConnectTarget::Local,
@@ -103,7 +105,7 @@ fn open_view(cx: &mut TestAppContext) -> (Entity<OrchestratorView>, &mut VisualT
     (view, cx)
 }
 
-fn click(cx: &mut VisualTestContext, selector: &str) {
+pub(super) fn click(cx: &mut VisualTestContext, selector: &str) {
     // Test selectors are few; leaking them gives the `'static` lookups need.
     let selector: &'static str = selector.to_owned().leak();
     let at = cx

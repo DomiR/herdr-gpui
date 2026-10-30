@@ -222,6 +222,9 @@ pub(crate) struct HerdrWindow {
     pub(crate) input_probe: smoke::InputProbe,
     pub(crate) install_warning_shown: bool,
     pub(crate) integrations: crate::integrations::Integrations,
+    /// The Linear section's list or board, as last picked and stored with
+    /// the chrome; `None` until the user picks one.
+    pub(crate) issue_layout: Option<crate::orchestrator::IssueLayout>,
     /// What a key code types in the active layout, to restore a dropped Shift.
     pub(crate) key_layout: fn(u16) -> Option<prefix::KeyChars>,
     /// The key code and Shift of the key being handled, from AppKit's event.
@@ -529,6 +532,10 @@ impl HerdrWindow {
             self.agent_sort = sort;
             self.agent_sort_modified = true;
         }
+        // A layout picked before the stored chrome loaded wins.
+        if self.issue_layout.is_none() {
+            self.issue_layout = chrome.issue_layout;
+        }
         // Saved once the whole chrome is merged, so the save keeps it all.
         if resave {
             self.save_chrome();
@@ -557,6 +564,7 @@ impl HerdrWindow {
         }
         if let Some(chrome) = self.sidebar_preferences.as_mut().and_then(|p| p.loaded()) {
             self.apply_stored_chrome(chrome);
+            self.apply_issue_layout(cx);
             cx.notify();
         }
         let old_pane = self

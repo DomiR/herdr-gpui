@@ -23,6 +23,7 @@ mod linear_drag;
 mod linear_facets;
 mod linear_filters;
 mod linear_hidden;
+mod linear_layout;
 mod linear_list;
 mod linear_reorder;
 mod linear_repos;

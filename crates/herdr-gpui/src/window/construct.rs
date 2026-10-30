@@ -204,6 +204,7 @@ impl HerdrWindow {
             input_probe: smoke::InputProbe::default(),
             install_warning_shown: false,
             integrations: Default::default(),
+            issue_layout: None,
             key_layout: prefix::current_layout,
             key_press: function_keys::current_press,
             last_input: None,

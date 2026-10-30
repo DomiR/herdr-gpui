@@ -130,7 +130,14 @@ impl HerdrWindow {
         self.next_orchestrator += 1;
         let id = ViewId(self.next_orchestrator);
         let look = self.look();
-        let view = cx.new(|cx| OrchestratorView::new(look, cx));
+        let layout = self.issue_layout;
+        let view = cx.new(|cx| {
+            let mut view = OrchestratorView::new(look, cx);
+            if let Some(layout) = layout {
+                view.set_layout(layout, cx);
+            }
+            view
+        });
         // Handled from the tick, which has the window acting on them needs.
         let events = cx.subscribe(&view, move |this, _, event: &Event, cx| {
             if this.orchestrator_events.len() < MAX_EVENTS {
@@ -450,6 +457,19 @@ impl HerdrWindow {
         )
     }
 
+    /// Lays every sections view out as the stored chrome says, once it
+    /// loads after the views were made.
+    pub(crate) fn apply_issue_layout(&mut self, cx: &mut Context<Self>) {
+        let Some(layout) = self.issue_layout else {
+            return;
+        };
+        for orchestrator in self.orchestrators.values() {
+            orchestrator
+                .view
+                .update(cx, |view, cx| view.set_layout(layout, cx));
+        }
+    }
+
     fn orchestrator_event(
         &mut self,
         id: ViewId,
@@ -522,6 +542,10 @@ impl HerdrWindow {
                     }
                     Err(_) => self.tell_orchestrator(id, super::Error::NotWebAddress, cx),
                 }
+            }
+            Event::Layout(layout) => {
+                self.issue_layout = Some(layout);
+                self.save_chrome();
             }
             Event::SignIn(provider) => {
                 if self.open_menu(window, cx) {

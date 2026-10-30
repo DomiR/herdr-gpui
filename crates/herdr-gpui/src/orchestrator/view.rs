@@ -39,6 +39,7 @@ mod worktree;
 #[allow(clippy::unwrap_used)]
 mod tests;
 
+pub(crate) use board::Layout as IssueLayout;
 pub(crate) use look::Look;
 pub(crate) use markdown::without_html;
 use pane::{PANE_DEFAULT, PaneDrag, Resize};
@@ -104,6 +105,9 @@ pub(crate) enum Event {
         request: Box<super::DispatchRequest>,
         endpoint: String,
     },
+    /// The user laid the Linear issues out as a list or a board, which the
+    /// window remembers with its chrome.
+    Layout(board::Layout),
 }
 
 impl EventEmitter<Event> for OrchestratorView {}
