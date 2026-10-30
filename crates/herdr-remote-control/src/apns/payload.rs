@@ -14,7 +14,7 @@
 //!                     "pane": "w1-p3",
 //!                     "workspace": "herdr-gpui" },
 //!     "content-state": { "phase": "working", "step": "Reading lib.rs",
-//!                        "startedAt": 1799999990, "cost": "$0.34",
+//!                        "startedAt": 1799999990,
 //!                        "planDone": 2, "planTotal": 4,
 //!                        "working": 1, "waiting": 0 },
 //!     "alert": { "title": "Claude is working", "body": "herdr-gpui · remote plan" } } }
@@ -74,9 +74,6 @@ pub(crate) struct Attributes {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ContentState {
-    /// The turn's cost so far, formatted, such as `$0.34`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) cost: Option<String>,
     /// The waiting permission's first [`MAX_BUTTONS`] options, in the
     /// question phase, for the lock screen's answer buttons.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

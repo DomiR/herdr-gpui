@@ -26,7 +26,6 @@ macro_rules! fixture {
 
 fn base_state() -> ContentState {
     ContentState {
-        cost: None,
         options: Vec::new(),
         permission: None,
         phase: Phase::Working,
@@ -82,7 +81,6 @@ fn question_update_matches_the_swift_fixture() {
         },
         pane: "w1-p3".to_owned(),
         state: ContentState {
-            cost: Some("$0.34".to_owned()),
             options: vec![
                 option("allow", PermissionKind::AllowOnce, "Allow once"),
                 option("reject", PermissionKind::RejectOnce, "Deny"),
@@ -111,10 +109,9 @@ fn end_matches_the_swift_fixture() {
         },
         pane: "w1-p3".to_owned(),
         state: ContentState {
-            cost: Some("$0.48".to_owned()),
             phase: Phase::Finished,
             step: "Run the tests".to_owned(),
-            summary: Some("Worked 6m 2s \u{b7} $0.48".to_owned()),
+            summary: Some("Worked 6m 2s".to_owned()),
             working: 0,
             ..base_state()
         },

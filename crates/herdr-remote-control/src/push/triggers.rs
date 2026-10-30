@@ -3,7 +3,7 @@
 
 use super::{Message, Urgency};
 use herdr_chat_protocol::{
-    Change, EntryKind, NoticeLevel, Permission, Status, Transcript, TurnEnd, TurnSummary, display,
+    Change, EntryKind, NoticeLevel, Permission, Status, Transcript, TurnEnd, TurnSummary,
 };
 use serde::{Deserialize, Serialize};
 
@@ -197,11 +197,7 @@ fn turn_ended(
     if summary.end == TurnEnd::Cancelled {
         return None;
     }
-    let mut facts = summary.describe();
-    if let Some(cost) = before.usage.as_ref().and_then(|usage| usage.cost.as_ref()) {
-        facts.push_str(" \u{b7} ");
-        facts.push_str(&display::cost(cost));
-    }
+    let facts = summary.describe();
     let answer = (privacy == Privacy::Excerpt)
         .then(|| last_answer(before))
         .flatten()

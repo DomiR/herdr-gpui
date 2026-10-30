@@ -87,9 +87,6 @@ struct SessionSheet: View {
                     .font(.headline)
                 if let usage = transcript.usage {
                     Text("\(tokens(usage.used)) of \(tokens(usage.size)) tokens").font(.subheadline).foregroundStyle(.secondary)
-                    if let cost = usage.cost {
-                        Text(money(cost)).font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
-                    }
                 } else {
                     Text("No usage reported yet").font(.subheadline).foregroundStyle(.secondary)
                 }
@@ -278,10 +275,6 @@ struct SessionSheet: View {
 
     private func tokens(_ count: UInt64) -> String {
         count >= 1000 ? "\(count / 1000)k" : "\(count)"
-    }
-
-    private func money(_ cost: Cost) -> String {
-        (Double(cost.micros) / 1_000_000).formatted(.currency(code: cost.currency))
     }
 }
 

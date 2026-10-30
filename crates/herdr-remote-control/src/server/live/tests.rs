@@ -6,7 +6,6 @@ fn live(event: Event) -> Live {
         event,
         pane: "w1-p3".to_owned(),
         state: ContentState {
-            cost: None,
             options: Vec::new(),
             permission: None,
             phase: Phase::Finished,

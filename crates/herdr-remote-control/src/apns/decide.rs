@@ -22,7 +22,7 @@ use super::{
 use crate::push::{Chat, excerpt};
 use herdr_chat_protocol::{
     Change, EntryKind, Permission, PlanEntry, PlanStatus, Status, Tool, ToolStatus, Transcript,
-    TurnEnd, TurnSummary, display,
+    TurnEnd, TurnSummary,
 };
 
 /// How long a finished activity stays on the lock screen.
@@ -128,12 +128,7 @@ fn turn_ended(chat: &Chat<'_>, before: &Transcript, summary: &TurnSummary, now_s
         TurnEnd::Done | TurnEnd::Cancelled | TurnEnd::Limit | TurnEnd::Other => Phase::Finished,
     };
     let mut state = state(before, phase, current_step(before));
-    let mut facts = summary.describe();
-    if let Some(cost) = &state.cost {
-        facts.push_str(" \u{b7} ");
-        facts.push_str(cost);
-    }
-    state.summary = Some(facts);
+    state.summary = Some(summary.describe());
     let dismissal_s = if summary.end == TurnEnd::Cancelled {
         now_s
     } else {
@@ -169,11 +164,6 @@ fn phase(before: &Transcript) -> Phase {
 fn state(before: &Transcript, phase: Phase, step: String) -> ContentState {
     let (plan_done, plan_total) = plan_counts(&before.plan);
     let mut state = ContentState {
-        cost: before
-            .usage
-            .as_ref()
-            .and_then(|usage| usage.cost.as_ref())
-            .map(display::cost),
         phase,
         plan_done,
         plan_total,

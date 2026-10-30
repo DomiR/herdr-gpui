@@ -142,7 +142,6 @@ fn a_running_tool_call_updates_the_step_once() {
     .unwrap();
     assert_eq!(live.event, Event::Update { alert: None });
     assert_eq!(live.state.step, "Run just ci");
-    assert_eq!(live.state.cost.as_deref(), Some("$0.34"));
 
     let mut shown = before.clone();
     shown.entries.push(Entry {
@@ -263,10 +262,7 @@ fn the_summary_ends_it_finished_and_lingering() {
         }
     );
     assert_eq!(live.state.phase, Phase::Finished);
-    assert_eq!(
-        live.state.summary.as_deref(),
-        Some("Worked 6m 2s \u{b7} $0.34")
-    );
+    assert_eq!(live.state.summary.as_deref(), Some("Worked 6m 2s"));
 }
 
 #[test]

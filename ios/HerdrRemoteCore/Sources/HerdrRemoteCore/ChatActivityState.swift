@@ -10,7 +10,6 @@ import Foundation
 /// | `phase` | `"working"`, `"question"`, `"finished"`, `"failed"` | |
 /// | `step` | string | current tool call or plan step |
 /// | `startedAt` | number | turn start, seconds since 1970 |
-/// | `cost` | string? | formatted, such as `$0.34` |
 /// | `question` | string? | the question waiting |
 /// | `summary` | string? | how the turn ended |
 /// | `planDone`, `planTotal` | int? | plan progress |
@@ -18,6 +17,9 @@ import Foundation
 /// | `permission` | int? | the waiting permission's id, in the question phase |
 /// | `options` | `[{id, name, kind}]`, default empty | its first three options, for answer buttons |
 /// | `previous` | `[string]`, default empty | the two steps before `step`, oldest first |
+///
+/// Older daemons also sent `cost`, which is ignored: the price of a turn
+/// is not worth the room on a phone.
 ///
 /// `startedAt` is decoded here as Unix seconds rather than through a
 /// `JSONDecoder` date strategy, which ActivityKit does not let an app pick.
@@ -32,7 +34,6 @@ public struct ChatActivityState: Codable, Hashable, Sendable {
     public var phase: Phase
     public var step: String
     public var startedAt: Date
-    public var cost: String?
     public var question: String?
     public var summary: String?
     public var planDone: Int?
@@ -60,7 +61,6 @@ public struct ChatActivityState: Codable, Hashable, Sendable {
         phase: Phase,
         step: String,
         startedAt: Date,
-        cost: String? = nil,
         question: String? = nil,
         summary: String? = nil,
         planDone: Int? = nil,
@@ -74,7 +74,6 @@ public struct ChatActivityState: Codable, Hashable, Sendable {
         self.phase = phase
         self.step = step
         self.startedAt = startedAt
-        self.cost = cost
         self.question = question
         self.summary = summary
         self.planDone = planDone
@@ -87,7 +86,7 @@ public struct ChatActivityState: Codable, Hashable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case phase, step, startedAt, cost, question, summary, planDone, planTotal, working, waiting
+        case phase, step, startedAt, question, summary, planDone, planTotal, working, waiting
         case permission, options, previous
     }
 
@@ -97,7 +96,6 @@ public struct ChatActivityState: Codable, Hashable, Sendable {
         step = try container.decode(String.self, forKey: .step)
         let seconds = try container.decode(Double.self, forKey: .startedAt)
         startedAt = Date(timeIntervalSince1970: seconds)
-        cost = try container.decodeIfPresent(String.self, forKey: .cost)
         question = try container.decodeIfPresent(String.self, forKey: .question)
         summary = try container.decodeIfPresent(String.self, forKey: .summary)
         planDone = try container.decodeIfPresent(Int.self, forKey: .planDone)
@@ -114,7 +112,6 @@ public struct ChatActivityState: Codable, Hashable, Sendable {
         try container.encode(phase, forKey: .phase)
         try container.encode(step, forKey: .step)
         try container.encode(startedAt.timeIntervalSince1970.rounded(.down), forKey: .startedAt)
-        try container.encodeIfPresent(cost, forKey: .cost)
         try container.encodeIfPresent(question, forKey: .question)
         try container.encodeIfPresent(summary, forKey: .summary)
         try container.encodeIfPresent(planDone, forKey: .planDone)

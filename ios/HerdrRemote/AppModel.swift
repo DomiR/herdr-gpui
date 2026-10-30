@@ -210,7 +210,6 @@ final class AppModel {
             phase: .working,
             step: "Writing mockups/index.html",
             startedAt: Date().addingTimeInterval(-250),
-            cost: "$0.34",
             planDone: 2,
             planTotal: 4,
             working: 2,
