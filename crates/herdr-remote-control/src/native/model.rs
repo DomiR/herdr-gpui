@@ -65,6 +65,9 @@ pub(crate) struct ChatSummary {
     pub(crate) questions: usize,
     pub(crate) last_text: Option<String>,
     pub(crate) turn_started_ms: Option<u64>,
+    /// When the latest turn ended; absent from older chat programs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) last_turn_ended_ms: Option<u64>,
     pub(crate) usage_percent: Option<u8>,
 }
 
@@ -207,6 +210,7 @@ impl From<Summary> for ChatSummary {
             questions: summary.questions,
             last_text: summary.last_text,
             turn_started_ms: summary.turn_started_ms,
+            last_turn_ended_ms: summary.last_turn_ended_ms,
             usage_percent: summary.usage_percent,
         }
     }

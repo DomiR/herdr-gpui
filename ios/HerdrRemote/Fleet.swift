@@ -13,6 +13,9 @@ struct ChatItem: Identifiable, Hashable {
     let chat: Home.ChatRow
     /// This phone answered its question; the answer is on its way.
     var answered = false
+    /// When the agent last answered: the computer's time, else when this
+    /// phone saw it.
+    var lastAnswer: Date?
 
     var id: String { "\(computer.device)/\(chat.pane)" }
     var key: PaneKey { PaneKey(device: computer.device, pane: chat.pane) }
@@ -53,6 +56,12 @@ final class Fleet {
         var home: Home?
         /// `home` came from the cache and the link has not refreshed it.
         var stale = true
+        /// When this phone saw its chats answer, for a computer that does
+        /// not date them itself.
+        var answers = AnswerTimes()
+        /// `home` came over the link now up, so the next one shows what
+        /// changed in between as it happened.
+        var watching = false
         var id: String { computer.device }
     }
 
@@ -86,7 +95,7 @@ final class Fleet {
                 known.computer = computer
                 return known
             }
-            return Machine(computer: computer, home: cache.home(computer.device))
+            return Machine(computer: computer, home: cache.home(computer.device), answers: cache.answers(computer.device))
         }
         if active { machines.forEach { startLink($0.computer) } }
         // From the cached homes at launch, and without forgotten ones.
@@ -104,7 +113,10 @@ final class Fleet {
     func deactivate() {
         active = false
         for id in Array(links.keys) { stopLink(id) }
-        for index in machines.indices { machines[index].stale = true }
+        for index in machines.indices {
+            machines[index].stale = true
+            machines[index].watching = false
+        }
     }
 
     func networkChanged() {
@@ -119,7 +131,14 @@ final class Fleet {
                 workspace.chats.map { chat in
                     let key = PaneKey(device: machine.computer.device, pane: chat.pane)
                     let answered = chat.summary?.question.map { pending.answered(key, permission: $0.id) } ?? false
-                    return ChatItem(computer: machine.computer, workspace: workspace, chat: chat, answered: answered)
+                    let ended = chat.summary?.lastTurnEndedMs.map { Date(timeIntervalSince1970: Double($0) / 1000) }
+                    return ChatItem(
+                        computer: machine.computer,
+                        workspace: workspace,
+                        chat: chat,
+                        answered: answered,
+                        lastAnswer: ended ?? machine.answers[chat.pane]
+                    )
                 }
             }
         }
@@ -302,11 +321,19 @@ final class Fleet {
         switch update {
         case let .status(status):
             machines[index].status = status
+            if case .online = status {} else { machines[index].watching = false }
             if case .revoked = status { stopLink(device) }
             if case .online = status { onOnline?(machines[index].computer) }
         case let .event(.home(home)):
+            // Only a change seen between two live homes is dated now.
+            if machines[index].watching, let previous = machines[index].home {
+                let before = machines[index].answers
+                machines[index].answers.update(from: previous, to: home, now: .now)
+                if machines[index].answers != before { cache.save(answers: machines[index].answers, device: device) }
+            }
             machines[index].home = home
             machines[index].stale = false
+            machines[index].watching = true
             cache.save(home: home, device: device)
             for key in Set(pending.items.filter { $0.key.device == device }.map(\.key)) {
                 pending.settle(key) { shown($0) }

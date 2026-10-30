@@ -43,6 +43,15 @@ struct Cache: Sendable {
         write(home, to: computerFolder(device).appending(path: "home.json"))
     }
 
+    /// When this phone saw the computer's chats answer.
+    func answers(_ device: String) -> AnswerTimes {
+        read(AnswerTimes.self, at: computerFolder(device).appending(path: "answers.json")) ?? AnswerTimes()
+    }
+
+    func save(answers: AnswerTimes, device: String) {
+        write(answers, to: computerFolder(device).appending(path: "answers.json"))
+    }
+
     func chat(_ device: String, pane: String) -> CachedChat? {
         read(CachedChat.self, at: chatFile(device, pane))
     }

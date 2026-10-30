@@ -72,12 +72,15 @@ public struct Home: Codable, Hashable, Sendable {
         /// The start of the agent's latest answer, on one line.
         public var lastText: String?
         public var turnStartedMs: UInt64?
+        /// When the latest turn ended; absent from older computers.
+        public var lastTurnEndedMs: UInt64?
         public var usagePercent: Int?
 
         enum CodingKeys: String, CodingKey {
             case connected, status, question, questions
             case lastText = "last_text"
             case turnStartedMs = "turn_started_ms"
+            case lastTurnEndedMs = "last_turn_ended_ms"
             case usagePercent = "usage_percent"
         }
     }

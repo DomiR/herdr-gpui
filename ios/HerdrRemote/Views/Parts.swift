@@ -77,6 +77,8 @@ struct ChatRowLabel: View {
                         Text(timerInterval: Date(timeIntervalSince1970: Double(started) / 1000)...Date.distantFuture, countsDown: false)
                             .font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
                             .fixedSize()
+                    } else if !item.needsYou, let date = item.lastAnswer {
+                        LastAnswer(date: date)
                     }
                     StatusMark(status: item.chat.status, asking: item.question != nil)
                 }
@@ -91,6 +93,30 @@ struct ChatRowLabel: View {
         if let question = item.question { return "\(place) · \(question.title)" }
         if let text = item.chat.summary?.lastText { return "\(place) · \(text)" }
         return place
+    }
+}
+
+/// How long ago a chat last answered, as a list shows it: "now", "5m",
+/// "3h", a weekday within the week, then the date.
+struct LastAnswer: View {
+    let date: Date
+
+    var body: some View {
+        TimelineView(.everyMinute) { context in
+            Text(Self.label(date, now: context.date))
+                .font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
+                .fixedSize()
+                .accessibilityLabel("Last answered \(date.formatted(.relative(presentation: .named)))")
+        }
+    }
+
+    static func label(_ date: Date, now: Date) -> String {
+        let seconds = now.timeIntervalSince(date)
+        if seconds < 60 { return "now" }
+        if seconds < 3600 { return "\(Int(seconds / 60))m" }
+        if seconds < 86400 { return "\(Int(seconds / 3600))h" }
+        if seconds < 6 * 86400 { return date.formatted(.dateTime.weekday(.abbreviated)) }
+        return date.formatted(.dateTime.month(.abbreviated).day())
     }
 }
 

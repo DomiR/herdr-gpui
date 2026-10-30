@@ -58,6 +58,7 @@ fn transcript_with_answer(text: &str) -> Transcript {
 
 fn turn(end: TurnEnd) -> Change {
     push(EntryKind::Turn(TurnSummary {
+        ended_ms: None,
         duration_ms: 12_000,
         end,
         tokens: None,

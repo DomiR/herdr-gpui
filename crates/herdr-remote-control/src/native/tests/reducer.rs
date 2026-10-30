@@ -152,6 +152,7 @@ fn entries() -> Vector {
             entry: entry(
                 6,
                 EntryKind::Turn(TurnSummary {
+                    ended_ms: None,
                     duration_ms: 6000,
                     end: TurnEnd::Done,
                     tokens: Some(Tokens {

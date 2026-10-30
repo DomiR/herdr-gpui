@@ -88,6 +88,7 @@ fn plan(statuses: &[(&str, PlanStatus)]) -> Vec<PlanEntry> {
 
 fn summary(end: TurnEnd) -> EntryKind {
     EntryKind::Turn(TurnSummary {
+        ended_ms: None,
         duration_ms: 362_000,
         end,
         tokens: None,

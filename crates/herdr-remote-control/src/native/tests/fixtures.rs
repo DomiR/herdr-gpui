@@ -100,6 +100,7 @@ fn home() -> Home {
         questions: 1,
         last_text: Some("Added Equalize Splits.".into()),
         turn_started_ms: Some(1_761_670_000_000),
+        last_turn_ended_ms: None,
         agent: "Claude".into(),
         usage_percent: Some(42),
     };
