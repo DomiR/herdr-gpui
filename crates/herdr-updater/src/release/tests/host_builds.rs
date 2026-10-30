@@ -101,11 +101,17 @@ fn updater_families_never_accept_the_host_manifest() -> anyhow::Result<()> {
 
 #[test]
 fn a_local_build_downloads_no_host_build() {
-    // Tests build without a release version or an update key.
-    let dir = std::env::temp_dir().join("herdr-host-build-never-written");
+    let key = "00".repeat(32);
     assert!(matches!(
-        download_host_build(HOST_TARGETS[0], &dir, &AtomicBool::new(false)),
+        host::release_identity("dev", Some(&key)),
         Err(Error::LocalBuild)
     ));
-    assert!(!dir.exists());
+    assert!(matches!(
+        host::release_identity(VERSION, None),
+        Err(Error::LocalBuild)
+    ));
+    assert_eq!(
+        host::release_identity(VERSION, Some(&key)).ok(),
+        Some((VERSION, key.as_str()))
+    );
 }

@@ -44,15 +44,25 @@ pub(super) fn host_asset_with(
         .ok_or(Error::MissingPlatformAsset)
 }
 
+/// The release this build is and the key its manifests are signed with;
+/// a local build has neither and downloads nothing.
+pub(super) fn release_identity<'a>(
+    version: &'a str,
+    key: Option<&'a str>,
+) -> Result<(&'a str, &'a str)> {
+    let key = key.ok_or(Error::LocalBuild)?;
+    parse_version(version).ok_or(Error::LocalBuild)?;
+    Ok((version, key))
+}
+
 /// Downloads this release's `herdr-remote-control` built for `target` into
 /// `destination`, which must not exist yet and is created private. The
 /// bytes are checked against the release's signed host manifest, by the
 /// key this build embeds; a local build has neither and refuses. Blocking:
 /// run it on a worker thread.
 pub fn download_host_build(target: &str, destination: &Path, cancel: &AtomicBool) -> Result<()> {
-    let key = option_env!("HERDR_UPDATE_PUBLIC_KEY").ok_or(Error::LocalBuild)?;
-    let version = crate::APP_VERSION;
-    parse_version(version).ok_or(Error::LocalBuild)?;
+    let (version, key) =
+        release_identity(crate::APP_VERSION, option_env!("HERDR_UPDATE_PUBLIC_KEY"))?;
     let asset = host_asset_with(version, key, target, |url, limit| {
         read_bounded(
             request(url, RequestProfile::Metadata, cancel)?
