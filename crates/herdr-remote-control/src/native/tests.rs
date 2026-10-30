@@ -3,6 +3,7 @@ use crate::hub::{ChatRow, Hub, Layout, TerminalPane, Workspace};
 use herdr_chat_protocol::{EndpointId, PermissionId};
 use herdr_client::protocol::AgentStatus;
 
+mod agent_name;
 mod create;
 mod fixtures;
 mod hosts;

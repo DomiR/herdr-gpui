@@ -21,7 +21,7 @@
             "pane": "p1",
             "tab": "t1",
             "title": "Equalize splits",
-            "agent": "claude",
+            "agent": "Claude",
             "status": "working",
             "summary": {
               "connected": true,

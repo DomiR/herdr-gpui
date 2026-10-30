@@ -217,13 +217,22 @@ impl From<Summary> for ChatSummary {
 }
 
 fn chat(row: &ChatRow, summaries: &mut HashMap<String, Summary>) -> Chat {
+    let summary = summaries.remove(&row.pane);
+    // Herdr may know an ACP chat only as `acp`, without the display name
+    // `herdr-acp` reported; the chat's own transcript names its agent.
+    let agent = summary
+        .as_ref()
+        .map(|summary| summary.agent.trim())
+        .filter(|agent| !agent.is_empty())
+        .map(str::to_owned)
+        .or_else(|| row.agent.clone());
     Chat {
         pane: row.pane.clone(),
         tab: row.tab.clone(),
         title: row.title.clone(),
-        agent: row.agent.clone(),
+        agent,
         status: row.status,
-        summary: summaries.remove(&row.pane).map(ChatSummary::from),
+        summary: summary.map(ChatSummary::from),
     }
 }
 
