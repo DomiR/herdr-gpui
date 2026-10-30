@@ -1,6 +1,8 @@
+// i18n: migrated
 use crate::{
     HerdrWindow,
     config::{Theme, ThemeName},
+    i18n::fl,
     menu::Page,
     search_input::SearchInput,
 };
@@ -60,6 +62,9 @@ impl HerdrWindow {
             picker
         } else {
             let search = cx.new(SearchInput::new);
+            search.update(cx, |input, cx| {
+                input.set_placeholder_with(|| fl!("theme-picker-search"), cx)
+            });
             let subscription = cx.subscribe(
                 &search,
                 |this, search, _: &crate::search_input::Changed, cx| {
@@ -442,7 +447,7 @@ impl HerdrWindow {
                                     .flex_1()
                                     .text_size(px(font.size * 1.35))
                                     .font_weight(FontWeight::SEMIBOLD)
-                                    .child("Color Scheme"),
+                                    .child(fl!("theme-picker-title")),
                             )
                             .child(
                                 div()
@@ -453,17 +458,17 @@ impl HerdrWindow {
                                     .cursor_pointer()
                                     .rounded(px(crate::config::corners::CONTROL))
                                     .hover(|s| s.bg(rgb(theme.active)))
-                                    .child("Close")
+                                    .child(fl!("theme-picker-close"))
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.dismiss_menu(window, cx)
                                     })),
                             ),
                     )
                     .child(div().pt(px(12.)).child(picker.search.clone()))
-                    .child(div().pt(px(8.)).text_color(rgb(theme.muted)).child(format!(
-                        "{} of {} themes",
-                        picker.filtered.len(),
-                        picker.names.len()
+                    .child(div().pt(px(8.)).text_color(rgb(theme.muted)).child(fl!(
+                        "theme-picker-count",
+                        shown = picker.filtered.len(),
+                        total = picker.names.len()
                     ))),
             )
             .when(picker.filtered.is_empty(), |panel| {
@@ -473,7 +478,7 @@ impl HerdrWindow {
                         .flex_1()
                         .p(px(16.))
                         .text_color(rgb(theme.muted))
-                        .child("No matching themes. Try a shorter search."),
+                        .child(fl!("theme-picker-empty")),
                 )
             })
             .when(!picker.filtered.is_empty(), |panel| {
@@ -519,7 +524,7 @@ impl HerdrWindow {
                                             row.child(
                                                 div()
                                                     .text_color(rgb(this.theme.muted))
-                                                    .child("Current"),
+                                                    .child(fl!("theme-picker-current")),
                                             )
                                         })
                                         .on_hover(cx.listener(move |this, hovered, _, cx| {
@@ -558,13 +563,13 @@ impl HerdrWindow {
                     .border_color(rgb(theme.active))
                     .text_color(rgb(theme.muted))
                     .child(if picker.saving {
-                        "Saving theme... Please wait.".to_owned()
+                        fl!("theme-picker-saving")
                     } else if let Some(error) = &picker.error {
                         error.clone()
                     } else if picker.accepting {
-                        "Loading theme... Esc to cancel.".to_owned()
+                        fl!("theme-picker-loading")
                     } else {
-                        "Hover or Up / Down to preview. Enter or click a theme to save.".to_owned()
+                        fl!("theme-picker-hint")
                     }),
             )
     }
