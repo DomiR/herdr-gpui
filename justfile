@@ -63,6 +63,16 @@ nextest *args:
 test-live binary:
     HERDR_TEST_BINARY="{{binary}}" cargo test --locked -p herdr-client --test live -- --ignored --nocapture
 
+# Explicit opt-in: runs its own herdr-core (Herdr 2) in a private home and
+# socket, and stops only that core.
+test-core binary:
+    HERDR_CORE_TEST_BINARY="{{binary}}" cargo test --locked -p herdr-core-client live -- --ignored --nocapture
+
+# Download the pinned herdr-core release for `target` (macos-aarch64, ...),
+# check its checksum, and put the binary in `dir`.
+fetch-herdr-core target dir="target/herdr-core":
+    python3 scripts/release/fetch-herdr-core.py {{target}} {{dir}}
+
 # Opens a real native window; requires an active desktop. Uses an isolated daemon.
 test-gui binary:
     HERDR_TEST_BINARY="{{binary}}" cargo test --locked -p herdr-gpui --features integration-test --test live_gui -- --ignored --nocapture --test-threads=1

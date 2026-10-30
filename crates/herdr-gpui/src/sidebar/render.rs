@@ -839,7 +839,8 @@ impl HerdrWindow {
                                         .child(agents_sort(self, cx)),
                                 )
                             })
-                            .child(agents),
+                            .child(agents)
+                            .children(self.core_sidebar_rows(cx)),
                     )
             })
             .map(|sidebar| {
