@@ -218,6 +218,20 @@ final class RemoteClient: Sendable {
         let _: EmptyAnswer = try await send("POST", "/api/term/\(Self.segment(pane))/rename", body: Body(label: label), bearer: bearer)
     }
 
+    /// What was said in this computer's chats; nil from a daemon that
+    /// cannot search, so the phone's index answers instead.
+    func search(_ query: String, bearer: String) async throws -> SearchAnswer? {
+        var components = URLComponents()
+        components.queryItems = [URLQueryItem(name: "q", value: query)]
+        // A query string reads `+` as a space.
+        let encoded = (components.percentEncodedQuery ?? "").replacingOccurrences(of: "+", with: "%2B")
+        do {
+            return try await send("GET", "/api/v2/search?\(encoded)", bearer: bearer)
+        } catch RemoteError.status(404, _) {
+            return nil
+        }
+    }
+
     /// The live socket, authenticated like every other call.
     func live(bearer: String) -> URLSessionWebSocketTask {
         let url = URL(string: origin.replacingOccurrences(of: "https://", with: "wss://") + "/api/v2/live")

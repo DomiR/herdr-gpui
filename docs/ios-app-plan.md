@@ -167,6 +167,19 @@ mirrored. Bearer auth as today (`Authorization: Bearer TOKEN`).
 `GET /api/v2/chat/{pane}` answers a `chat_snapshot` message (below)
 without its `type`.
 
+`GET /api/v2/search?q=TEXT` searches what was said in every chat the
+daemon follows: user and agent messages, ignoring case and runs of
+whitespace. The query is 2 to 100 characters, or the answer is 400. It
+answers at most three matches per chat, newest first, and sixty in all;
+`truncated` says more matched. A daemon without it answers 404, and the
+phone searches its own index of the chats it has cached instead.
+
+```json
+{"hits": [{"pane": "p1", "entry": 42, "author": "agent",
+           "snippet": "…the words around the match on one line"}],
+ "truncated": false}
+```
+
 `GET /api/v2/live` upgrades to a WebSocket. Text frames only, one JSON
 object each, at most 4 KiB from the phone; binary frames close the socket.
 

@@ -205,6 +205,7 @@ pub(crate) fn router(state: Shared) -> Router {
         .route("/api/v2/hosts/{host}/pair", post(hosts::pair))
         .route("/api/v2/live", get(crate::native::live))
         .route("/api/v2/new", get(crate::native::new_options))
+        .route("/api/v2/search", get(crate::native::search))
         .route("/api/v2/workspaces", post(crate::native::create_workspace))
         .route(
             "/api/v2/workspaces/{workspace}/chats",

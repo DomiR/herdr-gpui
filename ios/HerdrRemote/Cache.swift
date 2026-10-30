@@ -19,11 +19,11 @@ struct Cache: Sendable {
         var transcript: Transcript
     }
 
-    static let shared: Cache = {
-        let base = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.so.pen.herdr.remote")
-            ?? URL.applicationSupportDirectory
-        return Cache(folder: base.appending(path: "Cache", directoryHint: .isDirectory))
-    }()
+    /// The app group's folder, which the cache and the message index share.
+    static let base = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.so.pen.herdr.remote")
+        ?? URL.applicationSupportDirectory
+
+    static let shared = Cache(folder: base.appending(path: "Cache", directoryHint: .isDirectory))
 
     private func computerFolder(_ device: String) -> URL {
         folder.appending(path: Self.name(device), directoryHint: .isDirectory)
@@ -73,18 +73,22 @@ struct Cache: Sendable {
         Task.detached(priority: .utility) {
             Self.store(CachedChat(cursor: cursor, transcript: kept), to: file)
             Self.evict(in: chats, keeping: Self.chatsKept)
+            // All of it, so search finds more than the cache keeps.
+            try? await MessageIndex.shared.save(transcript, device: device, pane: pane)
         }
     }
 
-    /// Forgets one computer, as unpairing does, or everything.
+    /// Forgets one computer, as unpairing does, or everything, messages
+    /// in the search index included.
     func clear(_ device: String? = nil) {
         try? FileManager.default.removeItem(at: device.map(computerFolder) ?? folder)
+        Task { try? await MessageIndex.shared.forget(device: device) }
     }
 
-    /// Bytes on disk, for Settings.
+    /// Bytes on disk, the search index included, for Settings.
     func size() -> Int {
         let files = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: [.fileSizeKey])
-        return (files?.allObjects as? [URL] ?? []).reduce(0) {
+        return (files?.allObjects as? [URL] ?? []).reduce(MessageIndex.shared.size()) {
             $0 + ((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
         }
     }

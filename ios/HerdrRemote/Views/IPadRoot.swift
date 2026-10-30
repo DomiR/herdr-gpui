@@ -21,7 +21,7 @@ struct IPadRoot: View {
         NavigationSplitView {
             AttentionList(selection: $selection, query: query)
                 .safeAreaInset(edge: .bottom) { ConnectionToast(pairing: $pairing) }
-                .searchable(text: $query, placement: .sidebar, prompt: "Chats, workspaces, terminals")
+                .searchable(text: $query, placement: .sidebar, prompt: "Chats, messages, terminals")
                 .navigationTitle("Herdr")
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -73,6 +73,7 @@ private struct AttentionList: View {
     @Environment(\.openWindow) private var openWindow
     @Binding var selection: Route?
     let query: String
+    @State private var messages: [MessageHit] = []
 
     var body: some View {
         let chats = model.fleet.chatItems.filter(matches)
@@ -81,6 +82,14 @@ private struct AttentionList: View {
             section("Needs you", chats.filter(\.needsYou))
             section("Working", chats.filter(\.working))
             section("Recent", chats.filter { !$0.needsYou && !$0.working })
+            if !query.isEmpty, !messages.isEmpty {
+                Section("Messages") {
+                    ForEach(messages) { hit in
+                        let route = Route.chat(hit.item.key, title: hit.item.chat.title)
+                        MessageHitRow(hit: hit, query: query).tag(route).contextMenu { windowButton(route) }
+                    }
+                }
+            }
             if !terminals.isEmpty {
                 Section("Terminals") {
                     ForEach(terminals) { item in
@@ -97,6 +106,11 @@ private struct AttentionList: View {
         }
         .listStyle(.sidebar)
         .refreshable { model.fleet.networkChanged() }
+        .task(id: query) {
+            let found = await model.fleet.searchMessages(query)
+            guard !Task.isCancelled else { return }
+            messages = found
+        }
     }
 
     @ViewBuilder

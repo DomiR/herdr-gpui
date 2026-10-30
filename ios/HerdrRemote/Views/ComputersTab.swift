@@ -2,7 +2,8 @@ import HerdrRemoteCore
 import SwiftUI
 
 /// Computers C: an outline from computer to workspace to its chats and
-/// terminal tabs, with search across all of them at the top.
+/// terminal tabs, with search across all of them, and what was said in
+/// the chats, at the top.
 struct ComputersTab: View {
     @Environment(AppModel.self) private var model
     @Binding var pairing: Bool
@@ -13,7 +14,7 @@ struct ComputersTab: View {
         Group {
             if query.isEmpty { outline } else { SearchResults(query: query) }
         }
-        .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Chats, workspaces, terminals")
+        .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Chats, messages, terminals")
         .navigationTitle("Computers")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -122,10 +123,13 @@ struct ComputerLabel: View {
     }
 }
 
-/// Chats, workspaces, and terminals across every computer, by name.
+/// Chats, workspaces, and terminals across every computer, by name, and
+/// the messages in chats that contain the query.
 private struct SearchResults: View {
     @Environment(AppModel.self) private var model
     let query: String
+    @State private var messages: [MessageHit] = []
+    @State private var searching = false
 
     var body: some View {
         let needle = query.lowercased()
@@ -143,6 +147,15 @@ private struct SearchResults: View {
                     }
                 }
             }
+            if !messages.isEmpty {
+                Section("Messages") {
+                    ForEach(messages) { hit in
+                        NavigationLink(value: Route.chat(hit.item.key, title: hit.item.chat.title)) {
+                            MessageHitRow(hit: hit, query: query)
+                        }
+                    }
+                }
+            }
             if !terminals.isEmpty {
                 Section("Terminals") {
                     ForEach(terminals) { item in
@@ -156,7 +169,14 @@ private struct SearchResults: View {
             }
         }
         .overlay {
-            if chats.isEmpty, terminals.isEmpty { ContentUnavailableView.search(text: query) }
+            if chats.isEmpty, terminals.isEmpty, messages.isEmpty, !searching { ContentUnavailableView.search(text: query) }
+        }
+        .task(id: query) {
+            searching = true
+            let found = await model.fleet.searchMessages(query)
+            guard !Task.isCancelled else { return }
+            messages = found
+            searching = false
         }
     }
 }

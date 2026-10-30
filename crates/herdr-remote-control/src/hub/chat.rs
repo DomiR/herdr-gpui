@@ -173,6 +173,11 @@ impl Chat {
         (state.transcript.clone(), state.cursor)
     }
 
+    /// Reads the transcript in place, for work that must not copy it.
+    pub(crate) fn read<R>(&self, read: impl FnOnce(&Transcript) -> R) -> R {
+        read(&lock(&self.state).transcript)
+    }
+
     /// What a list row shows, without copying the transcript.
     pub(crate) fn summary(&self) -> Summary {
         let state = lock(&self.state);
