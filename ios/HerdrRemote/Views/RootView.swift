@@ -1,9 +1,10 @@
 import HerdrRemoteCore
 import SwiftUI
 
-enum RootTab: Hashable { case home, board, computers }
+enum RootTab: Hashable { case home, computers, settings }
 
-/// Home B: attention first, with Board, Computers, and Search as tabs, or
+/// Home B: attention first, with Computers and its search, and Settings, as
+/// tabs, or
 /// iPad B's split view when the window is wide: an iPad, or a foldable
 /// iPhone opened flat.
 struct RootView: View {
@@ -96,11 +97,11 @@ struct RootView: View {
                 }
             }
             .badge(model.fleet.waiting)
-            Tab("Board", systemImage: "square.grid.2x2", value: RootTab.board) {
-                NavigationStack { BoardTab().withRoutes() }
-            }
             Tab("Computers", systemImage: "desktopcomputer", value: RootTab.computers) {
                 NavigationStack { ComputersTab(pairing: $pairing).withRoutes() }
+            }
+            Tab("Settings", systemImage: "gearshape", value: RootTab.settings) {
+                NavigationStack { SettingsView() }
             }
         }
     }
@@ -112,8 +113,8 @@ extension RootView {
     /// `-pairLink URL` pairs without the camera (the desktop still
     /// approves), `-openLink URL` opens a Live Activity's link as a tap on
     /// the activity would, `-openTerm PANE` opens the terminal pane of
-    /// whichever computer lists it, `-tab board|computers|search` picks a
-    /// tab, and `-newWorkspace YES` opens the new workspace form. In a
+    /// whichever computer lists it, `-tab computers|settings` picks
+    /// that tab, and `-newWorkspace YES` opens the new workspace form. In a
     /// chat, `-session YES` opens its session sheet and `-draft TEXT`
     /// types into the composer.
     func followLaunchArguments() async {
@@ -129,8 +130,8 @@ extension RootView {
             model.open(url)
         }
         switch defaults.string(forKey: "tab") {
-        case "board": tab = .board
         case "computers": tab = .computers
+        case "settings": tab = .settings
         default: break
         }
         if defaults.bool(forKey: "newWorkspace") {

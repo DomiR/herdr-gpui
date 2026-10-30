@@ -38,12 +38,12 @@ final class AppModel {
     /// The one model, for intents iOS runs in the app's process.
     static var current: AppModel?
 
-    enum Shortcut { case board, newWorkspace, chat(Route) }
+    enum Shortcut { case home, newWorkspace, chat(Route) }
 
     /// Shows what a Control, an intent, or Spotlight asked for.
     func show(_ shortcut: Shortcut) {
         switch shortcut {
-        case .board: pendingTab = .board
+        case .home: pendingTab = .home
         case .newWorkspace: creating = .workspace(device: nil)
         case let .chat(route): pendingRoute = route
         }

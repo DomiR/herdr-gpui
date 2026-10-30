@@ -87,7 +87,6 @@ struct SettingsView: View {
                 LabeledContent("Version", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")
             }
         }
-        .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .task { cacheSize = model.fleet.cache.size() }
     }

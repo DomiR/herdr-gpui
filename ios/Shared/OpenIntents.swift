@@ -1,17 +1,18 @@
 import AppIntents
 
-/// Opens the app on the board, from a Control or Shortcuts. The widget
+/// Opens the app on Home, from a Control or Shortcuts. The type keeps the
+/// board's name, which Controls and shortcuts people added refer to. The widget
 /// extension only needs the type to draw a Control; iOS runs `perform` in
 /// the app, which it opens first.
 struct OpenBoardIntent: AppIntent {
-    static let title: LocalizedStringResource = "Open the Board"
+    static let title: LocalizedStringResource = "Open the Chats"
     static let description = IntentDescription("Shows every computer's chats by what they need.")
     static let openAppWhenRun = true
 
     @MainActor
     func perform() async throws -> some IntentResult {
         #if !WIDGET_EXTENSION
-        AppModel.current?.show(.board)
+        AppModel.current?.show(.home)
         #endif
         return .result()
     }

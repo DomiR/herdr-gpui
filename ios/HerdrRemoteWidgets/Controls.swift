@@ -2,15 +2,16 @@ import AppIntents
 import SwiftUI
 import WidgetKit
 
-/// Opens the board from Control Center, the Lock Screen, or the Action button.
+/// Opens Home from Control Center, the Lock Screen, or the Action button.
 struct BoardControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
+        // The kind keeps the board's name, so Controls already added stay.
         StaticControlConfiguration(kind: "so.pen.herdr.remote.board") {
             ControlWidgetButton(action: OpenBoardIntent()) {
-                Label("Herdr Board", systemImage: "square.grid.2x2")
+                Label("Herdr Chats", systemImage: "house")
             }
         }
-        .displayName("Herdr Board")
+        .displayName("Herdr Chats")
         .description("Every computer's chats, by what they need.")
     }
 }

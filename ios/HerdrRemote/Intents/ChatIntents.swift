@@ -98,9 +98,9 @@ struct HerdrShortcuts: AppShortcutsProvider {
         )
         AppShortcut(
             intent: OpenBoardIntent(),
-            phrases: ["Open the \(.applicationName) board"],
-            shortTitle: "Board",
-            systemImageName: "square.grid.2x2"
+            phrases: ["Open the \(.applicationName) chats"],
+            shortTitle: "Chats",
+            systemImageName: "house"
         )
     }
 }

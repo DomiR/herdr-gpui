@@ -2,7 +2,7 @@ import HerdrRemoteCore
 import SwiftUI
 
 /// iPad B: the attention list beside the open chat, with the chat's
-/// workspace terminal in an inspector. Board, Computers, and Settings open
+/// workspace terminal in an inspector. Computers and Settings open
 /// as sheets; a chat or terminal can also open in a window of its own.
 /// A foldable iPhone opened flat gets it too (`RootView.wideWidth`).
 struct IPadRoot: View {
@@ -13,7 +13,7 @@ struct IPadRoot: View {
     @State private var showing: Panel?
 
     enum Panel: String, Identifiable {
-        case board, computers, settings
+        case computers, settings
         var id: String { rawValue }
     }
 
@@ -34,8 +34,6 @@ struct IPadRoot: View {
                         .accessibilityLabel("New")
                     }
                     ToolbarItemGroup(placement: .bottomBar) {
-                        Button("Board", systemImage: "square.grid.2x2") { showing = .board }
-                            .keyboardShortcut("b", modifiers: [.command, .shift])
                         Spacer()
                         Button("Computers", systemImage: "desktopcomputer") { showing = .computers }
                         Button("Settings", systemImage: "gearshape") { showing = .settings }
@@ -57,7 +55,6 @@ struct IPadRoot: View {
         .sheet(item: $showing) { panel in
             NavigationStack {
                 switch panel {
-                case .board: BoardTab().withRoutes()
                 case .computers: ComputersTab(pairing: $pairing).withRoutes()
                 case .settings: SettingsView()
                 }

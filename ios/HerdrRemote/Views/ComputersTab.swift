@@ -16,68 +16,70 @@ struct ComputersTab: View {
         }
         .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Chats, messages, terminals")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                NavigationLink { SettingsView() } label: { Image(systemName: "gearshape") }
-                    .accessibilityLabel("Settings")
-            }
-        }
     }
 
     private var outline: some View {
         List {
-            ForEach(model.fleet.machines) { machine in
-                DisclosureGroup(isExpanded: expanded(machine.id)) {
-                    ForEach(machine.home?.workspaces ?? []) { workspace in
-                        DisclosureGroup(isExpanded: expanded("\(machine.id)/\(workspace.id)")) {
-                            ForEach(workspace.chats) { chat in
-                                let item = ChatItem(computer: machine.computer, workspace: workspace, chat: chat)
-                                NavigationLink(value: Route.chat(item.key, title: chat.title)) {
-                                    ChatRowLabel(item: item, showsComputer: false)
-                                }
-                            }
-                            Button {
-                                model.creating = .chat(device: machine.id, workspace: workspace.id, label: workspace.label)
-                            } label: {
-                                Label("New chat", systemImage: "plus.bubble")
-                            }
-                            ForEach(workspace.terminals) { terminal in
-                                if let pane = terminal.firstPane {
-                                    NavigationLink(value: Route.term(PaneKey(device: machine.id, pane: pane.pane), title: terminal.label)) {
-                                        Label(terminal.label, systemImage: "apple.terminal").lineLimit(1)
-                                    }
-                                }
-                            }
-                        } label: {
-                            Label {
-                                HStack {
-                                    Text(workspace.label).lineLimit(1).layoutPriority(1)
-                                    if let branch = workspace.branch, branch != workspace.label {
-                                        Text(branch).font(.caption.monospaced()).foregroundStyle(.secondary)
-                                            .lineLimit(1).truncationMode(.middle)
-                                    }
-                                }
-                            } icon: {
-                                Image(systemName: "folder")
-                            }
-                        }
-                    }
-                    Button {
-                        model.creating = .workspace(device: machine.id)
-                    } label: {
-                        Label("New workspace", systemImage: "folder.badge.plus")
-                    }
-                    HostRows(computer: machine.computer)
-                } label: {
-                    ComputerLabel(machine: machine)
-                }
-                .swipeActions {
-                    Button("Forget", role: .destructive) { model.forget(machine.computer) }
-                }
+            Section {
+                machines
             }
-            Button { pairing = true } label: { Label("Add a computer", systemImage: "plus") }
+            Section {
+                Button { pairing = true } label: { Label("Add a computer", systemImage: "plus") }
+            }
         }
         .listStyle(.sidebar)
+    }
+
+    private var machines: some View {
+        ForEach(model.fleet.machines) { machine in
+            DisclosureGroup(isExpanded: expanded(machine.id)) {
+                ForEach(machine.home?.workspaces ?? []) { workspace in
+                    DisclosureGroup(isExpanded: expanded("\(machine.id)/\(workspace.id)")) {
+                        ForEach(workspace.chats) { chat in
+                            let item = ChatItem(computer: machine.computer, workspace: workspace, chat: chat)
+                            NavigationLink(value: Route.chat(item.key, title: chat.title)) {
+                                ChatRowLabel(item: item, showsComputer: false)
+                            }
+                        }
+                        Button {
+                            model.creating = .chat(device: machine.id, workspace: workspace.id, label: workspace.label)
+                        } label: {
+                            Label("New chat", systemImage: "plus.bubble")
+                        }
+                        ForEach(workspace.terminals) { terminal in
+                            if let pane = terminal.firstPane {
+                                NavigationLink(value: Route.term(PaneKey(device: machine.id, pane: pane.pane), title: terminal.label)) {
+                                    Label(terminal.label, systemImage: "apple.terminal").lineLimit(1)
+                                }
+                            }
+                        }
+                    } label: {
+                        Label {
+                            HStack {
+                                Text(workspace.label).lineLimit(1).layoutPriority(1)
+                                if let branch = workspace.branch, branch != workspace.label {
+                                    Text(branch).font(.caption.monospaced()).foregroundStyle(.secondary)
+                                        .lineLimit(1).truncationMode(.middle)
+                                }
+                            }
+                        } icon: {
+                            Image(systemName: "folder")
+                        }
+                    }
+                }
+                Button {
+                    model.creating = .workspace(device: machine.id)
+                } label: {
+                    Label("New workspace", systemImage: "folder.badge.plus")
+                }
+                HostRows(computer: machine.computer)
+            } label: {
+                ComputerLabel(machine: machine)
+            }
+            .swipeActions {
+                Button("Forget", role: .destructive) { model.forget(machine.computer) }
+            }
+        }
     }
 
     private func expanded(_ id: String) -> Binding<Bool> {

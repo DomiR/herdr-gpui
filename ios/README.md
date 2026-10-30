@@ -80,7 +80,7 @@ and nothing goes through your phone.
      opens a chat, as tapping a Live Activity does.
    - `-openTerm PANE` opens a terminal; `-type TEXT` then types into it
      (a newline presses Enter).
-   - `-tab board|computers` picks a tab.
+   - `-tab computers|settings` opens that tab.
    - `-newWorkspace YES` opens the new workspace form.
    - `-syncBar waiting|failed` shows the sync bar as if a change were on
      its way or had failed.
@@ -265,10 +265,10 @@ extension. For the simulator loop:
     rewrites as homes change.
   - The file is readable after the first unlock, so lock screen widgets
     draw. The full cache stays readable only while unlocked.
-- **Controls:** Herdr Board and New Herdr Workspace, for Control Center,
+- **Controls:** Herdr Chats and New Herdr Workspace, for Control Center,
   the Lock Screen, and the Action button.
 - **Siri and Shortcuts:**
-  - What needs me, Ask a chat, Stop a chat, and Open the board.
+  - What needs me, Ask a chat, Stop a chat, and Open the chats.
   - Asking and stopping need an unlocked phone.
   - Chats are `ChatEntity`s that Spotlight indexes. Tapping one opens the
     chat.
