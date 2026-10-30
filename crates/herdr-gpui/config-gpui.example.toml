@@ -16,6 +16,11 @@
 # none. Uninstalled names are ignored, and at most 8 are accepted per section.
 # With none installed and [terminal] fallback unset, a pane showing an icon
 # brings up a dismissible card naming a Nerd Font to install.
+# [sidebar], [tabs], and [ui] then fall back to the platform's Chinese,
+# Japanese, and Korean faces (PingFang and Hiragino on macOS, Microsoft YaHei
+# and Yu Gothic on Windows, Noto Sans CJK on Linux), the one matching the
+# first CJK language in `language` or the system's languages first, so Han
+# characters take that region's shapes. [terminal] keeps the icons alone.
 # Saved changes to the local file reload automatically in every GUI window.
 
 # Built-ins: Default, Nord, Dracula, Catppuccin Mocha, Catppuccin Latte, plus
@@ -38,6 +43,12 @@ contrast = "standard"
 # the theme, "system" from Windows Settings > Personalization > Colors.
 # Other platforms keep the theme's. Terminal colors never change with it.
 accent = "theme"
+# The language of the app's own text: "system" follows the OS's preferred
+# languages, or a BCP 47 tag such as "fr-CA". Only English ships so far, so
+# any other language shows English. "en-XA" (accented and longer) and "en-XB"
+# (right to left) are pseudo-locales for testing; see docs/i18n.md. Terminal
+# output, names, and what the daemon reports never change with it.
+language = "system"
 
 # Ask before closing a tab (closing terminates its terminal processes).
 confirm_close_tab = true

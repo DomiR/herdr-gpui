@@ -15,6 +15,7 @@ pub(crate) mod backdrop;
 mod bitmap_fonts;
 mod boat;
 pub(crate) mod chat;
+mod cjk_fonts;
 mod cloud;
 mod coder;
 mod container;
@@ -215,6 +216,8 @@ pub struct Config {
     /// device's server keys can be layered under the same GUI overrides.
     pub(crate) keybinding_overrides: BTreeMap<String, Binding>,
     pub keybindings: Keymap,
+    /// The language the app shows: `system`, or a BCP 47 tag (docs/i18n.md).
+    pub language: herdr_i18n::Language,
     pub layout: Layout,
     /// Configured families, sorted, that font resolution found no installed
     /// family for; `diagnostic` reports them.
@@ -417,6 +420,7 @@ impl Default for Config {
             keep_selection_after_copy: true,
             keybinding_overrides: BTreeMap::new(),
             keybindings: Keymap::default(),
+            language: herdr_i18n::Language::default(),
             layout: Layout::default(),
             missing_fonts: Vec::new(),
             missing_weight: None,
@@ -500,6 +504,7 @@ struct Settings {
     gitlab: GitLabConfig,
     keep_selection_after_copy: Option<bool>,
     keybindings: BTreeMap<String, Binding>,
+    language: Option<herdr_i18n::Language>,
     layout: Layout,
     notifications: NotificationSettings,
     open_files_in: FileTarget,
@@ -826,6 +831,7 @@ impl Config {
             settings.layout.legacy_sidebar_gap,
         )?;
         config.layout = settings.layout;
+        config.language = settings.language.unwrap_or_default();
         config.sidebar_style = settings.sidebar.style()?;
         config.keybindings =
             Keymap::with_overrides(&settings.keybindings, &settings.pane_keys, &base.keys)?;

@@ -1,5 +1,6 @@
 //! A single-line, native-IME-aware input for searchable pickers.
 use std::ops::Range;
+use unicode_segmentation::UnicodeSegmentation;
 
 use gpui::{
     App, Bounds, ClipboardItem, ContentMask, Context, CursorStyle, EntityInputHandler,
@@ -12,11 +13,17 @@ use crate::config::{Config, FontConfig, Theme};
 use crate::fonts::StyledFont;
 use crate::{actions, input::ViewInputHandler, words};
 
+mod control_keys;
+
 pub struct Changed;
 
 pub struct SearchInput {
     pub focus: FocusHandle,
     placeholder: String,
+    /// Formats the placeholder in the current locale, so a field built
+    /// before a language change shows the new language's hint.
+    localized: Option<Box<dyn Fn() -> String>>,
+    _locale: gpui::Subscription,
     /// What a screen reader calls the field when its placeholder does not
     /// name it, as when a caption beside the field does.
     label: Option<SharedString>,
@@ -36,6 +43,9 @@ pub struct SearchInput {
     /// Text drawn dimmed after the caret, which the owner offers to complete
     /// what is typed; shown only while the caret ends the text.
     completion: Option<String>,
+    /// What Ctrl-K last cut, which Ctrl-Y puts back, kept apart from the
+    /// clipboard as in a native macOS field.
+    killed: String,
 }
 
 // Internal offsets are UTF-8 boundaries; only the platform input API uses UTF-16.
@@ -98,19 +108,33 @@ impl Editing {
         }
     }
 
-    // Scalar boundaries keep this small input dependency-free and never split UTF-8.
+    // Grapheme boundaries of the whole text, so arrows and deletion never
+    // split what reads as one character: an accented letter, an emoji
+    // sequence, a Hangul syllable. A slice would start a cluster of its own
+    // at the cursor, splitting a letter from the accent typed before it.
+    fn boundaries(&self) -> impl DoubleEndedIterator<Item = usize> + '_ {
+        self.text
+            .grapheme_indices(true)
+            .map(|(i, _)| i)
+            .chain([self.text.len()])
+    }
+
     fn previous(&self) -> usize {
-        self.text[..self.cursor]
-            .char_indices()
-            .next_back()
-            .map_or(0, |(i, _)| i)
+        self.boundaries().rfind(|i| *i < self.cursor).unwrap_or(0)
     }
 
     fn next(&self) -> usize {
-        self.text[self.cursor..]
-            .chars()
-            .next()
-            .map_or(self.cursor, |ch| self.cursor + ch.len_utf8())
+        self.boundaries()
+            .find(|i| *i > self.cursor)
+            .unwrap_or(self.cursor)
+    }
+
+    /// The first boundary at or after `offset`, where an edit leaves the
+    /// caret when what it inserted joins the cluster after it.
+    fn boundary_from(&self, offset: usize) -> usize {
+        self.boundaries()
+            .find(|i| *i >= offset)
+            .unwrap_or(self.text.len())
     }
 
     fn replace(
@@ -130,6 +154,9 @@ impl Editing {
         self.marked = (composing && !inserted.is_empty())
             .then_some(range.start..range.start + inserted.len());
         self.cursor = range.start + inserted.len();
+        if !composing {
+            self.cursor = self.boundary_from(self.cursor);
+        }
         self.anchor = self.cursor;
         if composing && let Some(selection) = selection {
             // IME selection is relative to the supplied text, not the whole buffer.
@@ -147,6 +174,12 @@ impl SearchInput {
         Self {
             focus: cx.focus_handle(),
             placeholder: "Search themes...".into(),
+            localized: None,
+            _locale: cx.observe_global::<crate::i18n::CurrentLocale>(|this, cx| {
+                if let Some(placeholder) = this.localized.as_ref().map(|localized| localized()) {
+                    this.show_placeholder(placeholder, cx);
+                }
+            }),
             label: None,
             edit: Editing::default(),
             font: Config::default().ui,
@@ -158,6 +191,7 @@ impl SearchInput {
             framed: true,
             masked: false,
             completion: None,
+            killed: String::new(),
         }
     }
 
@@ -224,11 +258,28 @@ impl SearchInput {
     }
 
     /// Unchanged is a no-op, so the owner may set it from its own render.
+    /// The text stays as given when the locale changes, as an example path
+    /// or token does.
     pub fn set_placeholder(&mut self, value: &str, cx: &mut Context<Self>) {
-        if self.placeholder == value {
-            return;
+        self.localized = None;
+        if self.placeholder != value {
+            self.show_placeholder(value.into(), cx);
         }
-        self.placeholder = value.into();
+    }
+
+    /// Shows what `placeholder` formats now, and formats it again whenever
+    /// the locale changes.
+    pub(crate) fn set_placeholder_with(
+        &mut self,
+        placeholder: impl Fn() -> String + 'static,
+        cx: &mut Context<Self>,
+    ) {
+        self.show_placeholder(placeholder(), cx);
+        self.localized = Some(Box::new(placeholder));
+    }
+
+    fn show_placeholder(&mut self, placeholder: String, cx: &mut Context<Self>) {
+        self.placeholder = placeholder;
         self.layout = None;
         cx.notify();
     }
@@ -336,6 +387,12 @@ impl SearchInput {
         let key = event.keystroke.key.as_str();
         let modifiers = event.keystroke.modifiers;
         if matches!(key, "up" | "down" | "enter" | "escape") {
+            return;
+        }
+        if self.control_key(key, modifiers, window, cx) {
+            cx.stop_propagation();
+            window.prevent_default();
+            cx.notify();
             return;
         }
         let edit = actions::edit_modifiers(modifiers) && matches!(key, "a" | "c" | "v" | "x");
@@ -797,6 +854,9 @@ mod tests {
     use super::*;
 
     mod completion;
+    mod composition;
+    mod control_keys;
+    mod placeholder;
     mod word_keys;
 
     #[test]
