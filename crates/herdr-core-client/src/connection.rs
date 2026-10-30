@@ -444,9 +444,11 @@ fn connect_stream(path: &std::path::Path) -> io::Result<herdr_client::Stream> {
     Ok(stream)
 }
 
+/// The core's pipe name is open to every local account, so the pipe must be
+/// one this user owns before anything is sent.
 #[cfg(windows)]
 fn connect_stream(path: &std::path::Path) -> io::Result<herdr_client::Stream> {
-    let mut stream = herdr_client::Stream::connect(path)?;
+    let mut stream = herdr_client::Stream::connect_owned(path)?;
     stream.set_read_timeout(Some(POLL))?;
     stream.set_write_timeout(Some(WRITE_TIMEOUT))?;
     Ok(stream)
