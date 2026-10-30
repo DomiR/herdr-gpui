@@ -304,11 +304,8 @@ impl SettingsWindow {
                 ),
             )
             .child(
-                ui::row(theme, "sidebar-ports", "Show listening ports")
-                    .description(
-                        "The ports a workspace's servers listen on, on a line under its row. \
-                         The status bar keeps them; Show listening ports in General hides both.",
-                    )
+                ui::row(theme, "sidebar-ports", fl!("settings-sidebar-ports"))
+                    .description(fl!("settings-sidebar-ports-description"))
                     .switch(
                         ui::toggle(
                             theme,
