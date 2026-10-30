@@ -391,10 +391,21 @@ phone never disturbs the desktop's layout.
   - **What it needs.** A machine is reachable only at an address its CA
     covers: a LAN, Tailscale, or `.local` address. A machine reached only
     through a provider's proxy is paired but unreachable from the phone.
-    Herdr UI copies a build only for a machine of its own platform until
-    the app ships builds for other platforms
-    (`remote-control/TRIPLE/herdr-remote-control` beside the executable).
-    Until then, another platform reports which build is missing.
+  - **Which build a machine gets.** Herdr UI copies every build over SSH,
+    so the machine needs no internet:
+    - A machine like this computer, or any Mac when this is a release (its
+      build is universal), gets the app's own `herdr-remote-control`.
+    - A Linux machine, when this is a release, gets the release's static
+      musl build for its architecture (`herdr-remote-control-VERSION-ARCH-unknown-linux-musl`),
+      which runs whatever its glibc. Herdr UI downloads it once per
+      version and checks it against the release's Ed25519-signed
+      `host-manifest.json` (schema 4) before it leaves this computer.
+    - A development build, as on a pull request, sends its checkout's
+      source (uncommitted changes included, through `git stash create`)
+      and builds `herdr-remote-control` on the machine with its own Rust.
+      The pinned toolchain comes from rustup, and outputs stay in
+      `~/.cache/herdr-remote-control`, so the next build is incremental.
+      A machine without Rust says so.
 
 ## iOS Live Activities
 

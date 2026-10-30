@@ -357,6 +357,12 @@ class ReleaseTargets(unittest.TestCase):
         for name in ("update-manifest.json", "update-manifest.sig"):
             self.assertIn(f"            dist/{name}\n", sign)
         self.assertIn('test "$(wc -c < dist/update-manifest.sig | tr -d \' \')" = 64', sign)
+        # Host builds: built static in each Linux job, listed and signed here.
+        self.assertIn('create dist "$VERSION" --hosts', sign)
+        self.assertIn('test "$(wc -c < dist/host-manifest.sig | tr -d \' \')" = 64', sign)
+        for name in ("host-manifest.json", "host-manifest.sig"):
+            self.assertIn(f"            dist/{name}\n", sign)
+        self.assertIn('build-host.sh "$VERSION" "$HOST_TARGET" dist', jobs["linux"])
 
 
 class WindowsTrust(unittest.TestCase):
@@ -549,7 +555,7 @@ class ReleaseSecurity(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.path = Path(self.temp.name)
         for name in MANIFEST.base_names(VERSION):
-            data = b"s" * 64 if name in ("update-manifest.sig", "package-manifest.sig", "windows-manifest.sig") else name.encode()
+            data = b"s" * 64 if name in MANIFEST.UPDATER_SIGNATURES else name.encode()
             (self.path / name).write_bytes(data)
             for algorithm in ("sha256", "sha512"):
                 checksum = hashlib.new(algorithm, data).hexdigest()
@@ -579,7 +585,10 @@ class ReleaseSecurity(unittest.TestCase):
             "herdr-gpui-20260920.1-x86_64-unknown-linux-gnu-update.tar.gz",
             "herdr-gpui-20260920.1-aarch64-unknown-linux-gnu-update.tar.gz",
             "update-manifest.json", "update-manifest.sig", "package-manifest.json", "package-manifest.sig",
-            "windows-manifest.json", "windows-manifest.sig"})
+            "windows-manifest.json", "windows-manifest.sig",
+            *(f"herdr-remote-control-20260920.1-{target}"
+              for target in ("x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl")),
+            "host-manifest.json", "host-manifest.sig"})
         # Five files per base asset; SHA256SUMS lists all but itself.
         assets = len(MANIFEST.base_names(VERSION)) * 5
         self.assertEqual(len((self.path / "SHA256SUMS").read_text().splitlines()), assets)
@@ -606,7 +615,7 @@ class ReleaseSecurity(unittest.TestCase):
         self.run_manifest("verify", False)
 
     def test_raw_updater_signature_length(self):
-        for name in ("update-manifest.sig", "package-manifest.sig", "windows-manifest.sig"):
+        for name in MANIFEST.UPDATER_SIGNATURES:
             path = self.path / name
             for size in (1, 63, 65, 128):
                 path.write_bytes(b"s" * size)

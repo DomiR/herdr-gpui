@@ -29,7 +29,7 @@ mod windows;
 #[cfg(windows)]
 use windows as install;
 
-pub use release::{RELEASES_PAGE, release_page};
+pub use release::{HOST_TARGETS, RELEASES_PAGE, download_host_build, release_page};
 
 use std::{
     ffi::OsString,

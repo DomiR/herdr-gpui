@@ -19,12 +19,9 @@
 //! executor.
 
 pub(crate) mod ask;
+pub(crate) mod install;
 
-use crate::{
-    automations::Machine,
-    host_build::{self, Platform},
-    teleport::Host,
-};
+use crate::{automations::Machine, host_build, teleport::Host};
 use herdr_client::{ConnectTarget, ScriptLimits, shell_quote};
 use herdr_remote_control::{
     app::enroll::{Apns, Input},
@@ -38,14 +35,10 @@ use std::{sync::atomic::AtomicBool, time::Duration};
 /// The daemon's name on a host, and the folder beside the app holding its
 /// builds for other platforms.
 const PROGRAM: &str = "herdr-remote-control";
-const BUILDS: &str = "remote-control";
 /// What `enroll` may print: one JSON answer.
 const ENROLL_OUTPUT: u64 = 64 * 1024;
 /// `enroll` may wait up to 20 s for a daemon it started.
 const ENROLL_IDLE: Duration = Duration::from_secs(60);
-/// A slow link can take a while to carry a few megabytes.
-const COPY_IDLE: Duration = Duration::from_secs(300);
-const COPY_OUTPUT: u64 = 64 * 1024;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -54,10 +47,32 @@ pub enum Error {
     Answer(#[source] serde_json::Error),
     #[error(transparent)]
     Build(#[from] host_build::Error),
+    #[error("Could not keep the downloaded build in {}", path.display())]
+    Cache {
+        path: std::path::PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("Could not download this release's herdr-remote-control for {target}")]
+    Download {
+        target: String,
+        #[source]
+        source: herdr_updater::Error,
+    },
+    #[error("Could not run git to send this checkout's source")]
+    Git(#[source] std::io::Error),
     #[error("This app no longer connects to that host")]
     Gone,
     #[error("This app has no herdr-remote-control build for {platform}")]
     NoBuild { platform: String },
+    #[error(
+        "Rust is not installed on that machine; install it with rustup (https://rustup.rs) to build herdr-remote-control there"
+    )]
+    NoRust,
+    #[error("This development build cannot find the checkout it was built from")]
+    NoSource,
+    #[error("This app has no state directory to keep downloads in")]
+    NoStateDir,
     #[error("Could not run herdr-remote-control on the host: {0}")]
     Run(#[source] herdr_client::Error),
     #[error("Remote control cannot be paired on this kind of host")]
@@ -132,7 +147,7 @@ pub(crate) fn pair(job: &Job, cancelled: &AtomicBool) -> HostOutcome {
 
 fn enroll(job: &Job, cancelled: &AtomicBool) -> Result<Enrolled, Error> {
     let host = host(job.target.as_ref())?;
-    let program = ensure_program(&host, cancelled)?;
+    let program = install::ensure(&host, cancelled)?;
     let input = Input {
         enroll: Enroll {
             name: job.pairing.name.clone(),
@@ -194,84 +209,6 @@ pub(crate) fn revoke_script(device: &DeviceId) -> String {
 fn host(target: Option<&ConnectTarget>) -> Result<Host, Error> {
     let target = target.ok_or(Error::Gone)?;
     Host::new(target).map_err(|_| Error::Unsupported)
-}
-
-/// The version directory this app's build goes in on a host.
-fn version() -> &'static str {
-    crate::APP_VERSION
-}
-
-/// Copies this app's build to the host unless it holds the same bytes
-/// already; the quoted path to run it by.
-fn ensure_program(host: &Host, cancelled: &AtomicBool) -> Result<String, Error> {
-    let probe = host
-        .capture(&probe_script(version()), cancelled)
-        .map_err(Error::Run)?;
-    let probe = String::from_utf8_lossy(&probe);
-    let mut lines = probe.lines();
-    let platform = Platform::parse(lines.next().unwrap_or_default())?;
-    let installed = lines.next().unwrap_or_default().trim();
-    let bundled = crate::bundled::locate(super::service::PROGRAM);
-    let source = host_build::build_for(
-        &platform,
-        &host_build::beside_app(),
-        BUILDS,
-        PROGRAM,
-        bundled,
-    )
-    .ok_or_else(|| Error::NoBuild {
-        platform: platform.to_string(),
-    })?;
-    let (_, sha256) = host_build::digest(PROGRAM, &source)?;
-    if installed != sha256 {
-        let file =
-            std::fs::File::open(&source).map_err(|source_error| host_build::Error::Binary {
-                program: PROGRAM,
-                path: source.clone(),
-                source: source_error,
-            })?;
-        host.stream(
-            &host_build::copy_script(PROGRAM, version(), &sha256),
-            file,
-            Vec::new(),
-            ScriptLimits {
-                output: COPY_OUTPUT,
-                idle: COPY_IDLE,
-            },
-            cancelled,
-        )
-        .map_err(|error| match &error {
-            herdr_client::Error::ScriptExit { status, .. }
-                if status.code() == Some(host_build::CHECKSUM_EXIT) =>
-            {
-                Error::Build(host_build::Error::Checksum)
-            }
-            _ => Error::Run(error),
-        })?;
-    }
-    Ok(installed_path(version()))
-}
-
-/// The host's platform on the first line, then the SHA-256 of the build of
-/// `version` it holds, or nothing.
-pub(crate) fn probe_script(version: &str) -> String {
-    format!(
-        "uname -sm\n\
-         file={}\n\
-         if [ -f \"$file\" ]; then\n\
-         if command -v sha256sum >/dev/null 2>&1; then sum=$(sha256sum \"$file\"); else sum=$(shasum -a 256 \"$file\"); fi\n\
-         echo \"${{sum%% *}}\"\n\
-         fi\n",
-        installed_path(version)
-    )
-}
-
-/// Where [`host_build::copy_script`] puts `version`, as a shell word.
-fn installed_path(version: &str) -> String {
-    format!(
-        "\"$HOME/.local/share/{PROGRAM}/bin/\"{}\"/{PROGRAM}\"",
-        shell_quote(version)
-    )
 }
 
 /// `error` and its causes, for the phone to show.

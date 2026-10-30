@@ -339,16 +339,21 @@ signing step of `sign` receives it; builds, tests, metadata, OIDC and publicatio
 never do. The public key is validated before builds and matched against the
 private key before signing exact JSON bytes. See [updater setup](../../docs/updating.md).
 
-The exact release base set is twenty-three files: the DMG, two manual Linux archives,
+The exact release base set is twenty-seven files: the DMG, two manual Linux archives,
 their `.deb`, `.rpm` and Arch packages, two Windows zips and two Windows installers, SBOM, three updater archives, `update-manifest.json`, and its
 raw 64-byte Ed25519 `update-manifest.sig`, plus `package-manifest.json` and
-`package-manifest.sig` for the six Linux packages and `windows-manifest.json` and
-`windows-manifest.sig` for the two signed Windows installers. All twenty-three receive checksum and Sigstore sidecars and GitHub
+`package-manifest.sig` for the six Linux packages, `windows-manifest.json` and
+`windows-manifest.sig` for the two signed Windows installers, and
+`host-manifest.json` and `host-manifest.sig` (schema 4) for the two static
+`herdr-remote-control-VERSION-ARCH-unknown-linux-musl` host builds. Each Linux
+job builds its host build with `build-host.sh`; Herdr UI copies it onto SSH and
+cloud machines of that architecture to pair a phone with them
+(`docs/remote-control-plan.md`, "Other machines"). All twenty-seven receive checksum and Sigstore sidecars and GitHub
 provenance in the separate protected OIDC job. The raw signature is not overwritten:
 its Sigstore sidecar is `update-manifest.sig.sig`; the JSON's is
-`update-manifest.json.sig` (and likewise for the package and Windows manifests). `SHA256SUMS` covers all 115 base/sidecar files; the
-immutable release has exactly 116 assets. Missing or additional files fail closed.
-`artifact-manifest.py base-names VERSION DIRECTORY` lists the twenty-three base names.
+`update-manifest.json.sig` (and likewise for the package, Windows, and host manifests). `SHA256SUMS` covers all 135 base/sidecar files; the
+immutable release has exactly 136 assets. Missing or additional files fail closed.
+`artifact-manifest.py base-names VERSION DIRECTORY` lists the twenty-seven base names.
 The publication job verifies downloaded draft bytes and the complete exact asset
 set before making it public; Homebrew still verifies and uses only the final DMG.
 
