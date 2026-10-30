@@ -168,19 +168,19 @@ final class AppModel {
         }
     }
 
-    /// The paired computer that vouched for `computer`, for one paired
-    /// through another.
-    func vouching(_ computer: Computer) -> Computer? {
-        guard let via = computer.via else { return nil }
-        return computers.first { $0.fingerprint == via }
-    }
-
     /// The name to show for `computer`: its own, plus the start of its
     /// fingerprint when another paired computer has the same name.
     func displayName(_ computer: Computer) -> String {
         let twins = computers.filter { $0.name == computer.name }.count
         guard twins > 1 else { return computer.name }
         return "\(computer.name) (\(computer.fingerprint.hex.prefix(8)))"
+    }
+
+    /// The paired computer that vouched for `computer`, for one paired
+    /// through another.
+    func vouching(_ computer: Computer) -> Computer? {
+        guard let via = computer.via else { return nil }
+        return computers.first { $0.fingerprint == via }
     }
 
     /// The paired computer an activity names by fingerprint, if any.

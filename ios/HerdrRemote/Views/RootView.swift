@@ -157,29 +157,3 @@ extension View {
         }
     }
 }
-
-/// Says which computers are not reachable, and why.
-struct ConnectionBanner: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        let down = model.fleet.machines.compactMap { machine -> String? in
-            switch machine.status {
-            case let .offline(reason): "\(machine.computer.name): \(reason)"
-            case .revoked: "\(machine.computer.name) unpaired this phone. Pair it again."
-            case .connecting where machine.home != nil: "Reconnecting to \(machine.computer.name)…"
-            default: nil
-            }
-        }
-        if !down.isEmpty {
-            VStack(alignment: .leading, spacing: 2) {
-                ForEach(down, id: \.self) { Text($0) }
-            }
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 14).padding(.vertical, 8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .glassEffect(.regular, in: .rect(cornerRadius: 16))
-        }
-    }
-}

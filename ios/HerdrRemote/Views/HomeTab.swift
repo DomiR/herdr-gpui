@@ -16,7 +16,6 @@ struct HomeTab: View {
         let rest = items.filter { !$0.needsYou && !$0.working }
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                ConnectionBanner()
                 if !asking.isEmpty {
                     SectionTitle(title: "Needs you", count: asking.count, tint: .orange)
                     ForEach(asking) { item in
@@ -42,7 +41,7 @@ struct HomeTab: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemGroupedBackground))
-        .opacity(model.fleet.machines.allSatisfy(\.stale) && !items.isEmpty ? 0.6 : 1)
+        .safeAreaInset(edge: .bottom) { ConnectionToast(pairing: $pairing) }
         .confirmationDialog(
             "Close \(closing?.chat.title ?? "this chat")?",
             isPresented: Binding(get: { closing != nil }, set: { if !$0 { closing = nil } }),

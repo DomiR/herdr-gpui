@@ -20,6 +20,7 @@ struct IPadRoot: View {
     var body: some View {
         NavigationSplitView {
             AttentionList(selection: $selection, query: query)
+                .safeAreaInset(edge: .bottom) { ConnectionToast(pairing: $pairing) }
                 .searchable(text: $query, placement: .sidebar, prompt: "Chats, workspaces, terminals")
                 .navigationTitle("Herdr")
                 .toolbar {
@@ -77,7 +78,6 @@ private struct AttentionList: View {
         let chats = model.fleet.chatItems.filter(matches)
         let terminals = model.fleet.terminalItems.filter(matches)
         List(selection: $selection) {
-            ConnectionBanner().listRowSeparator(.hidden)
             section("Needs you", chats.filter(\.needsYou))
             section("Working", chats.filter(\.working))
             section("Recent", chats.filter { !$0.needsYou && !$0.working })

@@ -56,6 +56,8 @@ final class Fleet {
         var home: Home?
         /// `home` came from the cache and the link has not refreshed it.
         var stale = true
+        /// When the computer last sent `home`.
+        var updated: Date?
         /// When this phone saw its chats answer, for a computer that does
         /// not date them itself.
         var answers = AnswerTimes()
@@ -95,7 +97,12 @@ final class Fleet {
                 known.computer = computer
                 return known
             }
-            return Machine(computer: computer, home: cache.home(computer.device), answers: cache.answers(computer.device))
+            return Machine(
+                computer: computer,
+                home: cache.home(computer.device),
+                updated: cache.homeDate(computer.device),
+                answers: cache.answers(computer.device)
+            )
         }
         if active { machines.forEach { startLink($0.computer) } }
         // From the cached homes at launch, and without forgotten ones.
@@ -343,6 +350,7 @@ final class Fleet {
             machines[index].home = home
             machines[index].stale = false
             machines[index].watching = true
+            machines[index].updated = .now
             cache.save(home: home, device: device)
             for key in Set(pending.items.filter { $0.key.device == device }.map(\.key)) {
                 pending.settle(key) { shown($0) }
