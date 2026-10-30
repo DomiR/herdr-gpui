@@ -185,6 +185,18 @@ bundle profile="release" features="":
     cp target/{{profile}}/herdr-acp "$app/Contents/MacOS/herdr-acp"
     # Remote control runs the herdr-remote-control beside it as a user service.
     cp target/{{profile}}/herdr-remote-control "$app/Contents/MacOS/herdr-remote-control"
+    # Herdr 2 terminals run in the pinned herdr-core beside it, as releases
+    # bundle it. Fetched once per profile; an offline build goes on without.
+    core=target/{{profile}}/herdr-core
+    if [ ! -f "$core" ]; then
+        python3 scripts/release/fetch-herdr-core.py "$(rustc -vV | sed -n 's/^host: //p')" target/{{profile}} >/dev/null \
+            || echo "warning: no herdr-core bundled; Herdr 2 terminals need one on PATH" >&2
+    fi
+    rm -f "$app/Contents/MacOS/herdr-core"
+    if [ -f "$core" ]; then
+        cp "$core" "$app/Contents/MacOS/herdr-core"
+        codesign --force --sign - "$app/Contents/MacOS/herdr-core"
+    fi
     cp assets/macos/Info.plist "$app/Contents/Info.plist"
     # LaunchServices and the Dock cache icons by bundle ID, so every worktree
     # build sharing the release ID competed with the installed app's icon.

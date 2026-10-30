@@ -53,5 +53,21 @@ class FetchHerdrCoreTests(unittest.TestCase):
             fetch.pinned("windows-aarch64")
 
 
+class BundledHerdrCoreTests(unittest.TestCase):
+    def test_every_release_target_bundles_a_pinned_build(self):
+        workflow = (ROOT / ".github/workflows/release.yml").read_text()
+        targets = json.loads(fetch.PINNED.read_text())["targets"]
+        for rust, core in fetch.RUST_TARGETS.items():
+            self.assertIn(f"target: {rust}", workflow)
+            self.assertIn(core, targets)
+            self.assertEqual(fetch.pinned(rust), targets[core])
+
+    def test_the_bundled_licenses_are_the_pinned_version_s(self):
+        version = json.loads(fetch.PINNED.read_text())["version"]
+        licenses = (ROOT / "scripts/release/herdr-core-licenses.txt").read_text()
+        self.assertTrue(licenses.startswith(f"herdr-core {version} "), licenses[:80])
+        self.assertIn("Apache-2.0", licenses)
+
+
 if __name__ == "__main__":
     unittest.main()
