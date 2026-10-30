@@ -65,18 +65,24 @@ struct ChatRowLabel: View {
     var showsComputer = true
 
     var body: some View {
+        // The timer and status share the title's line, so the detail
+        // line below runs the full width.
         HStack(spacing: 12) {
             AgentIcon(agent: item.chat.agent)
             VStack(alignment: .leading, spacing: 2) {
-                Text(item.chat.title).lineLimit(1)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(item.chat.title).lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if item.working, let started = item.chat.summary?.turnStartedMs {
+                        Text(timerInterval: Date(timeIntervalSince1970: Double(started) / 1000)...Date.distantFuture, countsDown: false)
+                            .font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
+                            .fixedSize()
+                    }
+                    StatusMark(status: item.chat.status, asking: item.question != nil)
+                }
                 Text(detail).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            Spacer(minLength: 8)
-            if item.working, let started = item.chat.summary?.turnStartedMs {
-                Text(timerInterval: Date(timeIntervalSince1970: Double(started) / 1000)...Date.distantFuture, countsDown: false)
-                    .font(.footnote.monospacedDigit()).foregroundStyle(.secondary).frame(maxWidth: 56, alignment: .trailing)
-            }
-            StatusMark(status: item.chat.status, asking: item.question != nil)
         }
     }
 

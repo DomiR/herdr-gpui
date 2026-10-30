@@ -29,17 +29,11 @@ struct HomeTab: View {
                 }
                 if !working.isEmpty {
                     SectionTitle(title: "Working", count: working.count, tint: .blue)
-                    ForEach(working) { link($0) }
+                    rows(working)
                 }
                 if !rest.isEmpty {
                     SectionTitle(title: "Recent", count: nil, tint: .secondary)
-                    VStack(spacing: 0) {
-                        ForEach(rest) { item in
-                            link(item, card: false)
-                            if item.id != rest.last?.id { Divider().padding(.leading, 54) }
-                        }
-                    }
-                    .background(.background.secondary, in: .rect(cornerRadius: 18))
+                    rows(rest)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -93,10 +87,21 @@ struct HomeTab: View {
         }
     }
 
+    /// Chats as one grouped list, so a section of them stays compact.
+    private func rows(_ items: [ChatItem]) -> some View {
+        VStack(spacing: 0) {
+            ForEach(items) { item in
+                link(item, card: false)
+                if item.id != items.last?.id { Divider().padding(.leading, 54) }
+            }
+        }
+        .background(.background.secondary, in: .rect(cornerRadius: 18))
+    }
+
     private func link(_ item: ChatItem, card: Bool = true) -> some View {
         NavigationLink(value: Route.chat(item.key, title: item.chat.title)) {
             ChatRowLabel(item: item)
-                .padding(.horizontal, 14).padding(.vertical, card ? 12 : 8)
+                .padding(.leading, 14).padding(.trailing, 12).padding(.vertical, card ? 12 : 8)
                 .background(card ? AnyShapeStyle(.background.secondary) : AnyShapeStyle(.clear), in: .rect(cornerRadius: 18))
                 .contentShape(.rect)
         }
