@@ -39,12 +39,6 @@ struct Cache: Sendable {
         read(Home.self, at: computerFolder(device).appending(path: "home.json"))
     }
 
-    /// When `home(_:)` was saved, which is when the computer last showed it.
-    func homeDate(_ device: String) -> Date? {
-        let file = computerFolder(device).appending(path: "home.json")
-        return try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
-    }
-
     func save(home: Home, device: String) {
         write(home, to: computerFolder(device).appending(path: "home.json"))
     }
