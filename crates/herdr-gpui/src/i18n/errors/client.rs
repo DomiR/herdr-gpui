@@ -5,6 +5,7 @@
 mod clipboard;
 mod sessions;
 mod ssh;
+mod terminal_attach;
 mod wsl;
 
 /// A missing home or config root, in the root error's words.
@@ -168,6 +169,7 @@ impl Localize for Error {
                 fl!("error-client-surface-encoding-not-negotiated")
             }
             Self::SurfaceIdentity => fl!("error-client-surface-identity"),
+            Self::TerminalAttach(error) => error.localize(),
             Self::UnsolicitedResponse => fl!("error-client-unsolicited-response"),
             Self::UnsupportedMethod => fl!("error-client-unsupported-method"),
             Self::UnsupportedSurfaceInterest => fl!("error-client-unsupported-surface-interest"),

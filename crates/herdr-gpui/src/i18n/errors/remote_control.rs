@@ -1,11 +1,12 @@
 //! Remote control's failures in the app, from `error-remote-control.ftl`:
 //! its settings and service install (`app::Error`) and the daemon's
-//! control socket (`control::Error`). Program names, paths, exit statuses,
+//! control socket (`control::Error`), and enrolling a host's daemon
+//! (`enroll::Error`). Program names, paths, exit statuses,
 //! and the daemon's and commands' own words are placeables.
 
 use super::Localize;
 use crate::i18n::fl;
-use herdr_remote_control::{app, control};
+use herdr_remote_control::{app, app::enroll, control};
 
 impl Localize for app::Error {
     fn localize(&self) -> String {
@@ -15,6 +16,7 @@ impl Localize for app::Error {
                 fl!("error-remote-control-certificate-path", key = *which)
             }
             Self::Control(error) => error.localize(),
+            Self::Enroll(error) => error.localize(),
             Self::IdleDays => fl!("error-remote-control-idle-days"),
             Self::Io {
                 operation, path, ..
@@ -64,6 +66,24 @@ impl Localize for control::Error {
             // own yet, so their English `Display` shows.
             Self::Frame(error) => error.to_string(),
             Self::NoAnswer => fl!("error-remote-control-no-answer"),
+            // keep-sorted end
+        }
+    }
+}
+
+impl Localize for enroll::Error {
+    fn localize(&self) -> String {
+        match self {
+            // keep-sorted start
+            Self::ApnsSize => fl!("error-remote-control-enroll-apns-size"),
+            Self::Config { path, .. } => fl!(
+                "error-remote-control-enroll-config",
+                path = path.display().to_string()
+            ),
+            Self::NoHome => fl!("error-remote-control-enroll-no-home"),
+            Self::NotStarted(_) => fl!("error-remote-control-enroll-not-started"),
+            Self::Outdated => fl!("error-remote-control-enroll-outdated"),
+            Self::Unexpected => fl!("error-remote-control-enroll-unexpected"),
             // keep-sorted end
         }
     }

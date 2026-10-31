@@ -31,3 +31,12 @@ error-remote-control-connect = could not reach the remote control daemon
 # $message is the daemon's own words.
 error-remote-control-daemon = the remote control daemon refused: { $message }
 error-remote-control-no-answer = the remote control daemon closed the connection without answering
+
+# Enrolling a host's remote control daemon for a phone paired elsewhere.
+error-remote-control-enroll-apns-size = the APNs files sent are too large
+# $path is the daemon's config file on the host.
+error-remote-control-enroll-config = { $path } is not valid TOML
+error-remote-control-enroll-no-home = this host has no home directory
+error-remote-control-enroll-not-started = the remote control daemon on this host did not start
+error-remote-control-enroll-outdated = the remote control daemon on this host is older than Herdr UI; update it
+error-remote-control-enroll-unexpected = the remote control daemon gave an answer of the wrong kind
