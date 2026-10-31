@@ -269,6 +269,7 @@ impl HerdrWindow {
         notes
             .notes
             .push(Note::recording(bundle.dir, &bundle.summary, seconds));
+        self.browser.annotations.unfold(id);
         self.show_flash(
             Flash::success("The recording is in the notes; send it to the agent"),
             cx,

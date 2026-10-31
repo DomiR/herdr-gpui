@@ -2949,7 +2949,10 @@ in view from the keyboard; it has no default key.
   week, and the prompt names each file. Windows notes have no screenshots.
 - Notes are written in the panel beside the page, not in the page, so the
   page never sees them. Queued notes are numbered on the page. Up to 20 wait
-  per tab. The panel slides open and closed; a new note grows into it, and
+  per tab. Pressing **Annotate** again always folds the panel away, notes,
+  recordings, and a waiting batch kept for when you open it next; a page
+  result or a finished recording arriving meanwhile opens it again. The panel
+  slides open and closed; a new note grows into it, and
   its number pops onto the page unless the system asks for reduced motion.
 - **Send to agent** turns them into one prompt: the page, then for each note
   the element's selector path, text, and a short HTML snippet (for a region:

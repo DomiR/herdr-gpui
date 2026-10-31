@@ -33,6 +33,9 @@ struct Draft {
 struct TabNotes {
     /// Whether the picker is running in the page.
     armed: bool,
+    /// Annotate was pressed to put the notes away: the panel stays shut,
+    /// notes and all, until annotating again or something new arrives.
+    folded: bool,
     /// Whether a drag draws a region rather than selecting text.
     regions: bool,
     /// Whether a drag draws a pen stroke, while the page is recorded.
@@ -92,16 +95,26 @@ impl Annotations {
         self.tabs.get(&id).is_some_and(|tab| tab.armed)
     }
 
-    /// Whether the notes panel shows beside the page, which it does while a
-    /// batch is pending so it can still be withdrawn.
+    /// Whether the notes panel shows beside the page: while annotating, and
+    /// after, while it holds notes or a batch that can still be withdrawn,
+    /// unless Annotate folded it away.
     pub(crate) fn open(&self, id: TabId) -> bool {
         self.tabs.get(&id).is_some_and(|tab| {
             tab.armed
-                || tab.pending.is_some()
-                || tab.editing.is_some()
-                || !tab.notes.is_empty()
-                || tab.sending.is_pending()
+                || (!tab.folded
+                    && (tab.pending.is_some()
+                        || tab.editing.is_some()
+                        || !tab.notes.is_empty()
+                        || tab.sending.is_pending()))
         })
+    }
+
+    /// Shows the panel again for something new in it, though Annotate
+    /// folded it away.
+    fn unfold(&mut self, id: TabId) {
+        if let Some(tab) = self.tabs.get_mut(&id) {
+            tab.folded = false;
+        }
     }
 
     pub(crate) fn ids(&self) -> impl Iterator<Item = TabId> + '_ {
@@ -253,6 +266,8 @@ impl HerdrWindow {
         }
         let notes = self.tab_notes(id);
         notes.armed = !notes.armed;
+        // Annotate always folds the panel away; its notes stay for next time.
+        notes.folded = !notes.armed;
         if notes.armed {
             self.arm_page(id);
             self.show_flash(
@@ -364,6 +379,7 @@ impl HerdrWindow {
             }
             None => notes.notes.push(note),
         }
+        self.browser.annotations.unfold(id);
         self.show_flash(
             Flash::success("The page added a result; send it to the agent"),
             cx,
