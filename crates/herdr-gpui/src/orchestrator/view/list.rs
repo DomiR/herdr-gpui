@@ -19,14 +19,17 @@ const ISSUE_ROW: f32 = 32.;
 const PULL_REQUEST_ROW: f32 = 40.;
 /// The Linear section's rows, as roomy as Linear's own list.
 const LINEAR_ROW: f32 = 40.;
+/// The pull request column: its mark and a number of up to five digits,
+/// which ran into the next column at 48.
+const PULL_REQUEST_WIDTH: f32 = 60.;
 /// The project column, while several projects are listed.
 const PROJECT_WIDTH: f32 = 130.;
+/// The checks column, which counts checks by state.
+const CHECKS_WIDTH: f32 = 96.;
 /// The source column, while the list mixes backends.
 const SOURCE_WIDTH: f32 = 22.;
 /// The column holding a row's action, such as Start agent.
 const ACTION_WIDTH: f32 = 96.;
-/// Checks a row names before counting the rest.
-const CHECK_PILLS: usize = 3;
 
 /// Why the list is empty.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -53,28 +56,37 @@ impl OrchestratorView {
             && self.projects.len() != 1
     }
 
-    /// A row's project, in its own column while several are listed.
+    /// A row's project, in its own column while several are listed: its
+    /// checkout's name, or the repository's and how many hosts list it when
+    /// several checkouts of it do. A long name is cut, never the host count.
     fn project_cell(&self, row: &ItemRow) -> Option<Div> {
+        if !self.listing_projects() {
+            return None;
+        }
         let look = &self.look;
-        self.listing_projects().then(|| {
+        let repo = &self.repos[row.repo];
+        let (name, hosts) = match self.twins(&self.row_item(row).key.canonical()) {
+            0 => (self.project_label(repo), None),
+            twins => (repo.name(), Some(format!("{} hosts", twins + 1))),
+        };
+        Some(
             div()
                 .flex_none()
                 .w(px(PROJECT_WIDTH))
-                .truncate()
+                .flex()
+                .items_center()
+                .gap_1()
                 .text_size(look.small())
                 .text_color(rgb(look.theme.subtext()))
-                .child(self.row_project(row))
-        })
-    }
-
-    /// The project a row names: its checkout's, or how many hosts list it
-    /// when several checkouts of the same repository do.
-    fn row_project(&self, row: &ItemRow) -> String {
-        let repo = &self.repos[row.repo];
-        match self.twins(&self.row_item(row).key.canonical()) {
-            0 => self.project_label(repo),
-            twins => format!("{} \u{00b7} {} hosts", repo.name(), twins + 1),
-        }
+                .child(div().min_w_0().truncate().child(name))
+                .children(hosts.map(|hosts| {
+                    div()
+                        .flex_none()
+                        .whitespace_nowrap()
+                        .text_color(rgb(look.theme.muted))
+                        .child(hosts)
+                })),
+        )
     }
 
     /// A row's source as a muted mark, while the list mixes backends.
@@ -124,7 +136,7 @@ impl OrchestratorView {
                 head.push(("", Some(ACTION_WIDTH)));
             }
             Tab::PullRequests => {
-                head.push(("PR", Some(48.)));
+                head.push(("PR", Some(PULL_REQUEST_WIDTH)));
                 if sources {
                     head.push(("SRC", Some(SOURCE_WIDTH)));
                 }
@@ -138,7 +150,7 @@ impl OrchestratorView {
                     head.extend([
                         ("AUTHOR", Some(100.)),
                         ("REVIEW", Some(124.)),
-                        ("CHECKS", Some(150.)),
+                        ("CHECKS", Some(CHECKS_WIDTH)),
                         ("SIZE", Some(70.)),
                         ("RUN", Some(30.)),
                     ]);
@@ -529,7 +541,7 @@ impl OrchestratorView {
             .child(
                 div()
                     .flex_none()
-                    .w(px(48.))
+                    .w(px(PULL_REQUEST_WIDTH))
                     .flex()
                     .items_center()
                     .gap_1()
@@ -609,12 +621,12 @@ impl OrchestratorView {
                     .child(
                         div()
                             .flex_none()
-                            .w(px(150.))
+                            .w(px(CHECKS_WIDTH))
                             .overflow_hidden()
                             .flex()
                             .items_center()
-                            .gap(px(3.))
-                            .children(check_pills(look, status)),
+                            .gap_2()
+                            .children(check_counts(look, status)),
                     )
                     .child(diff_squares(look, pr.additions, pr.deletions).w(px(70.)))
                     .child(self.run_mark(&row))
@@ -790,32 +802,50 @@ fn checks_dot(look: &Look, status: Option<&PrStatus>) -> Option<Div> {
     Some(look.dot(check_hue(look, state), 7.))
 }
 
-/// The first checks as short colored pills, failures first, then a count of
-/// the rest.
-fn check_pills(look: &Look, status: Option<&PrStatus>) -> Vec<Div> {
+/// How many of `status`'s checks failed, are pending, and passed, in that
+/// order, leaving out states none are in. Skipped checks are not counted.
+pub(super) fn check_tally(status: &PrStatus) -> Vec<(CheckState, usize)> {
+    [CheckState::Failed, CheckState::Pending, CheckState::Passed]
+        .into_iter()
+        .map(|state| {
+            let count = status
+                .checks
+                .iter()
+                .filter(|check| check.state == state)
+                .count();
+            (state, count)
+        })
+        .filter(|(_, count)| *count > 0)
+        .collect()
+}
+
+/// How many checks failed, are pending, and passed, failures first, each a
+/// mark and a count in its state's color. Names cut to fit a column read as
+/// noise ("poli labe gene"), and a pull request can run dozens of checks;
+/// the item's page lists them by name.
+fn check_counts(look: &Look, status: Option<&PrStatus>) -> Vec<Div> {
     let Some(status) = status else {
         return Vec::new();
     };
-    let mut checks: Vec<_> = status.checks.iter().collect();
-    checks.sort_by_key(|check| check.state);
-    let mut pills: Vec<Div> = checks
-        .iter()
-        .take(CHECK_PILLS)
-        .map(|check| {
-            let hue = check_hue(look, check.state);
-            let short = crate::truncate::cut_width(&check.name, 4).unwrap_or(&check.name);
+    let mut counts = Vec::new();
+    for (state, count) in check_tally(status) {
+        let hue = check_hue(look, state);
+        let mark = match state {
+            CheckState::Failed => look.icon("icons/close.svg", 9., hue),
+            CheckState::Passed => look.icon("icons/check.svg", 11., hue),
+            CheckState::Pending | CheckState::Skipped => look.dot(hue, 6.).into_any_element(),
+        };
+        counts.push(
             div()
                 .flex_none()
-                .px(px(4.))
-                .rounded(px(crate::config::corners::SMALL))
-                .bg(rgb(crate::config::mix(look.theme.background, hue, 18)))
+                .flex()
+                .items_center()
+                .gap(px(3.))
+                .text_size(look.small())
                 .text_color(rgb(hue))
-                .text_size(look.tiny())
-                .child(short.to_owned())
-        })
-        .collect();
-    if checks.len() > CHECK_PILLS {
-        pills.push(look.muted(format!("+{}", checks.len() - CHECK_PILLS)));
+                .child(mark)
+                .child(count.to_string()),
+        );
     }
-    pills
+    counts
 }
