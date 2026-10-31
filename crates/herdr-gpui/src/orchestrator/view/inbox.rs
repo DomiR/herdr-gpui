@@ -39,8 +39,7 @@ impl OrchestratorView {
             .flex_col()
             .child(self.render_header(cx))
             .child(self.render_search_row(window, cx))
-            .children(self.render_pills(cx))
-            .children(self.render_author_pills(cx))
+            .children(self.render_pills(window, cx))
             .children(self.render_chips(cx))
             .children(self.render_banners(cx))
             .child(

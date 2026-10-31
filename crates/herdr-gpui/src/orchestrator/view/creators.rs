@@ -1,6 +1,6 @@
 //! The Pull requests list by who opened each: a grouping with one heading
-//! per author, and pills picking whose pull requests show. None picked
-//! shows everyone's; Mine stays its own toggle.
+//! per author, and the people the Author picker (`pickers.rs`) offers to
+//! narrow it to. None picked shows everyone's; Mine stays its own toggle.
 
 use super::{
     OrchestratorView,
@@ -112,59 +112,6 @@ impl OrchestratorView {
             .collect();
         people.sort_by(|(left, _), (right, _)| by_name(Some(left.as_str()), Some(right.as_str())));
         people
-    }
-
-    /// The people pills under the Pull requests search: Everyone, then one
-    /// per author, while there is more than one to choose between.
-    pub(super) fn render_author_pills(&self, cx: &mut Context<Self>) -> Option<Div> {
-        if self.tab != Tab::PullRequests {
-            return None;
-        }
-        let people = self.people();
-        if people.len() < 2 && self.authors.is_empty() {
-            return None;
-        }
-        let look = &self.look;
-        let theme = &look.theme;
-        let count = |count: usize| {
-            (count > 0).then(|| div().text_color(rgb(theme.muted)).child(count.to_string()))
-        };
-        let all = self.authors.is_empty();
-        let everyone = look
-            .pill("orchestrator-pill-authors-everyone", all)
-            .child(look.icon("icons/user.svg", 11., theme.subtext()))
-            .child("Everyone")
-            .on_click(cx.listener(|this, _, _, cx| {
-                this.authors.clear();
-                this.refresh_rows();
-                cx.notify();
-            }));
-        let pills = people.into_iter().map(|(author, items)| {
-            let on = self.authors.contains(&author);
-            look.pill(format!("orchestrator-pill-author-{author}"), on)
-                .child(author.clone())
-                .children(count(items))
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    if !this.authors.remove(&author) {
-                        this.authors.insert(author.clone());
-                    }
-                    this.refresh_rows();
-                    cx.notify();
-                }))
-        });
-        Some(
-            div()
-                .debug_selector(|| "orchestrator-author-pills".into())
-                .flex_none()
-                .flex()
-                .flex_wrap()
-                .items_center()
-                .gap_2()
-                .px_4()
-                .pb_2()
-                .child(everyone)
-                .children(pills),
-        )
     }
 
     /// The sort menu's Group by choices, for the Pull requests list only.

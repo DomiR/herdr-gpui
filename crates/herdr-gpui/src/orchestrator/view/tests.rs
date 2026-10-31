@@ -32,6 +32,7 @@ mod list_switch;
 mod markdown;
 mod non_projects;
 mod outside_git;
+mod pickers;
 mod pills;
 mod pr_creators;
 mod pr_empty;

@@ -1,14 +1,15 @@
-//! The pills under a section's search: one per backend and one per project
-//! listed, each with how many of the shown list's items it holds. Picking
-//! some narrows the list to them; none picked lists everything. A row of
-//! pills shows only when there is more than one to choose between.
+//! The row under a section's search: a pill per backend, each with how many
+//! of the shown list's items it holds, then the Project and Author pickers
+//! (`pickers.rs`). Picking some narrows the list to them; none picked lists
+//! everything. The row shows only when there is more than one to choose
+//! between.
 
-use super::{IssueSource, OrchestratorView, inbox::provider_mark, rows::Tab};
-use crate::{config::corners, orchestrator::Provider};
+use super::{OrchestratorView, inbox::provider_mark, rows::Tab};
+use crate::orchestrator::Provider;
 use gpui::{prelude::*, *};
 
 impl OrchestratorView {
-    pub(super) fn render_pills(&self, cx: &mut Context<Self>) -> Option<Div> {
+    pub(super) fn render_pills(&self, window: &Window, cx: &mut Context<Self>) -> Option<Div> {
         let look = &self.look;
         let theme = &look.theme;
         let tab = self.tab;
@@ -35,16 +36,8 @@ impl OrchestratorView {
             }
         }
         backends.sort_by_key(|(provider, _)| provider.name());
-        // Linear's issues belong to no project, so its section offers none.
-        let projects: Vec<(String, String, usize)> = self
-            .projects_named()
-            .filter(|_| self.issue_source != IssueSource::Linear)
-            .map(|repo| {
-                let count = rows(repo, tab).iter().filter(|row| row.depth == 0).count();
-                (repo.key.clone(), self.project_label(repo), count)
-            })
-            .collect();
-        if backends.len() < 2 && projects.len() < 2 {
+        let offered = self.offered_facets();
+        if backends.len() < 2 && offered.is_empty() {
             return None;
         }
         let pill = |id: SharedString, on: bool| look.pill(id, on);
@@ -80,30 +73,11 @@ impl OrchestratorView {
                     })),
                 );
             }
-            if projects.len() > 1 {
+            if !offered.is_empty() {
                 row = row.child(div().w(px(1.)).h(px(16.)).bg(rgb(theme.active)));
             }
         }
-        if projects.len() > 1 {
-            for (index, (key, label, items)) in projects.into_iter().enumerate() {
-                let on = self.projects.contains(&key);
-                row = row.child(
-                    pill(format!("orchestrator-pill-project-{index}").into(), on)
-                        .rounded(px(corners::CONTROL))
-                        .child(look.icon("icons/git-branch.svg", 11., theme.subtext()))
-                        .child(label)
-                        .children(count(items))
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            if !this.projects.remove(&key) {
-                                this.projects.insert(key.clone());
-                            }
-                            this.refresh_rows();
-                            cx.notify();
-                        })),
-                );
-            }
-        }
-        Some(row)
+        Some(row.children(self.render_pickers(&offered, window, cx)))
     }
 
     /// A project's name, with its host's when the same name is listed from
