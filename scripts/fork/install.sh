@@ -34,10 +34,11 @@ dest="${HERDR_INSTALL_DIR:-/Applications}/Herdr.app"
 just bundle release
 app="$root/target/release/Herdr.app"
 
-# The helpers beside the executable first, then the bundle, whose
-# entitlements allow the microphone a recording needs.
-for helper in herdr-automate herdr-acp herdr-remote-control; do
-    codesign --force --sign "$identity" "$app/Contents/MacOS/$helper"
+# Every helper beside the executable first, whatever upstream adds, then the
+# bundle, whose entitlements allow the microphone a recording needs.
+for helper in "$app"/Contents/MacOS/*; do
+    [ "$(basename "$helper")" = Herdr ] && continue
+    codesign --force --sign "$identity" "$helper"
 done
 codesign --force --sign "$identity" \
     --entitlements assets/macos/Herdr.entitlements "$app"
@@ -62,7 +63,9 @@ if [ -e "$dest" ]; then
     mv "$dest" "$dest.old"
 fi
 mv "$dest.new" "$dest"
-rm -rf "$dest.old"
+# The copy it replaced goes to the Trash rather than away for good.
+osascript -e "tell application \"Finder\" to delete POSIX file \"$dest.old\"" >/dev/null 2>&1 \
+    || rm -rf "$dest.old"
 
 # LaunchServices and the Dock cache icons by bundle id; register this copy
 # so they show its own.
