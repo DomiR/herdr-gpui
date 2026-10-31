@@ -283,8 +283,9 @@
     return described;
   };
 
-  // The pen: strokes drawn over the page while it is recorded, fading a
-  // moment after the pen lifts. Each finished stroke is posted with its
+  // The pen: strokes drawn over the page while it is recorded, with Shift
+  // held, fading a moment after the pen lifts. Without Shift the page works
+  // as it does unrecorded, so it can be clicked through while talking. Each finished stroke is posted with its
   // points, their times from its start, and the elements under it: across
   // the area it encloses when it closes on itself, else along its path.
   var MAX_POINTS = 2000;
@@ -398,10 +399,28 @@
 
   var mode = "pick";
   var drawing = null;
+  // A stroke just ended: the click its release makes is the pen's, not the
+  // page's, so a stroke ending on a link does not follow it.
+  var penned = false;
   var swallow = function (event) {
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation();
+  };
+  // Clicks and the like: swallowed while picking, so links do not follow;
+  // the page's own while recording, except the click ending a stroke.
+  var onClick = function (event) {
+    if (mode === "pen" && !stroke && !penned) return;
+    if (event.type === "click") penned = false;
+    swallow(event);
+  };
+  // While recording, Shift turns the cursor into the pen's.
+  var onShift = function (event) {
+    if (mode !== "pen" || event.key !== "Shift") return;
+    document.documentElement.style.cursor = event.type === "keydown" ? "crosshair" : "";
+  };
+  var onBlur = function () {
+    if (mode === "pen") document.documentElement.style.cursor = "";
   };
   var drawnRect = function (event) {
     var left = Math.min(drawing.x, event.clientX);
@@ -443,7 +462,11 @@
   // the page's own handlers; clicks are swallowed so links do not follow.
   var onPress = function (event) {
     if (mode === "pen") {
-      if (event.button === 0) startStroke(event);
+      if (event.button !== 0 || !(event.shiftKey || stroke)) {
+        penned = false;
+        return;
+      }
+      startStroke(event);
       event.stopPropagation();
       event.stopImmediatePropagation();
       if (event.type === "mousedown") event.preventDefault();
@@ -465,7 +488,9 @@
   var onRelease = function (event) {
     if (event.button !== 0) return;
     if (mode === "pen") {
-      if (stroke) endStroke();
+      if (!stroke) return;
+      endStroke();
+      penned = true;
       swallow(event);
       return;
     }
@@ -535,6 +560,9 @@
     });
   };
   var onKey = function (event) {
+    // While recording, the page keeps its keys; Escape only drops a stroke
+    // under way.
+    if (mode === "pen" && !stroke) return;
     if (event.key === "Escape") {
       swallow(event);
       if (drawing) {
@@ -556,12 +584,15 @@
     ["mousedown", onPress],
     ["pointerdown", onPress],
     ["mouseup", onRelease],
-    ["click", swallow],
-    ["dblclick", swallow],
-    ["auxclick", swallow],
-    ["submit", swallow],
-    ["dragstart", swallow],
+    ["click", onClick],
+    ["dblclick", onClick],
+    ["auxclick", onClick],
+    ["submit", onClick],
+    ["dragstart", onClick],
     ["keydown", onKey],
+    ["keydown", onShift],
+    ["keyup", onShift],
+    ["blur", onBlur],
   ];
   listeners.forEach(function (entry) { window.addEventListener(entry[0], entry[1], true); });
   window.addEventListener("scroll", redraw, true);
@@ -588,8 +619,9 @@
       mode = next === "region" || next === "pen" ? next : "pick";
       drawing = null;
       stroke = null;
+      penned = false;
       showBox(null);
-      document.documentElement.style.cursor = mode === "pick" ? "" : "crosshair";
+      document.documentElement.style.cursor = mode === "region" ? "crosshair" : "";
     },
     host: host,
   };

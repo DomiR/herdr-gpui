@@ -1,6 +1,7 @@
 //! Recording a page review from its notes panel (`browser::record`). Record
-//! starts the video of the page with the microphone and turns on the pen;
-//! each stroke and navigation goes on the timeline. Stop finishes the video,
+//! starts the video of the page with the microphone and puts the page in pen
+//! mode, where it works as usual and Shift-drag draws; each stroke and
+//! navigation goes on the timeline. Stop finishes the video,
 //! has Scrawl build the bundle off the UI thread, and queues it as a note
 //! the user sends with the others. One page records at a time.
 
@@ -161,7 +162,7 @@ impl HerdrWindow {
                         this.set_pen(id, true, cx);
                         this.tick_recording(cx);
                         this.show_flash(
-                            Flash::success("Recording: talk, and draw on the page with the pen"),
+                            Flash::success("Recording: talk, and hold Shift to draw on the page"),
                             cx,
                         );
                     }

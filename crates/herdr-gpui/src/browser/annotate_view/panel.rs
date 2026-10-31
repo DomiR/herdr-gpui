@@ -17,8 +17,6 @@ impl HerdrWindow {
         let notes = self.tab_notes(id);
         let input = notes.input.clone();
         let regions = notes.regions;
-        #[cfg(target_os = "macos")]
-        let pen = notes.pen;
         let editing = notes.editing;
         let pending = notes
             .pending
@@ -250,13 +248,6 @@ impl HerdrWindow {
                                 }));
                                 record
                             }))
-                            .when(live, |row| {
-                                #[cfg(target_os = "macos")]
-                                let row = row.child(button("annotation-pen", "Pen".into(), pen).on_click(
-                                    cx.listener(move |this, _, _, cx| this.set_pen(id, !pen, cx)),
-                                ));
-                                row
-                            })
                             .child(
                                 // Drag draws a region while this is on;
                                 // Shift-drag draws one either way.
@@ -285,7 +276,7 @@ impl HerdrWindow {
                                 .p_2()
                                 .text_color(rgb(theme.muted))
                                 .child(if live {
-                                    "Talk through what should change and draw on the page with the pen. Stop builds the recording into a note."
+                                    "Talk through what should change; hold Shift and drag to draw on the page. Without Shift the page works as usual. Stop builds the recording into a note."
                                 } else {
                                     "Click an element, select text, or Shift-drag a region in the page, then describe the change."
                                 }),

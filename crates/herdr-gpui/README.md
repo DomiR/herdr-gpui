@@ -3019,9 +3019,11 @@ keyframes; the button says so when Scrawl is missing.
   the window with your microphone. macOS asks once for Screen Recording and
   for the microphone; a Screen Recording grant takes effect once Herdr UI is
   opened again. The button shows the time and becomes **Stop**.
-- While recording, the **Pen** is on: drag to draw red strokes over the page,
-  which fade a moment after you lift. Turn the pen off to click around the
-  page between marks. Each stroke notes the elements under it, across the area
+- While recording, the page works as usual: click, scroll, follow links, and
+  type. Hold Shift and drag to draw red strokes over it, which fade a moment
+  after you lift; the cursor turns to a crosshair while Shift is down, and a
+  stroke that ends on a link does not follow it. Escape drops a stroke being
+  drawn. Each stroke notes the elements under it, across the area
   it encloses when it closes on itself, else along its path, with the
   component and source file and line that drew each one when a dev build says
   (React, or a `data-source-loc`, react-dev-inspector, or Sentry attribute).
