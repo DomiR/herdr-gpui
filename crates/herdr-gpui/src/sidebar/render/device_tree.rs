@@ -81,6 +81,7 @@ impl HerdrWindow {
             ),
             // The header above already names the host.
             host: None,
+            numbers: self.config.sidebar_style.numbers,
         };
         let mut count = 0;
         let mut focused = None;

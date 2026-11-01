@@ -137,6 +137,11 @@ pub struct SidebarStyle {
     pub device_footer: DeviceFooter,
     /// A colour per host, keyed by the host's display name, as `0xRRGGBB`.
     pub hosts: BTreeMap<String, u32>,
+    /// `numbers`: whether the sidebar draws its number indicators: pull
+    /// request numbers, change and drift counts, rail workspace numbers,
+    /// agent tallies, and count bubbles. Off, none is drawn and nothing
+    /// takes its place. On unless turned off.
+    pub numbers: bool,
     pub overrides: SidebarOverrides,
     /// `ports`: the line of listening ports under a workspace's row. On
     /// unless turned off; the top-level `show_listening_ports` still hides
@@ -153,6 +158,7 @@ impl Default for SidebarStyle {
             change_counts: ChangeCounts::default(),
             device_footer: DeviceFooter::default(),
             hosts: BTreeMap::new(),
+            numbers: true,
             overrides: SidebarOverrides::default(),
             ports: true,
             select: SelectMode::default(),
@@ -185,6 +191,7 @@ pub(super) struct SidebarSettings {
     pub(super) device_footer: DeviceFooter,
     pub(super) change_counts: ChangeCounts,
     pub(super) hosts: BTreeMap<String, String>,
+    pub(super) numbers: Option<bool>,
     pub(super) activity_bar: Option<bool>,
     pub(super) automations: Option<bool>,
     pub(super) ports: Option<bool>,
@@ -212,6 +219,7 @@ impl SidebarSettings {
             change_counts: self.change_counts,
             device_footer: self.device_footer,
             hosts,
+            numbers: self.numbers.unwrap_or(true),
             overrides: self.overrides,
             ports: self.ports.unwrap_or(true),
             select: self.select,
@@ -250,6 +258,7 @@ impl<'de> Deserialize<'de> for SidebarSettings {
                         "select" => settings.select = map.next_value()?,
                         "device_footer" => settings.device_footer = map.next_value()?,
                         "change_counts" => settings.change_counts = map.next_value()?,
+                        "numbers" => settings.numbers = Some(map.next_value()?),
                         "activity_bar" => settings.activity_bar = Some(map.next_value()?),
                         "automations" => settings.automations = Some(map.next_value()?),
                         "ports" => settings.ports = Some(map.next_value()?),

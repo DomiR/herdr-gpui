@@ -526,7 +526,11 @@ impl HerdrWindow {
             BarState::Idle => theme.muted,
         };
         let bubble = bubble.filter(|bubble| bubble.count > 0);
-        let style = bubble.map(|bubble| self.count_bubble(bubble));
+        // The bubble is only a count, so `[sidebar] numbers` off draws none;
+        // the spoken label below still says it.
+        let style = bubble
+            .filter(|_| self.config.sidebar_style.numbers)
+            .map(|bubble| self.count_bubble(bubble));
         let symbol = move || {
             svg()
                 .path(icon)

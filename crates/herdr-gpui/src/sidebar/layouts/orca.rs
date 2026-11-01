@@ -149,7 +149,7 @@ impl RowLayout for Orca {
             ..*cx
         });
         let cx = faded.as_ref().unwrap_or(cx);
-        let (branch, status, upstream) = (row.branch(), row.status(), row.upstream());
+        let (branch, status, upstream) = (row.branch(), row.status(), row.upstream(cx.numbers));
         let WorkspaceRow {
             label,
             tree,

@@ -301,6 +301,8 @@ impl HerdrWindow {
         // with the device's initials and says how many hosts there are.
         let bar = self.activity_bar_shown();
         let hosts = self.endpoints.len();
+        // `[sidebar] numbers` off drops the host count and the adding badge.
+        let numbers = self.config.sidebar_style.numbers;
         let initials: String = label
             .split_whitespace()
             .filter_map(|word| word.chars().next())
@@ -371,7 +373,7 @@ impl HerdrWindow {
                             })
                             // How many Coder workspaces are still being added,
                             // on the icon's corner so the label keeps its room.
-                            .when(self.cloud_jobs_pending() > 0, |icon| {
+                            .when(numbers && self.cloud_jobs_pending() > 0, |icon| {
                                 icon.child(
                                     div()
                                         .debug_selector(|| "device-footer-adding".into())
@@ -393,9 +395,10 @@ impl HerdrWindow {
                             }),
                     )
                     .child(div().flex_1().min_w_0().truncate().child(label.to_owned()))
-                    .when(bar && hosts > 1, |picker| {
+                    .when(bar && hosts > 1 && numbers, |picker| {
                         picker.child(
                             div()
+                                .debug_selector(|| "device-footer-hosts".into())
                                 .flex_none()
                                 .text_size(px(11.))
                                 .text_color(rgb(self.theme.muted))

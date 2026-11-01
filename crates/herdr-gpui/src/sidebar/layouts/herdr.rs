@@ -22,7 +22,11 @@ impl RowLayout for Herdr {
         } else {
             row.lines.len().max(badge_lines).max(1)
         };
-        let (branch, status, upstream) = (row.branch().unwrap_or(""), row.status(), row.upstream());
+        let (branch, status, upstream) = (
+            row.branch().unwrap_or(""),
+            row.status(),
+            row.upstream(cx.numbers),
+        );
         let WorkspaceRow {
             label,
             tree,

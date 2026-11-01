@@ -179,6 +179,7 @@ impl HerdrWindow {
                 mark,
                 host: (multi && endpoint_id != crate::endpoint::LOCAL)
                     .then_some(endpoint.label.as_str()),
+                numbers: self.config.sidebar_style.numbers,
             };
             let daemon = crate::listening_ports::Daemon::of(&endpoint.connection.target);
             let live = if selected { &self.live } else { &endpoint.live };
@@ -300,7 +301,9 @@ impl HerdrWindow {
                             label,
                             branch: workspace.branch.as_deref(),
                             status: shown_status,
-                            ahead_behind: workspace.git_ahead_behind,
+                            // Without numbers a `git_status` token has
+                            // nothing to say, so it resolves to nothing.
+                            ahead_behind: workspace.git_ahead_behind.filter(|_| row_cx.numbers),
                             tokens: &workspace.tokens,
                             indented,
                         },
@@ -430,7 +433,11 @@ impl HerdrWindow {
                             (&self.teleport_marks, &endpoint.id),
                             (note.as_deref(), muted),
                             theme,
-                        ),
+                        )
+                        .and_then(|badge| match row_cx.numbers {
+                            true => Some(badge),
+                            false => badge.without_numbers(),
+                        }),
                         removing: removing_row,
                         status: shown_status,
                         lines,

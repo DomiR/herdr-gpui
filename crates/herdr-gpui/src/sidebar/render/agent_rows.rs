@@ -58,6 +58,7 @@ impl HerdrWindow {
                 ),
                 host: (multi && endpoint.id != crate::endpoint::LOCAL)
                     .then_some(endpoint.label.as_str()),
+                numbers: self.config.sidebar_style.numbers,
             };
             let Some(lines) = self.configured_agent_lines(agent, snapshot, row_cx.host) else {
                 continue;
