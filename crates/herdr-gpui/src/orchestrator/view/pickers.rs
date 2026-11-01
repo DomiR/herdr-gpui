@@ -7,6 +7,7 @@
 use super::{IssueSource, OrchestratorView, rows::Tab};
 use crate::{
     config::corners,
+    i18n::fl,
     search_input::{self, SearchInput},
 };
 use gpui::{prelude::*, *};
@@ -32,10 +33,10 @@ impl Facet {
         }
     }
 
-    fn label(self) -> &'static str {
+    fn label(self) -> String {
         match self {
-            Self::Project => "Project",
-            Self::Author => "Author",
+            Self::Project => fl!("orchestrator-pickers-project"),
+            Self::Author => fl!("orchestrator-pickers-author"),
         }
     }
 }
@@ -55,7 +56,7 @@ impl Picker {
     pub(super) fn new(look: &super::Look, cx: &mut Context<OrchestratorView>) -> Self {
         let filter = cx.new(|cx| {
             let mut input = SearchInput::new(cx);
-            input.set_placeholder("Narrow\u{2026}", cx);
+            input.set_placeholder_with(|| fl!("orchestrator-pickers-narrow"), cx);
             input.set_frameless(cx);
             input.set_appearance(look.ui.clone(), look.theme.clone(), cx);
             input
@@ -407,7 +408,7 @@ impl OrchestratorView {
                     row(format!("orchestrator-pick-{}-clear", facet.name()))
                         .text_color(rgb(theme.subtext()))
                         .child(look.icon("icons/close.svg", 9., theme.muted))
-                        .child("Clear")
+                        .child(fl!("orchestrator-pickers-clear"))
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.clear_picks(facet, cx);
                         })),
@@ -420,11 +421,17 @@ impl OrchestratorView {
                     .overflow_y_scroll()
                     .flex()
                     .flex_col()
-                    .when(none, |el| el.child(look.muted("No match").px_2().py_1()))
+                    .when(none, |el| {
+                        el.child(
+                            look.muted(fl!("orchestrator-pickers-no-match"))
+                                .px_2()
+                                .py_1(),
+                        )
+                    })
                     .children(rows)
                     .when(more > 0, |el| {
                         el.child(
-                            look.muted(format!("{more} more; type to narrow"))
+                            look.muted(fl!("orchestrator-pickers-more", count = more))
                                 .px_2()
                                 .py_1(),
                         )

@@ -6,6 +6,7 @@ use super::{
     OrchestratorView,
     rows::{Heading, ItemRow, Line, Tab},
 };
+use crate::i18n::fl;
 use crate::{config::corners, orchestrator::Item};
 use gpui::{prelude::*, *};
 use std::{
@@ -26,10 +27,18 @@ pub(crate) enum Grouping {
 impl Grouping {
     pub(crate) const ALL: [Self; 2] = [Self::Status, Self::Creator];
 
-    pub(crate) fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> String {
         match self {
-            Self::Status => "Status",
-            Self::Creator => "Creator",
+            Self::Status => fl!("orchestrator-linear-status"),
+            Self::Creator => fl!("orchestrator-linear-grouping-creator"),
+        }
+    }
+
+    /// Its name in element ids, the same in every language.
+    fn key(self) -> &'static str {
+        match self {
+            Self::Status => "Status",   // i18n: data
+            Self::Creator => "Creator", // i18n: data
         }
     }
 }
@@ -124,7 +133,7 @@ impl OrchestratorView {
         let choices = Grouping::ALL.into_iter().map(|grouping| {
             let on = grouping == self.grouping;
             let hover = theme.active;
-            let id = format!("orchestrator-group-{}", grouping.label());
+            let id = format!("orchestrator-group-{}", grouping.key());
             div()
                 .id(SharedString::from(id.clone()))
                 .debug_selector(move || id)

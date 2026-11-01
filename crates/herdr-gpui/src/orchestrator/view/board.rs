@@ -11,6 +11,7 @@ use super::{
     Event, IssueSource, Look, OrchestratorView, Tab, linear_card, linear_groups, linear_parts,
     rows, worktree,
 };
+use crate::i18n::fl;
 use crate::{
     config::mix,
     fonts::StyledFont,
@@ -242,7 +243,7 @@ impl OrchestratorView {
         if self.tab != Tab::Issues || self.issue_source != IssueSource::Linear {
             return None;
         }
-        let toggle = |id: &'static str, label: &'static str, layout: Layout| {
+        let toggle = |id: &'static str, label: String, layout: Layout| {
             self.look
                 .toggle(id, label, self.layout == layout)
                 .debug_selector(move || id.into())
@@ -256,8 +257,16 @@ impl OrchestratorView {
             div()
                 .flex()
                 .gap_1()
-                .child(toggle("orchestrator-layout-list", "List", Layout::List))
-                .child(toggle("orchestrator-layout-board", "Board", Layout::Board)),
+                .child(toggle(
+                    "orchestrator-layout-list",
+                    fl!("orchestrator-linear-layout-list"),
+                    Layout::List,
+                ))
+                .child(toggle(
+                    "orchestrator-layout-board",
+                    fl!("orchestrator-linear-layout-board"),
+                    Layout::Board,
+                )),
         )
     }
 
@@ -356,7 +365,10 @@ impl OrchestratorView {
                     .into_any_element(),
             };
             let lane = kanban::Lane {
-                title: name.map_or_else(|| "No status".into(), |name| name.to_owned().into()),
+                title: name.map_or_else(
+                    || fl!("orchestrator-linear-no-status").into(),
+                    |name| name.to_owned().into(),
+                ),
                 hue,
                 count: rows.len(),
             }

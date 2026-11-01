@@ -5,6 +5,7 @@
 //! page (`orchestrator::section`).
 
 use super::{OrchestratorView, rows::ItemRow};
+use crate::i18n::fl;
 use crate::orchestrator::{Backend, Provider};
 use gpui::{prelude::*, *};
 
@@ -39,7 +40,10 @@ impl OrchestratorView {
         let selector = format!("orchestrator-worktree-{key}");
         Some(
             self.look
-                .compact_button(SharedString::from(selector.clone()), "Go to worktree")
+                .compact_button(
+                    SharedString::from(selector.clone()),
+                    fl!("orchestrator-linear-go-to-worktree"),
+                )
                 .debug_selector(move || selector.clone())
                 .invisible()
                 .group_hover(group, |button| button.visible())

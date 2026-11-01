@@ -5,6 +5,7 @@
 //! only Linear's issues have states, so they narrow nothing else.
 
 use super::{IssueSource, OrchestratorView, rows::Tab};
+use crate::i18n::fl;
 use crate::{
     config::corners,
     orchestrator::{Provider, Status, StatusKind},
@@ -70,7 +71,7 @@ impl OrchestratorView {
             .id("orchestrator-hide-statuses")
             .debug_selector(|| "orchestrator-hide-statuses".into())
             .role(Role::Button)
-            .aria_label("Hide statuses")
+            .aria_label(fl!("orchestrator-linear-hide-statuses"))
             .flex_none()
             .flex()
             .items_center()
@@ -87,7 +88,7 @@ impl OrchestratorView {
             .when(open, |el| el.bg(rgb(theme.primary_wash())))
             .cursor_pointer()
             .text_size(look.small())
-            .child("Hide statuses")
+            .child(fl!("orchestrator-linear-hide-statuses"))
             .when(hidden > 0, |el| {
                 el.child(
                     div()
@@ -155,7 +156,11 @@ impl OrchestratorView {
             .shadow_lg()
             .text_size(look.small())
             .when(empty, |el| {
-                el.child(look.muted("No statuses listed yet").px_2().py_1())
+                el.child(
+                    look.muted(fl!("orchestrator-linear-no-statuses-yet"))
+                        .px_2()
+                        .py_1(),
+                )
             })
             .children(entries.into_iter().map(|(name, hue)| {
                 let on = self.hidden_statuses.contains(&name);
