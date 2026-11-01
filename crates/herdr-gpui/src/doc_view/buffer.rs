@@ -73,6 +73,9 @@ pub(crate) struct DocBuffer {
     recreate: bool,
     /// The poll timer fired: read the file's stamp when next free.
     poll_due: bool,
+    /// The agent that last changed the document through a command, whom
+    /// comments go to.
+    last_agent: Option<Author>,
     /// Why the last write failed, while that holds.
     write_error: Option<herdr_doc::Error>,
     _poll: Task<()>,
@@ -150,6 +153,7 @@ impl DocBuffer {
             write_now: false,
             recreate: false,
             poll_due: false,
+            last_agent: None,
             write_error: None,
             _poll: poll,
             debounce: None,
@@ -176,6 +180,11 @@ impl DocBuffer {
 
     pub(crate) fn write_error(&self) -> Option<&herdr_doc::Error> {
         self.write_error.as_ref()
+    }
+
+    /// The agent that last changed the document through a command.
+    pub(crate) fn last_agent(&self) -> Option<&Author> {
+        self.last_agent.as_ref()
     }
 
     /// The newest version the file holds every change of.
@@ -321,6 +330,7 @@ impl DocBuffer {
         }
         let doc = self.doc.as_mut().ok_or(Error::Loading)?;
         let applied = doc.agent_edit(author, scope, make)?;
+        self.last_agent = Some(author.clone());
         if !applied.inserted.is_empty() || doc.dirty() {
             cx.emit(Changed {
                 by: Who::Agent(author.clone()),

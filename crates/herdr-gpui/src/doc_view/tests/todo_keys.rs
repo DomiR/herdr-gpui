@@ -59,3 +59,27 @@ fn backspace_after_a_marker_removes_it(cx: &mut TestAppContext) {
     doc.keys("backspace");
     assert_eq!(doc.text(), "a\n");
 }
+
+#[gpui::test]
+fn a_comment_goes_to_the_agent_as_a_note(cx: &mut TestAppContext) {
+    let mut doc = open("- [ ] ship it\n", cx);
+    doc.caret_at("ship", 0);
+    doc.keys(&primary("shift-m"));
+    doc.type_text("split into two");
+    doc.keys("enter");
+    let count = doc.cx.update(|_, cx| doc.editor.read(cx).comment_count());
+    assert_eq!(count, 1);
+    doc.cx.update(|_, cx| {
+        doc.editor
+            .update(cx, |editor, cx| editor.send_comments(None, cx));
+    });
+    let requests = doc
+        .cx
+        .update(|_, cx| doc.editor.update(cx, |editor, _| editor.take_requests()));
+    let [super::super::Request::Notes { pane: None, text }] = requests.as_slice() else {
+        panic!("expected one note, got {requests:?}");
+    };
+    assert!(text.contains("On line 1:"), "{text}");
+    assert!(text.contains("- [ ] ship it"), "{text}");
+    assert!(text.contains("Comment: split into two"), "{text}");
+}

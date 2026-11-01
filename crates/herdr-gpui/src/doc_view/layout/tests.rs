@@ -12,7 +12,7 @@ fn look() -> Look {
 
 fn styled(text: &str) -> Row {
     let lines = markdown::lines(text);
-    row(text, &lines[0], &look(), false, &[])
+    row(text, &lines[0], &look(), false, &[], &|_| None)
 }
 
 #[test]
@@ -55,14 +55,17 @@ fn headings_draw_larger_and_links_are_found() {
     let heading = styled("## Plan");
     assert!(heading.size > look().ui.size);
     let link = styled("see [docs](https://example.com/x)");
-    assert_eq!(link.links, vec![(5..9, "https://example.com/x".to_owned())]);
+    assert_eq!(
+        link.links,
+        vec![(5..9, Target::Url("https://example.com/x".to_owned()))]
+    );
 }
 
 #[test]
 fn decorated_lines_hide_markers_and_map_back_to_the_source() {
     let text = "## Plan **now**";
     let lines = markdown::lines(text);
-    let row = row(text, &lines[0], &look(), true, &[]);
+    let row = row(text, &lines[0], &look(), true, &[], &|_| None);
     assert_eq!(row.text.as_ref(), "Plan now");
     assert_eq!(
         row.runs.iter().map(|run| run.len).sum::<usize>(),
@@ -85,10 +88,10 @@ fn decorated_lines_hide_markers_and_map_back_to_the_source() {
 fn bullets_draw_as_dots_and_a_task_box_keeps_its_place() {
     let text = "- a\n- [x] b";
     let lines = markdown::lines(text);
-    let bullet = row(text, &lines[0], &look(), true, &[]);
+    let bullet = row(text, &lines[0], &look(), true, &[], &|_| None);
     assert_eq!(bullet.text.as_ref(), "• a");
     assert_eq!(bullet.map.to_source("• ".len()), 2);
-    let task = row(text, &lines[1], &look(), true, &[]);
+    let task = row(text, &lines[1], &look(), true, &[], &|_| None);
     assert_eq!(task.text.as_ref(), "[x] b");
     assert_eq!(task.checkbox, Some((0..3, true)));
 }
@@ -103,8 +106,8 @@ fn code_lines_take_their_token_colours() {
         end: 2,
         token: Token::Keyword,
     }];
-    let plain = row(text, &lines[1], &look(), false, &[]);
-    let coloured = row(text, &lines[1], &look(), false, &spans);
+    let plain = row(text, &lines[1], &look(), false, &[], &|_| None);
+    let coloured = row(text, &lines[1], &look(), false, &spans, &|_| None);
     assert_ne!(plain.runs[0].color, coloured.runs[0].color);
     assert_eq!(coloured.runs[0].len, 2);
 }

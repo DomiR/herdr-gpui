@@ -30,3 +30,11 @@ doc-view-changed-on-disk = Changed on disk
 doc-view-drawing = Drawing…
 doc-view-diagram-failed = This diagram could not be drawn; click to edit its source
 doc-view-formula-failed = This formula could not be drawn; click to edit its source
+# Comments on a document's text, sent to the agent that last changed it.
+doc-view-comment-placeholder = Comment, then press Enter
+doc-view-comment-send = Send to Agent
+doc-view-comment-delete = Delete
+doc-view-comments-send = { $count ->
+    [one] Send 1 Comment
+   *[other] Send { $count } Comments
+}

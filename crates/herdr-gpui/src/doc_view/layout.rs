@@ -70,6 +70,13 @@ impl DisplayMap {
     }
 }
 
+/// Where a link goes: an address, or a file a code span names.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) enum Target {
+    Url(String),
+    File(super::links::FileLink),
+}
+
 /// A line, ready to draw.
 #[derive(Clone, Debug)]
 pub(super) struct Row {
@@ -83,7 +90,7 @@ pub(super) struct Row {
     /// A task's `[ ]`, in the drawn text's offsets, and whether it is done.
     pub(super) checkbox: Option<(Range<usize>, bool)>,
     /// Links, in the source line's offsets, and where they point.
-    pub(super) links: Vec<(Range<usize>, String)>,
+    pub(super) links: Vec<(Range<usize>, Target)>,
     pub(super) kind: Kind,
 }
 
@@ -121,6 +128,7 @@ pub(super) fn row(
     look: &Look,
     decorate: bool,
     code: &[crate::review::highlight::Span],
+    files: &dyn Fn(&str) -> Option<super::links::FileLink>,
 ) -> Row {
     let source = &text[line.range.clone()];
     let base_start = line.range.start;
@@ -186,12 +194,18 @@ pub(super) fn row(
         match &span.style {
             Style::Strong => mark(range, &|p| p.bold = true),
             Style::Emphasis => mark(range, &|p| p.italic = true),
-            Style::Code => mark(range, &|p| p.code = true),
+            Style::Code => {
+                if let Some(file) = text.get(span.range.clone()).and_then(files) {
+                    links.push((range.clone(), Target::File(file)));
+                    mark(range.clone(), &|p| p.link = true);
+                }
+                mark(range, &|p| p.code = true);
+            }
             Style::Strike => mark(range, &|p| p.strike = true),
             Style::Marker => mark(range, &|p| p.muted = true),
             Style::Link { .. } => {
                 if let Some(url) = markdown::link_url(text, &span) {
-                    links.push((range.clone(), url.to_owned()));
+                    links.push((range.clone(), Target::Url(url.to_owned())));
                 }
                 mark(range, &|p| p.link = true);
             }

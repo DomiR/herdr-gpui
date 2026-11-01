@@ -9,11 +9,13 @@
 // i18n: migrated
 mod blocks;
 mod buffer;
+mod comments;
 mod editor;
 mod error;
 mod input;
 mod keys;
 mod layout;
+mod links;
 mod render;
 
 pub(crate) use buffer::{DocBuffer, Docs, State};
@@ -31,6 +33,15 @@ use crate::{
 use gpui::{prelude::*, *};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+
+/// What an editor asks its window to do.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Request {
+    /// Open a file a link names: a document, or a code tab.
+    Open(EditorTarget),
+    /// Send notes to the agent in a pane, or copy them without one.
+    Notes { pane: Option<String>, text: String },
+}
 
 /// The most folded sections a tab saves.
 const MAX_FOLDED: usize = 256;
@@ -204,6 +215,30 @@ impl HerdrWindow {
             .collect();
         for id in missing {
             self.ensure_doc_view(id, cx);
+        }
+    }
+
+    /// Acts on what the window's document editors asked for: opening the
+    /// files their links name, and sending their comments to agents.
+    pub(crate) fn poll_doc_requests(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let editors: Vec<Entity<DocEditor>> = self.doc_views.values().cloned().collect();
+        for editor in editors {
+            let requests = editor.update(cx, |editor, _| editor.take_requests());
+            for request in requests {
+                match request {
+                    Request::Open(target) => self.open_code_view(&target, window, cx),
+                    Request::Notes { pane, text } => {
+                        let target = pane.map(|pane_id| crate::browser::FeedbackKey {
+                            scope: crate::browser::scope(&self.endpoints[self.selected_endpoint]),
+                            pane_id,
+                        });
+                        if let Some(text) = self.deliver_notes(target, text, None, None, cx).copy()
+                        {
+                            cx.write_to_clipboard(ClipboardItem::new_string(text));
+                        }
+                    }
+                }
+            }
         }
     }
 

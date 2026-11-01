@@ -7,6 +7,11 @@
 //! elsewhere (another tab, an agent, the disk) moves them with the text.
 
 use super::{
+    Request,
+    comments::{Comment, Draft},
+    links::{self, FileLinks},
+};
+use super::{
     blocks::{self, Block},
     buffer::{Changed, DocBuffer, Who},
     layout::{DisplayMap, Look},
@@ -32,6 +37,8 @@ use std::{
 
 /// How long another writer's change stays highlighted.
 pub(super) const HIGHLIGHT: Duration = Duration::from_millis(4000);
+/// Requests a view keeps for its window at most.
+const MAX_REQUESTS: usize = 16;
 /// Rows laid out beyond the visible ones.
 const OVERDRAW: f32 = 400.;
 
@@ -145,6 +152,13 @@ pub(crate) struct DocEditor {
     pub(super) layouts: Layouts,
     /// Code colours, diagrams, and formulas, drawn off the UI thread.
     pub(super) visuals: Visuals,
+    /// Which code spans name files.
+    pub(super) links: FileLinks,
+    /// What this view asks of its window: files to open, notes to send.
+    requests: Vec<Request>,
+    /// Comments waiting to be sent, and the one being written.
+    pub(super) comments: Vec<Comment>,
+    pub(super) draft: Option<Draft>,
     pub(super) highlights: Vec<Highlight>,
     pub(super) selecting: bool,
     /// Folds and the line to show, waiting for the text to load.
@@ -187,6 +201,10 @@ impl DocEditor {
             stale: true,
             layouts: Rc::default(),
             visuals: Visuals::default(),
+            links: FileLinks::default(),
+            requests: Vec::new(),
+            comments: Vec::new(),
+            draft: None,
             highlights: Vec::new(),
             selecting: false,
             restore: Some((folded, line)),
@@ -198,6 +216,19 @@ impl DocEditor {
 
     pub(crate) fn tab(&self) -> TabId {
         self.tab
+    }
+
+    /// Asks the window to act; it takes requests on its next tick.
+    pub(super) fn request(&mut self, request: Request, cx: &mut Context<Self>) {
+        if self.requests.len() < MAX_REQUESTS {
+            self.requests.push(request);
+        }
+        cx.notify();
+    }
+
+    /// What this view asked of its window since last taken.
+    pub(crate) fn take_requests(&mut self) -> Vec<Request> {
+        std::mem::take(&mut self.requests)
     }
 
     pub(crate) fn set_look(&mut self, look: Look, cx: &mut Context<Self>) {
@@ -287,6 +318,7 @@ impl DocEditor {
         if self.hide_done {
             hidden = todo::done_lines(&lines);
         }
+        self.probe_links(links::candidates(text, &lines), cx);
         let found = blocks::blocks(text, &lines);
         let blocks = self.want_visuals(found);
         // A picture's source shows only while the caret is in it.

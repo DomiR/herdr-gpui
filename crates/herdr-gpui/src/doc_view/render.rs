@@ -185,7 +185,15 @@ impl DocEditor {
         let active =
             focused && line.range.start <= selection.end && selection.start <= line.range.end;
         let text = self.text(cx);
-        let row: Row = layout::row(text, &line, &self.look, !active, self.code_spans(line_ix));
+        let files = |span: &str| self.links.get(span).cloned();
+        let row: Row = layout::row(
+            text,
+            &line,
+            &self.look,
+            !active,
+            self.code_spans(line_ix),
+            &files,
+        );
         let map = row.map.clone();
         let shown = |range: Range<usize>| map.to_display(range.start)..map.to_display(range.end);
         let theme = self.look.theme.clone();
@@ -243,9 +251,10 @@ impl DocEditor {
         let checkbox = row.checkbox.clone();
         let links = row.links.clone();
         let start = line.range.start;
+        let cards = self.comment_cards(line_ix, cx);
         let mouse_layout = text_layout.clone();
         let mouse_map = map.clone();
-        div()
+        let drawn = div()
             .id(("doc-row", line_ix))
             .w_full()
             .flex()
@@ -387,6 +396,16 @@ impl DocEditor {
                         .child(label),
                 )
             })
+            .into_any_element();
+        if cards.is_empty() {
+            return drawn;
+        }
+        div()
+            .w_full()
+            .flex()
+            .flex_col()
+            .child(drawn)
+            .children(cards)
             .into_any_element()
     }
 
@@ -400,7 +419,7 @@ impl DocEditor {
         source: usize,
         event: &MouseDownEvent,
         checkbox: Option<&(Range<usize>, bool)>,
-        links: &[(Range<usize>, String)],
+        links: &[(Range<usize>, layout::Target)],
         cx: &mut Context<Self>,
     ) {
         if let Some((range, _)) = checkbox
@@ -417,13 +436,29 @@ impl DocEditor {
             event.modifiers.platform
         };
         if primary
-            && let Some((_, url)) = links.iter().find(|(range, _)| range.contains(&source))
-            && ["http://", "https://", "mailto:"]
-                .iter()
-                .any(|scheme| url.starts_with(scheme))
+            && let Some((_, target)) = links.iter().find(|(range, _)| range.contains(&source))
         {
-            cx.open_url(url);
-            return;
+            match target {
+                layout::Target::Url(url)
+                    if ["http://", "https://", "mailto:"]
+                        .iter()
+                        .any(|scheme| url.starts_with(scheme)) =>
+                {
+                    cx.open_url(url);
+                    return;
+                }
+                layout::Target::File(file) => {
+                    self.request(
+                        super::Request::Open(crate::editor::EditorTarget {
+                            path: file.path.clone(),
+                            line: file.line,
+                        }),
+                        cx,
+                    );
+                    return;
+                }
+                layout::Target::Url(_) => {}
+            }
         }
         self.marked = None;
         let text = self.text(cx);
@@ -523,6 +558,15 @@ impl DocEditor {
                         bar.child(div().size(px(6.)).rounded_full().bg(rgb(theme.muted)))
                     })
                     .child(div().flex_1())
+                    .when(self.comment_count() > 0, |bar| {
+                        bar.child(
+                            button(
+                                "doc-send-comments",
+                                fl!("doc-view-comments-send", count = self.comment_count()),
+                            )
+                            .on_click(cx.listener(|this, _, _, cx| this.send_comments(None, cx))),
+                        )
+                    })
                     .child(
                         button("doc-hide-done", hide_label)
                             .on_click(cx.listener(|this, _, _, cx| this.toggle_hide_done(cx))),

@@ -32,6 +32,13 @@ impl DocEditor {
         if self.marked.is_some() {
             return;
         }
+        let m = event.keystroke.modifiers;
+        if primary(m) && m.shift && event.keystroke.key.eq_ignore_ascii_case("m") {
+            self.start_comment(window, cx);
+            cx.stop_propagation();
+            window.prevent_default();
+            return;
+        }
         if self.handle_key(event, cx) {
             cx.stop_propagation();
             window.prevent_default();

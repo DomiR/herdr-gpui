@@ -343,6 +343,7 @@ impl HerdrWindow {
         self.poll_reviews(cx);
         self.poll_code_views(cx);
         self.poll_doc_views(cx);
+        self.poll_doc_requests(window, cx);
         self.poll_orchestrators(window, cx);
         self.sync_addresses(false, window, cx);
     }
