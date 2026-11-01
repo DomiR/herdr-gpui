@@ -2413,7 +2413,12 @@ window at once, and `herdr-gpui ui panel NAME` shows a section.
   parent, and chips for linked pull requests (a click opens one), project,
   and estimate. Board cards show the identifier and parent, the state and a
   title of up to two lines, and chips for priority, project, estimate,
-  sub-issue progress, and pull requests. Descriptions draw as
+  sub-issue progress, and pull requests. An issue's page lists its
+  sub-issues under the description, up to ten with the rest in Linear, each
+  with its status and assignee: one the list holds opens its page, another
+  opens in Linear, and a sub-issue's **child of** tag leads back to its
+  parent. **Add sub-issue** there opens the dialog under the issue, in its
+  team; Create more keeps the parent for the next one. Descriptions draw as
   Markdown, images included: Linear's files come back signed for an hour
   with each sync, so they load without your key. A Linear link, from an
   issue's page or its description, opens in the Linear app when it is

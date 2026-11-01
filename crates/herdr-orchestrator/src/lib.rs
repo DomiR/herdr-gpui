@@ -38,7 +38,7 @@ pub use model::Workspace;
 pub use model::{
     Activity, Backend, Checkpoint, Cycle, HerdrSession, Item, ItemKey, LinkState,
     LinkedPullRequest, Owner, Progress, Project, Provider, PullRequest, Run, RunState, SortOrder,
-    SourceKey, Status, StatusKind, Tracker,
+    SourceKey, Status, StatusKind, SubItem, Tracker,
 };
 pub use naming::LiveBranch;
 pub use prompt::nonce;
