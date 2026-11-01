@@ -12,6 +12,7 @@ use std::{
 };
 
 /// Where Scrawl.app keeps its command, in the places macOS installs apps.
+// i18n: data
 const APP_BINARY: &str = "Scrawl.app/Contents/MacOS/scrawl";
 /// Transcribing a long narration on device takes a while; a build that runs
 /// longer than this is stuck.
@@ -32,7 +33,9 @@ pub(crate) struct Bundle {
 /// is not searched.
 pub(crate) fn find(home: Option<&Path>) -> Option<PathBuf> {
     let roots = [
+        // i18n: data
         Some(PathBuf::from("/Applications")),
+        // i18n: data
         home.map(|home| home.join("Applications")),
     ];
     roots
@@ -61,6 +64,7 @@ pub(crate) fn bundle_dir(home: &Path, now: SystemTime) -> PathBuf {
         .duration_since(SystemTime::UNIX_EPOCH)
         .map(|since| since.as_millis())
         .unwrap_or_default();
+    // i18n: data
     home.join("Library/Application Support/scrawl/captures")
         .join(format!("scrawl-{stamp}-herdr.scrawl"))
 }
@@ -132,6 +136,7 @@ pub(crate) fn last_line(output: &str) -> String {
         .lines()
         .map(str::trim)
         .rfind(|line| !line.is_empty())
+        // i18n: data
         .unwrap_or("it exited without saying why");
     crate::notifications::safe_text(line, MAX_DETAIL_CHARS)
 }

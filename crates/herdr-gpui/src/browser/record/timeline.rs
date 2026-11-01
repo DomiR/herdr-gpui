@@ -143,8 +143,10 @@ impl Session {
     /// when no stroke said otherwise.
     pub(crate) fn finish(self, fallback: (f64, f64)) -> Timeline {
         Timeline {
+            // i18n: data
             app: "Herdr",
             bundle_id: "so.pen.herdr-gpui",
+            // i18n: data
             device: "Herdr UI",
             recorded_at: self.recorded_at.to_rfc3339(),
             short_version: herdr_updater::APP_VERSION,

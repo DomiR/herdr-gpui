@@ -93,7 +93,11 @@ fn a_recording_note_carries_scrawls_summary_into_the_prompt() {
     let note = Note::recording("/tmp/review.scrawl".into(), summary, 72);
     // The panel's line, where there is a panel.
     #[cfg(any(target_os = "macos", windows))]
-    assert_eq!(note.anchor.summary(), "Recording 1:12");
+    // Fluent isolates the time it puts in the label.
+    assert_eq!(
+        note.anchor.summary().replace(['\u{2068}', '\u{2069}'], ""),
+        "Recording 1:12"
+    );
     let Anchor::Recording { summary: kept, .. } = &note.anchor else {
         panic!("a recording");
     };

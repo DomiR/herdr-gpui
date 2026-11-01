@@ -10,7 +10,11 @@ use super::super::{
     annotate::{self, MAX_NOTES, Note, Stroke},
     record,
 };
-use crate::{HerdrWindow, window::Flash};
+use crate::{
+    HerdrWindow,
+    i18n::{Localize, fl},
+    window::Flash,
+};
 use gpui::{prelude::*, *};
 use std::{
     sync::mpsc,
@@ -55,14 +59,17 @@ impl Recording {
     /// What the panel's Record button says for this recording.
     pub(crate) fn label(&self, now: Instant) -> String {
         match self {
-            Self::Starting { .. } => "Starting\u{2026}".into(),
+            Self::Starting { .. } => fl!("browser-notes-record-starting"),
             Self::Live(live) => {
                 let seconds = now
                     .saturating_duration_since(live.session.started())
                     .as_secs();
-                format!("Stop {}:{:02}", seconds / 60, seconds % 60)
+                fl!(
+                    "browser-notes-record-stop",
+                    time = format!("{}:{:02}", seconds / 60, seconds % 60)
+                )
             }
-            Self::Building { .. } => "Building\u{2026}".into(),
+            Self::Building { .. } => fl!("browser-notes-record-building"),
         }
     }
 }
@@ -79,7 +86,7 @@ impl HerdrWindow {
             None => self.start_recording(id, window, cx),
             Some(Recording::Live(live)) if live.tab == id => self.stop_recording(cx),
             Some(Recording::Live(_)) => {
-                self.show_flash(Flash::warning("Another page is being recorded"), cx);
+                self.show_flash(Flash::warning(fl!("browser-notes-record-busy")), cx);
             }
             Some(_) => {}
         }
@@ -161,15 +168,12 @@ impl HerdrWindow {
                             })));
                         this.set_pen(id, true, cx);
                         this.tick_recording(cx);
-                        this.show_flash(
-                            Flash::success("Recording: talk, and hold Shift to draw on the page"),
-                            cx,
-                        );
+                        this.show_flash(Flash::success(fl!("browser-notes-record-started")), cx);
                     }
                     Ok(capture) => discard(capture),
                     Err(error) if still => {
                         tracing::warn!(%error, "Could not start recording the page");
-                        this.show_flash(Flash::warning(error.to_string()), cx);
+                        this.show_flash(Flash::warning(error.localize()), cx);
                     }
                     Err(error) => {
                         tracing::debug!(%error, "A recording no one waits for did not start");
@@ -226,7 +230,7 @@ impl HerdrWindow {
                     Ok(bundle) => this.add_recording(tab, bundle, seconds, cx),
                     Err(error) => {
                         tracing::warn!(%error, "Could not build the page recording");
-                        this.show_flash(Flash::warning(error.to_string()), cx);
+                        this.show_flash(Flash::warning(error.localize()), cx);
                     }
                 }
                 cx.notify();
@@ -247,9 +251,9 @@ impl HerdrWindow {
         // The page closed while Scrawl built: say where the review is.
         if !self.browser.annotations.tabs.contains_key(&id) {
             self.show_flash(
-                Flash::warning(format!(
-                    "The page closed; its recording is in {}",
-                    bundle.dir.display()
+                Flash::warning(fl!(
+                    "browser-notes-record-orphaned",
+                    path = bundle.dir.display().to_string()
                 )),
                 cx,
             );
@@ -258,9 +262,9 @@ impl HerdrWindow {
         let notes = self.tab_notes(id);
         if notes.notes.len() >= MAX_NOTES {
             self.show_flash(
-                Flash::warning(format!(
-                    "No room for the recording's note; it is in {}",
-                    bundle.dir.display()
+                Flash::warning(fl!(
+                    "browser-notes-record-no-room",
+                    path = bundle.dir.display().to_string()
                 )),
                 cx,
             );
@@ -270,10 +274,7 @@ impl HerdrWindow {
             .notes
             .push(Note::recording(bundle.dir, &bundle.summary, seconds));
         self.browser.annotations.unfold(id);
-        self.show_flash(
-            Flash::success("The recording is in the notes; send it to the agent"),
-            cx,
-        );
+        self.show_flash(Flash::success(fl!("browser-notes-record-added")), cx);
     }
 
     /// Turns the pen on or off in tab `id`'s page.
@@ -363,6 +364,7 @@ async fn answer<T>(receiver: mpsc::Receiver<crate::Result<T>>, cx: &AsyncApp) ->
             Err(mpsc::TryRecvError::Empty) => cx.background_executor().timer(POLL).await,
             Err(mpsc::TryRecvError::Disconnected) => {
                 return Err(
+                    // i18n: data
                     record::Error::RecordingFailed("the recording thread stopped".into()).into(),
                 );
             }

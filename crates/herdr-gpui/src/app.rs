@@ -429,6 +429,12 @@ pub(crate) fn run() -> std::process::ExitCode {
     } else {
         crate::dispatch::History::default()
     };
+    // Nor with where the user's new worktrees land.
+    let worktree_landing = if mode == LaunchMode::Normal {
+        crate::worktree_landing::Remembered::load()
+    } else {
+        crate::worktree_landing::Remembered::default()
+    };
     // Nor with the user's fan-outs, which they would restore or forget.
     let fan_out_journal = if mode == LaunchMode::Normal {
         crate::fan_out::Journal::load()
@@ -452,6 +458,7 @@ pub(crate) fn run() -> std::process::ExitCode {
             notification_mutes.install(cx);
             palette_frecency.install(cx);
             dispatch_history.install(cx);
+            worktree_landing.install(cx);
             fan_out_journal.install(cx);
             agent_skill.install_global(cx);
             keychain_grants.install(cx);
@@ -476,6 +483,11 @@ pub(crate) fn run() -> std::process::ExitCode {
                 crate::cloud::install_idle_checks(cx);
             }
             cx.set_global(appearance.select(light_appearance(cx)));
+            // Only the user's own app follows their saved SSH host choices.
+            if mode == LaunchMode::Normal {
+                let ssh = cx.global::<InitialAppearance>().config.ssh.clone();
+                crate::config::ssh_hosts::install(&ssh, cx);
+            }
             let language = cx.global::<InitialAppearance>().config.language.clone();
             crate::i18n::install(&language, cx);
             app_icon::install();

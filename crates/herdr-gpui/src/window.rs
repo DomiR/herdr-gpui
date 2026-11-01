@@ -168,6 +168,8 @@ pub(crate) struct HerdrWindow {
     pub(crate) configured_terminal_size: f32,
     /// Keyboard copy mode, when it holds the keyboard.
     pub(crate) copy_mode: Option<copy_mode::CopyModeState>,
+    /// herdr-core (Herdr 2): the connection and the terminal tabs it shows.
+    pub(crate) core_terminals: crate::core_terminals::CoreTerminals,
     /// Prepared daemon announcement and release notes text.
     pub(crate) daemon_text: crate::release_notes::DaemonText,
     /// Notes waiting for their agents to be ready for them.
@@ -226,6 +228,9 @@ pub(crate) struct HerdrWindow {
     pub(crate) key_layout: fn(u16) -> Option<prefix::KeyChars>,
     /// The key code and Shift of the key being handled, from AppKit's event.
     pub(crate) key_press: fn() -> Option<(u16, bool)>,
+    /// What a new worktree whose creation is in flight opens in, kept
+    /// apart from the dialog so closing it does not drop the launch.
+    pub(crate) landing_launch: Option<crate::worktree_landing::Launch>,
     /// When this window last forwarded user input; gates re-claiming a frame another client sized.
     pub(crate) last_input: Option<std::time::Instant>,
     /// The last pointer position over the panes, so a move event that did not move is not use.
@@ -245,6 +250,9 @@ pub(crate) struct HerdrWindow {
     pub(crate) menu: menu::MenuState,
     /// Removing worktrees whose pull request is merged, when enabled.
     pub(crate) merged_cleanup: crate::merged_cleanup::Cleanup,
+    /// The mod panel's width; see `crate::mods::panel`.
+    pub(crate) mod_panel_width: crate::panel_resize::PanelWidth,
+    pub(crate) mods: crate::mods::Mods,
     /// The focus changes asked of the daemon, for the native GUI harness.
     #[cfg(feature = "integration-test")]
     pub(crate) navigations: smoke::Navigations,
@@ -318,8 +326,8 @@ pub(crate) struct HerdrWindow {
     pub(crate) server_keys: Option<server_keys::ServerKeymap>,
     /// Local sessions on this machine, scanned on a worker while the popup is open.
     pub(crate) sessions: sessions::Sessions,
-    /// Where the footer's sessions button last painted. The window owns it so a
-    /// shortcut and a click anchor the list at the same place.
+    /// Where the footer's device picker last painted, so the Sessions shortcut
+    /// opens the list where the picker opens.
     pub(crate) sessions_anchor: std::rc::Rc<std::cell::Cell<Point<Pixels>>>,
     pub(crate) settings: crate::settings_panel::SettingsPanel,
     pub(super) shift_taps: double_shift::ShiftTaps,
@@ -485,6 +493,7 @@ impl HerdrWindow {
                     .iter()
                     .any(|endpoint| endpoint.connection.has_update())
                     || view.group_terminals_updated()
+                    || view.core_terminals.updated(cx)
                 {
                     view.tick(window, cx);
                 }
@@ -509,6 +518,9 @@ impl HerdrWindow {
         }
         if self.notes_width.chosen().is_none() {
             self.notes_width.restore(chrome.notes_width);
+        }
+        if self.mod_panel_width.chosen().is_none() {
+            self.mod_panel_width.restore(chrome.mod_panel_width);
         }
         if self.review_files_width.chosen().is_none() {
             self.review_files_width.restore(chrome.review_files_width);
@@ -670,6 +682,7 @@ impl HerdrWindow {
             cx.notify();
         }
         self.publish_remote_pull_requests(cx);
+        self.sync_remote_hosts(window, cx);
         self.update_merged_cleanup(window, cx);
         if self.update_git() {
             cx.notify();
@@ -678,12 +691,14 @@ impl HerdrWindow {
             cx.notify();
         }
         self.poll_devices_overview(cx);
+        self.poll_core_terminals(window, cx);
         self.poll_overview(cx);
         self.poll_security(cx);
         self.poll_automations(cx);
         if self.update_system_load() {
             cx.notify();
         }
+        self.poll_mods(window, cx);
         let network_quality = crate::network_quality::poll(self.config.show_network_quality, cx);
         if network_quality != self.network_quality_seen {
             self.network_quality_seen = network_quality;
@@ -696,7 +711,10 @@ impl HerdrWindow {
         }
         #[cfg(feature = "azure")]
         self.update_cloud_activity();
-        if self.live.missing_installation && !self.install_warning_shown {
+        if self.live.missing_installation
+            && self.needs_herdr_install()
+            && !self.install_warning_shown
+        {
             self.install_warning_shown = true;
             self.show_install_modal(window, cx);
         }
