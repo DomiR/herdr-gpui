@@ -1,7 +1,7 @@
 //! The `[sidebar]` table beyond its font: spacing that overrides the layout
 //! preset, a colour per host, how a selection marks its host's group, when
-//! the device footer is drawn, whose change counts a row shows, whether the
-//! sidebar prints its numbers, and whether the activity bar leads it.
+//! the device footer is drawn, whose change counts a row shows, and whether
+//! the activity bar leads it.
 
 use super::Error;
 use super::fonts::FontSettings;
@@ -186,9 +186,9 @@ pub(super) struct SidebarSettings {
     pub(super) device_footer: DeviceFooter,
     pub(super) change_counts: ChangeCounts,
     pub(super) hosts: BTreeMap<String, String>,
+    pub(super) numbers: Option<bool>,
     pub(super) activity_bar: Option<bool>,
     pub(super) automations: Option<bool>,
-    pub(super) numbers: Option<bool>,
 }
 
 impl SidebarSettings {
@@ -251,9 +251,9 @@ impl<'de> Deserialize<'de> for SidebarSettings {
                         "select" => settings.select = map.next_value()?,
                         "device_footer" => settings.device_footer = map.next_value()?,
                         "change_counts" => settings.change_counts = map.next_value()?,
+                        "numbers" => settings.numbers = Some(map.next_value()?),
                         "activity_bar" => settings.activity_bar = Some(map.next_value()?),
                         "automations" => settings.automations = Some(map.next_value()?),
-                        "numbers" => settings.numbers = Some(map.next_value()?),
                         "hosts" => settings.hosts = map.next_value()?,
                         _ => {
                             map.next_value::<serde::de::IgnoredAny>()?;

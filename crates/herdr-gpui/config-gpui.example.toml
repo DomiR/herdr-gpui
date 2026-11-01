@@ -392,6 +392,10 @@ size = 12
 # keep their shortcuts and command palette entries, and Devices Overview in
 # the palette still offers Add Device.
 # device_footer = "always"
+# false draws none of the sidebar's numbers, and nothing in their place:
+# pull request numbers, change and drift counts, the collapsed rail's
+# workspace numbers, agent tallies, and the activity bar's count bubbles.
+# numbers = true
 # Whose +added/-deleted line counts a worktree row shows: "pr" (its cached
 # pull request's) or "local" (the checkout's uncommitted changes against HEAD,
 # for checkouts on this machine, drawn inside the pencil chip that marks
@@ -399,10 +403,6 @@ size = 12
 # the uncommitted-work probe's slow schedule: one checkout at a time, each at
 # most every 30 seconds while the window is active.
 # change_counts = "pr"
-# false draws none of the sidebar's numbers, and nothing in their place:
-# pull request numbers, change and drift counts, the collapsed rail's
-# workspace numbers, agent tallies, and the activity bar's count bubbles.
-# numbers = true
 
 # The activity bar: an icon column at the window's left edge. Workspaces is
 # the sidebar beside the terminals; Orchestrator, Pull requests, and Issues

@@ -155,15 +155,15 @@ pub(super) const CATALOG: &[Entry] = &[
     ),
     entry(
         Section::Sidebar,
-        "sidebar-change-counts",
-        "settings-sidebar-change-counts",
-        "settings-sidebar-change-counts-description",
-    ),
-    entry(
-        Section::Sidebar,
         "sidebar-numbers",
         "settings-sidebar-numbers",
         "settings-sidebar-numbers-description",
+    ),
+    entry(
+        Section::Sidebar,
+        "sidebar-change-counts",
+        "settings-sidebar-change-counts",
+        "settings-sidebar-change-counts-description",
     ),
     entry(
         Section::Sidebar,

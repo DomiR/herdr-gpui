@@ -18,10 +18,10 @@ pub(super) enum SidebarKey {
     HostGap,
     Select,
     DeviceFooter,
+    Numbers,
     ActivityBar,
     Automations,
     ChangeCounts,
-    Numbers,
     Host(String),
 }
 
@@ -33,10 +33,10 @@ impl SidebarKey {
         Self::HostGap,
         Self::Select,
         Self::DeviceFooter,
+        Self::Numbers,
         Self::ActivityBar,
         Self::Automations,
         Self::ChangeCounts,
-        Self::Numbers,
     ];
 
     /// Copies this key's value from `from` into `to`.
@@ -49,10 +49,10 @@ impl SidebarKey {
             Self::HostGap => new.host_gap = old.host_gap,
             Self::Select => to.select = from.select,
             Self::DeviceFooter => to.device_footer = from.device_footer,
+            Self::Numbers => to.numbers = from.numbers,
             Self::ActivityBar => to.activity_bar = from.activity_bar,
             Self::Automations => to.automations = from.automations,
             Self::ChangeCounts => to.change_counts = from.change_counts,
-            Self::Numbers => to.numbers = from.numbers,
             Self::Host(host) => match from.hosts.get(host) {
                 Some(color) => {
                     to.hosts.insert(host.clone(), *color);
@@ -74,10 +74,10 @@ impl SidebarKey {
             Self::HostGap => Preference::SidebarHostGap(overrides.host_gap),
             Self::Select => Preference::SidebarSelect(style.select),
             Self::DeviceFooter => Preference::SidebarDeviceFooter(style.device_footer),
+            Self::Numbers => Preference::SidebarNumbers(style.numbers),
             Self::ActivityBar => Preference::SidebarActivityBar(style.activity_bar),
             Self::Automations => Preference::SidebarAutomations(style.automations),
             Self::ChangeCounts => Preference::SidebarChangeCounts(style.change_counts),
-            Self::Numbers => Preference::SidebarNumbers(style.numbers),
             Self::Host(host) => Preference::HostColor {
                 host: host.clone(),
                 color: style.hosts.get(host).copied(),
@@ -94,10 +94,10 @@ impl SidebarKey {
             Self::HostGap => old.host_gap != new.host_gap,
             Self::Select => before.select != after.select,
             Self::DeviceFooter => before.device_footer != after.device_footer,
+            Self::Numbers => before.numbers != after.numbers,
             Self::ActivityBar => before.activity_bar != after.activity_bar,
             Self::Automations => before.automations != after.automations,
             Self::ChangeCounts => before.change_counts != after.change_counts,
-            Self::Numbers => before.numbers != after.numbers,
             Self::Host(host) => before.hosts.get(host) != after.hosts.get(host),
         }
     }
