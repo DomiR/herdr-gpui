@@ -4,6 +4,9 @@
 mod app;
 mod browser;
 mod chat;
+mod doc;
+#[cfg(test)]
+pub(crate) use doc::message as doc_message;
 mod events;
 mod help;
 mod hosts;
@@ -463,6 +466,7 @@ pub(crate) fn run(invocation: Invocation) -> ExitCode {
         ControlCommand::Automation(command) => hosts::automation(command, &context),
         ControlCommand::Remote(command) => remote::remote(command, &context),
         ControlCommand::Mod(command) => mods::run(command, &context),
+        ControlCommand::Doc(command) => doc::run(command, &context),
         ControlCommand::Search {
             files,
             query,

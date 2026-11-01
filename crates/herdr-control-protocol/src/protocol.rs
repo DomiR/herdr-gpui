@@ -5,6 +5,7 @@
 pub mod app;
 pub mod chat;
 pub mod cloud;
+pub mod doc;
 pub mod events;
 pub mod hosts;
 pub mod mods;
@@ -30,8 +31,8 @@ pub enum Placement {
 /// an outdated app from a refused request. 3: `browser.open` placement.
 /// 4: `link`. 5: the `tab` family's `zoom`. 6: the `cloud` family. 7: `chat`.
 /// 8: `host` `automation_approve`. 9: `remote`. 10: `settings` `language`.
-/// 11: `mod`.
-pub const PROTOCOL_VERSION: u32 = 11;
+/// 11: `mod`. 12: `doc`, and the `doc` tab kind.
+pub const PROTOCOL_VERSION: u32 = 12;
 
 /// Older apps and clients know only tabs, so a tab is left off the wire.
 fn is_tab(placement: &Placement) -> bool {
@@ -85,6 +86,8 @@ pub enum Request {
     Remote(Call<remote::RemoteOp>),
     #[serde(rename = "mod")]
     Mod(Call<mods::ModOp>),
+    #[serde(rename = "doc")]
+    Doc(Call<doc::DocOp>),
 }
 
 /// A `herdr-gpui://` link the shell started a second copy of the app with.
@@ -115,6 +118,7 @@ impl Request {
             Self::Settings(call) => call.op.wait_seconds(),
             Self::Cloud(call) => call.op.wait_seconds(),
             Self::Remote(call) => call.op.wait_seconds(),
+            Self::Doc(call) => call.op.wait_seconds(),
             _ => 0,
         };
         wait.min(MAX_WAIT_SECONDS)
@@ -277,6 +281,9 @@ pub enum Response {
     },
     Mod {
         reply: mods::Reply,
+    },
+    Doc {
+        reply: doc::Reply,
     },
     Error {
         code: ErrorCode,

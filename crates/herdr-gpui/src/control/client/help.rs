@@ -10,6 +10,34 @@ Exit status: 0 done, 1 refused, 2 invalid arguments, 3 Herdr UI not running,
 4 nothing yet (no notes, no event), 5 not found, 6 busy (a dialog is open),
 7 timed out, 8 unsupported on this platform or by this app version.";
 
+const DOC: &str = "\
+herdr-gpui doc open FILE[:LINE]
+    Open a Markdown file in a document tab, where the user edits it in place.
+herdr-gpui doc read FILE [--section ID]
+    The text (or one section's) and its version number. Every change to the
+    document, by anyone, takes the next number.
+herdr-gpui doc diff FILE --since N
+    A unified diff of what changed since version N.
+herdr-gpui doc sections FILE
+    The sections: each #, ##, and ### heading starts one, named by the
+    heading's slug (its GitHub anchor ID).
+herdr-gpui doc todo list FILE [--section ID]
+    The tasks, numbered.
+herdr-gpui doc append FILE --version N [--section ID] TEXT...|-- TEXT|-
+herdr-gpui doc edit FILE --version N [--section ID] --old TEXT --new TEXT
+herdr-gpui doc todo add FILE --version N [--section ID] TEXT...|-- TEXT|-
+herdr-gpui doc todo check|uncheck FILE --version N [--section ID] NUMBER|TEXT
+    Change the document: append a block (at the end, or of the section),
+    replace the one place --old occurs, add a task, or check one off by its
+    number or text. -- passes text starting with -, and - reads standard
+    input. --version is the number you last read. When the document has
+    changed since, nothing is applied and the reply is the latest version
+    and a diff since yours (exit 1): read it and send a new change. With
+    --section, a stale version still applies if that section is unchanged,
+    and the reply carries the diff of the other sections. Changes merge
+    with the user's typing and are written to the file before the reply.
+FILE is a .md path, relative to the current directory.";
+
 const BROWSER: &str = "\
 herdr-gpui browser open URL|FILE [--workspace ID] [--no-focus] [--beside|--tab]
     Show a web address, or a local HTML file, in a browser tab of the running
@@ -134,6 +162,7 @@ fn family(name: &str) -> &'static str {
         "mod" => {
             "herdr-gpui mod [list]\n    The mods the window runs, where each draws, and any error. Mods are\n    folders in <config>/herdr/gpui-mods; saving a file reloads its mod.\n    Exits 4 when there are none.\nherdr-gpui mod reload NAME\n    Read a mod's files again now.\nherdr-gpui mod open NAME\n    Show a mod's activity bar app in the window's body. Exits 5 when no\n    running mod of that name has one, 8 while the activity bar is off.\nherdr-gpui mod panel [show|hide|toggle]\n    The panel of mod sections on the window's right: whether it shows and\n    which mods have a section, or show, hide, or toggle it.\nherdr-gpui mod logs NAME [--lines N]\n    The last lines it wrote with herdr.log (default 50, at most 200).\nherdr-gpui mod check DIR\n    Load a mod folder, run its init and view once, and report what it\n    draws. Runs here; Herdr UI need not run. Exits 1 with the error and\n    its line when the mod is invalid."
         }
+        "doc" => DOC,
         "search" => {
             "herdr-gpui search symbol|file QUERY... [--limit N]\n    Go to Symbol or Go to File over the current directory's checkout,\n    printing paths relative to its root. Runs here; Herdr UI need not run."
         }

@@ -104,6 +104,7 @@ Herdr UI** entry, which both Windows installers add, runs this command through
 | `browser screenshot ID PATH` | A PNG of the visible page, at most 2000 px a side (macOS) |
 | `code open FILE[:LINE]` | A read-only code tab at a line |
 | `code edit FILE[:LINE]` | Your terminal editor, in a new pane beside yours |
+| `doc open FILE[:LINE]` | A Markdown document tab, edited in place (see [Markdown documents](#markdown-documents)) |
 | `devices` | The Devices overview |
 | `orchestrator [--repo PATH]` | Show the Issues section narrowed to your checkout's project, or PATH's |
 | `orchestrator items\|issues\|prs` | What it last synced, from its local database (no app needed) |
@@ -116,6 +117,41 @@ selects an existing workbench, and `config unset px0.url` restores automatic
 discovery. `--json` returns the opened tab ID and workspace. Exit 0 means the
 tab opened; startup errors appear in that tab with Retry. Remote workspaces
 and builds without embedded pages return exit 8. See [px0](../crates/herdr-gpui/README.md#px0).
+
+### Markdown documents
+
+Agents read and change a Markdown file through the app, so their changes
+merge with the user's typing and with each other instead of racing a
+read-modify-write of the file. Every change to a document, by anyone, takes
+the next version number; a change names the version it was made against.
+
+| Command | Does |
+| --- | --- |
+| `doc read FILE [--section ID]` | The text (or one section's) after a `Version: N` line |
+| `doc diff FILE --since N` | A unified diff of what changed since version N |
+| `doc sections FILE` | The sections: each `#`, `##`, and `###` heading starts one, named by its slug (the heading's GitHub anchor ID; repeats get `-1`, `-2`) |
+| `doc todo list FILE [--section ID]` | The tasks, numbered |
+| `doc append FILE --version N [--section ID] TEXT` | Add a block at the end of the document or of the section |
+| `doc edit FILE --version N [--section ID] --old TEXT --new TEXT` | Replace the one place `--old` occurs |
+| `doc todo add FILE --version N [--section ID] TEXT` | Add a task after the last one (of the section) |
+| `doc todo check\|uncheck FILE --version N [--section ID] NUMBER\|TEXT` | Check off a task by its number or its text |
+
+`FILE` is a `.md` path, relative to the current directory. Text after `--`
+may start with `-`, as list items do (`doc append todo.md --version 4 -- "- [ ] ship"`),
+and `-` reads standard input. The reply is one line an agent can act on,
+followed by a diff where one applies:
+
+- `Updated. Version: 7`: done, and the file holds it.
+- `Updated section "goals". Version: 7. Other sections changed since 5:` and
+  the diff: with `--section`, a stale version still applies while that
+  section is unchanged since it, and the reply shows what changed elsewhere.
+- `Version mismatch, nothing changed. Latest version: 7. Changes since 5:`
+  and the diff, exit 1: read it and send the change again against 7. When
+  the app no longer knows version 5 (it keeps the last 512, while the file
+  is open), the reply says to `doc read` instead.
+
+Version numbers restart at 1 when the app restarts. `--json` returns the
+same as fields (`kind`, `version`, `others`, `diff`).
 
 ### Worktrees and agents
 

@@ -92,9 +92,10 @@ building it without the user watching, so a reviewer can check each one.
     not silently merged. The app remembers each file's last number and
     text for the session, so a document closed and opened again carries
     on counting (one more when the file changed meanwhile). Numbers start
-    again at 1 after the app restarts: a stale number from before a
-    restart is refused only if the text differs from what that number
-    named then, which the app no longer knows; this is the one gap.
+    again at 1 after the app restarts, so a number from before a restart
+    that happens to equal the new count is accepted against a text it
+    never named; this is the one gap, and closing it would mean saving
+    numbers beside the file.
 17. **`doc edit`**: replaces one exact occurrence of `--old` with `--new`
     (the occurrence must be unique), the precise edit agents already know
     from their file tools, but without the read-modify-write race.
@@ -127,3 +128,22 @@ building it without the user watching, so a reviewer can check each one.
     has no docket binding and bootstrapping one needs operator approvals
     (trust entries and activation) the unattended run cannot give. The
     phases ran directly, each committed on its own.
+
+## What shipped, by phase
+
+1. `herdr-doc`: the document, disk merge, versions, sections, folds, and
+   todo operations, with headless tests of concurrent edits.
+2. The editor (`doc_view`): editing, IME, selection, undo, styling, todo
+   keys, folding, hide done, highlights of other writers' changes, and the
+   shared buffer's polling and writes, with headless GPUI tests.
+3. The `doc` command family, the agent highlights naming the pane, and the
+   docs (`docs/cli.md`, the app README, the managed skill).
+
+## Not done yet
+
+- Hiding Markdown markers entirely on lines without the caret, as
+  Obsidian's live preview does; they draw muted instead.
+- Right-to-left text in documents: carets come from GPUI's text layout,
+  not the app's bidirectional `Carets`.
+- Compacting the in-memory CRDT history of a long-open document.
+- Following a renamed file; a rename reads as a deletion.
