@@ -29,6 +29,12 @@ pub enum DocOp {
         since: u64,
         #[serde(default, skip_serializing_if = "is_zero")]
         wait: u64,
+        /// Only changes to this section count, and the diff is its own.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        section: Option<String>,
+        /// Only changes to tasks count; the reply lists them.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        todos: bool,
     },
     /// The sections headings start, by ID.
     Sections { path: String },
@@ -137,6 +143,39 @@ pub struct TodoInfo {
     pub section: Option<String>,
 }
 
+/// What happened to a task.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TodoChangeKind {
+    Added,
+    Removed,
+    Checked,
+    Unchecked,
+    Edited,
+}
+
+impl TodoChangeKind {
+    /// The word `doc watch --todos` prints.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Added => "added",
+            Self::Removed => "removed",
+            Self::Checked => "checked",
+            Self::Unchecked => "unchecked",
+            Self::Edited => "edited",
+        }
+    }
+}
+
+/// One task that changed, by its number in the document (the old one,
+/// for a removed task).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TodoChangeInfo {
+    pub kind: TodoChangeKind,
+    pub number: usize,
+    pub text: String,
+}
+
 /// What changed in other sections while a section change still applied.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Others {
@@ -161,6 +200,13 @@ pub enum Reply {
         /// Empty when nothing changed; `None` when `since` is too old or
         /// the diff too large.
         diff: Option<String>,
+        /// Who made the versions since: `the user`, `file`, or an agent's
+        /// name and pane.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        by: Vec<String>,
+        /// The tasks that changed, when asked for.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        todos: Vec<TodoChangeInfo>,
     },
     Sections {
         path: String,

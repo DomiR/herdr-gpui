@@ -7,12 +7,12 @@ use super::{Watches, socket, tabs::arrive};
 use crate::{
     control::protocol::{
         Call, Caller, ErrorCode, Response,
-        doc::{DocOp, Others, Reply, SectionInfo, TodoInfo},
+        doc::{DocOp, Others, Reply, SectionInfo, TodoChangeInfo, TodoChangeKind, TodoInfo},
     },
     doc_view::{self, DocBuffer, Docs, State},
 };
 use gpui::{App, Entity};
-use herdr_doc::{Author, Edit, Scope, Version, section, todo};
+use herdr_doc::{Author, Edit, Origin, Scope, Version, section, todo};
 use std::{path::PathBuf, time::Duration};
 
 /// Makes a change's edits from the text it applies to.
@@ -51,6 +51,8 @@ pub(super) fn serve(
                 since: *since,
                 version: *since,
                 diff: Some(String::new()),
+                by: Vec::new(),
+                todos: Vec::new(),
             },
         },
         _ => Response::error(
@@ -90,8 +92,15 @@ fn step(
         Stage::Loading => {
             match buffer.read(cx).state() {
                 State::Loading => return None,
+                State::Failed(doc_view::Error::Doc(herdr_doc::Error::Missing { .. })) => {
+                    return Some(gone(path));
+                }
                 State::Failed(error) => return Some(failed(error.to_string())),
                 State::Ready => {}
+            }
+            // A watched document that disappears ends the watch.
+            if matches!(op, DocOp::Diff { .. }) && buffer.read(cx).missing() {
+                return Some(gone(path));
             }
             match apply(op, buffer, author, path, cx) {
                 Ok(Applied::Answer(response)) => Some(response),
@@ -169,17 +178,13 @@ fn apply(
                 text,
             });
         }
-        DocOp::Diff { since, wait, .. } => {
-            if *wait > 0 && version == *since {
-                return Ok(Applied::Waiting);
-            }
-            return answer(Reply::Diff {
-                path,
-                since: *since,
-                version,
-                diff: doc.changes_since(Version(*since)),
-            });
-        }
+        DocOp::Diff {
+            since,
+            wait,
+            section,
+            todos,
+            ..
+        } => return diff(doc, path, *since, *wait, section.as_deref(), *todos),
         DocOp::Sections { .. } => {
             let sections = section::sections(text)
                 .into_iter()
@@ -315,6 +320,94 @@ fn apply(
         }
         Err(error) => Err(refused(error)),
     }
+}
+
+/// `doc diff`: what changed since `since`, or [`Applied::Waiting`] while a
+/// waiting request has seen no change it counts (in its section, or to
+/// tasks, when it names them).
+fn diff(
+    doc: &herdr_doc::Document,
+    path: String,
+    since: u64,
+    wait: u64,
+    section: Option<&str>,
+    todos: bool,
+) -> Result<Applied, Response> {
+    let version = doc.version().0;
+    let Some(changes) = doc.changes(Version(since), section) else {
+        // Too old, or a number from before the app restarted.
+        return Ok(Applied::Answer(Response::Doc {
+            reply: Reply::Diff {
+                path,
+                since,
+                version,
+                diff: None,
+                by: Vec::new(),
+                todos: Vec::new(),
+            },
+        }));
+    };
+    let changed = changes.diff.as_deref() != Some("");
+    let counts = changed && (!todos || !changes.todos.is_empty());
+    if wait > 0 && !counts {
+        return Ok(Applied::Waiting);
+    }
+    Ok(Applied::Answer(Response::Doc {
+        reply: Reply::Diff {
+            path,
+            since,
+            version,
+            diff: if counts {
+                changes.diff
+            } else {
+                Some(String::new())
+            },
+            by: changes.by.iter().map(label).collect(),
+            todos: if todos {
+                changes
+                    .todos
+                    .into_iter()
+                    .map(|change| TodoChangeInfo {
+                        kind: kind(change.kind),
+                        number: change.number,
+                        text: change.text,
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            },
+        },
+    }))
+}
+
+fn kind(kind: todo::ChangeKind) -> TodoChangeKind {
+    match kind {
+        todo::ChangeKind::Added => TodoChangeKind::Added,
+        todo::ChangeKind::Removed => TodoChangeKind::Removed,
+        todo::ChangeKind::Checked => TodoChangeKind::Checked,
+        todo::ChangeKind::Unchecked => TodoChangeKind::Unchecked,
+        todo::ChangeKind::Edited => TodoChangeKind::Edited,
+    }
+}
+
+/// Who made a change, as `doc watch` names them. Agent-facing English.
+fn label(origin: &Origin) -> String {
+    match origin {
+        Origin::User => "the user".to_owned(), // i18n: data
+        Origin::Disk => "file".to_owned(),     // i18n: data
+        Origin::Agent(author) if author.pane.is_empty() || author.label == author.pane => {
+            author.label.clone()
+        }
+        Origin::Agent(author) => format!("{} ({})", author.label, author.pane),
+    }
+}
+
+/// The answer once a watched or read document is gone.
+fn gone(path: &str) -> Response {
+    Response::error(
+        ErrorCode::NotFound,
+        format!("{path} does not exist; it may have been deleted or moved"),
+    )
 }
 
 /// The document's file: an absolute Markdown path.

@@ -29,7 +29,7 @@ pub mod section;
 pub mod todo;
 mod version;
 
-pub use document::{Anchor, Applied, Author, Document, Merge, Scope, Synced};
+pub use document::{Anchor, Applied, Author, Changes, Document, Merge, Origin, Scope, Synced};
 pub use edit::Edit;
 pub use error::{Error, Result};
 pub use version::{Conflict, MAX_DIFF, Version};

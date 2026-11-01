@@ -10,6 +10,10 @@ use crate::{
 };
 use std::ops::Range;
 
+mod changes;
+
+pub use changes::{ChangeKind, TodoChange, changes};
+
 /// The most characters a todo added by command may have.
 pub const MAX_ITEM: usize = 4096;
 

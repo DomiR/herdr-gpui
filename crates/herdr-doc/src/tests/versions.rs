@@ -68,3 +68,37 @@ fn changes_since_a_version() {
     assert!(diff.contains("+b"), "{diff}");
     assert_eq!(doc.changes_since(Version(9)), None);
 }
+
+#[test]
+fn changes_name_who_made_them_and_can_keep_to_a_section() {
+    let mut doc = Document::new("# A\n- [ ] a\n# B\n- [ ] b\n").unwrap();
+    let start = doc.version();
+    doc.agent_edit(&agent("w1:p2"), at(doc.version()), |text| {
+        todo::find(text, "b").map(|t| todo::set_done(text, t.line, true).into_iter().collect())
+    })
+    .unwrap();
+    // The app writes the agent's change before another program edits it.
+    save(&mut doc);
+    doc.merge_disk("# A\n- [ ] a\n# B\n- [x] b\n- [ ] c\n")
+        .unwrap();
+    let all = doc.changes(start, None).unwrap();
+    assert_eq!(all.by, vec![Origin::Agent(agent("w1:p2")), Origin::Disk]);
+    assert_eq!(all.from, start);
+    assert_eq!(all.to, doc.version());
+    let kinds: Vec<_> = all.todos.iter().map(|c| (c.kind, c.number)).collect();
+    assert_eq!(
+        kinds,
+        vec![(todo::ChangeKind::Checked, 2), (todo::ChangeKind::Added, 3)]
+    );
+    // Section A did not change: an empty diff and no tasks.
+    let a = doc.changes(start, Some("a")).unwrap();
+    assert_eq!(a.diff.as_deref(), Some(""));
+    assert!(a.todos.is_empty());
+    let b = doc.changes(start, Some("b")).unwrap();
+    assert!(b.diff.unwrap().contains("+- [ ] c"));
+    // The user's own typing is the user's.
+    type_at(&mut doc, 0, "x");
+    let mine = doc.changes(Version(start.0 + 2), None).unwrap();
+    assert_eq!(mine.by, vec![Origin::User]);
+    assert!(doc.changes(Version(999), None).is_none());
+}

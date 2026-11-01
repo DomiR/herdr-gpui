@@ -10,7 +10,7 @@
 use super::Error;
 use gpui::{App, AppContext, Context, Entity, EventEmitter, Global, Task, WeakEntity};
 use herdr_doc::{
-    Applied, Author, Document, Edit, Merge, Scope, Synced, Version, diff,
+    Applied, Author, Document, Edit, Merge, Origin, Scope, Synced, Version, diff,
     disk::{self, Format, Stamp, Written},
 };
 use std::{
@@ -33,21 +33,10 @@ const CLOSING_WRITES: usize = 4;
 /// How long typing pauses before it is written.
 const QUIET: Duration = Duration::from_millis(400);
 
-/// Who changed a document, when it was not the person in this app.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum Who {
-    /// The person, in this or another tab.
-    User,
-    /// An agent's `doc` command.
-    Agent(Author),
-    /// Another program rewrote the file.
-    Disk,
-}
-
 /// A change to the document, for every editor showing it.
 #[derive(Clone, Debug)]
 pub(crate) struct Changed {
-    pub(crate) by: Who,
+    pub(crate) by: Origin,
     /// What it inserted, in the new text.
     pub(crate) inserted: Vec<Range<usize>>,
 }
@@ -298,7 +287,7 @@ impl DocBuffer {
         self.typed(cx);
         let inserted = changed_ranges(edits);
         cx.emit(Changed {
-            by: Who::User,
+            by: Origin::User,
             inserted,
         });
         cx.notify();
@@ -316,7 +305,7 @@ impl DocBuffer {
         if changed.is_some() {
             self.typed(cx);
             cx.emit(Changed {
-                by: Who::User,
+                by: Origin::User,
                 inserted: Vec::new(),
             });
             cx.notify();
@@ -346,7 +335,7 @@ impl DocBuffer {
         self.last_agent = Some(author.clone());
         if !applied.inserted.is_empty() || doc.dirty() {
             cx.emit(Changed {
-                by: Who::Agent(author.clone()),
+                by: Origin::Agent(author.clone()),
                 inserted: applied.inserted.clone(),
             });
             self.write_now = true;
@@ -444,7 +433,7 @@ impl DocBuffer {
                 // editors take their anchors again.
                 if doc.history_len() > COMPACT_OPS && doc.compact().unwrap_or(false) {
                     cx.emit(Changed {
-                        by: Who::User,
+                        by: Origin::User,
                         inserted: Vec::new(),
                     });
                 }
@@ -540,7 +529,7 @@ impl DocBuffer {
             Ok(Merge::Unchanged) => true,
             Ok(Merge::Merged { inserted }) => {
                 cx.emit(Changed {
-                    by: Who::Disk,
+                    by: Origin::Disk,
                     inserted,
                 });
                 cx.notify();

@@ -51,6 +51,7 @@ Every command accepts:
 | 6 | A dialog is open in the window, or the app is busy |
 | 7 | The app did not answer in time |
 | 8 | Not available on this platform or in this version of the app |
+| 9 | `doc watch`: the watched document was deleted or moved |
 
 ## Commands
 
@@ -129,6 +130,7 @@ the next version number; a change names the version it was made against.
 | --- | --- |
 | `doc read FILE [--section ID]` | The text (or one section's) after a `Version: N` line |
 | `doc diff FILE --since N [--wait S]` | A unified diff of what changed since version N; with `--wait`, waits up to S seconds (at most 600) for a change first, exiting 4 when none came |
+| `doc watch FILE [--since N] [--section ID] [--todos]` | Every change from version N (default: now) as it happens: `Version N by WHO` (`the user`, an agent's name and pane, or `file`) and the diff, or with `--todos` one line per task (`checked 3. Ship`, `added …`, `removed …`, `unchecked …`, `edited …`). Versions landing together print once as `Versions A-N`. `--section` keeps to one section; `--json` prints one object per line. Runs until interrupted or the document is gone (exit 9), following app restarts with one line. Run it in the background and act on each line |
 | `doc sections FILE` | The sections: each `#`, `##`, and `###` heading starts one, named by its slug (the heading's GitHub anchor ID; repeats get `-1`, `-2`) |
 | `doc todo list FILE [--section ID]` | The tasks, numbered |
 | `doc append FILE --version N [--section ID] TEXT` | Add a block at the end of the document or of the section |

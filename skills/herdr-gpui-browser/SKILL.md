@@ -202,6 +202,7 @@ The commands exit with:
 | 6 | A dialog is open in Herdr UI, or it is busy | Try again later, or tell the user |
 | 7 | Herdr UI did not answer in time | Try again once |
 | 8 | Not available on this platform or this version | Print the URL or path for the user instead |
+| 9 | `doc watch`: the document was deleted or moved | Stop watching, or watch its new path |
 
 If the command is not found, browser tabs are not available to you: print
 the URL instead.
@@ -233,6 +234,7 @@ for what only Herdr UI shows or keeps.
 | --- | --- |
 | Show a file at a line, read-only | `herdr-gpui code open src/main.rs:42` |
 | Read or change a Markdown doc or todo list the user and other agents edit too: name the version you read, and the section you work in | `herdr-gpui doc read TODO.md`, `herdr-gpui doc todo add TODO.md --version 3 --section next "Write tests"`, `herdr-gpui doc todo check TODO.md --version 4 2`; on `Version mismatch` apply the diff it prints and retry with the new version; `herdr-gpui doc diff TODO.md --since 4 --wait 600` waits for the next change |
+| React to every change in a shared Markdown doc or todo list while you work | Run `herdr-gpui doc watch TODO.md --todos` in the background (Claude Code's Monitor tool turns each line into an event; elsewhere, tail its output), act on each `Version N by WHO` change, and stop it when done |
 | Open the review of your uncommitted changes | `herdr-gpui review` |
 | Open px0 to browse, edit, or review your local checkout (macOS/Windows) | `herdr-gpui px0 open` |
 | Get notes the user sent this pane (pages, reviews, terminals) | `herdr-gpui feedback --wait 600` |

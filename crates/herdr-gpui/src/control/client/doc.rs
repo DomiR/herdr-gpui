@@ -41,7 +41,32 @@ pub(super) fn run(command: DocCommand, context: &Context) -> crate::Result<Outpu
             path: absolute(&path)?,
             since,
             wait,
+            section: None,
+            todos: false,
         },
+        DocCommand::Watch {
+            path,
+            since,
+            section,
+            todos,
+        } => {
+            let watch = watch::Watch {
+                shown: path.display().to_string(),
+                path: absolute(&path)?,
+                since,
+                section,
+                todos,
+                json: context.json,
+            };
+            let mut stdout = std::io::stdout().lock();
+            let status = watch::run(
+                &watch,
+                &mut |op| context.call(Request::Doc, op),
+                &mut stdout,
+                &mut std::thread::sleep,
+            )?;
+            return Ok(watch::ended(status));
+        }
         DocCommand::Sections { path } => DocOp::Sections {
             path: absolute(&path)?,
         },
@@ -117,6 +142,7 @@ pub(crate) fn message(reply: &Reply) -> (String, bool) {
             since,
             version,
             diff,
+            ..
         } => match diff.as_deref() {
             Some("") => (
                 format!("Version: {version}. No changes since {since}."),
@@ -245,6 +271,8 @@ fn refused(message: String) -> crate::Error {
     }
     .into()
 }
+
+mod watch;
 
 #[cfg(test)]
 mod tests;

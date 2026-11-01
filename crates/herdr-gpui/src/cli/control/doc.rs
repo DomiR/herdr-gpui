@@ -32,6 +32,13 @@ pub enum DocCommand {
     Sections {
         path: PathBuf,
     },
+    /// Every change from `since` (or now) on, until interrupted.
+    Watch {
+        path: PathBuf,
+        since: Option<u64>,
+        section: Option<String>,
+        todos: bool,
+    },
     Append {
         path: PathBuf,
         change: Change,
@@ -63,7 +70,7 @@ pub enum DocCommand {
 pub(super) fn command(args: &mut Args) -> Result<DocCommand, CliError> {
     let verb = args.verb().ok_or(CliError::MissingArgument {
         command: "doc",
-        what: "open|read|diff|sections|append|edit|todo",
+        what: "open|read|diff|watch|sections|append|edit|todo",
     })?;
     Ok(match verb.to_str() {
         Some("open") => DocCommand::Open(args.required("FILE[:LINE]")?.into()),
@@ -79,6 +86,12 @@ pub(super) fn command(args: &mut Args) -> Result<DocCommand, CliError> {
             path: path(args)?,
         },
         Some("sections") => DocCommand::Sections { path: path(args)? },
+        Some("watch") => DocCommand::Watch {
+            since: args.number("--since", 0..=u64::MAX)?,
+            section: args.text_option("--section")?,
+            todos: args.flag("--todos"),
+            path: path(args)?,
+        },
         Some("append") => {
             let change = change(args)?;
             DocCommand::Append {

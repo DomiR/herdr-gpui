@@ -13,7 +13,7 @@ use super::{
 };
 use super::{
     blocks::{self, Block},
-    buffer::{Changed, DocBuffer, Who},
+    buffer::{Changed, DocBuffer},
     layout::{DisplayMap, Look},
 };
 use crate::chat::visual::Visuals;
@@ -23,7 +23,7 @@ use gpui::{
     Subscription, TextLayout, px,
 };
 use herdr_doc::{
-    Anchor, Edit, Version,
+    Anchor, Edit, Origin, Version,
     markdown::{self, Fold, Line},
     section, todo,
 };
@@ -419,18 +419,18 @@ impl DocEditor {
         {
             self.selection = Selection { anchor, head };
         }
-        if event.by != Who::User {
+        if event.by != Origin::User {
             // A composition's place is bytes, which another writer's text
             // just moved; it ends rather than replacing the wrong text.
             self.marked = None;
         }
         if let Some(doc) = doc
-            && event.by != Who::User
+            && event.by != Origin::User
         {
             let text = doc.text();
             let by = match &event.by {
-                Who::Agent(author) => Some(author.label.clone()),
-                Who::Disk | Who::User => None,
+                Origin::Agent(author) => Some(author.label.clone()),
+                Origin::Disk | Origin::User => None,
             };
             let since = motion::now();
             for range in &event.inserted {

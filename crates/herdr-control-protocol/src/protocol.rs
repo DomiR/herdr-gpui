@@ -32,7 +32,8 @@ pub enum Placement {
 /// 4: `link`. 5: the `tab` family's `zoom`. 6: the `cloud` family. 7: `chat`.
 /// 8: `host` `automation_approve`. 9: `remote`. 10: `settings` `language`.
 /// 11: `mod`. 12: `doc`, and the `doc` tab kind. 13: `doc diff` `wait`.
-pub const PROTOCOL_VERSION: u32 = 13;
+/// 14: `doc diff` `section`, `todos`, and `by`.
+pub const PROTOCOL_VERSION: u32 = 14;
 
 /// Older apps and clients know only tabs, so a tab is left off the wire.
 fn is_tab(placement: &Placement) -> bool {

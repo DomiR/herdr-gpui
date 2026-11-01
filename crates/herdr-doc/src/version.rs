@@ -3,6 +3,7 @@
 //! remembers where its recent versions are in its history, to show an agent
 //! whose number is stale exactly what changed since.
 
+use crate::Origin;
 use loro::Frontiers;
 use std::{collections::VecDeque, fmt, str::FromStr};
 
@@ -51,21 +52,34 @@ pub struct Conflict {
     pub diff: Option<String>,
 }
 
+/// One kept version: where it is in the CRDT history, and who made it
+/// (`None` for the text as opened).
+#[derive(Debug)]
+struct Kept {
+    version: Version,
+    frontiers: Frontiers,
+    by: Option<Origin>,
+}
+
 /// Recent versions and where each is in the CRDT history, newest last.
 #[derive(Debug, Default)]
 pub(crate) struct History {
-    kept: VecDeque<(Version, Frontiers)>,
+    kept: VecDeque<Kept>,
 }
 
 impl History {
-    pub(crate) fn record(&mut self, version: Version, frontiers: Frontiers) {
-        if self.kept.back().is_some_and(|(last, _)| *last == version) {
+    pub(crate) fn record(&mut self, version: Version, frontiers: Frontiers, by: Option<Origin>) {
+        if self.kept.back().is_some_and(|last| last.version == version) {
             return;
         }
         if self.kept.len() == KEPT {
             self.kept.pop_front();
         }
-        self.kept.push_back((version, frontiers));
+        self.kept.push_back(Kept {
+            version,
+            frontiers,
+            by,
+        });
     }
 
     /// Where `version` last was.
@@ -73,8 +87,23 @@ impl History {
         self.kept
             .iter()
             .rev()
-            .find(|(kept, _)| *kept == version)
-            .map(|(_, frontiers)| frontiers)
+            .find(|kept| kept.version == version)
+            .map(|kept| &kept.frontiers)
+    }
+
+    /// Who made the versions after `version`, each once, in order; `None`
+    /// when `version` is no longer kept.
+    pub(crate) fn origins_since(&self, version: Version) -> Option<Vec<Origin>> {
+        let at = self.kept.iter().position(|kept| kept.version == version)?;
+        let mut out: Vec<Origin> = Vec::new();
+        for kept in self.kept.iter().skip(at + 1) {
+            if let Some(by) = &kept.by
+                && !out.contains(by)
+            {
+                out.push(by.clone());
+            }
+        }
+        Some(out)
     }
 }
 

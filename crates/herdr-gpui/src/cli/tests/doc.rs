@@ -134,3 +134,36 @@ fn a_change_without_a_version_is_refused() {
     assert!(doc(&["doc", "edit", "a.md", "--version", "1", "--old", "x"]).is_err());
     assert!(doc(&["doc", "frobnicate", "a.md"]).is_err());
 }
+
+#[test]
+fn doc_watch_parses() {
+    assert_eq!(
+        doc(&["doc", "watch", "TODO.md"]).unwrap(),
+        DocCommand::Watch {
+            path: "TODO.md".into(),
+            since: None,
+            section: None,
+            todos: false
+        }
+    );
+    assert_eq!(
+        doc(&[
+            "doc",
+            "watch",
+            "TODO.md",
+            "--since",
+            "4",
+            "--section",
+            "next",
+            "--todos"
+        ])
+        .unwrap(),
+        DocCommand::Watch {
+            path: "TODO.md".into(),
+            since: Some(4),
+            section: Some("next".into()),
+            todos: true
+        }
+    );
+    assert!(doc(&["doc", "watch"]).is_err());
+}

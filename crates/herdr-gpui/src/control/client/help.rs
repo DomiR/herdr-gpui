@@ -19,6 +19,15 @@ herdr-gpui doc read FILE [--section ID]
 herdr-gpui doc diff FILE --since N [--wait SECONDS]
     A unified diff of what changed since version N. With --wait (at most
     600), wait for a change first; exits 4 when none came.
+herdr-gpui doc watch FILE [--since N] [--section ID] [--todos]
+    Print every change from version N (or from now) as it happens, until
+    interrupted or the document is gone (exit 9): a line `Version N by WHO`
+    (the user, an agent's name and pane, or file), then the diff. Versions
+    that land together print as one change, `Versions A-N`. --section
+    prints only changes to that section; --todos prints task changes, one
+    line each (`checked 3. Ship`, `added`, `removed`, `unchecked`,
+    `edited`), instead of the diff. --json prints one JSON object per line.
+    Restarts of Herdr UI are followed, with one line saying so.
 herdr-gpui doc sections FILE
     The sections: each #, ##, and ### heading starts one, named by the
     heading's slug (its GitHub anchor ID).

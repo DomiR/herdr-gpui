@@ -9,7 +9,7 @@
 //! the user and agents did since rather than replacing it.
 
 use crate::{
-    Conflict, Edit, Error, MAX_BYTES, Result, Version, diff, section,
+    Conflict, Edit, Error, MAX_BYTES, Result, Version, diff, section, todo,
     version::{self, History},
 };
 use loro::{
@@ -33,6 +33,30 @@ const UNDO_STEPS: usize = 500;
 pub struct Author {
     pub pane: String,
     pub label: String,
+}
+
+/// Who made a version: the person in the editor, an agent through a
+/// command, or another program writing the file.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Origin {
+    User,
+    Agent(Author),
+    Disk,
+}
+
+/// What changed in a document since a version, as `doc diff` and `doc
+/// watch` report it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Changes {
+    pub from: Version,
+    pub to: Version,
+    /// Who made the versions in between, each once.
+    pub by: Vec<Origin>,
+    /// A unified diff (of the section alone, when one was named); `None`
+    /// when too large.
+    pub diff: Option<String>,
+    /// The tasks that changed, by the document's own numbering.
+    pub todos: Vec<todo::TodoChange>,
 }
 
 /// The text the file held when the document last read or wrote it, and the
@@ -141,7 +165,7 @@ impl Document {
         undo.set_merge_interval(UNDO_MERGE_MS);
         undo.set_max_undo_steps(UNDO_STEPS);
         let mut history = History::default();
-        history.record(version, doc.oplog_frontiers());
+        history.record(version, doc.oplog_frontiers(), None);
         Ok(Self {
             synced: Synced {
                 frontiers: doc.oplog_frontiers(),
@@ -237,7 +261,7 @@ impl Document {
         }
         apply(&self.text, &sorted)?;
         self.doc.commit();
-        self.refresh();
+        self.refresh(Origin::User);
         Ok(())
     }
 
@@ -270,7 +294,7 @@ impl Document {
     }
 
     fn after_history(&mut self, before: &str) -> Option<Range<usize>> {
-        self.refresh();
+        self.refresh(Origin::User);
         changed_range(before, &self.current)
     }
 
@@ -322,7 +346,7 @@ impl Document {
         fork.commit();
         let updates = fork.export(ExportMode::updates_owned(from))?;
         self.doc.import(&updates)?;
-        self.refresh();
+        self.refresh(Origin::Agent(author.clone()));
         Ok(Applied {
             version: self.version,
             inserted,
@@ -364,7 +388,7 @@ impl Document {
         undo.set_merge_interval(UNDO_MERGE_MS);
         undo.set_max_undo_steps(UNDO_STEPS);
         let mut history = History::default();
-        history.record(self.version, doc.oplog_frontiers());
+        history.record(self.version, doc.oplog_frontiers(), None);
         self.synced = Synced {
             frontiers: doc.oplog_frontiers(),
             text: self.synced.text.clone(),
@@ -381,6 +405,50 @@ impl Document {
     /// Bumped by [`Self::compact`]: anchors taken before it do not resolve.
     pub fn generation(&self) -> u64 {
         self.generation
+    }
+
+    /// What changed since `since`, in the section `section` (by ID) when
+    /// one is named; `None` when that version is no longer known.
+    pub fn changes(&self, since: Version, section: Option<&str>) -> Option<Changes> {
+        let by = if since == self.version {
+            Vec::new()
+        } else {
+            self.history.origins_since(since)?
+        };
+        let old = self.text_at(since)?;
+        let new = self.current.as_str();
+        let region = |text: &str| -> (String, Option<Range<usize>>) {
+            match section.map(|id| section::find(text, id)) {
+                None => (text.to_owned(), None),
+                Some(Ok(found)) => (text[found.range].to_owned(), Some(found.lines)),
+                Some(Err(_)) => (String::new(), Some(0..0)),
+            }
+        };
+        let (old_part, old_lines) = region(&old);
+        let (new_part, new_lines) = region(new);
+        let diff = if old_part == new_part {
+            Some(String::new())
+        } else {
+            version::unified(&old_part, &new_part, since, self.version)
+        };
+        let todos = todo::changes(&old, new)
+            .into_iter()
+            .filter(|change| {
+                let (lines, line) = if change.kind == todo::ChangeKind::Removed {
+                    (&old_lines, change.old_line)
+                } else {
+                    (&new_lines, change.line)
+                };
+                lines.as_ref().is_none_or(|lines| lines.contains(&line))
+            })
+            .collect();
+        Some(Changes {
+            from: since,
+            to: self.version,
+            by,
+            diff,
+            todos,
+        })
     }
 
     /// The text at `version`, while the document still knows it.
@@ -456,7 +524,7 @@ impl Document {
             text: disk.to_owned(),
             version: self.synced.version,
         };
-        self.refresh();
+        self.refresh(Origin::Disk);
         let inserted = marks
             .iter()
             .filter_map(|(start, end, len)| {
@@ -513,7 +581,7 @@ impl Document {
 
     /// Reads the text again after a change; a different text is the next
     /// version.
-    fn refresh(&mut self) {
+    fn refresh(&mut self, by: Origin) {
         let text = self.text.to_string();
         if text == self.current {
             return;
@@ -521,7 +589,7 @@ impl Document {
         self.current = text;
         self.version = self.version.next();
         self.history
-            .record(self.version, self.doc.oplog_frontiers());
+            .record(self.version, self.doc.oplog_frontiers(), Some(by));
     }
 }
 

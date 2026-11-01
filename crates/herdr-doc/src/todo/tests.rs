@@ -217,3 +217,23 @@ fn appends_to_the_last_section_without_a_break() {
         "# A\n- a\n- b\n"
     );
 }
+
+#[test]
+fn task_changes_read_as_one_word_each() {
+    let old = "- [ ] warn when low\n- [ ] ship\n- [x] old idea\n- [ ] typo here\n";
+    let new = "- [x] warn when low\n- [ ] ship\n- [ ] typo fixed\n- [ ] new one\n";
+    let lines: Vec<String> = changes(old, new)
+        .iter()
+        .map(|change| format!("{} {}. {}", change.kind.name(), change.number, change.text))
+        .collect();
+    assert_eq!(
+        lines,
+        vec![
+            "checked 1. warn when low",
+            "edited 3. typo fixed",
+            "added 4. new one",
+            "removed 3. old idea",
+        ]
+    );
+    assert!(changes(old, old).is_empty());
+}

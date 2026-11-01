@@ -2995,7 +2995,9 @@ Agents change a document with `herdr-gpui doc` commands that name the version
 they read (see the [command line](../../docs/cli.md#markdown-documents)), so
 an agent that read an older text is told what changed instead of overwriting
 it, and two agents working on different sections (`--section`, a heading's
-anchor slug) never block each other. The design and its trade-offs are in
+anchor slug) never block each other. An agent can also watch a document
+(`herdr-gpui doc watch FILE --todos`) and react to each change as it
+happens. The design and its trade-offs are in
 [docs/markdown-docs-plan.md](../../docs/markdown-docs-plan.md).
 
 ## Browser Tabs
