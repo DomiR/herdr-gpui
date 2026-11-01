@@ -41,11 +41,17 @@ pub struct Author {
 pub struct Synced {
     frontiers: Frontiers,
     text: String,
+    version: Version,
 }
 
 impl Synced {
     pub fn text(&self) -> &str {
         &self.text
+    }
+
+    /// The newest version the disk is known to hold every change of.
+    pub fn version(&self) -> Version {
+        self.version
     }
 }
 
@@ -138,6 +144,7 @@ impl Document {
             synced: Synced {
                 frontiers: doc.oplog_frontiers(),
                 text: text.to_owned(),
+                version,
             },
             doc,
             text: body,
@@ -214,6 +221,7 @@ impl Document {
         Synced {
             frontiers: self.doc.oplog_frontiers(),
             text: self.current.clone(),
+            version: self.version,
         }
     }
 
@@ -344,6 +352,17 @@ impl Document {
     /// that synced version by a peer of its own, so text the user typed
     /// meanwhile stays where they typed it.
     pub fn merge_disk(&mut self, disk: &str) -> Result<Merge> {
+        self.merge_disk_diffed(disk, None)
+    }
+
+    /// [`Self::merge_disk`] with the diff already worked out, off the UI
+    /// thread, from `base` (the synced text the caller read): the edits are
+    /// used when `base` is still the synced text, else worked out again.
+    pub fn merge_disk_diffed(
+        &mut self,
+        disk: &str,
+        diffed: Option<(&str, Vec<Edit>)>,
+    ) -> Result<Merge> {
         check_len(disk.len())?;
         if disk == self.synced.text {
             return Ok(Merge::Unchanged);
@@ -360,8 +379,10 @@ impl Document {
         }
         let fork = self.doc.fork_at(&self.synced.frontiers)?;
         let body = fork.get_text(TEXT);
-        let base = body.to_string();
-        let edits = diff::edits(&base, disk);
+        let edits = match diffed {
+            Some((base, edits)) if base == self.synced.text => edits,
+            _ => diff::edits(&body.to_string(), disk),
+        };
         let from = fork.oplog_vv();
         let inserted = apply(&body, &edits)?;
         fork.commit();
@@ -381,9 +402,13 @@ impl Document {
             .collect();
         let updates = fork.export(ExportMode::updates_owned(from))?;
         self.doc.import(&updates)?;
+        // The disk's text is no version of the document; it keeps the
+        // last version known written, so no change is taken as written
+        // before it is.
         self.synced = Synced {
             frontiers: fork.oplog_frontiers(),
             text: disk.to_owned(),
+            version: self.synced.version,
         };
         self.refresh();
         let inserted = marks

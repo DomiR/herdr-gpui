@@ -82,3 +82,19 @@ fn the_stamp_changes_with_the_file() {
     disk::write(&path, "a longer text\n").unwrap();
     assert_ne!(disk::stamp(&path).unwrap(), first);
 }
+
+#[test]
+fn recreating_brings_back_a_gone_file_but_not_over_a_new_one() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("todo.md");
+    assert!(matches!(
+        disk::recreate(&path, "a\n", "b\n").unwrap(),
+        disk::Written::Wrote(_)
+    ));
+    assert_eq!(fs::read_to_string(&path).unwrap(), "b\n");
+    fs::write(&path, "tool\n").unwrap();
+    assert_eq!(
+        disk::recreate(&path, "b\n", "mine\n").unwrap(),
+        disk::Written::Changed("tool\n".into())
+    );
+}

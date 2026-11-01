@@ -72,6 +72,8 @@ pub fn read(path: &Path) -> Result<(String, Stamp)> {
     Ok((text, Stamp::of(&metadata)))
 }
 
+static WRITES: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// What [`write_if_unchanged`] did.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Written {
@@ -90,6 +92,12 @@ pub enum Written {
 /// returned to be merged instead of being overwritten. A change landing
 /// between this check and the rename is the one window left.
 pub fn write_if_unchanged(path: &Path, expected: &str, text: &str) -> Result<Written> {
+    // This process's own writes take turns, so two of them (a document's
+    // last write as it closes and one still in flight) never both pass the
+    // check before either renames.
+    let _turn = WRITES
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let current = match read(path) {
         Ok((current, _)) => current,
         Err(Error::Missing { .. }) => return Ok(Written::Missing),
@@ -98,13 +106,35 @@ pub fn write_if_unchanged(path: &Path, expected: &str, text: &str) -> Result<Wri
     if current != expected {
         return Ok(Written::Changed(current));
     }
-    write(path, text).map(Written::Wrote)
+    write_unlocked(path, text).map(Written::Wrote)
 }
 
 /// Writes `text` to `path` through a temporary file in the same folder and
 /// a rename, so a reader sees the old text or the new one, never half. An
 /// existing file keeps its permissions.
 pub fn write(path: &Path, text: &str) -> Result<Stamp> {
+    let _turn = WRITES
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    write_unlocked(path, text)
+}
+
+/// [`write`] when the file is gone: brings it back, but only while it is
+/// still gone; a file that reappeared meanwhile is left for the caller to
+/// merge.
+pub fn recreate(path: &Path, expected: &str, text: &str) -> Result<Written> {
+    let _turn = WRITES
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    match read(path) {
+        Err(Error::Missing { .. }) => write_unlocked(path, text).map(Written::Wrote),
+        Ok((current, _)) if current == expected => write_unlocked(path, text).map(Written::Wrote),
+        Ok((current, _)) => Ok(Written::Changed(current)),
+        Err(error) => Err(error),
+    }
+}
+
+fn write_unlocked(path: &Path, text: &str) -> Result<Stamp> {
     check_len(text.len() as u64)?;
     let temporary = temporary_path(path);
     let result = write_temporary(path, &temporary, text);

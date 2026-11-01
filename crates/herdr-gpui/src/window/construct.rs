@@ -178,6 +178,7 @@ impl HerdrWindow {
             devices_overview: Default::default(),
             dispatch_job: None,
             dispatch_setups: Default::default(),
+            doc_views: Default::default(),
             editor_open: None,
             editor_panes: Vec::new(),
             endpoints: vec![endpoint::Endpoint::new(

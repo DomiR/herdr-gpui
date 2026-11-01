@@ -322,6 +322,10 @@ impl HerdrWindow {
         if self.core_terminals.focused(window, cx) {
             return;
         }
+        // So does a document; typing goes to its input handler.
+        if self.doc_focused(window, cx) {
+            return;
+        }
         // Copy mode owns the keyboard: its keys run and nothing else is typed.
         if self.copy_mode_active() {
             self.copy_mode_key(event, window, cx);

@@ -7,6 +7,8 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     // keep-sorted start
+    #[error("{count} places match the text to replace; include more of it so one does")]
+    AmbiguousText { count: usize },
     #[error("{count} todos match {query:?}; name one by its number")]
     AmbiguousTodo { query: String, count: usize },
     #[error("A todo must be one line of text, at most 4096 characters")]
@@ -19,6 +21,10 @@ pub enum Error {
     Conflict(Box<crate::Conflict>),
     #[error("Could not apply a change to the document: {0}")]
     Crdt(#[from] loro::LoroError),
+    #[error("Text to replace must not be empty")]
+    EmptyOld,
+    #[error("There is no text to add")]
+    EmptyText,
     #[error("Could not encode the document's changes: {0}")]
     Encode(#[from] loro::LoroEncodeError),
     #[error("Could not {operation} {}: {source}", path.display())]
@@ -30,20 +36,14 @@ pub enum Error {
     },
     #[error("{} does not exist; it may have been deleted or moved", path.display())]
     Missing { path: PathBuf },
-    #[error("There is no text to add")]
-    EmptyText,
-    #[error("Text to replace must not be empty")]
-    EmptyOld,
-    #[error("{count} places match the text to replace; include more of it so one does")]
-    AmbiguousText { count: usize },
-    #[error("No todo matches {query:?}")]
-    NoTodo { query: String },
-    #[error("The text to replace is not in the document")]
-    NoText,
     #[error("No section has the ID {id:?}; `doc sections` lists them")]
     NoSection { id: String },
     #[error("{} is not a regular file", path.display())]
     NotAFile { path: PathBuf },
+    #[error("The text to replace is not in the document")]
+    NoText,
+    #[error("No todo matches {query:?}")]
+    NoTodo { query: String },
     #[error("{} is not UTF-8 text", path.display())]
     NotUtf8 { path: PathBuf },
     #[error("The document would be {len} bytes, over the {limit}-byte limit")]

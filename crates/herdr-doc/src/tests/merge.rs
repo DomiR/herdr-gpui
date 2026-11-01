@@ -190,3 +190,28 @@ fn edits_are_checked_and_bounded() {
     ));
     assert_eq!(doc.text(), "héllo\n");
 }
+
+#[test]
+fn an_anchor_stays_with_the_character_it_was_made_at() {
+    let mut doc = Document::new("ab\ncd\n").unwrap();
+    let before = doc.anchor(3, false).unwrap();
+    let after = doc.anchor(3, true).unwrap();
+    doc.merge_disk("ab\nXX\ncd\n").unwrap();
+    // A line inserted before a line start leaves the anchor on that line,
+    // so a fold or a caret stays with its line.
+    assert_eq!(doc.resolve(&before), Some(6));
+    assert_eq!(doc.resolve(&after), Some(6));
+}
+
+#[test]
+fn a_diff_worked_out_from_a_stale_base_is_worked_out_again() {
+    let mut doc = Document::new("a\nb\n").unwrap();
+    let stale = diff::edits("zzz\n", "a\nb\nc\n");
+    doc.merge_disk_diffed("a\nb\nc\n", Some(("zzz\n", stale)))
+        .unwrap();
+    assert_eq!(doc.text(), "a\nb\nc\n");
+    let fresh = diff::edits("a\nb\nc\n", "a\nc\n");
+    doc.merge_disk_diffed("a\nc\n", Some(("a\nb\nc\n", fresh)))
+        .unwrap();
+    assert_eq!(doc.text(), "a\nc\n");
+}

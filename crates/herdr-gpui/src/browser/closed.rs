@@ -285,6 +285,12 @@ impl Store {
                     matches!(&open.location, Some(Location::Code { file: existing }) if existing.path == file.path)
                 })
                 .map(|open| open.id),
+            Some(Location::Doc { file }) => self
+                .in_workspace(&tab.scope, &tab.workspace_id)
+                .find(|open| {
+                    matches!(&open.location, Some(Location::Doc { file: existing }) if existing.path == file.path)
+                })
+                .map(|open| open.id),
             _ => None,
         } {
             return Some(existing);
@@ -394,6 +400,7 @@ impl HerdrWindow {
                 };
                 self.poll_reviews(cx);
                 self.poll_code_views(cx);
+                self.poll_doc_views(cx);
                 self.poll_orchestrators(window, cx);
                 self.poll_devices_overview(cx);
                 match self.ensure_layout().map(|layout| layout.active()) {
@@ -404,6 +411,9 @@ impl HerdrWindow {
                     window.focus(review.focus(), cx);
                 } else if let Some(view) = self.code_views.get(&id) {
                     window.focus(&view.focus, cx);
+                } else if let Some(editor) = self.doc_views.get(&id) {
+                    let focus = editor.read(cx).focus.clone();
+                    window.focus(&focus, cx);
                 } else if let Some(page) = self.devices_overview.pages.get(&id) {
                     window.focus(&page.focus, cx);
                 }

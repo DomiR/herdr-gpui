@@ -337,6 +337,7 @@ impl Pages {
             Location::Web { .. }
             | Location::Review { .. }
             | Location::Code { .. }
+            | Location::Doc { .. }
             | Location::Orchestrator { .. }
             | Location::Devices
             | Location::CoreTerminal { .. } => None,

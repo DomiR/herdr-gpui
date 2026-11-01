@@ -61,6 +61,7 @@ mod devices_overview;
 mod dialog_input;
 mod direction;
 mod dispatch;
+mod doc_view;
 mod editor;
 mod endpoint;
 mod error;
