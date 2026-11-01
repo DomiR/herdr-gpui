@@ -45,15 +45,16 @@ codesign --force --sign "$identity" \
 codesign --verify --strict "$app"
 
 # Any running Herdr UI quits through its control socket, which the new
-# binary speaks as well as the old one.
-if pgrep -f '/Herdr\.app/Contents/MacOS/Herdr$' >/dev/null; then
+# binary speaks as well as the old one. `ps` rather than `pgrep`, which
+# does not list the app from every shell (a sandboxed one sees nothing).
+running() { ps -axo comm= | grep -qx "$dest/Contents/MacOS/Herdr"; }
+if running; then
     "$app/Contents/MacOS/Herdr" app quit || true
     for _ in $(seq 1 40); do
-        pgrep -f '/Herdr\.app/Contents/MacOS/Herdr$' >/dev/null || break
+        running || break
         sleep 0.5
     done
-    ! pgrep -f '/Herdr\.app/Contents/MacOS/Herdr$' >/dev/null \
-        || fail "Herdr UI did not quit; quit it and run this again"
+    ! running || fail "Herdr UI did not quit; quit it and run this again"
 fi
 
 # Copied beside the old one first, so a failed copy leaves it in place.
