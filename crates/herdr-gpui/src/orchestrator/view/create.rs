@@ -12,6 +12,7 @@ mod menu;
 mod render;
 
 use super::{IssueSource, OrchestratorView};
+use crate::i18n::fl;
 use crate::{
     orchestrator::{
         Notice,
@@ -141,7 +142,7 @@ impl OrchestratorView {
     fn new_dialog(&self, window: &mut Window, cx: &mut Context<Self>) -> Dialog {
         let title = cx.new(|cx| {
             let mut input = SearchInput::new(cx);
-            input.set_placeholder("Issue title", cx);
+            input.set_placeholder_with(|| fl!("orchestrator-linear-issue-title"), cx);
             input.set_frameless(cx);
             let mut font = self.look.ui.clone();
             font.size += 6.;
@@ -179,7 +180,7 @@ impl OrchestratorView {
     ) -> (Entity<TextArea>, Subscription) {
         let area = cx.new(|cx| {
             let mut area = TextArea::new(cx);
-            area.set_placeholder("Add description\u{2026}", cx);
+            area.set_placeholder(&fl!("orchestrator-linear-add-description"), cx);
             area.set_appearance(self.look.ui.clone(), self.look.theme.clone(), cx);
             area
         });
@@ -268,8 +269,8 @@ impl OrchestratorView {
         dialog.menu = None;
         let title = dialog.title.read(cx).text().trim().to_owned();
         let problem = match (&dialog.team, title.is_empty()) {
-            (None, _) => Some("Wait for your Linear teams to load."),
-            (_, true) => Some("Give the issue a title."),
+            (None, _) => Some(fl!("orchestrator-linear-wait-for-teams")),
+            (_, true) => Some(fl!("orchestrator-linear-give-title")),
             _ => None,
         };
         if let Some(problem) = problem {
@@ -295,7 +296,7 @@ impl OrchestratorView {
             dialog.sending = Some(sequence);
             dialog.problem = None;
         } else {
-            dialog.problem = Some("The Orchestrator is busy. Try again in a moment.".into());
+            dialog.problem = Some(fl!("orchestrator-linear-busy").into());
         }
         cx.notify();
     }
@@ -391,7 +392,7 @@ impl OrchestratorView {
             self.create.dialog = None;
             self.create.open = Some((created.identifier, Instant::now()));
             self.notice = Some(Notice {
-                outcome: Ok("Linear issue created"),
+                outcome: Ok(herdr_orchestrator::Done::LinearIssueCreated),
             });
             window.focus(&self.focus, cx);
         }

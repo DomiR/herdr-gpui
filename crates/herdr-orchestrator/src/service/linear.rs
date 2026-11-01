@@ -83,8 +83,8 @@ impl Worker {
         self.snapshot.linear_create.options = None;
         let outcome = linear::save_key(store, key)
             .map(|()| match key {
-                Some(_) => "Linear connected",
-                None => "Linear key removed",
+                Some(_) => crate::actions::Done::LinearConnected,
+                None => crate::actions::Done::LinearKeyRemoved,
             })
             .map_err(Arc::new);
         push(&self.notices, Notice { outcome });

@@ -3,7 +3,7 @@
 //! the menu; Labels picks several, so it stays open.
 
 use super::super::OrchestratorView;
-use crate::{config::corners, orchestrator::linear::TeamOptions};
+use crate::{config::corners, i18n::fl, orchestrator::linear::TeamOptions};
 use gpui::{prelude::*, *};
 
 /// Wider than a chip, so names fit.
@@ -12,13 +12,18 @@ const MENU_WIDTH: f32 = 240.;
 const MENU_HEIGHT: f32 = 320.;
 
 /// Linear's priorities, in its own pickers' order.
-pub(super) const PRIORITIES: [(i64, &str); 5] = [
-    (0, "No priority"),
-    (1, "Urgent"),
-    (2, "High"),
-    (3, "Medium"),
-    (4, "Low"),
-];
+pub(super) const PRIORITIES: [i64; 5] = [0, 1, 2, 3, 4];
+
+/// What Linear calls `priority`.
+pub(super) fn priority_label(priority: i64) -> String {
+    match priority {
+        1 => fl!("orchestrator-linear-priority-urgent"),
+        2 => fl!("orchestrator-linear-priority-high"),
+        3 => fl!("orchestrator-linear-priority-medium"),
+        4 => fl!("orchestrator-linear-priority-low"),
+        _ => fl!("orchestrator-no-priority"),
+    }
+}
 
 /// A chip's picker.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -98,7 +103,7 @@ impl OrchestratorView {
             return Vec::new();
         };
         let look = &self.look;
-        let none = |label: &str, on: bool, pick: Pick| Entry::new(label, on, pick);
+        let none = |label: String, on: bool, pick: Pick| Entry::new(label, on, pick);
         match menu {
             Menu::Team => self.options().map_or_else(Vec::new, |options| {
                 options
@@ -127,9 +132,13 @@ impl OrchestratorView {
                 .collect(),
             Menu::Priority => PRIORITIES
                 .iter()
-                .map(|(value, label)| {
-                    Entry::new(*label, dialog.priority == *value, Pick::Priority(*value))
-                        .dot(priority_hue(look, *value))
+                .map(|value| {
+                    Entry::new(
+                        priority_label(*value),
+                        dialog.priority == *value,
+                        Pick::Priority(*value),
+                    )
+                    .dot(priority_hue(look, *value))
                 })
                 .collect(),
             Menu::Assignee => {
@@ -138,7 +147,7 @@ impl OrchestratorView {
                 let mut members: Vec<_> = team.members.iter().collect();
                 members.sort_by_key(|member| Some(&member.id) != viewer.as_ref());
                 std::iter::once(none(
-                    "No assignee",
+                    fl!("orchestrator-linear-no-assignee"),
                     dialog.assignee.is_none(),
                     Pick::Assignee(None),
                 ))
@@ -153,7 +162,7 @@ impl OrchestratorView {
                 .collect()
             }
             Menu::Project => std::iter::once(none(
-                "No project",
+                fl!("orchestrator-linear-no-project"),
                 dialog.project.is_none(),
                 Pick::Project(None),
             ))
@@ -167,14 +176,13 @@ impl OrchestratorView {
             }))
             .collect(),
             Menu::Estimate => std::iter::once(none(
-                "No estimate",
+                fl!("orchestrator-linear-no-estimate"),
                 dialog.estimate.is_none(),
                 Pick::Estimate(None),
             ))
             .chain(team.estimates.iter().flatten().map(|point| {
                 let label = match point.label.parse::<i64>() {
-                    Ok(1) => "1 point".to_owned(),
-                    Ok(_) => format!("{} points", point.label),
+                    Ok(points) => fl!("orchestrator-linear-points", count = points),
                     Err(_) => point.label.clone(),
                 };
                 Entry::new(
@@ -199,21 +207,20 @@ impl OrchestratorView {
                     .dot(color)
                 })
                 .collect(),
-            Menu::Cycle => {
-                std::iter::once(none("No cycle", dialog.cycle.is_none(), Pick::Cycle(None)))
-                    .chain(team.cycles.iter().map(|choice| {
-                        let mut label = choice.cycle.label();
-                        if choice.cycle.active {
-                            label.push_str(" (current)");
-                        }
-                        Entry::new(
-                            label,
-                            dialog.cycle.as_deref() == Some(choice.id.as_str()),
-                            Pick::Cycle(Some(choice.id.clone())),
-                        )
-                    }))
-                    .collect()
-            }
+            Menu::Cycle => std::iter::once(none(
+                fl!("orchestrator-linear-no-cycle"),
+                dialog.cycle.is_none(),
+                Pick::Cycle(None),
+            ))
+            .chain(team.cycles.iter().map(|choice| {
+                let label = super::super::status::cycle_label(&choice.cycle, true);
+                Entry::new(
+                    label,
+                    dialog.cycle.as_deref() == Some(choice.id.as_str()),
+                    Pick::Cycle(Some(choice.id.clone())),
+                )
+            }))
+            .collect(),
         }
     }
 
@@ -279,7 +286,11 @@ impl OrchestratorView {
             .text_size(look.small())
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .when(empty, |el| {
-                el.child(look.muted("Nothing to pick in this team").px_2().py_1())
+                el.child(
+                    look.muted(fl!("orchestrator-linear-nothing-to-pick"))
+                        .px_2()
+                        .py_1(),
+                )
             })
             .children(entries.into_iter().enumerate().map(|(index, entry)| {
                 let selector = format!("linear-create-pick-{}-{}", menu.name(), entry.label);

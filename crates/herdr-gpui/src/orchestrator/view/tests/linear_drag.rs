@@ -207,7 +207,10 @@ fn a_move_no_worker_takes_says_so_and_stays_put(cx: &mut TestAppContext) {
     assert!(!cx.update(|_, cx| view.read(cx).moving(&key("ENG-1"))));
     assert_eq!(status_of(&view, cx, "ENG-1"), "Todo");
     let notice = cx.update(|_, cx| view.read(cx).notice_text()).unwrap();
-    assert!(notice.starts_with("Could not move ENG-1: "), "{notice}");
+    assert!(
+        notice.starts_with("Could not move \u{2068}ENG-1\u{2069}: "),
+        "{notice}"
+    );
 }
 
 /// ENG-3 with a run in its own Herdr workspace.

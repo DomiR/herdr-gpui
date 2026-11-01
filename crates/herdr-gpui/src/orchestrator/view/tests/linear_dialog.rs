@@ -55,7 +55,10 @@ fn the_linear_chip_opens_a_dialog_that_refuses_a_non_key(cx: &mut TestAppContext
         (dialog.key.read(cx).text().to_owned(), dialog.problem)
     });
     assert_eq!(typed, "lin api");
-    assert_eq!(problem, Some("Paste a Linear personal API key."));
+    assert_eq!(
+        problem,
+        Some(crate::orchestrator::view::linear::Problem::NotAKey)
+    );
 
     cx.simulate_keystrokes("escape");
     cx.run_until_parked();

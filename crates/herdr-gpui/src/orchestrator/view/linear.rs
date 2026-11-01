@@ -3,6 +3,7 @@
 //! key's text is never logged or put in a `Debug` string.
 
 use super::{Event, OrchestratorView, dispatch::card};
+use crate::i18n::fl;
 use crate::{
     config::corners,
     orchestrator::{Provider, SyncState, linear},
@@ -16,7 +17,25 @@ const SETTINGS: &str = "https://linear.app/settings/account/security";
 
 pub(crate) struct Dialog {
     pub(super) key: Entity<SearchInput>,
-    pub(super) problem: Option<&'static str>,
+    pub(super) problem: Option<Problem>,
+}
+
+/// Why the dialog did not save, shown under the key.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Problem {
+    /// The worker's queue is full.
+    Busy,
+    /// What was pasted is not a Linear API key.
+    NotAKey,
+}
+
+impl Problem {
+    fn text(self) -> String {
+        match self {
+            Self::Busy => fl!("orchestrator-linear-busy"),
+            Self::NotAKey => fl!("orchestrator-linear-paste-key"),
+        }
+    }
 }
 
 impl OrchestratorView {
@@ -56,7 +75,7 @@ impl OrchestratorView {
         } else {
             let text = dialog.key.read(cx).text().trim().to_owned();
             if !linear::valid(&text) {
-                dialog.problem = Some("Paste a Linear personal API key.");
+                dialog.problem = Some(Problem::NotAKey);
                 cx.notify();
                 return;
             }
@@ -70,7 +89,7 @@ impl OrchestratorView {
             return;
         };
         if !sent {
-            dialog.problem = Some("The Orchestrator is busy. Try again in a moment.");
+            dialog.problem = Some(Problem::Busy);
             cx.notify();
             return;
         }
@@ -92,23 +111,19 @@ impl OrchestratorView {
             .child(
                 div()
                     .font_weight(FontWeight::SEMIBOLD)
-                    .child("Connect Linear"),
+                    .child(fl!("orchestrator-linear-connect")),
             )
             .child(
                 div()
                     .text_size(look.small())
                     .text_color(rgb(theme.subtext()))
-                    .child(
-                        "The Orchestrator lists the open Linear issues assigned to you. \
-                         Create a personal API key in Linear under Settings, Security & access, \
-                         and paste it here.",
-                    ),
+                    .child(fl!("orchestrator-linear-connect-hint")),
             )
             .child(
                 div().flex().child(
                     look.button(
                         "orchestrator-linear-settings",
-                        "Open Linear settings",
+                        fl!("orchestrator-linear-open-settings"),
                         false,
                     )
                     .on_click(cx.listener(|_, _, _, cx| {
@@ -127,14 +142,14 @@ impl OrchestratorView {
                     .child(dialog.key.clone()),
             )
             .when(from_environment, |el| {
-                el.child(look.muted("LINEAR_API_KEY is set, so it is used instead of a saved key."))
+                el.child(look.muted(fl!("orchestrator-linear-variable-set")))
             })
             .when_some(dialog.problem, |el, problem| {
                 el.child(
                     div()
                         .text_size(look.small())
                         .text_color(rgb(look.hue(super::look::RED)))
-                        .child(problem),
+                        .child(problem.text()),
                 )
             })
             .child(
@@ -143,24 +158,38 @@ impl OrchestratorView {
                     .gap_2()
                     .child(div().flex_1())
                     .child(
-                        look.button("orchestrator-linear-cancel", "Cancel", false)
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.close_overlays(window, cx);
-                            })),
+                        look.button(
+                            "orchestrator-linear-cancel",
+                            fl!("orchestrator-cancel"),
+                            false,
+                        )
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.close_overlays(window, cx);
+                        })),
                     )
                     .when(connected, |el| {
                         el.child(
-                            look.button("orchestrator-linear-remove", "Remove key", false)
-                                .on_click(cx.listener(|this, _, window, cx| {
+                            look.button(
+                                "orchestrator-linear-remove",
+                                fl!("orchestrator-linear-remove-key"),
+                                false,
+                            )
+                            .on_click(cx.listener(
+                                |this, _, window, cx| {
                                     this.save_linear(true, window, cx);
-                                })),
+                                },
+                            )),
                         )
                     })
                     .child(
-                        look.button("orchestrator-linear-save", "Save", true)
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.save_linear(false, window, cx);
-                            })),
+                        look.button(
+                            "orchestrator-linear-save",
+                            fl!("orchestrator-linear-save"),
+                            true,
+                        )
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.save_linear(false, window, cx);
+                        })),
                     ),
             )
             .into_any_element()

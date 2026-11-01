@@ -19,7 +19,7 @@ pub struct PullRequestLookup {
 /// How an action the user asked for ended.
 #[derive(Clone, Debug)]
 pub struct Notice {
-    pub outcome: Result<&'static str, Arc<Error>>,
+    pub outcome: Result<crate::actions::Done, Arc<Error>>,
 }
 
 /// How one source is doing.
