@@ -74,6 +74,8 @@ pub(crate) enum Preference {
     SidebarDeviceFooter(DeviceFooter),
     /// `[sidebar] change_counts`: whose line counts a worktree row shows.
     SidebarChangeCounts(ChangeCounts),
+    /// `[sidebar] numbers`: whether the sidebar prints its numbers.
+    SidebarNumbers(bool),
     /// `None` removes the host's colour.
     HostColor {
         host: String,
@@ -259,6 +261,9 @@ impl Config {
                     "change_counts",
                     Some(toml_edit::Value::from(counts.as_str())),
                 ),
+                Preference::SidebarNumbers(value) => {
+                    (Some("sidebar"), "numbers", Some(value.into()))
+                }
                 Preference::HostColor { host, color } => {
                     if let Some(color) = color.filter(|color| *color > 0xFF_FFFF) {
                         return Err(Error::InvalidHostColor {

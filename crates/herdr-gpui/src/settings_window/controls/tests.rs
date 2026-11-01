@@ -15,6 +15,7 @@ mod focus_follows_mouse;
 mod indicators;
 mod repository_icons;
 mod session_restore;
+mod sidebar_numbers;
 mod sidebar_search;
 mod sound_volume;
 mod terminal_padding;

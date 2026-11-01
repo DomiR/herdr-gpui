@@ -116,6 +116,7 @@ fn wide_mark_rows_keep_layout_density_and_expand_child_indent() {
                         nest: 0.,
                         mark: Default::default(),
                         host: None,
+                        numbers: true,
                     },
                 );
                 assert_eq!(

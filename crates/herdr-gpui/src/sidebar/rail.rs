@@ -155,11 +155,23 @@ impl HerdrWindow {
             })
             .collect();
         let slot = multi || silenced.values().any(Silenced::any_workspace);
+        // Agents come after every host: the panel interleaves them.
+        let panel = if self.config.show_agents {
+            self.panel_agents()
+        } else {
+            Vec::new()
+        };
+        // The badge column holds workspace numbers and, on agent rows, a host
+        // letter or the agent's icon. With neither, there is no column.
+        let badge = Badge {
+            agents: !panel.is_empty(),
+            numbers: self.config.sidebar_style.numbers,
+        };
         // A large sidebar font would make the columns wider than the rail and
         // clip the status icons, so the rail steps the font down until they fit.
-        let fitted = rail_font(&self.config.sidebar, indicators, multi, slot);
+        let fitted = rail_font(&self.config.sidebar, indicators, (multi, slot), badge);
         let font = &fitted;
-        let columns = rail_columns(font, indicators, multi, slot);
+        let columns = rail_columns(font, indicators, (multi, slot), badge);
         let split = self.sidebar_split.unwrap_or(0.5).clamp(0.1, 0.9);
         let mut spaces = div()
             .id("rail-spaces")
@@ -268,7 +280,11 @@ impl HerdrWindow {
                 let context_endpoint = endpoint_id.clone();
                 let context_id = id.clone();
                 let focused = selected && workspace.focused;
-                let number = workspace.number.to_string();
+                let number = if badge.numbers {
+                    workspace.number.to_string()
+                } else {
+                    String::new()
+                };
                 let muted = silenced
                     .get(&endpoint_index)
                     .is_some_and(|silenced| silenced.workspace(&workspace.workspace_id));
@@ -276,17 +292,21 @@ impl HerdrWindow {
                     .row()
                     .items_center()
                     .gap(px(columns.gap))
-                    .child(mark_slot(
-                        format!("rail-mark-{key}"),
-                        columns.badge,
-                        columns.height,
-                        if focused {
-                            theme.foreground
-                        } else {
-                            theme.muted
-                        },
-                        &number,
-                    ))
+                    // Without numbers an agent row's column stays, empty, so
+                    // the dot lines up with theirs.
+                    .when(columns.badge > 0., |marks| {
+                        marks.child(mark_slot(
+                            format!("rail-mark-{key}"),
+                            columns.badge,
+                            columns.height,
+                            if focused {
+                                theme.foreground
+                            } else {
+                                theme.muted
+                            },
+                            &number,
+                        ))
+                    })
                     .when_some(columns.icon, |marks, icon| {
                         marks.child(
                             div()
@@ -366,12 +386,6 @@ impl HerdrWindow {
                 );
             }
         }
-        // Agents come after every host: the panel interleaves them.
-        let panel = if self.config.show_agents {
-            self.panel_agents()
-        } else {
-            Vec::new()
-        };
         for (index, agent) in panel {
             let Some(endpoint) = self.endpoints.get(index) else {
                 continue;
@@ -561,17 +575,41 @@ struct Columns {
 }
 
 impl Columns {
+    /// A zero-width badge column is left out, with the gap after it.
     fn width(self) -> f32 {
-        let gaps = self.gap * if self.icon.is_some() { 2. } else { 1. };
-        self.badge + self.icon.unwrap_or(0.) + gaps + self.dot
+        let columns = usize::from(self.badge > 0.) + usize::from(self.icon.is_some());
+        self.badge + self.icon.unwrap_or(0.) + self.gap * columns as f32 + self.dot
     }
 }
 
-fn rail_columns(font: &FontConfig, indicators: Indicators, multi: bool, slot: bool) -> Columns {
+/// What the badge column holds besides a host letter.
+#[derive(Clone, Copy)]
+struct Badge {
+    /// Agent rows are listed, whose host letter or icon takes the column.
+    agents: bool,
+    /// `[sidebar] numbers`: workspace rows print their number there.
+    numbers: bool,
+}
+
+/// `numbers` off leaves the badge column only as wide as an agent row's host
+/// letter or icon needs, and with no agent rows there is none.
+fn rail_columns(
+    font: &FontConfig,
+    indicators: Indicators,
+    (multi, slot): (bool, bool),
+    badge: Badge,
+) -> Columns {
     let glyph = glyph_width(font);
     let icon = AGENT_ICON.min(font.size + 1.);
+    let number = if badge.numbers { glyph * 2. } else { 0. };
+    // With numbers the column keeps the width it always had, agents or not.
+    let agent = match (badge.agents || badge.numbers, multi) {
+        (false, _) => 0.,
+        (true, true) => glyph,
+        (true, false) => icon,
+    };
     Columns {
-        badge: (glyph * 2.).max(if multi { glyph } else { icon }),
+        badge: number.max(agent),
         dot: indicators.width(font),
         gap: MARK_GAP,
         height: line_height(font).max(icon),
@@ -588,9 +626,14 @@ const RAIL_FONT_MIN: f32 = 8.;
 
 /// `font`, stepped down in half pixels until the column grid fits the rail.
 /// A font that already fits is returned as is.
-fn rail_font(font: &FontConfig, indicators: Indicators, multi: bool, slot: bool) -> FontConfig {
+fn rail_font(
+    font: &FontConfig,
+    indicators: Indicators,
+    places: (bool, bool),
+    badge: Badge,
+) -> FontConfig {
     let mut fitted = font.clone();
-    while rail_columns(&fitted, indicators, multi, slot).width() > RAIL_GRID
+    while rail_columns(&fitted, indicators, places, badge).width() > RAIL_GRID
         && fitted.size > RAIL_FONT_MIN
     {
         fitted.size = (fitted.size - 0.5).max(RAIL_FONT_MIN);
@@ -652,7 +695,7 @@ fn mark_slot(selector: String, width: f32, height: f32, color: u32, text: &str) 
         .row()
         .items_center()
         .text_color(rgb(color))
-        .child(label_text(text))
+        .when(!text.is_empty(), |slot| slot.child(label_text(text)))
 }
 
 fn agent_icon(selector: String, size: f32, color: u32, path: &'static str) -> Div {

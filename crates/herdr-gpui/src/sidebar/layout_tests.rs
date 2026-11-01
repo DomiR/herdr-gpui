@@ -43,6 +43,8 @@ mod devices_layout;
 #[cfg(test)]
 mod gpu_line;
 #[cfg(test)]
+mod hidden_numbers;
+#[cfg(test)]
 mod host_agents;
 #[cfg(test)]
 mod host_groups;

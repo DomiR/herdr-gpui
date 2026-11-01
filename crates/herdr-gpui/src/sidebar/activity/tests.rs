@@ -9,6 +9,7 @@ use crate::{
 mod back;
 mod bubbles;
 mod counts;
+mod hidden_numbers;
 mod layout;
 mod mod_apps;
 mod pulse;
