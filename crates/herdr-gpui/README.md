@@ -3790,7 +3790,12 @@ Ctrl+Shift+U is left unbound for
   linked worktrees is open), branch details, and daemon-driven
   filled/hollow activity indicators taken from the daemon's own status, so the
   GUI and the terminal client always show the same dot. Each worktree row also
-  carries its cached pull request number and diff counts. Set
+  carries its cached pull request number and diff counts. Herdr reads a
+  workspace's branch when the space opens and refreshes it only while its own
+  sidebar rows name `branch`, so for workspaces on this machine the app reads
+  the branch each checkout has out from Git's files (no Git process), and the
+  pull request and uncommitted mark follow a `git switch` or `git branch -m`
+  from the next state Herdr sends (each read is reused for two seconds). Set
   `change_counts = "local"` under `[sidebar]` (or Settings > Sidebar > Change
   counts) to show the checkout's uncommitted `+added/-deleted` lines against
   HEAD instead; only one set is ever shown. They sit inside the yellow pencil

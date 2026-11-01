@@ -1,5 +1,12 @@
 //! Daemon worktree keys and the checkouts they name.
 
+mod files;
+
+#[cfg(test)]
+mod tests;
+
+pub use files::{Checkout, Found, checkout_at, find_branch};
+
 /// The main checkout a `<root>/.git` Git directory belongs to. Any other key
 /// (a bare repository, a separate Git directory) does not name its checkout.
 pub fn checkout_root(key: &str) -> Option<&str> {

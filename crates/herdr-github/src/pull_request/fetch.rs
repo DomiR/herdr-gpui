@@ -356,6 +356,11 @@ pub fn repository_key(
     if !Path::new(directory).is_absolute() {
         return Err(super::Error::AbsolutePath.into());
     }
+    if let Some(common) = crate::checkout::checkout_at(directory)
+        .and_then(|found| found.common.to_str().map(str::to_owned))
+    {
+        return Ok(common);
+    }
     git(
         directory,
         &["rev-parse", "--path-format=absolute", "--git-common-dir"],
@@ -394,6 +399,11 @@ pub fn local_checkout(
         return Err(super::Error::Branch.into());
     }
     let repo_key = repository_key(input, deadline, cancelled)?;
+    // Git's own files answer the usual case without a process; anything
+    // they do not settle goes to Git below, which also names what is wrong.
+    if let Some(checkout) = checkout_from_files(input, &repo_key) {
+        return Ok(checkout);
+    }
     let checkout = match (&input.checkout, &input.repo_key) {
         (Some(path), Some(_)) => path.clone(),
         // No daemon metadata: the workspace directory may be any folder in the
@@ -454,6 +464,24 @@ pub fn local_checkout(
         return Err(super::Error::BranchChanged.into());
     }
     Ok(checkout)
+}
+
+/// The checkout `input` names, when Git's files show it is `repo_key`'s on
+/// `input.branch`: the same checks as Git's, accepted only when all pass.
+pub(super) fn checkout_from_files(input: &Input, repo_key: &str) -> Option<String> {
+    use crate::checkout::{Found, checkout_at, find_branch};
+    let checkout = match &input.checkout {
+        Some(directory) => checkout_at(directory)?.root.to_str()?.to_owned(),
+        None => match find_branch(repo_key, &input.branch)? {
+            Found::One(path) => path.to_str()?.to_owned(),
+            Found::Missing | Found::Many => return None,
+        },
+    };
+    let found = checkout_at(&checkout)?;
+    let same_root = Path::new(&checkout).canonicalize().ok()? == found.root;
+    let same_repository = Path::new(repo_key).canonicalize().ok()? == found.common;
+    (same_root && same_repository && found.branch.as_deref() == Some(input.branch.as_str()))
+        .then_some(checkout)
 }
 
 /// Read-only Git output from a checkout, with the shared process policy.
