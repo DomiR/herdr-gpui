@@ -9,7 +9,12 @@ use super::{
 };
 use crate::browser::TabId;
 use crate::{
-    HerdrWindow, fonts::StyledFont, pull_request::Input, search_input::SearchInput, window::Flash,
+    HerdrWindow,
+    fonts::StyledFont,
+    i18n::{Localize, fl},
+    pull_request::Input,
+    search_input::SearchInput,
+    window::Flash,
 };
 use gpui::{prelude::*, *};
 use herdr_client::protocol::ClientShellSnapshot;
@@ -61,7 +66,8 @@ pub(crate) enum Layout {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Agent {
     pub pane_id: String,
-    pub label: String,
+    /// Its name, or none when it reports none.
+    pub label: Option<String>,
 }
 
 /// The agent whose changes these are: the one in the focused pane, or else
@@ -98,8 +104,7 @@ fn describe(agent: &herdr_client::protocol::ClientShellAgent) -> Agent {
         .into_iter()
         .flatten()
         .map(|label| crate::notifications::safe_text(label, 80))
-        .find(|label| !label.trim().is_empty())
-        .unwrap_or_else(|| "the agent".into());
+        .find(|label| !label.trim().is_empty());
     Agent {
         pane_id: agent.pane_id.clone(),
         label,
@@ -109,7 +114,7 @@ fn describe(agent: &herdr_client::protocol::ClientShellAgent) -> Agent {
 enum State {
     Loading,
     Loaded(Loaded),
-    Failed(String),
+    Failed(crate::Error),
 }
 
 pub(crate) struct Review {
@@ -474,7 +479,7 @@ impl HerdrWindow {
             Ok(loaded) => review.set_loaded(loaded, cx),
             Err(error) => {
                 tracing::warn!(%error, "Could not read the changes to review");
-                review.state = State::Failed(error.to_string());
+                review.state = State::Failed(error);
             }
         }
         review.refresh_marks();
@@ -502,10 +507,7 @@ impl HerdrWindow {
             return;
         };
         if review.notes.len() >= MAX_NOTES {
-            self.show_flash(
-                Flash::warning("Clear sent notes or remove some before adding more"),
-                cx,
-            );
+            self.show_flash(Flash::warning(fl!("review-notes-full")), cx);
             return;
         }
         if review
@@ -539,7 +541,7 @@ impl HerdrWindow {
                 return;
             };
             let Some(edited) = Note::new(anchor, &text) else {
-                self.show_flash(Flash::warning("Write what should change first"), cx);
+                self.show_flash(Flash::warning(fl!("review-note-empty")), cx);
                 return;
             };
             if let Some(review) = self.reviews.get_mut(&id) {
@@ -563,7 +565,7 @@ impl HerdrWindow {
             return;
         };
         let Some(note) = Note::new(anchor, &text) else {
-            self.show_flash(Flash::warning("Write what should change first"), cx);
+            self.show_flash(Flash::warning(fl!("review-note-empty")), cx);
             return;
         };
         review.notes.push(note);
@@ -660,10 +662,7 @@ impl HerdrWindow {
             .get_mut(&id)
             .and_then(|review| review.sending.start())
         else {
-            self.show_flash(
-                Flash::warning("The previous notes are still pending delivery"),
-                cx,
-            );
+            self.show_flash(Flash::warning(fl!("review-send-pending")), cx);
             return;
         };
         if let Some(review) = self.reviews.get_mut(&id) {
@@ -697,7 +696,7 @@ impl HerdrWindow {
             .sending
             .withdraw(&mut self.deliveries, Some(feedback))
         else {
-            self.show_flash(Flash::warning("The agent already has those notes"), cx);
+            self.show_flash(Flash::warning(fl!("review-withdraw-late")), cx);
             return;
         };
         for note in &mut review.notes {
@@ -705,7 +704,7 @@ impl HerdrWindow {
                 note.sent = None;
             }
         }
-        self.show_flash(Flash::success("Notes withdrawn"), cx);
+        self.show_flash(Flash::success(fl!("review-withdrawn")), cx);
         cx.notify();
     }
 
@@ -714,7 +713,7 @@ impl HerdrWindow {
             return;
         };
         cx.write_to_clipboard(ClipboardItem::new_string(text));
-        self.show_flash(Flash::success("Notes copied"), cx);
+        self.show_flash(Flash::success(fl!("review-notes-copied")), cx);
     }
 
     pub(crate) fn render_review(&self, id: TabId, cx: &mut Context<Self>) -> AnyElement {
@@ -727,20 +726,20 @@ impl HerdrWindow {
             State::Loading => div()
                 .p_3()
                 .text_color(rgb(theme.muted))
-                .child("Reading changes\u{2026}")
+                .child(fl!("review-reading-changes"))
                 .into_any_element(),
             State::Failed(error) => div()
                 .debug_selector(|| "review-error".into())
                 .p_3()
                 .text_color(crate::menu::danger(&theme))
-                .child(error.clone())
+                .child(error.localize())
                 .into_any_element(),
             State::Loaded(loaded) if loaded.diff.files.is_empty() => div()
                 .p_3()
                 .text_color(rgb(theme.muted))
                 .child(match loaded.scope {
-                    Scope::Uncommitted => "No uncommitted changes",
-                    Scope::Branch => "No changes on this branch",
+                    Scope::Uncommitted => fl!("review-no-uncommitted"),
+                    Scope::Branch => fl!("review-no-branch-changes"),
                 })
                 .into_any_element(),
             State::Loaded(_) => div()
