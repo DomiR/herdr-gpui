@@ -3,12 +3,29 @@ use chrono::{DateTime, Utc};
 
 mod actions;
 mod beads;
+
+fn beads() -> SourceKey {
+    SourceKey {
+        provider: Provider::Beads,
+        host: "local".into(),
+        repository: "/Users/me/src/herdr-gpui".into(),
+    }
+}
 mod beads_only;
 #[cfg(unix)]
 mod beads_script;
 mod full_listing;
 mod git;
+mod git_recent;
 mod github;
+
+fn github() -> SourceKey {
+    SourceKey {
+        provider: Provider::Github,
+        host: "github.com".into(),
+        repository: "penso/herdr-gpui".into(),
+    }
+}
 mod gitlab;
 mod gitlab_envrc;
 mod gitlab_hosts;
@@ -22,6 +39,10 @@ mod gitlab_sign_in;
 mod incremental;
 mod keys;
 mod line_endings;
+mod linear;
+mod linear_branches;
+mod linear_create;
+mod linear_move;
 mod location;
 mod naming;
 #[cfg(unix)]
@@ -41,22 +62,6 @@ fn at(value: &str) -> DateTime<Utc> {
     DateTime::parse_from_rfc3339(value)
         .unwrap()
         .with_timezone(&Utc)
-}
-
-fn github() -> SourceKey {
-    SourceKey {
-        provider: Provider::Github,
-        host: "github.com".into(),
-        repository: "penso/herdr-gpui".into(),
-    }
-}
-
-fn beads() -> SourceKey {
-    SourceKey {
-        provider: Provider::Beads,
-        host: "local".into(),
-        repository: "/Users/me/src/herdr-gpui".into(),
-    }
 }
 
 fn item(source: &SourceKey, native_id: &str, title: &str) -> Item {
@@ -84,6 +89,7 @@ fn item(source: &SourceKey, native_id: &str, title: &str) -> Item {
             comments: Some(2),
             ..Activity::default()
         }),
+        tracker: None,
     }
 }
 

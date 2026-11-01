@@ -1,9 +1,9 @@
 //! Where Herdr UI keeps a saved sign-in: the macOS login Keychain in a signed
 //! release, the Linux Secret Service, Windows Credential Manager, or, with an
-//! explicit opt-in, a private `0600` file. GitHub and the cloud providers keep
-//! their secrets here under the same policy. Every call may block on the
-//! system's keyring, so callers run it on a background worker, never on the
-//! UI thread.
+//! explicit opt-in, a private `0600` file. GitHub, Linear, and the cloud
+//! providers keep their secrets here under the same policy. Every call may
+//! block on the system's keyring, so callers run it on a background worker,
+//! never on the UI thread.
 
 #[cfg(windows)]
 mod credential_manager;

@@ -330,6 +330,18 @@ impl OrchestratorView {
         if item.updated_at.is_some() {
             parts.push(fl!("orchestrator-updated", ago = ago(item.updated_at, now)));
         }
+        // What only a tracker such as Linear says: whose it is, and its cycle.
+        if let Some(tracker) = &item.tracker {
+            if let Some(assignee) = &tracker.assignee {
+                parts.push(fl!(
+                    "orchestrator-linear-assigned-to",
+                    assignee = assignee.as_str()
+                ));
+            }
+            if let Some(cycle) = &tracker.cycle {
+                parts.push(cycle_label(cycle, cycle.active));
+            }
+        }
         if let Some(pr) = self.open_pull_request() {
             parts.push(fl!(
                 "orchestrator-pull-request-size",
@@ -345,5 +357,19 @@ impl OrchestratorView {
             .gap_2()
             .child(look.muted(parts.join(" \u{00b7} ")))
             .children(item.labels.iter().map(|label| look.chip(label.clone())))
+    }
+}
+
+/// What a Linear cycle reads as: its name, else its number, marked as the
+/// current one when `current`.
+pub(super) fn cycle_label(cycle: &crate::orchestrator::Cycle, current: bool) -> String {
+    let label = match &cycle.name {
+        Some(name) => name.clone(),
+        None => fl!("orchestrator-linear-cycle-number", number = cycle.number),
+    };
+    if current {
+        fl!("orchestrator-linear-cycle-current", cycle = label)
+    } else {
+        label
     }
 }

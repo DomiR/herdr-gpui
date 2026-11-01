@@ -37,9 +37,10 @@ pub(super) fn recognize(
         .is_some_and(|remote| gitlab::recognize(&mut remote.source, cli))
 }
 
-/// Each source of `info`, syncing when this build can read it.
-pub(super) fn statuses(info: &RepoInfo) -> Vec<SourceStatus> {
-    sources(info)
+/// Each source of `info`, and Linear's keyed by `linear` as its workspace,
+/// syncing when this build can read it.
+pub(super) fn statuses(info: &RepoInfo, linear: Option<&str>) -> Vec<SourceStatus> {
+    sources(info, linear)
         .into_iter()
         .map(|(key, supported)| SourceStatus {
             key,
@@ -52,18 +53,20 @@ pub(super) fn statuses(info: &RepoInfo) -> Vec<SourceStatus> {
         .collect()
 }
 
-/// The sources a repository has, and whether this build can read each.
-pub fn sources(info: &RepoInfo) -> Vec<(SourceKey, bool)> {
+/// The sources a repository has, and whether this build can read each:
+/// Linear's, keyed by `linear` as its workspace, when the view lists it.
+pub fn sources(info: &RepoInfo, linear: Option<&str>) -> Vec<(SourceKey, bool)> {
     let remote = info.remote.as_ref().map(|remote| {
         let supported = match remote.source.provider {
             Provider::Github => remote.source.host == "github.com",
             Provider::Gitlab => true,
-            Provider::Beads => false,
+            Provider::Beads | Provider::Linear => false,
         };
         (remote.source.clone(), supported)
     });
     remote
         .into_iter()
         .chain(info.beads_source().map(|key| (key, true)))
+        .chain(linear.map(|workspace| (crate::linear::source(workspace), true)))
         .collect()
 }

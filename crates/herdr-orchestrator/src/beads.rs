@@ -346,6 +346,7 @@ impl Bead {
             updated_at: self.updated_at,
             pull_request: None,
             activity: None,
+            tracker: None,
         }
     }
 }

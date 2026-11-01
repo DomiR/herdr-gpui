@@ -24,6 +24,7 @@ fn a_page_reads_the_copy_of_the_checkout_its_row_shows(cx: &mut gpui::TestAppCon
                 data_root: Some(dir.path().join("other-data")),
                 gitlab_store: Default::default(),
                 timing: Timing::default(),
+                linear: None,
             };
             view.repos.push(Repo::start(RepoSpec {
                 key: "other".into(),

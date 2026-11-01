@@ -18,6 +18,7 @@ fn request(dir: &std::path::Path) -> Request {
         data_root: Some(dir.join("data")),
         gitlab_store: Default::default(),
         timing: Timing::default(),
+        linear: None,
     }
 }
 

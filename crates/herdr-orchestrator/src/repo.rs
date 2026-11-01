@@ -139,15 +139,18 @@ pub fn opened(
 
 /// [`detection_script`] that prints a `found` line once the repository is
 /// printed, then which `programs` the host has, followed by a `programs`
-/// line, and the branches named here, each on a `branch` line, followed by
-/// a `branches` line. Each marker follows a step that worked, so a step cut
+/// line, and the branches that could name an item, each on a `branch` line,
+/// followed by a `branches` line. Each marker follows a step that worked, so a step cut
 /// short reads as not read, and neither step can fail the detection.
 pub fn opening_script(checkout: &str, programs: &[&str]) -> String {
-    let query = super::naming::branch_query()
+    let query = super::naming::branch_queries()
         .iter()
-        .map(|arg| shell_quote(arg))
+        .map(|query| {
+            let args: Vec<_> = query.iter().map(|arg| shell_quote(arg)).collect();
+            format!("git -C \"$1\" {}", args.join(" "))
+        })
         .collect::<Vec<_>>()
-        .join(" ");
+        .join(" && ");
     let probe = herdr_remote::teleport::installed_programs_script(programs);
     script_with(
         checkout,
@@ -155,7 +158,7 @@ pub fn opening_script(checkout: &str, programs: &[&str]) -> String {
             r#"after() {{
     printf 'found\n'
     if ( {probe} ); then printf 'programs\n'; fi
-    if [ -n "$1" ] && refs=$(git -C "$1" {query}); then
+    if [ -n "$1" ] && refs=$({query}); then
         printf '%s\n' "$refs" | while IFS= read -r ref; do
             [ -z "$ref" ] || printf 'branch\t%s\n' "$ref"
         done

@@ -8,6 +8,11 @@ use serde::{Deserialize, Serialize};
 pub enum ActivityPanel {
     #[default]
     Workspaces,
+    Tickets,
+    /// The user's Linear issues, kept out of Issues.
+    Linear,
+    /// The native ticket board, still being built beside the web one.
+    TicketsNative,
     Overview,
     PullRequests,
     Issues,
@@ -19,6 +24,9 @@ pub enum ActivityPanel {
 impl ActivityPanel {
     pub const ALL: &[Self] = &[
         Self::Workspaces,
+        Self::Tickets,
+        Self::Linear,
+        Self::TicketsNative,
         Self::Overview,
         Self::PullRequests,
         Self::Issues,
@@ -34,6 +42,9 @@ impl ActivityPanel {
             Self::Workspaces => "workspaces",
             Self::PullRequests => "pull-requests",
             Self::Issues => "issues",
+            Self::Linear => "linear",
+            Self::Tickets => "tickets",
+            Self::TicketsNative => "tickets-native",
             Self::Security => "security",
             Self::Automations => "automations",
             Self::Usage => "usage",

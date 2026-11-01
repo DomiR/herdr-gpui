@@ -323,8 +323,11 @@ impl HerdrWindow {
                     self.browser
                         .pages
                         .ids()
-                        // A chat's panel page has no tab; its chat owns it.
-                        .filter(|id| store.get(*id).is_none() && !id.is_panel()),
+                        // A chat's panel page has no tab; its chat owns it, and
+                        // the Tickets page is the window's own.
+                        .filter(|id| {
+                            *id != TabId::TICKETS && store.get(*id).is_none() && !id.is_panel()
+                        }),
                 )
                 .collect();
             if !gone.is_empty() {
@@ -338,6 +341,7 @@ impl HerdrWindow {
         self.advance_close_run(window, cx);
         self.ensure_code_page(window, cx);
         self.ensure_px0_page(window, cx);
+        self.ensure_tickets_page(window, cx);
         self.poll_deliveries(cx);
         self.poll_reveal(window, cx);
         self.poll_reviews(cx);
@@ -425,6 +429,15 @@ impl HerdrWindow {
                 },
                 #[cfg(target_os = "macos")]
                 Event::Captured(id, capture, tiff) => self.page_captured(id, capture, tiff, cx),
+                // The Tickets page has no workspace to open a tab in, so
+                // what it opens goes to the system browser.
+                Event::NewWindow(id, url) if id == TabId::TICKETS => {
+                    if let Ok(url) = WebUrl::try_from(url.as_str()) {
+                        cx.open_url(url.as_str());
+                    }
+                }
+                #[cfg(target_os = "macos")]
+                Event::Opened(id, url, ..) if id == TabId::TICKETS => cx.open_url(url.as_str()),
                 Event::NewWindow(id, url) => {
                     if let Ok(url) = WebUrl::try_from(url.as_str())
                         && let Some(opened) = self.open_beside(id, url, cx)

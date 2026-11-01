@@ -117,6 +117,7 @@ fn pull_requests_and_issues_list_a_local_checkout(cx: &mut TestAppContext) {
             reload: Duration::from_millis(20),
             sync: Duration::from_secs(3600),
         },
+        linear: None,
     };
     let config = crate::config::Config::default();
     let look = Look {

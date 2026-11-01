@@ -53,6 +53,7 @@ impl HerdrWindow {
                 mod_panel_width: self.mod_panel_width.chosen(),
                 review_files_width: self.review_files_width.chosen(),
                 device_order: self.device_order.clone(),
+                issue_layout: self.issue_layout,
             });
         }
     }

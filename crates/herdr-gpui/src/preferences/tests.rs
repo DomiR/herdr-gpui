@@ -57,6 +57,7 @@ fn roundtrip_and_reset_drain_after_drop() {
             mod_panel_width: None,
             review_files_width: None,
             device_order: Vec::new(),
+            issue_layout: None,
         });
     }
     let worker = preferences.worker.take().unwrap();
@@ -76,6 +77,7 @@ fn roundtrip_and_reset_drain_after_drop() {
             mod_panel_width: None,
             review_files_width: None,
             device_order: Vec::new(),
+            issue_layout: None,
         }
     );
     preferences.save(Chrome::default());
@@ -102,6 +104,7 @@ fn only_a_toggled_sort_is_stored_and_older_files_migrate() {
         mod_panel_width: None,
         review_files_width: None,
         device_order: Vec::new(),
+        issue_layout: None,
     };
     for (json, expected) in [
         // A file from before the sort existed follows the daemon.
@@ -178,6 +181,7 @@ fn drop_does_not_wait_for_blocked_worker_and_queued_saves_still_drain() {
             mod_panel_width: None,
             review_files_width: None,
             device_order: Vec::new(),
+            issue_layout: None,
         },
         Chrome {
             activity_panel: None,
@@ -189,6 +193,7 @@ fn drop_does_not_wait_for_blocked_worker_and_queued_saves_still_drain() {
             mod_panel_width: None,
             review_files_width: None,
             device_order: Vec::new(),
+            issue_layout: None,
         },
         Chrome::default(),
     ];
@@ -249,6 +254,7 @@ fn malformed_and_invalid_widths_fall_back_to_default() {
                     mod_panel_width: None,
                     review_files_width: None,
                     device_order: Vec::new(),
+                    issue_layout: None,
                 }
             )
             .is_err()
@@ -264,6 +270,7 @@ fn malformed_and_invalid_widths_fall_back_to_default() {
         mod_panel_width: None,
         review_files_width: None,
         device_order: Vec::new(),
+        issue_layout: None,
     };
     write_chrome(&path, chrome.clone()).unwrap();
     assert_eq!(read_chrome(&path).unwrap(), chrome);
@@ -284,6 +291,7 @@ fn invalid_sidebar_splits_preserve_other_preferences() {
         mod_panel_width: None,
         review_files_width: None,
         device_order: Vec::new(),
+        issue_layout: None,
     };
     for split in [
         "null", "0", "-1", "0.099", "0.901", "1e100", "1e-100", "\"0.5\"", "true", "[]", "{}",
@@ -332,6 +340,7 @@ fn sidebar_split_roundtrips_including_boundaries_and_reset() {
             mod_panel_width: None,
             review_files_width: None,
             device_order: Vec::new(),
+            issue_layout: None,
         };
         write_chrome(&path, chrome.clone()).unwrap();
         let stored: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
@@ -360,4 +369,5 @@ fn endpoint_paths_use_stable_fnv1a() {
 mod activity_last_opened;
 mod activity_panel;
 mod device_order;
+mod issue_layout;
 mod notes_width;

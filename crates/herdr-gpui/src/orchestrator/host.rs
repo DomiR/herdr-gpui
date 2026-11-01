@@ -130,7 +130,14 @@ impl HerdrWindow {
         self.next_orchestrator += 1;
         let id = ViewId(self.next_orchestrator);
         let look = self.look();
-        let view = cx.new(|cx| OrchestratorView::new(look, cx));
+        let layout = self.issue_layout;
+        let view = cx.new(|cx| {
+            let mut view = OrchestratorView::new(look, cx);
+            if let Some(layout) = layout {
+                view.set_layout(layout, cx);
+            }
+            view
+        });
         // Handled from the tick, which has the window acting on them needs.
         let events = cx.subscribe(&view, move |this, _, event: &Event, cx| {
             if this.orchestrator_events.len() < MAX_EVENTS {
@@ -200,6 +207,9 @@ impl HerdrWindow {
                         data_root: None,
                         gitlab_store,
                         timing: Timing::default(),
+                        // The same store as the GitHub sign-in; the view
+                        // picks the one worker that lists Linear.
+                        linear: Some(crate::github::select_store(&self.config.github)),
                     },
                 });
             }
@@ -447,6 +457,19 @@ impl HerdrWindow {
         )
     }
 
+    /// Lays every sections view out as the stored chrome says, once it
+    /// loads after the views were made.
+    pub(crate) fn apply_issue_layout(&mut self, cx: &mut Context<Self>) {
+        let Some(layout) = self.issue_layout else {
+            return;
+        };
+        for orchestrator in self.orchestrators.values() {
+            orchestrator
+                .view
+                .update(cx, |view, cx| view.set_layout(layout, cx));
+        }
+    }
+
     fn orchestrator_event(
         &mut self,
         id: ViewId,
@@ -495,21 +518,35 @@ impl HerdrWindow {
             } => {
                 self.open_run_workspace(id, host.as_deref(), session.as_deref(), &workspace_id, cx)
             }
-            Event::OpenUrl(url) => match WebUrl::try_from(url.as_str()) {
-                Ok(url) => {
-                    if let Some((_, workspace)) = self.browser_key() {
-                        let endpoint = self.endpoints[self.selected_endpoint].id.clone();
-                        // Only a page tab shows behind the section; the system
-                        // browser, or a page that did not open, leaves it be.
-                        let opened =
-                            self.open_workspace_page(&endpoint, &workspace, url, window, cx);
-                        if opened == crate::browser::PageOpened::Tab {
-                            self.leave_activity_section(id, cx);
+            Event::OpenUrl(url) => {
+                // A Linear issue opens in the Linear app when it is there.
+                if super::open_linear_link(&url, cx) {
+                    return;
+                }
+                match WebUrl::try_from(url.as_str()) {
+                    Ok(url) => {
+                        if let Some((_, workspace)) = self.browser_key() {
+                            let endpoint = self.endpoints[self.selected_endpoint].id.clone();
+                            // Only a page tab shows behind the section; the system
+                            // browser, or a page that did not open, leaves it be.
+                            let opened =
+                                self.open_workspace_page(&endpoint, &workspace, url, window, cx);
+                            if opened == crate::browser::PageOpened::Tab {
+                                // A page is no issue's worktree to come back from.
+                                if let Some(view) = self.orchestrator_view(id).cloned() {
+                                    view.update(cx, |view, _| view.forget_worktree_issue());
+                                }
+                                self.leave_activity_section(id, cx);
+                            }
                         }
                     }
+                    Err(_) => self.tell_orchestrator(id, super::Error::NotWebAddress, cx),
                 }
-                Err(_) => self.tell_orchestrator(id, super::Error::NotWebAddress, cx),
-            },
+            }
+            Event::Layout(layout) => {
+                self.issue_layout = Some(layout);
+                self.save_chrome();
+            }
             Event::SignIn(provider) => {
                 if self.open_menu(window, cx) {
                     if provider == super::Provider::Gitlab {

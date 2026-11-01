@@ -101,6 +101,9 @@ impl Action {
 pub enum Done {
     // keep-sorted start
     BeadDeleted,
+    LinearConnected,
+    LinearIssueCreated,
+    LinearKeyRemoved,
     Removed,
     Sent,
     Started,

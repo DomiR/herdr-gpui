@@ -57,8 +57,13 @@ pub fn load_profiles(home: &Path) -> Vec<Profile> {
 pub fn built_in(item: &Item) -> String {
     let nonce = nonce();
     let description = bounded(item.description.as_deref().unwrap_or(""), MAX_DESCRIPTION);
+    // A Linear source's repository is its workspace.
+    let place = match item.key.source.provider {
+        Provider::Linear => "Workspace",
+        _ => "Repository",
+    };
     format!(
-        "Implement this issue.\n\nProvider: {}\nRepository: {}\nIdentifier: {}\nTitle: {}\nDescription: {}\nURL: {}",
+        "Implement this issue.\n\nProvider: {}\n{place}: {}\nIdentifier: {}\nTitle: {}\nDescription: {}\nURL: {}",
         provider(item.key.source.provider),
         item.key.source.repository,
         item.identifier,

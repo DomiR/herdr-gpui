@@ -308,6 +308,8 @@ pub struct Config {
     /// Blank space around every terminal's cells.
     pub terminal_padding: Padding,
     pub theme: String,
+    /// Where the Tickets section's board is served (`crate::tickets`).
+    pub(crate) tickets: crate::tickets::Config,
     pub ui: FontConfig,
     /// Keys the file names that this build does not know, sorted. They are
     /// ignored, as Herdr ignores its own, so a config written by a newer
@@ -480,6 +482,7 @@ impl Default for Config {
             terminal: font(monospace, 14.0),
             terminal_padding: Padding::default(),
             theme: "Default".into(), // i18n: data
+            tickets: crate::tickets::Config::default(),
             ui: font(ui, 12.0),
             unknown_keys: Vec::new(),
             updates: UpdatesConfig::default(),
@@ -560,6 +563,7 @@ struct Settings {
     tabs: FontSettings,
     terminal: FontSettings,
     theme: Option<String>,
+    tickets: crate::tickets::Config,
     ui: FontSettings,
     updates: UpdatesConfig,
     usage: crate::usage::UsageConfig,
@@ -946,6 +950,7 @@ impl Config {
         config.code = settings.code;
         settings.px0.check()?;
         config.px0 = settings.px0;
+        config.tickets = settings.tickets;
         settings.remote.check()?;
         config.remote = settings.remote;
         config.open_files_in = settings.open_files_in;

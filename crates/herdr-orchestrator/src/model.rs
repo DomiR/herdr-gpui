@@ -6,14 +6,16 @@ use super::{Error, Result};
 use chrono::{DateTime, Utc};
 use herdr_client::protocol::AgentStatus;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, path::PathBuf, str::FromStr};
+use std::{collections::HashMap, path::PathBuf, str::FromStr, sync::Arc};
 
-/// Where an item comes from.
+/// Where an item comes from. Linear items are never in the shared
+/// database: agent-launcher cannot read a `linear` row.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Provider {
     Github,
     Gitlab,
     Beads,
+    Linear,
 }
 
 impl Provider {
@@ -22,6 +24,17 @@ impl Provider {
             Self::Github => "github",
             Self::Gitlab => "gitlab",
             Self::Beads => "beads",
+            Self::Linear => "linear",
+        }
+    }
+
+    /// What the user reads, such as "GitHub".
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Github => "GitHub",
+            Self::Gitlab => "GitLab",
+            Self::Beads => "Beads",
+            Self::Linear => "Linear",
         }
     }
 }
@@ -34,6 +47,7 @@ impl FromStr for Provider {
             "github" => Ok(Self::Github),
             "gitlab" => Ok(Self::Gitlab),
             "beads" => Ok(Self::Beads),
+            "linear" => Ok(Self::Linear),
             other => Err(Error::Provider(other.to_owned())),
         }
     }
@@ -74,7 +88,7 @@ impl SourceKey {
 pub struct ItemKey {
     pub source: SourceKey,
     /// An issue's number, `pr/<number>` for a GitHub pull request or GitLab
-    /// merge request, or a Beads id.
+    /// merge request, a Beads id, or a Linear identifier such as `ENG-12`.
     pub native_id: String,
 }
 
@@ -126,7 +140,7 @@ impl Item {
     pub fn stand_in(key: ItemKey) -> Self {
         let number = key.native_id.strip_prefix("pr/").unwrap_or(&key.native_id);
         let identifier = match key.source.provider {
-            Provider::Beads => key.native_id.clone(),
+            Provider::Beads | Provider::Linear => key.native_id.clone(),
             // GitLab calls a merge request `!iid`; its issues stay `#iid`.
             Provider::Gitlab if key.native_id.starts_with("pr/") => format!("!{number}"),
             _ => format!("#{number}"),
@@ -147,7 +161,21 @@ impl Item {
             updated_at: None,
             pull_request: None,
             activity: None,
+            tracker: None,
         }
+    }
+
+    /// The priority as the user reads it: `P1`, or Linear's own words.
+    pub fn priority_label(&self) -> Option<String> {
+        let priority = self.priority?;
+        let word = match (self.key.source.provider, priority) {
+            (Provider::Linear, 1) => "Urgent",
+            (Provider::Linear, 2) => "High",
+            (Provider::Linear, 3) => "Medium",
+            (Provider::Linear, 4) => "Low",
+            _ => return Some(format!("P{priority}")),
+        };
+        Some(word.to_owned())
     }
 }
 
@@ -174,7 +202,7 @@ pub struct Activity {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Item {
     pub key: ItemKey,
-    /// What the user reads: `#377`, or a Beads id.
+    /// What the user reads: `#377`, a Beads id, or a Linear identifier.
     pub identifier: String,
     pub title: String,
     pub description: Option<String>,
@@ -190,6 +218,176 @@ pub struct Item {
     pub updated_at: Option<DateTime<Utc>>,
     pub pull_request: Option<PullRequest>,
     pub activity: Option<Activity>,
+    /// What a tracker the shared database does not hold, such as Linear,
+    /// says about the item. Never stored, so rows read from it have none.
+    pub tracker: Option<Tracker>,
+}
+
+/// An item's details from a tracker the shared database does not hold.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Tracker {
+    /// The branch the tracker names for work on the item, such as Linear's
+    /// `branchName`.
+    pub branch: Option<String>,
+    /// The assignee's display name.
+    pub assignee: Option<String>,
+    /// Assigned to the account the tracker is read as.
+    pub mine: bool,
+    pub cycle: Option<Cycle>,
+    /// The workflow state the item is in, such as Linear's "In Progress".
+    pub status: Option<Status>,
+    /// The tracker's own id for the item, such as Linear's issue UUID,
+    /// which its API changes the item by.
+    pub id: Option<String>,
+    /// The workflow states the item can move to: its team's, in board
+    /// order, shared by every item of the team. Empty when the tracker's
+    /// states could not be read, so the item cannot move.
+    pub states: Arc<Vec<Status>>,
+    /// Where the item sits among its state's when ordered by hand, such as
+    /// Linear's `sortOrder`.
+    pub sort_order: Option<SortOrder>,
+    /// The address of the assignee's picture, when they set one.
+    pub avatar: Option<String>,
+    /// The item's estimate, such as Linear's points.
+    pub estimate: Option<u32>,
+    /// The tracker's project the item belongs to.
+    pub project: Option<Project>,
+    /// The parent item's title, for a sub-issue.
+    pub parent: Option<String>,
+    /// The pull requests linked to the item, in the tracker's order.
+    pub pull_requests: Vec<LinkedPullRequest>,
+    /// How many of its sub-items are done, when it has any.
+    pub progress: Option<Progress>,
+}
+
+/// How many of an item's sub-items are done. Canceled ones count in
+/// neither.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Progress {
+    pub done: u32,
+    pub total: u32,
+    /// The item has more sub-items than were read.
+    pub more: bool,
+}
+
+/// A tracker's project, such as a Linear project.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Project {
+    pub name: String,
+    /// `0xRRGGBB`, when the tracker gives one.
+    pub color: Option<u32>,
+}
+
+/// A pull request a tracker links to an item, such as a GitHub pull
+/// request attached to a Linear issue.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LinkedPullRequest {
+    pub url: String,
+    pub number: u64,
+    /// `None` when the tracker does not say.
+    pub state: Option<LinkState>,
+}
+
+/// Where a linked pull request stands, the liveliest first.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum LinkState {
+    Open,
+    Draft,
+    Merged,
+    Closed,
+}
+
+/// A tracker's manual order of an item, such as Linear's `sortOrder`: a
+/// float, ascending down a board's lane. Compared by its total order, so
+/// a tracker stays `Eq`.
+#[derive(Clone, Copy, Debug)]
+pub struct SortOrder(pub f64);
+
+impl PartialEq for SortOrder {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other).is_eq()
+    }
+}
+
+impl Eq for SortOrder {}
+
+impl PartialOrd for SortOrder {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for SortOrder {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.total_cmp(&other.0)
+    }
+}
+
+/// A tracker's workflow state: its name, what kind of state it is, where
+/// its team orders it, and its color.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Status {
+    pub name: String,
+    pub kind: StatusKind,
+    /// The team's order of its states within a kind, in thousandths.
+    pub rank: i64,
+    /// `0xRRGGBB`, when the tracker gives one.
+    pub color: Option<u32>,
+    /// The tracker's id for the state, which moving an item to it names.
+    pub id: Option<String>,
+}
+
+/// What kind of workflow state a status is, in the order a board shows
+/// them, as Linear's `WorkflowState.type` names them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum StatusKind {
+    Triage,
+    Backlog,
+    Unstarted,
+    Started,
+    Completed,
+    Canceled,
+    Other,
+}
+
+impl StatusKind {
+    pub fn parse(kind: &str) -> Self {
+        match kind {
+            "triage" => Self::Triage,
+            "backlog" => Self::Backlog,
+            "unstarted" => Self::Unstarted,
+            "started" => Self::Started,
+            "completed" => Self::Completed,
+            "canceled" => Self::Canceled,
+            _ => Self::Other,
+        }
+    }
+}
+
+impl Status {
+    /// Board order: by kind, then the team's own order, then name.
+    pub fn order(&self) -> (StatusKind, i64, &str) {
+        (self.kind, self.rank, &self.name)
+    }
+}
+
+/// A Linear cycle, the team's sprint.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Cycle {
+    pub number: u64,
+    /// Most cycles have none.
+    pub name: Option<String>,
+    pub active: bool,
+}
+
+impl Cycle {
+    /// What the user reads: the cycle's name, else `Cycle <number>`.
+    pub fn label(&self) -> String {
+        match &self.name {
+            Some(name) => name.clone(),
+            None => format!("Cycle {}", self.number),
+        }
+    }
 }
 
 /// A source's sync position. `pr_details` holds agent-launcher's opaque PR

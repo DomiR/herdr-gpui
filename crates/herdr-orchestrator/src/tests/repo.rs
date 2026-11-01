@@ -128,7 +128,7 @@ fn a_folder_outside_git_is_reported() {
 fn github_dot_com_gitlab_and_beads_are_synced() {
     let gitlab = "common\t/r/.git\nmain\t/r\nbeads\t1\nremote\torigin\tgit@gitlab.com:g/app.git\n";
     let info = parse(&ConnectTarget::Local, gitlab).unwrap();
-    let found: Vec<_> = sources(&info)
+    let found: Vec<_> = sources(&info, None)
         .into_iter()
         .map(|(key, supported)| (key.provider, supported))
         .collect();
@@ -137,11 +137,11 @@ fn github_dot_com_gitlab_and_beads_are_synced() {
     // A self-managed GitLab is read at its own host.
     let managed = "common\t/r/.git\nmain\t/r\nremote\torigin\tgit@gitlab.acme.com:g/app.git\n";
     let info = parse(&ConnectTarget::Local, managed).unwrap();
-    assert!(sources(&info)[0].1);
+    assert!(sources(&info, None)[0].1);
 
     let enterprise = "common\t/r/.git\nmain\t/r\nremote\torigin\tgit@github.acme.com:g/app.git\n";
     let info = parse(&ConnectTarget::Local, enterprise).unwrap();
-    assert!(!sources(&info)[0].1);
+    assert!(!sources(&info, None)[0].1);
 }
 
 /// A local checkout is read with `git` run directly, which every client

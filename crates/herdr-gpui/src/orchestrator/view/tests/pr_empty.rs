@@ -33,17 +33,19 @@ fn pr_toggles_explain_why_loaded_pull_requests_are_hidden(cx: &mut gpui::TestApp
             assert_eq!(view.empty(), Empty::Filtered);
 
             view.filters.has_run = false;
-            view.mine = true;
+            view.filters.mine = true;
             view.refresh_rows();
             assert!(view.keys().is_empty());
             assert_eq!(view.empty(), Empty::Filtered);
 
+            // Mine is one filter for both tabs: on Issues it keeps only a
+            // tracker's issues assigned to you, so nothing listed is filtered.
             view.tab = Tab::Issues;
             view.refresh_rows();
-            assert_eq!(view.empty(), Empty::Nothing);
+            assert_eq!(view.empty(), Empty::Filtered);
 
             view.tab = Tab::PullRequests;
-            view.mine = false;
+            view.filters.mine = false;
             view.refresh_rows();
             assert_eq!(view.keys(), [key]);
             view.repos[0].snapshot.items = Arc::default();

@@ -17,6 +17,7 @@ fn destination_inventory_reconciles_selection_and_ignores_other_hosts(cx: &mut T
         data_root: Some(dir.path().join("data")),
         gitlab_store: Default::default(),
         timing: Timing::default(),
+        linear: None,
     };
     let config = crate::config::Config::default();
     let look = Look {

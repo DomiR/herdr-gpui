@@ -18,6 +18,7 @@ mod error;
 pub mod git;
 pub mod github;
 pub mod gitlab;
+pub mod linear;
 pub mod location;
 pub mod model;
 pub mod naming;
@@ -35,8 +36,9 @@ pub use location::{Repository, database_path};
 #[cfg(any(test, feature = "test-support"))]
 pub use model::Workspace;
 pub use model::{
-    Activity, Backend, Checkpoint, HerdrSession, Item, ItemKey, Owner, Provider, PullRequest, Run,
-    RunState, SourceKey,
+    Activity, Backend, Checkpoint, Cycle, HerdrSession, Item, ItemKey, LinkState,
+    LinkedPullRequest, Owner, Progress, Project, Provider, PullRequest, Run, RunState, SortOrder,
+    SourceKey, Status, StatusKind, Tracker,
 };
 pub use naming::LiveBranch;
 pub use prompt::nonce;
