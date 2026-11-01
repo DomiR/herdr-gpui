@@ -2946,9 +2946,23 @@ remains the source of truth, so Git, other editors, and agents' own file
 tools keep working on it.
 
 - **Styling.** Headings draw larger, `**bold**`, `*italic*`, `` `code` ``,
-  `~~struck~~` text, links, quotes, and code blocks are styled; their markers
-  stay in the text, muted, so the caret never jumps over hidden characters.
-  Cmd-click (Ctrl-click elsewhere) opens a link.
+  `~~struck~~` text, links, and quotes are styled. Lines away from the caret
+  hide their Markdown, as a preview would: heading and quote markers,
+  delimiters, and a link's address go, and bullets draw as dots; the
+  caret's lines show the text as written. Cmd-click (Ctrl-click elsewhere)
+  opens a link.
+- **Code, diagrams, and math.** Fenced code is coloured by its language. A
+  `mermaid` fence draws as a diagram and a `$$` block as a formula while
+  the caret is outside it; click one, or move the caret in, to edit its
+  source.
+- **File links.** A path written as inline code (`` `src/main.rs` ``, with
+  `:LINE` if you like) becomes a link when the file exists beside the
+  document or in its checkout; Cmd-click opens it.
+- **Comments.** Cmd-Shift-M comments on the selection or the caret's line.
+  The card stays under its line while others edit; **Send to Agent** (or
+  **Send N Comments** in the bar) gives them to the agent that last changed
+  the document through `herdr-gpui doc`, as page notes go, or copies them
+  when no agent did.
 - **Todos.** `- [ ]` and `- [x]` draw as checkboxes; click one, or press
   Cmd-Enter (Ctrl-Enter) on the line, to check it. Cmd-Enter also turns a
   list item or a line of text into a task. Enter continues a list (a task
@@ -2972,7 +2986,8 @@ tools keep working on it.
   agent makes through `herdr-gpui doc` name its pane. A file deleted or
   moved on disk is not recreated behind your back: the tab says so, keeps
   the text, and Cmd-S writes it again. Files over 2 MiB or not UTF-8 do not
-  open.
+  open. A file keeps its own line breaks (`\r\n` stays `\r\n`) and
+  byte-order mark.
 
 Several tabs and windows showing the same file share one document. Each
 change, from anyone, takes the next version number, shown in the tab's bar.

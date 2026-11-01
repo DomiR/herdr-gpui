@@ -129,6 +129,36 @@ building it without the user watching, so a reviewer can check each one.
     (trust entries and activation) the unattended run cannot give. The
     phases ran directly, each committed on its own.
 
+## Copied from comet afterwards
+
+The user asked for these after the first three phases, from comet
+(`/Users/domir/Developer/comet`), each adapted rather than copied whole:
+
+22. **Preview away from the caret** (comet's composer decorations): lines
+    without the caret hide their markers and draw bullets as dots; a
+    per-line display map keeps clicks, selection, vertical moves, and IME
+    placement on the source bytes.
+23. **Coloured code, Mermaid, math**: the chat view's bounded visual
+    workers (syntect grammars, mermaid-rs-renderer, RaTeX) draw fences and
+    `$$` blocks off the UI thread. Pictures replace their source while the
+    caret is outside them.
+24. **Inline-code file links** (comet's inline-code links): resolved
+    against the document's folder, then its Git checkout, off the UI
+    thread and remembered per text.
+25. **Comments to agents** (comet's line comments): view-local, anchored
+    in the CRDT, delivered through the existing page-notes path to the
+    agent that last used `doc` on the file, else copied.
+26. **Line endings and BOM** (comet's per-file encoding and line endings):
+    decoded on read, encoded on every write.
+27. **Moving less** (comet's movable-list lesson): Loro text has no move,
+    so Alt-Up/Down moves the shorter block.
+28. **Compaction** (comet's history trimming): Loro's shallow snapshots
+    cannot `fork_at` the synced version that disk merges need, so a
+    history over 20,000 operations is rebuilt from the written text
+    instead; editors re-anchor from byte offsets, undo restarts.
+29. **`doc diff --wait`** (comet's delta frames): agents follow a document
+    by waiting for the next change instead of re-reading it.
+
 ## What shipped, by phase
 
 1. `herdr-doc`: the document, disk merge, versions, sections, folds, and
@@ -141,9 +171,6 @@ building it without the user watching, so a reviewer can check each one.
 
 ## Not done yet
 
-- Hiding Markdown markers entirely on lines without the caret, as
-  Obsidian's live preview does; they draw muted instead.
 - Right-to-left text in documents: carets come from GPUI's text layout,
   not the app's bidirectional `Carets`.
-- Compacting the in-memory CRDT history of a long-open document.
 - Following a renamed file; a rename reads as a deletion.

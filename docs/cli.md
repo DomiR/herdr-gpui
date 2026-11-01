@@ -128,7 +128,7 @@ the next version number; a change names the version it was made against.
 | Command | Does |
 | --- | --- |
 | `doc read FILE [--section ID]` | The text (or one section's) after a `Version: N` line |
-| `doc diff FILE --since N` | A unified diff of what changed since version N |
+| `doc diff FILE --since N [--wait S]` | A unified diff of what changed since version N; with `--wait`, waits up to S seconds (at most 600) for a change first, exiting 4 when none came |
 | `doc sections FILE` | The sections: each `#`, `##`, and `###` heading starts one, named by its slug (the heading's GitHub anchor ID; repeats get `-1`, `-2`) |
 | `doc todo list FILE [--section ID]` | The tasks, numbered |
 | `doc append FILE --version N [--section ID] TEXT` | Add a block at the end of the document or of the section |

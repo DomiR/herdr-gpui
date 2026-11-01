@@ -232,7 +232,7 @@ for what only Herdr UI shows or keeps.
 | To | Run |
 | --- | --- |
 | Show a file at a line, read-only | `herdr-gpui code open src/main.rs:42` |
-| Read or change a Markdown doc or todo list the user and other agents edit too: name the version you read, and the section you work in | `herdr-gpui doc read TODO.md`, `herdr-gpui doc todo add TODO.md --version 3 --section next "Write tests"`, `herdr-gpui doc todo check TODO.md --version 4 2`; on `Version mismatch` apply the diff it prints and retry with the new version |
+| Read or change a Markdown doc or todo list the user and other agents edit too: name the version you read, and the section you work in | `herdr-gpui doc read TODO.md`, `herdr-gpui doc todo add TODO.md --version 3 --section next "Write tests"`, `herdr-gpui doc todo check TODO.md --version 4 2`; on `Version mismatch` apply the diff it prints and retry with the new version; `herdr-gpui doc diff TODO.md --since 4 --wait 600` waits for the next change |
 | Open the review of your uncommitted changes | `herdr-gpui review` |
 | Open px0 to browse, edit, or review your local checkout (macOS/Windows) | `herdr-gpui px0 open` |
 | Get notes the user sent this pane (pages, reviews, terminals) | `herdr-gpui feedback --wait 600` |
