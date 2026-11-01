@@ -244,7 +244,7 @@ impl OrchestratorView {
                 el.child(
                     option(
                         "orchestrator-facet-mine".into(),
-                        fl!("orchestrator-filter-mine"),
+                        fl!("orchestrator-filter-mine").into(),
                         Some(mine),
                         self.filters.mine,
                     )
@@ -260,7 +260,7 @@ impl OrchestratorView {
                 el.child(
                     option(
                         "orchestrator-facet-cycle".into(),
-                        fl!("orchestrator-linear-filter-current-cycle"),
+                        fl!("orchestrator-linear-filter-current-cycle").into(),
                         Some(cycle),
                         self.filters.cycle,
                     )
