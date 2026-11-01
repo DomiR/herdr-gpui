@@ -26,6 +26,8 @@ pub enum DocCommand {
     Diff {
         path: PathBuf,
         since: u64,
+        /// Seconds to wait for a change, at most 600.
+        wait: u64,
     },
     Sections {
         path: PathBuf,
@@ -73,6 +75,7 @@ pub(super) fn command(args: &mut Args) -> Result<DocCommand, CliError> {
             since: args
                 .number("--since", 1..=u64::MAX)?
                 .ok_or(CliError::MissingValue("--since"))?,
+            wait: args.number("--wait", 0..=600)?.unwrap_or(0),
             path: path(args)?,
         },
         Some("sections") => DocCommand::Sections { path: path(args)? },

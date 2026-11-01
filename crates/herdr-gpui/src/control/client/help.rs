@@ -16,8 +16,9 @@ herdr-gpui doc open FILE[:LINE]
 herdr-gpui doc read FILE [--section ID]
     The text (or one section's) and its version number. Every change to the
     document, by anyone, takes the next number.
-herdr-gpui doc diff FILE --since N
-    A unified diff of what changed since version N.
+herdr-gpui doc diff FILE --since N [--wait SECONDS]
+    A unified diff of what changed since version N. With --wait (at most
+    600), wait for a change first; exits 4 when none came.
 herdr-gpui doc sections FILE
     The sections: each #, ##, and ### heading starts one, named by the
     heading's slug (its GitHub anchor ID).

@@ -36,7 +36,9 @@ fn ask(op: DocOp, cx: &mut TestAppContext) -> Response {
     let incoming = server.next().unwrap();
     let mut state = State::default();
     cx.update(|cx| serve_request(incoming, &mut state, cx));
-    for _ in 0..500 {
+    // Until answered: a `--wait` request takes real seconds to expire.
+    let until = std::time::Instant::now() + Duration::from_secs(10);
+    while std::time::Instant::now() < until {
         if caller.is_finished() {
             break;
         }
@@ -215,5 +217,36 @@ fn a_change_that_changes_nothing_still_answers(cx: &mut TestAppContext) {
     assert!(
         matches!(response, Reply::Updated { version: 1, .. }),
         "{response:?}"
+    );
+}
+
+#[gpui::test]
+fn diff_waits_for_the_next_change(cx: &mut TestAppContext) {
+    let doc = file("a\n");
+    // Nothing changes: the wait runs out with an empty diff.
+    let unchanged = reply(ask(
+        DocOp::Diff {
+            path: doc.path.clone(),
+            since: 1,
+            wait: 1,
+        },
+        cx,
+    ));
+    assert!(
+        matches!(&unchanged, Reply::Diff { diff: Some(diff), .. } if diff.is_empty()),
+        "{unchanged:?}"
+    );
+    // Asked about an older version, it answers at once.
+    let changed = reply(ask(
+        DocOp::Diff {
+            path: doc.path.clone(),
+            since: 0,
+            wait: 600,
+        },
+        cx,
+    ));
+    assert!(
+        matches!(changed, Reply::Diff { version: 1, .. }),
+        "{changed:?}"
     );
 }

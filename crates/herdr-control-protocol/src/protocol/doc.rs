@@ -22,8 +22,14 @@ pub enum DocOp {
         #[serde(default)]
         section: Option<String>,
     },
-    /// What changed since version `since`.
-    Diff { path: String, since: u64 },
+    /// What changed since version `since`; with `wait`, waits up to that
+    /// many seconds for a change first.
+    Diff {
+        path: String,
+        since: u64,
+        #[serde(default, skip_serializing_if = "is_zero")]
+        wait: u64,
+    },
     /// The sections headings start, by ID.
     Sections { path: String },
     /// The tasks, or one section's.
@@ -68,6 +74,10 @@ pub enum DocOp {
     },
 }
 
+fn is_zero(value: &u64) -> bool {
+    *value == 0
+}
+
 impl DocOp {
     pub fn path(&self) -> &str {
         match self {
@@ -87,6 +97,8 @@ impl DocOp {
     pub fn wait_seconds(&self) -> u64 {
         match self {
             Self::Open { .. } => 0,
+            // The wait is for a change; the file loads well within it.
+            Self::Diff { wait, .. } if *wait > 0 => (*wait).min(super::MAX_WAIT_SECONDS),
             _ => WAIT_SECONDS,
         }
     }

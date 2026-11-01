@@ -43,10 +43,21 @@ pub(super) fn serve(
     let buffer = Docs::open(&path, cx);
     let display = op.path().to_owned();
     let mut stage = Stage::Loading;
-    let expired = Response::error(
-        ErrorCode::Timeout,
-        format!("{display} was not read and written in time; try again"),
-    );
+    let expired = match &op {
+        // Waited for a change that did not come.
+        DocOp::Diff { since, wait, .. } if *wait > 0 => Response::Doc {
+            reply: Reply::Diff {
+                path: display.clone(),
+                since: *since,
+                version: *since,
+                diff: Some(String::new()),
+            },
+        },
+        _ => Response::error(
+            ErrorCode::Timeout,
+            format!("{display} was not read and written in time; try again"),
+        ),
+    };
     watches.add(
         incoming,
         Duration::from_secs(op.wait_seconds()),
@@ -84,6 +95,7 @@ fn step(
             }
             match apply(op, buffer, author, path, cx) {
                 Ok(Applied::Answer(response)) => Some(response),
+                Ok(Applied::Waiting) => None,
                 Ok(Applied::Wrote { version, reply }) => {
                     *stage = Stage::Writing { version, reply };
                     None
@@ -119,6 +131,8 @@ fn step(
 enum Applied {
     /// Answered at once: a read, or a refused change.
     Answer(Response),
+    /// Nothing to answer yet: `doc diff --wait` waits for a change.
+    Waiting,
     /// Changed; answered once written.
     Wrote { version: Version, reply: Reply },
 }
@@ -155,7 +169,10 @@ fn apply(
                 text,
             });
         }
-        DocOp::Diff { since, .. } => {
+        DocOp::Diff { since, wait, .. } => {
+            if *wait > 0 && version == *since {
+                return Ok(Applied::Waiting);
+            }
             return answer(Reply::Diff {
                 path,
                 since: *since,

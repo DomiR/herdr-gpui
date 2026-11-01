@@ -112,9 +112,19 @@ fn doc_commands_parse() {
         doc(&["doc", "diff", "a.md", "--since", "4"]).unwrap(),
         DocCommand::Diff {
             path: "a.md".into(),
-            since: 4
+            since: 4,
+            wait: 0
         }
     );
+    assert_eq!(
+        doc(&["doc", "diff", "a.md", "--since", "4", "--wait", "60"]).unwrap(),
+        DocCommand::Diff {
+            path: "a.md".into(),
+            since: 4,
+            wait: 60
+        }
+    );
+    assert!(doc(&["doc", "diff", "a.md", "--since", "4", "--wait", "601"]).is_err());
 }
 
 #[test]

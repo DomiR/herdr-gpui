@@ -37,9 +37,10 @@ pub(super) fn run(command: DocCommand, context: &Context) -> crate::Result<Outpu
             path: absolute(&path)?,
             section,
         },
-        DocCommand::Diff { path, since } => DocOp::Diff {
+        DocCommand::Diff { path, since, wait } => DocOp::Diff {
             path: absolute(&path)?,
             since,
+            wait,
         },
         DocCommand::Sections { path } => DocOp::Sections {
             path: absolute(&path)?,
@@ -91,8 +92,17 @@ pub(super) fn run(command: DocCommand, context: &Context) -> crate::Result<Outpu
     match context.call(Request::Doc, op)? {
         Response::Doc { reply } => {
             let (text, failed) = message(&reply);
+            let unchanged =
+                matches!(&reply, Reply::Diff { diff: Some(diff), .. } if diff.is_empty());
             let output = Output::data(text, &reply)?;
-            Ok(if failed { output.failed() } else { output })
+            Ok(if failed {
+                output.failed()
+            } else if unchanged {
+                // Nothing yet: exit 4, as `browser feedback` does.
+                output.nothing()
+            } else {
+                output
+            })
         }
         response => Err(unexpected(response)),
     }
