@@ -47,7 +47,9 @@ codesign --verify --strict "$app"
 # Any running Herdr UI quits through its control socket, which the new
 # binary speaks as well as the old one. `ps` rather than `pgrep`, which
 # does not list the app from every shell (a sandboxed one sees nothing).
-running() { ps -axo comm= | grep -qx "$dest/Contents/MacOS/Herdr"; }
+# Only the window counts: the same binary also runs agents' commands, such
+# as a long `doc watch`, which take arguments and never quit.
+running() { ps -axo args= | grep -qx "$dest/Contents/MacOS/Herdr"; }
 if running; then
     "$app/Contents/MacOS/Herdr" app quit || true
     for _ in $(seq 1 40); do
