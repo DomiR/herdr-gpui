@@ -13,9 +13,9 @@ use herdr_doc::markdown::Kind;
 use std::ops::Range;
 
 /// The fold chevrons' column.
-const GUTTER: f32 = 22.;
+pub(super) const GUTTER: f32 = 22.;
 /// Space around the text.
-const PAD: f32 = 16.;
+pub(super) const PAD: f32 = 16.;
 
 /// What one row paints besides its text, in the line's own offsets.
 struct Overlay {
@@ -176,8 +176,18 @@ impl DocEditor {
         let Some(line) = self.prepared.lines.get(line_ix).cloned() else {
             return div().into_any_element();
         };
+        if let Some(block) = self.prepared.picture_at(line_ix).cloned() {
+            return self.render_picture(line_ix, &block, cx);
+        }
+        // The caret's lines show their Markdown as written; the others are
+        // decorated.
+        let selection = self.selection.range();
+        let active =
+            focused && line.range.start <= selection.end && selection.start <= line.range.end;
         let text = self.text(cx);
-        let row: Row = layout::row(text, &line, &self.look);
+        let row: Row = layout::row(text, &line, &self.look, !active, self.code_spans(line_ix));
+        let map = row.map.clone();
+        let shown = |range: Range<usize>| map.to_display(range.start)..map.to_display(range.end);
         let theme = self.look.theme.clone();
         let local = |range: &Range<usize>| -> Option<Range<usize>> {
             let start = range.start.max(line.range.start);
@@ -186,19 +196,19 @@ impl DocEditor {
                 || (start == end && range.start <= line.range.end && range.end > line.range.end))
                 .then(|| start - line.range.start..end - line.range.start)
         };
-        let selection = self.selection.range();
         let selects_break = !self.selection.is_empty()
             && selection.start <= line.range.end
             && selection.end > line.range.end;
         let selected = (!self.selection.is_empty())
             .then(|| local(&selection))
             .flatten()
-            .or_else(|| selects_break.then(|| line.range.len()..line.range.len()));
+            .or_else(|| selects_break.then(|| line.range.len()..line.range.len()))
+            .map(&shown);
         let caret = (focused && (line.range.start..=line.range.end).contains(&self.selection.head))
-            .then(|| self.selection.head - line.range.start);
+            .then(|| map.to_display(self.selection.head - line.range.start));
         let row_highlights: Vec<(Range<usize>, f32)> = highlights
             .iter()
-            .filter_map(|(range, opacity, _)| local(range).map(|r| (r, *opacity)))
+            .filter_map(|(range, opacity, _)| local(range).map(|r| (shown(r), *opacity)))
             .collect();
         let label = highlights
             .iter()
@@ -214,7 +224,7 @@ impl DocEditor {
         let text_layout = styled.layout().clone();
         self.layouts
             .borrow_mut()
-            .insert(line_ix, text_layout.clone());
+            .insert(line_ix, (text_layout.clone(), map.clone()));
         let overlay = Overlay {
             layout: text_layout.clone(),
             selection: selected,
@@ -222,7 +232,7 @@ impl DocEditor {
             caret,
             highlights: row_highlights,
             checkbox: row.checkbox.clone(),
-            marked: self.marked.as_ref().and_then(local),
+            marked: self.marked.as_ref().and_then(local).map(&shown),
             colors: self.colors(),
         };
         let fold = self.prepared.fold_at(line_ix).is_some();
@@ -234,6 +244,7 @@ impl DocEditor {
         let links = row.links.clone();
         let start = line.range.start;
         let mouse_layout = text_layout.clone();
+        let mouse_map = map.clone();
         div()
             .id(("doc-row", line_ix))
             .w_full()
@@ -302,13 +313,15 @@ impl DocEditor {
                             let index = mouse_layout
                                 .index_for_position(event.position)
                                 .unwrap_or_else(|index| index);
+                            let source = mouse_map.to_source(index);
                             entity.update(cx, |this, cx| {
                                 window.focus(&this.focus, cx);
                                 cx.stop_propagation();
                                 this.click(
                                     line_ix,
-                                    start + index,
+                                    start + source,
                                     index,
+                                    source,
                                     event,
                                     checkbox.as_ref(),
                                     &links,
@@ -384,6 +397,7 @@ impl DocEditor {
         line: usize,
         offset: usize,
         index: usize,
+        source: usize,
         event: &MouseDownEvent,
         checkbox: Option<&(Range<usize>, bool)>,
         links: &[(Range<usize>, String)],
@@ -403,7 +417,7 @@ impl DocEditor {
             event.modifiers.platform
         };
         if primary
-            && let Some((_, url)) = links.iter().find(|(range, _)| range.contains(&index))
+            && let Some((_, url)) = links.iter().find(|(range, _)| range.contains(&source))
             && ["http://", "https://", "mailto:"]
                 .iter()
                 .any(|scheme| url.starts_with(scheme))
@@ -545,6 +559,7 @@ impl Focusable for DocEditor {
 impl Render for DocEditor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.prepare(cx);
+        self.drive_visuals(window, cx);
         let highlights = self.live_highlights(cx);
         if !highlights.is_empty() {
             window.request_animation_frame();

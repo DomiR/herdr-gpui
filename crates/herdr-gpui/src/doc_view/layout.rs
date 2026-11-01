@@ -18,16 +18,71 @@ pub(crate) struct Look {
     pub(crate) code: FontConfig,
 }
 
+/// Where a drawn line's text differs from the source line: each piece of
+/// the source drawn as other text (or none), ascending.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct DisplayMap {
+    pieces: Vec<Piece>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Piece {
+    source: Range<usize>,
+    display: Range<usize>,
+}
+
+impl DisplayMap {
+    /// Where source offset `at` (in the line) is drawn. An offset inside a
+    /// replaced piece is drawn at the replacement's start.
+    pub(crate) fn to_display(&self, at: usize) -> usize {
+        let mut shift: isize = 0;
+        for piece in &self.pieces {
+            if at < piece.source.start {
+                break;
+            }
+            if at < piece.source.end {
+                return piece.display.start;
+            }
+            shift = piece.display.end as isize - piece.source.end as isize;
+        }
+        at.saturating_add_signed(shift)
+    }
+
+    /// The source offset drawn at display offset `at`. Inside a replacement
+    /// it is the piece's start, or its end from the replacement's end on;
+    /// where hidden text was, it is after the hidden text.
+    pub(crate) fn to_source(&self, at: usize) -> usize {
+        let mut shift: isize = 0;
+        for piece in &self.pieces {
+            if at < piece.display.start {
+                break;
+            }
+            if at < piece.display.end {
+                return if at == piece.display.start {
+                    piece.source.start
+                } else {
+                    piece.source.end
+                };
+            }
+            shift = piece.source.end as isize - piece.display.end as isize;
+        }
+        at.saturating_add_signed(shift)
+    }
+}
+
 /// A line, ready to draw.
 #[derive(Clone, Debug)]
 pub(super) struct Row {
+    /// What is drawn: the source line, decorated away from the caret.
     pub(super) text: SharedString,
+    /// How the drawn text maps to the source line.
+    pub(super) map: std::rc::Rc<DisplayMap>,
     pub(super) runs: Vec<TextRun>,
     pub(super) size: f32,
     pub(super) line_height: f32,
-    /// A task's `[ ]`, in the line's own offsets, and whether it is done.
+    /// A task's `[ ]`, in the drawn text's offsets, and whether it is done.
     pub(super) checkbox: Option<(Range<usize>, bool)>,
-    /// Links, in the line's own offsets, and where they point.
+    /// Links, in the source line's offsets, and where they point.
     pub(super) links: Vec<(Range<usize>, String)>,
     pub(super) kind: Kind,
 }
@@ -54,10 +109,19 @@ struct Paint {
     hidden: bool,
     /// Inside a code block, whose row draws the background.
     block: bool,
+    /// A code token's colour, inside a coloured code block.
+    token: Option<crate::review::highlight::Token>,
 }
 
-/// `line` of `text`, styled.
-pub(super) fn row(text: &str, line: &Line, look: &Look) -> Row {
+/// `line` of `text`, styled; `decorate` hides its markers, as for a line
+/// away from the caret. `code` colours a code block line.
+pub(super) fn row(
+    text: &str,
+    line: &Line,
+    look: &Look,
+    decorate: bool,
+    code: &[crate::review::highlight::Span],
+) -> Row {
     let source = &text[line.range.clone()];
     let base_start = line.range.start;
     let local = |range: &Range<usize>| {
@@ -95,6 +159,11 @@ pub(super) fn row(text: &str, line: &Line, look: &Look) -> Row {
     if line.kind == Kind::Fence {
         mark(whole.clone(), &|p| p.muted = true);
     }
+    for span in code {
+        let range = span.start.min(source.len())..span.end.min(source.len());
+        let token = span.token;
+        mark(range, &|p| p.token = Some(token));
+    }
     if !line.marker.is_empty() {
         mark(local(&line.marker), &|p| p.muted = true);
     }
@@ -128,9 +197,41 @@ pub(super) fn row(text: &str, line: &Line, look: &Look) -> Row {
             }
         }
     }
-    let runs = runs(source, &paints, look);
+    let decorations = if decorate {
+        markdown::decorations(text, line)
+    } else {
+        Vec::new()
+    };
+    let mut drawn = String::with_capacity(source.len());
+    let mut drawn_paints = Vec::with_capacity(source.len());
+    let mut pieces = Vec::new();
+    let mut at = 0;
+    for decoration in decorations {
+        let range = local(&decoration.range);
+        if range.start < at {
+            continue;
+        }
+        drawn.push_str(&source[at..range.start]);
+        drawn_paints.extend_from_slice(&paints[at..range.start]);
+        let start = drawn.len();
+        drawn.push_str(decoration.with);
+        let paint = paints.get(range.start).copied().unwrap_or_default();
+        drawn_paints.extend(std::iter::repeat_n(paint, decoration.with.len()));
+        pieces.push(Piece {
+            source: range.clone(),
+            display: start..drawn.len(),
+        });
+        at = range.end;
+    }
+    drawn.push_str(&source[at..]);
+    drawn_paints.extend_from_slice(&paints[at..]);
+    let map = DisplayMap { pieces };
+    let checkbox = checkbox
+        .map(|(range, done)| (map.to_display(range.start)..map.to_display(range.end), done));
+    let runs = runs(&drawn, &drawn_paints, look);
     Row {
-        text: source.to_owned().into(),
+        text: drawn.into(),
+        map: std::rc::Rc::new(map),
         runs,
         size,
         line_height,
@@ -176,6 +277,8 @@ fn run(len: usize, paint: Paint, look: &Look) -> TextRun {
     }
     let color: Hsla = if paint.hidden {
         Hsla::transparent_black()
+    } else if let Some(token) = paint.token {
+        rgb(token.colour(theme, crate::review::highlight::Contrast::On(theme.surface))).into()
     } else if paint.link {
         rgb(theme.primary()).into()
     } else if paint.muted {

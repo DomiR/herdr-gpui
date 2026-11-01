@@ -8,7 +8,7 @@
 //! streaming does not redraw a diagram it already finished. Diagrams follow
 //! the theme: a theme change redraws them while the old texture stays up.
 
-use super::rich::MathMode;
+pub(crate) use super::rich::MathMode;
 use crate::config::{FontConfig, Theme};
 use base64::Engine as _;
 use gpui::{RenderImage, SvgRenderer};

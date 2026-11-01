@@ -39,10 +39,10 @@ impl DocEditor {
         let line = markdown::line_at(&self.prepared.lines, offset);
         let start = self.prepared.lines.get(line)?.range.start;
         let layouts = self.layouts.borrow();
-        let layout = layouts.get(&line)?;
+        let (layout, map) = layouts.get(&line)?;
         let height = layout.line_height();
         let origin = layout
-            .position_for_index(offset - start)
+            .position_for_index(map.to_display(offset - start))
             .unwrap_or_else(|| layout.bounds().origin);
         Some(Bounds::new(origin, size(px(1.), height)))
     }
@@ -50,7 +50,7 @@ impl DocEditor {
     /// The byte offset drawn at `position`, among the painted lines.
     pub(super) fn offset_at(&self, position: Point<Pixels>) -> Option<usize> {
         let layouts = self.layouts.borrow();
-        let (line, layout) = layouts.iter().min_by_key(|(_, layout)| {
+        let (line, (layout, map)) = layouts.iter().min_by_key(|(_, (layout, _))| {
             let bounds = layout.bounds();
             if position.y < bounds.top() {
                 f32::from(bounds.top() - position.y) as i64
@@ -62,9 +62,11 @@ impl DocEditor {
         })?;
         let bounds = layout.bounds();
         let y = position.y.clamp(bounds.top(), bounds.bottom() - px(1.));
-        let index = layout
-            .index_for_position(point(position.x, y))
-            .unwrap_or_else(|index| index);
+        let index = map.to_source(
+            layout
+                .index_for_position(point(position.x, y))
+                .unwrap_or_else(|index| index),
+        );
         let line = self.prepared.lines.get(*line)?;
         Some((line.range.start + index).min(line.range.end))
     }

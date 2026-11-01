@@ -7,9 +7,11 @@
 //! elsewhere (another tab, an agent, the disk) moves them with the text.
 
 use super::{
+    blocks::{self, Block},
     buffer::{Changed, DocBuffer, Who},
-    layout::Look,
+    layout::{DisplayMap, Look},
 };
+use crate::chat::visual::Visuals;
 use crate::{browser::TabId, motion};
 use gpui::{
     App, Context, Entity, EventEmitter, FocusHandle, ListAlignment, ListState, Pixels,
@@ -79,6 +81,10 @@ pub(super) struct Prepared {
     pub(super) rows: Vec<usize>,
     /// Folded lines, and how many lines each hides.
     pub(super) folded: HashMap<usize, usize>,
+    /// Code blocks, diagrams, and display math.
+    pub(super) blocks: Vec<Block>,
+    /// The picture block the caret is in, drawn as its source.
+    pub(super) open_picture: Option<usize>,
 }
 
 impl Prepared {
@@ -92,7 +98,26 @@ impl Prepared {
     pub(super) fn fold_at(&self, line: usize) -> Option<&Fold> {
         self.folds.iter().find(|fold| fold.line == line)
     }
+
+    /// The picture block drawn on `line`, its opening line, while closed.
+    pub(super) fn picture_at(&self, line: usize) -> Option<&Block> {
+        self.blocks
+            .iter()
+            .find(|block| block.open == line && block.is_picture())
+            .filter(|block| self.open_picture != Some(block.open))
+    }
+
+    /// The picture block covering `line`.
+    fn picture_around(&self, line: usize) -> Option<usize> {
+        self.blocks
+            .iter()
+            .find(|block| block.is_picture() && block.lines().contains(&line))
+            .map(|block| block.open)
+    }
 }
+
+/// Each painted line's layout and drawn-text map, by line.
+pub(super) type Layouts = Rc<RefCell<HashMap<usize, (TextLayout, Rc<DisplayMap>)>>>;
 
 /// The section IDs folded, for the tab to save.
 pub(crate) struct FoldsChanged(pub(crate) Vec<String>);
@@ -115,8 +140,11 @@ pub(crate) struct DocEditor {
     pub(super) list: ListState,
     pub(super) prepared: Prepared,
     stale: bool,
-    /// Each drawn line's text layout, by line, as last painted.
-    pub(super) layouts: Rc<RefCell<HashMap<usize, TextLayout>>>,
+    /// Each drawn line's text layout and how it maps to the source line,
+    /// by line, as last painted.
+    pub(super) layouts: Layouts,
+    /// Code colours, diagrams, and formulas, drawn off the UI thread.
+    pub(super) visuals: Visuals,
     pub(super) highlights: Vec<Highlight>,
     pub(super) selecting: bool,
     /// Folds and the line to show, waiting for the text to load.
@@ -158,6 +186,7 @@ impl DocEditor {
             prepared: Prepared::default(),
             stale: true,
             layouts: Rc::default(),
+            visuals: Visuals::default(),
             highlights: Vec::new(),
             selecting: false,
             restore: Some((folded, line)),
@@ -230,11 +259,16 @@ impl DocEditor {
     /// Recomputes lines and rows when the text, folds, or filter changed.
     pub(super) fn prepare(&mut self, cx: &mut Context<Self>) {
         let version = self.version(cx);
-        if !self.stale && self.prepared.version == version {
+        let open_picture = self.prepared.picture_around(self.caret_line());
+        if !self.stale
+            && self.prepared.version == version
+            && self.prepared.open_picture == open_picture
+        {
             return;
         }
         self.stale = false;
-        let text = self.text(cx);
+        let text = self.text(cx).to_owned();
+        let text = text.as_str();
         let lines = markdown::lines(text);
         let folds = markdown::folds(&lines);
         let counts = todo::section_counts(&lines)
@@ -252,6 +286,22 @@ impl DocEditor {
         let mut hidden = vec![false; lines.len()];
         if self.hide_done {
             hidden = todo::done_lines(&lines);
+        }
+        let found = blocks::blocks(text, &lines);
+        let blocks = self.want_visuals(found);
+        // A picture's source shows only while the caret is in it.
+        let caret_line = markdown::line_at(&lines, self.selection.head);
+        let open_picture = blocks
+            .iter()
+            .find(|block| block.is_picture() && block.lines().contains(&caret_line))
+            .map(|block| block.open);
+        for block in blocks.iter().filter(|block| block.is_picture()) {
+            if open_picture != Some(block.open) {
+                let lines = block.lines();
+                for flag in &mut hidden[lines.start + 1..lines.end] {
+                    *flag = true;
+                }
+            }
         }
         let mut folded = HashMap::new();
         for fold in &folds {
@@ -272,6 +322,8 @@ impl DocEditor {
             counts,
             rows,
             folded,
+            blocks,
+            open_picture,
         };
         self.keep_caret_shown(cx);
     }

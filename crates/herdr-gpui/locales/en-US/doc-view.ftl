@@ -26,3 +26,7 @@ doc-view-count = { $done }/{ $total }
 # A recent change's label: $who names the agent's pane that made it.
 doc-view-changed-by = { $who }
 doc-view-changed-on-disk = Changed on disk
+# A diagram or formula block while its picture is drawn.
+doc-view-drawing = Drawing…
+doc-view-diagram-failed = This diagram could not be drawn; click to edit its source
+doc-view-formula-failed = This formula could not be drawn; click to edit its source

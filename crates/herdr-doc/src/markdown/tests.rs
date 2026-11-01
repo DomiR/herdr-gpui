@@ -117,3 +117,26 @@ fn inline_styles_with_their_markers() {
     assert_eq!(&text[link.range.clone()], "site");
     assert_eq!(link_url(text, link), Some("https://a.test"));
 }
+
+#[test]
+fn decorations_hide_markers_away_from_the_caret() {
+    let text = "## Plan **now**\n- item [docs](https://a.b)\n- [x] done `code`\n> quote\n1. one";
+    let all = lines(text);
+    let drawn = |index: usize| {
+        let line = &all[index];
+        let mut out = String::new();
+        let mut at = line.range.start;
+        for decoration in decorations(text, line) {
+            out.push_str(&text[at..decoration.range.start]);
+            out.push_str(decoration.with);
+            at = decoration.range.end;
+        }
+        out.push_str(&text[at..line.range.end]);
+        out
+    };
+    assert_eq!(drawn(0), "Plan now");
+    assert_eq!(drawn(1), "• item docs");
+    assert_eq!(drawn(2), "[x] done code");
+    assert_eq!(drawn(3), "quote");
+    assert_eq!(drawn(4), "1. one");
+}

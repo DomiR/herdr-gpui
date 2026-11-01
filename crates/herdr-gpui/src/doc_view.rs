@@ -7,6 +7,7 @@
 //! buffer per file, shared by every editor and by agents' `doc` commands.
 
 // i18n: migrated
+mod blocks;
 mod buffer;
 mod editor;
 mod error;

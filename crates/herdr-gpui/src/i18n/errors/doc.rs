@@ -58,9 +58,9 @@ impl Localize for herdr_doc::Error {
             ),
             E::Missing { path: file } => fl!("error-doc-file-missing", path = path(file)),
             E::NoSection { id } => fl!("error-doc-no-section", id = id.as_str()),
+            E::NotAFile { path: file } => fl!("error-doc-not-a-file", path = path(file)),
             E::NoText => fl!("error-doc-no-text"),
             E::NoTodo { query } => fl!("error-doc-no-todo", query = query.as_str()),
-            E::NotAFile { path: file } => fl!("error-doc-not-a-file", path = path(file)),
             E::NotUtf8 { path: file } => fl!("error-doc-not-utf8", path = path(file)),
             E::TooLarge { len, limit } => fl!("error-doc-too-large", len = *len, limit = *limit),
             // keep-sorted end

@@ -232,8 +232,8 @@ impl DocEditor {
         let start = self.prepared.lines[line].range.start;
         let target = {
             let layouts = self.layouts.borrow();
-            layouts.get(&line).and_then(|layout| {
-                let pos = layout.position_for_index(self.selection.head - start)?;
+            layouts.get(&line).and_then(|(layout, map)| {
+                let pos = layout.position_for_index(map.to_display(self.selection.head - start))?;
                 let x = self.goal_x.unwrap_or(pos.x);
                 let height = layout.line_height();
                 let y = if down {
@@ -244,10 +244,10 @@ impl DocEditor {
                 let bounds = layout.bounds();
                 if y >= bounds.top() && y < bounds.bottom() {
                     let index = layout.index_for_position(point(x, y)).unwrap_or_else(|i| i);
-                    return Some((start + index, x));
+                    return Some((start + map.to_source(index), x));
                 }
                 let next = self.shown_neighbour(down)?;
-                let other = layouts.get(&next)?;
+                let (other, other_map) = layouts.get(&next)?;
                 let bounds = other.bounds();
                 let half = other.line_height() * 0.5;
                 let y = if down {
@@ -256,7 +256,10 @@ impl DocEditor {
                     bounds.bottom() - half
                 };
                 let index = other.index_for_position(point(x, y)).unwrap_or_else(|i| i);
-                Some((self.prepared.lines[next].range.start + index, x))
+                Some((
+                    self.prepared.lines[next].range.start + other_map.to_source(index),
+                    x,
+                ))
             })
         };
         let (at, x) = match target {

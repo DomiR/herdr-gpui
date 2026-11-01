@@ -6,8 +6,10 @@
 use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
 use std::ops::Range;
 
+mod decorate;
 mod folds;
 
+pub use decorate::{Decoration, decorations};
 pub use folds::{Fold, FoldKind, folds};
 
 /// What a list item's marker is.
