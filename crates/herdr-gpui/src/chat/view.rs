@@ -13,23 +13,27 @@ mod layout;
 mod panels;
 mod rail;
 mod rich;
+pub(crate) mod running;
 pub(crate) mod selection;
 mod settings;
 mod summary;
 mod text;
+pub(super) mod viewer;
 mod widgets;
+mod working;
 
 pub(super) use settings::matching;
 mod visuals;
 
 use super::chats::{ChatInput, ChatPane};
+use crate::i18n::fl;
 use crate::{
     HerdrWindow,
     config::{Theme, corners},
     fonts::StyledFont,
 };
 use gpui::{prelude::*, *};
-use herdr_chat_protocol::{Command, Status};
+use herdr_chat_protocol::Status;
 use herdr_client::protocol::{PaneSurfaceFrame, SurfaceRect};
 
 /// Where a pane's cells are, relative to the terminal canvas: the box the
@@ -79,6 +83,12 @@ impl HerdrWindow {
         px((self.chat_text_size() - 1.).max(10.))
     }
 
+    /// A tool call's text: its command, files, and output. Smaller than
+    /// the prose and muted, so the agent's answer reads first.
+    pub(in crate::chat) fn chat_tool_text(&self) -> Pixels {
+        px((self.chat_text_size() - 2.).max(10.))
+    }
+
     /// The interface font at the chat's prose size, for its native fields.
     pub(in crate::chat) fn chat_font(&self) -> crate::config::FontConfig {
         crate::config::FontConfig {
@@ -112,13 +122,13 @@ impl Hues {
     }
 }
 
-fn status_label(status: &Status) -> &'static str {
+fn status_label(status: &Status) -> String {
     match status {
-        Status::Starting => "Starting",
-        Status::Idle => "Idle",
-        Status::Working => "Working",
-        Status::Failed { .. } => "Failed",
-        Status::Exited { .. } => "Exited",
+        Status::Starting => fl!("chat-status-starting"),
+        Status::Idle => fl!("chat-status-idle"),
+        Status::Working => fl!("chat-status-working"),
+        Status::Failed { .. } => fl!("chat-status-failed"),
+        Status::Exited { .. } => fl!("chat-status-exited"),
     }
 }
 
@@ -130,14 +140,15 @@ pub(super) fn status_text(transcript: &herdr_chat_protocol::Transcript) -> Strin
         Some(turn) if transcript.status == Status::Working => {
             let elapsed = super::now_ms().saturating_sub(turn.started_ms);
             if elapsed < 1000 {
-                return label.to_owned();
+                return label;
             }
-            format!(
-                "{label} {}",
-                herdr_chat_protocol::display::duration(elapsed)
+            fl!(
+                "chat-status-elapsed",
+                status = label,
+                elapsed = super::text::duration(elapsed)
             )
         }
-        _ => label.to_owned(),
+        _ => label,
     }
 }
 
@@ -229,7 +240,7 @@ impl HerdrWindow {
                             .size(px(12.))
                             .text_color(rgb(theme.foreground)),
                     )
-                    .child("Chat")
+                    .child(fl!("chat-show-chat"))
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
                         cx.stop_propagation();
@@ -291,11 +302,14 @@ impl HerdrWindow {
             .when(!cfg!(target_os = "macos"), |view| {
                 view.bg(rgb(theme.background))
             })
-            // Files dragged over the chat become attachments when dropped.
+            // Files dragged over the chat become attachments when dropped. The
+            // chat occludes the terminal's own drop handler, so it takes the
+            // drop and routes it the same way.
             .drag_over::<ExternalPaths>({
                 let wash = theme.primary_wash();
                 move |style, _, _, _| style.bg(rgb(wash))
             })
+            .on_drop(cx.listener(Self::drop_terminal_files))
             .text_color(rgb(theme.foreground))
             .text_size(px(self.chat_text_size()))
             .text_font(&self.config.ui)
@@ -380,7 +394,11 @@ impl HerdrWindow {
                                 |view| view.child(chat.glide.watch(&chat.list)),
                             )
                             .children(
-                                self.render_chat_working(chat)
+                                self.render_chat_working(chat, cx)
+                                    .map(|content| self.chat_column(content)),
+                            )
+                            .children(
+                                self.render_chat_running_table(chat)
                                     .map(|content| self.chat_column(content)),
                             )
                             .children(
@@ -403,13 +421,17 @@ impl HerdrWindow {
                     )
                     .children(self.render_chat_rail(chat, bounds)),
             )
+            .children(self.render_chat_viewer(chat, bounds, cx))
             .into_any_element()
     }
 
-    /// The layout's sign that the agent is working on a turn.
-    fn render_chat_working(&self, chat: &ChatPane) -> Option<Div> {
-        let working = chat.session.transcript().status == Status::Working;
-        layout::layout_for(self.config.chat.layout).working(working, &self.chat_look())
+    /// The layout's sign that the agent is working on a turn, with what it
+    /// left running said after it.
+    fn render_chat_working(&self, chat: &ChatPane, cx: &mut Context<Self>) -> Option<Div> {
+        let working = working::Working::of(chat.session.transcript(), super::now_ms());
+        let row = layout::layout_for(self.config.chat.layout)
+            .working(working.as_ref(), &self.chat_look());
+        self.render_chat_running_row(chat, row, working.is_none(), cx)
     }
 
     /// The chat's background where no page shows: on macOS, where a page
@@ -524,28 +546,17 @@ impl HerdrWindow {
                 .hover(|button| button.bg(rgb(theme.active)))
                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         };
-        let cancel =
-            (*status == Status::Working && chat.input() == ChatInput::Composer).then(|| {
-                let pane_id = pane_id.clone();
-                button("chat-cancel")
-                    .text_color(rgb(hues.red))
-                    .child("Stop")
-                    .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                        cx.stop_propagation();
-                        this.chat_send(&pane_id, Command::Cancel, cx);
-                    }))
-            });
         let watching = (transcript.clients > 1).then(|| {
             div()
                 .flex_none()
                 .text_color(rgb(theme.subtext()))
-                .child(format!("{} watching", transcript.clients))
+                .child(fl!("chat-watching", count = transcript.clients))
         });
         let reconnecting = (!chat.attached()).then(|| {
             div()
                 .flex_none()
                 .text_color(rgb(hues.yellow))
-                .child("Reconnecting\u{2026}")
+                .child(fl!("chat-reconnecting"))
         });
         let layout = {
             let current = self.config.chat.layout;
@@ -614,7 +625,7 @@ impl HerdrWindow {
                             .flex_none()
                             .text_color(rgb(theme.subtext()))
                             .child(if needs_input {
-                                "Needs input".into()
+                                fl!("chat-needs-input")
                             } else {
                                 status_text(transcript)
                             }),
@@ -622,7 +633,6 @@ impl HerdrWindow {
                     .child(div().flex_1())
                     .children(reconnecting)
                     .children(watching)
-                    .children(cancel)
                     .child(layout)
                     .children(rail)
                     .child(terminal),

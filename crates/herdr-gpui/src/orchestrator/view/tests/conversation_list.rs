@@ -20,6 +20,7 @@ fn a_long_conversation_draws_only_the_rows_in_view(cx: &mut TestAppContext) {
         token: None,
         linear: None,
         data_root: Some(dir.path().join("data")),
+        gitlab_store: Default::default(),
         timing: Timing::default(),
     };
     let config = crate::config::Config::default();

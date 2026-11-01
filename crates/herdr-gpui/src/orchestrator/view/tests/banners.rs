@@ -49,6 +49,7 @@ fn a_closed_banner_stays_closed_until_its_trouble_changes(cx: &mut TestAppContex
         workspace_id: "w1".into(),
         token: None,
         data_root: Some(dir.path().join("data")),
+        gitlab_store: Default::default(),
         timing: Timing::default(),
         linear: None,
     };

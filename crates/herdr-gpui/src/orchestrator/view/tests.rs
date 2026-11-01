@@ -12,6 +12,8 @@ mod conversation;
 mod conversation_list;
 mod dialog;
 mod empty;
+mod failure_text;
+mod gitlab_merge_request;
 mod groups;
 mod linear;
 mod linear_board;
@@ -22,6 +24,7 @@ mod linear_drag;
 mod linear_facets;
 mod linear_filters;
 mod linear_hidden;
+mod linear_layout;
 mod linear_list;
 mod linear_reorder;
 mod linear_repos;
@@ -37,7 +40,9 @@ mod pr_empty;
 mod refresh;
 mod row_start;
 mod rows;
+mod section_banners;
 mod sessions;
+mod sign_in;
 mod source_chip;
 mod status;
 mod twin_text;
@@ -174,6 +179,7 @@ pub(super) fn open_linear(
         workspace_id: "w1".into(),
         token: None,
         data_root: Some(dir.path().join("data")),
+        gitlab_store: Default::default(),
         timing: Timing::default(),
         linear: None,
     };

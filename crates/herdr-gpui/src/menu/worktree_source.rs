@@ -4,7 +4,9 @@
 //! once; picking a row opens or creates the checkout, and a GitHub row leaves a
 //! note in it naming the pull request or issue it is for.
 
+// i18n: migrated
 use super::{Page, WorkspaceAction, worktree_open::Entry};
+use crate::i18n::fl;
 use crate::{
     HerdrWindow,
     dialog_input::DialogInput,
@@ -37,12 +39,24 @@ impl Tab {
         Self::Items(Kind::Issue),
     ];
 
-    pub(super) fn label(self) -> &'static str {
+    /// Names the tab's elements, the same in every language.
+    pub(super) fn key(self) -> &'static str {
         match self {
             Self::New => "new",
             Self::Existing => "existing",
             Self::Branches => "branch",
-            Self::Items(kind) => kind.tab_label(),
+            Self::Items(Kind::PullRequest) => "PR", // i18n: data
+            Self::Items(Kind::Issue) => "issues",
+        }
+    }
+
+    pub(super) fn label(self) -> String {
+        match self {
+            Self::New => fl!("worktree-source-tab-new"),
+            Self::Existing => fl!("worktree-source-tab-existing"),
+            Self::Branches => fl!("worktree-source-tab-branch"),
+            Self::Items(Kind::PullRequest) => fl!("worktree-source-tab-pull-requests"),
+            Self::Items(Kind::Issue) => fl!("worktree-source-tab-issues"),
         }
     }
 
@@ -58,6 +72,16 @@ impl Tab {
             .iter()
             .position(|tab| *tab == self)
             .unwrap_or_default()
+    }
+}
+
+/// Why a pull request or issue tab is faded without an account. Herdr keeps
+/// its own GitHub sign-in, so being signed in to `gh` or a browser is not
+/// enough.
+pub(super) fn signed_out_hint(kind: Kind) -> String {
+    match kind {
+        Kind::PullRequest => fl!("worktree-source-sign-in-pull-requests"),
+        Kind::Issue => fl!("worktree-source-sign-in-issues"),
     }
 }
 
@@ -332,7 +356,7 @@ impl HerdrWindow {
     ) {
         let search = cx.new(SearchInput::new);
         search.update(cx, |input, cx| {
-            input.set_placeholder("Search checkouts, branches, pull requests, issues...", cx);
+            input.set_placeholder_with(|| fl!("worktree-source-search"), cx);
             input.set_appearance(self.config.ui.clone(), self.theme.clone(), cx);
         });
         let subscription = cx.subscribe_in(
@@ -345,8 +369,7 @@ impl HerdrWindow {
         );
         let name = cx.new(SearchInput::new);
         name.update(cx, |input, cx| {
-            input.set_placeholder("Default name", cx);
-            input.set_label("Name", cx);
+            input.set_placeholder_with(|| fl!("worktree-source-default-name"), cx);
             input.set_appearance(self.config.ui.clone(), self.theme.clone(), cx);
         });
         let naming = cx.subscribe_in(
@@ -435,7 +458,7 @@ impl HerdrWindow {
             if !source.checkouts.listed {
                 self.list_checkouts();
             }
-            if self.menu.github.connected() {
+            if self.pr_profile().is_some() {
                 self.list_repo_items();
             }
         }
@@ -453,7 +476,7 @@ impl HerdrWindow {
         window: &mut gpui::Window,
         cx: &mut Context<Self>,
     ) {
-        if tab.kind().is_some() && !self.menu.github.connected() {
+        if tab.kind().is_some() && self.pr_profile().is_none() {
             return;
         }
         let Some(source) = &mut self.menu.worktree else {
@@ -550,7 +573,7 @@ impl HerdrWindow {
 
     /// Read the repository's branches off the UI thread. Local Git only reads
     /// a repository on this machine, so it is limited to the owned local
-    /// daemon, as the GitHub listings are.
+    /// daemon.
     fn list_branches(&mut self, cx: &mut Context<Self>) {
         let input = self.local_repository_input();
         let Some(source) = &mut self.menu.worktree else {
@@ -626,14 +649,23 @@ impl HerdrWindow {
     }
 
     /// The checkout to read and the token to read GitHub with.
-    fn repo_items_request(
+    pub(super) fn repo_items_request(
         &self,
-    ) -> crate::Result<(crate::pull_request::Input, crate::github::Tokens)> {
-        let input = self.local_repository_input()?;
+    ) -> crate::Result<(repo_items::Target, crate::github::Tokens)> {
+        if !self.menu_target_current() {
+            return Err(crate::Error::StaleWorkspace);
+        }
+        if !self.live.status.is_connected() {
+            return Err(crate::Error::NotConnected);
+        }
+        let host = self
+            .pr_origin()
+            .ok_or(herdr_github::pull_request::Error::UntrustedEndpoint)?;
+        let input = self.menu_target_input(&host)?;
         let tokens = self
-            .main_tokens()
+            .pr_tokens()
             .ok_or(herdr_github::Error::Authentication)?;
-        Ok((input, tokens))
+        Ok((repo_items::Target { host, input }, tokens))
     }
 
     /// Open or create whatever the row at `row` of the open listing names.
@@ -714,9 +746,8 @@ impl HerdrWindow {
                 .as_ref()
                 .ok_or(crate::Error::NoSnapshot)?;
             let (method, params) = pick_request(target, snapshot, pending)?;
-            self.endpoints[self.selected_endpoint]
-                .connection
-                .request_dialog(&target.boot_id, method, params)
+            let boot = target.boot_id.clone();
+            self.request_checkout(&boot, method, params, pending.opens())
         })();
         match result {
             Ok(id) => {
@@ -780,6 +811,9 @@ impl HerdrWindow {
         response: &serde_json::Value,
         cx: &mut Context<Self>,
     ) {
+        let Some(host) = self.pr_origin() else {
+            return;
+        };
         let Some(source) = &mut self.menu.worktree else {
             return;
         };
@@ -790,15 +824,14 @@ impl HerdrWindow {
         };
         let Some(checkout) = response["workspace"]["worktree"]["checkout_path"]
             .as_str()
-            .filter(|path| std::path::Path::new(path).is_absolute())
-            .map(std::path::PathBuf::from)
+            .map(str::to_owned)
         else {
-            self.local_error = Some("The daemon did not report the new checkout path, so no agent context note was written.".into());
+            self.local_error = Some(fl!("worktree-source-no-checkout-path"));
             return;
         };
         let write = cx
             .background_executor()
-            .spawn(async move { repo_items::write_context(&checkout, &item, &origin) });
+            .spawn(async move { repo_items::write_context(&host, &checkout, &item, &origin) });
         cx.spawn(async move |this, cx| {
             let result = write.await;
             let _ = this.update(cx, |this, cx| {

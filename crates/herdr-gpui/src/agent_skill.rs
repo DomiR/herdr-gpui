@@ -3,8 +3,9 @@
 //! it where Claude Code and other agents look for skills, and, once the user
 //! agrees, keeps it current on every start: the skill names this app's
 //! executable, which moves when the app does. Only files the app wrote,
-//! recognized by their marker, are ever rewritten or removed.
-use crate::state_file;
+//! recognized by their marker, are ever rewritten or removed. `[agent_skill]
+//! install` in the settings limits all of this, whatever the saved answer.
+use crate::{config::SkillInstall, state_file};
 use gpui::{App, Global};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -13,6 +14,9 @@ const SKILL: &str = include_str!("../../../skills/herdr-gpui-browser/SKILL.md");
 /// How agents write automations, installed beside the browser skill.
 const AUTOMATIONS: &str = include_str!("../../../skills/herdr-automations/SKILL.md");
 const AUTOMATIONS_NAME: &str = "herdr-automations";
+/// How agents write mods for this app, installed beside the browser skill.
+const MODS: &str = include_str!("../../../skills/herdr-mods/SKILL.md");
+const MODS_NAME: &str = "herdr-mods";
 /// Marks a skill file this app manages.
 const MARKER: &str = "<!-- herdr-gpui-managed-skill v1";
 const NAME: &str = "herdr-gpui-browser";
@@ -82,7 +86,27 @@ pub(crate) fn automations_text(executable: Option<&Path>) -> String {
     if executable.and_then(Path::to_str).is_some() {
         text = text.replace("herdr-gpui ", &format!("{} ", command(executable)));
     }
-    text
+    escape_description(text)
+}
+
+/// The mods skill, naming this executable in its commands.
+pub(crate) fn mods_text(executable: Option<&Path>) -> String {
+    if executable.and_then(Path::to_str).is_none() {
+        return MODS.to_owned();
+    }
+    escape_description(MODS.replace("herdr-gpui ", &format!("{} ", command(executable))))
+}
+
+/// The frontmatter's description is a double-quoted YAML scalar, where a
+/// Windows path's backslashes would read as escapes such as `\U`.
+fn escape_description(text: String) -> String {
+    let Some(line) = text
+        .lines()
+        .find(|line| line.starts_with("description: ") && line.contains('\\'))
+    else {
+        return text;
+    };
+    text.replacen(line, &line.replace('\\', r"\\"), 1)
 }
 
 fn managed(contents: &str) -> bool {
@@ -112,11 +136,13 @@ pub(crate) fn install(home: &Path, text: &str) -> crate::Result<Vec<PathBuf>> {
             source: std::io::ErrorKind::NotFound.into(),
         });
     }
+    let executable = executable();
     place(
         home,
         AUTOMATIONS_NAME,
-        &automations_text(executable().as_deref()),
+        &automations_text(executable.as_deref()),
     )?;
+    place(home, MODS_NAME, &mods_text(executable.as_deref()))?;
     Ok(placed)
 }
 
@@ -150,7 +176,7 @@ fn place(home: &Path, name: &str, text: &str) -> crate::Result<Vec<PathBuf>> {
 pub(crate) fn remove(home: &Path) -> crate::Result<Vec<PathBuf>> {
     let mut removed = Vec::new();
     for root in ROOTS.map(|root| home.join(root)) {
-        for name in [NAME, AUTOMATIONS_NAME] {
+        for name in [NAME, AUTOMATIONS_NAME, MODS_NAME] {
             let path = file(&root, name);
             let Ok(current) = std::fs::read_to_string(&path) else {
                 continue;
@@ -193,7 +219,12 @@ pub(crate) struct AgentSkill {
     choice: Option<Choice>,
     /// Asked at most once per run, by the first window ready to.
     ask: bool,
+    /// What the settings allow; unknown until they load, so nothing is
+    /// offered, refreshed, or sent to a host against a setting not yet read.
+    install: Option<SkillInstall>,
     path: Option<PathBuf>,
+    /// Rewrite the installed skill once the settings allow it.
+    refresh: bool,
 }
 
 impl Global for AgentSkill {}
@@ -221,7 +252,14 @@ impl AgentSkill {
         let home = crate::config::home().ok();
         let ask =
             crate::RELEASE_BUILD && choice.is_none() && home.as_deref().is_some_and(agents_present);
-        Self { choice, ask, path }
+        let refresh = crate::RELEASE_BUILD && choice == Some(Choice::Installed);
+        Self {
+            choice,
+            ask,
+            install: None,
+            path,
+            refresh,
+        }
     }
 
     /// An app that has not been asked yet, saving nowhere.
@@ -230,15 +268,24 @@ impl AgentSkill {
         Self {
             choice: None,
             ask: true,
+            install: Some(SkillInstall::Ask),
             path: None,
+            refresh: false,
         }
     }
 
     pub(crate) fn install_global(self, cx: &mut App) {
-        let refresh = crate::RELEASE_BUILD && self.choice == Some(Choice::Installed);
+        // Fixtures never read the user's settings, so they never ask either.
+        let follow = self.path.is_some();
         cx.set_global(self);
-        if refresh {
-            refresh_installed(cx);
+        if follow {
+            crate::config::watch::follow(
+                cx,
+                "agent skill",
+                |config| config.agent_skill.install,
+                Self::allow,
+            )
+            .detach();
         }
         // The notes prompt names the executable, which `executable` finds on
         // disk; resolve it now, off the UI thread, rather than on first use.
@@ -250,14 +297,36 @@ impl AgentSkill {
             .detach();
     }
 
+    /// Applies the settings' `[agent_skill] install`, as loaded or edited.
+    fn allow(cx: &mut App, install: SkillInstall) {
+        let skill = cx.global_mut::<Self>();
+        skill.install = Some(install);
+        if install != SkillInstall::Off && std::mem::take(&mut skill.refresh) {
+            refresh_installed(cx);
+        }
+    }
+
     pub(crate) fn choice(cx: &App) -> Option<Choice> {
         cx.try_global::<Self>().and_then(|skill| skill.choice)
+    }
+
+    /// The choice to apply on saved SSH hosts, when the settings let the app
+    /// touch them.
+    pub(crate) fn remote_choice(cx: &App) -> Option<Choice> {
+        cx.try_global::<Self>()
+            .filter(|skill| skill.install == Some(SkillInstall::Ask))
+            .and_then(|skill| skill.choice)
     }
 
     /// Whether this window should ask now; claims the question so no other
     /// window asks too.
     pub(crate) fn take_ask(cx: &mut App) -> bool {
-        let ask = cx.try_global::<Self>().is_some_and(|skill| skill.ask);
+        let ask = cx.try_global::<Self>().is_some_and(|skill| {
+            skill.ask
+                && skill
+                    .install
+                    .is_some_and(|install| install != SkillInstall::Off)
+        });
         if ask {
             cx.global_mut::<Self>().ask = false;
         }
@@ -272,6 +341,9 @@ impl AgentSkill {
         let skill = cx.global_mut::<Self>();
         skill.choice = Some(choice);
         skill.ask = false;
+        // An answer now outdates the start's refresh: installing writes the
+        // skill itself, and a removed one must not come back.
+        skill.refresh = false;
         let Some(path) = skill.path.clone() else {
             return;
         };
@@ -337,6 +409,7 @@ mod tests {
     fn the_skill_description_is_a_quoted_scalar() {
         assert!(!description(SKILL).contains('"'));
         assert!(!description(AUTOMATIONS).contains('"'));
+        assert!(!description(MODS).contains('"'));
     }
 
     #[test]
@@ -365,6 +438,31 @@ mod tests {
         assert!(!text.contains("herdr-gpui automation"));
     }
 
+    /// A Windows install path lands in the description, and YAML reads a
+    /// backslash in a double-quoted scalar as an escape (#868).
+    #[test]
+    fn a_backslashed_install_path_stays_valid_yaml() {
+        let dir = tempfile::tempdir().unwrap();
+        // One directory named with a backslash on Unix, two on Windows.
+        let install = dir.path().join(r"Programs\Herdr UI");
+        std::fs::create_dir_all(&install).unwrap();
+        let app = install.join("Herdr");
+        std::fs::write(&app, "").unwrap();
+        let automate = install.join(if cfg!(windows) {
+            "herdr-automate.exe"
+        } else {
+            "herdr-automate"
+        });
+        std::fs::write(&automate, "").unwrap();
+        let text = automations_text(Some(&app));
+        let raw = description(&text);
+        assert!(!raw.replace(r"\\", "").contains('\\'), "{raw}");
+        let word = shell_word(automate.to_str().unwrap());
+        assert!(raw.replace(r"\\", r"\").contains(&format!("{word} check")));
+        // The body is Markdown, so its commands keep the path as it is.
+        assert!(text.contains(&format!("{word} check FILE")));
+    }
+
     #[test]
     fn both_skills_install_and_go_together() {
         let home = tempfile::tempdir().unwrap();
@@ -373,16 +471,18 @@ mod tests {
         assert_eq!(placed.len(), 1);
         let automations = file(&home.path().join(".claude"), AUTOMATIONS_NAME);
         assert!(managed(&std::fs::read_to_string(&automations).unwrap()));
+        let mods = file(&home.path().join(".claude"), MODS_NAME);
+        assert!(managed(&std::fs::read_to_string(&mods).unwrap()));
         let removed = remove(home.path()).unwrap();
-        assert_eq!(removed.len(), 2);
-        assert!(!automations.exists());
+        assert!(removed.contains(&automations) && removed.contains(&mods));
+        assert!(!automations.exists() && !mods.exists());
     }
 
     /// The Agent Skills format caps a description at 1,024 characters, and
     /// agents such as Pi refuse a skill over it.
     #[test]
     fn the_skill_description_fits_the_agent_skills_limit() {
-        for skill in [SKILL, AUTOMATIONS] {
+        for skill in [SKILL, AUTOMATIONS, MODS] {
             let length = description(skill).chars().count();
             assert!((1..=1024).contains(&length), "{length} characters");
         }
@@ -471,6 +571,8 @@ mod tests {
         let saved: Saved = serde_json::from_str(r#"{"choice":"installed"}"#).unwrap();
         assert_eq!(saved.choice, Choice::Installed);
     }
+
+    mod install_setting;
 
     #[gpui::test]
     fn the_offer_is_made_once_and_closing_it_means_not_now(cx: &mut gpui::TestAppContext) {

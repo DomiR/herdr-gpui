@@ -14,6 +14,11 @@ use std::{
     },
 };
 
+mod addresses;
+mod hosts;
+mod keyboard;
+mod networks;
+
 fn on() -> RemoteConfig {
     RemoteConfig {
         enabled: true,
@@ -23,6 +28,7 @@ fn on() -> RemoteConfig {
 
 fn offer() -> Offer {
     Offer {
+        address_details: Default::default(),
         id: PairingId("p1".into()),
         url: "https://192.168.1.20:7443/pair#t=TOKEN&fp=5F:2A".into(),
         fingerprint: "5F:2A:C1:9E".into(),
@@ -168,6 +174,7 @@ fn a_phone_scans_claims_and_is_allowed(cx: &mut TestAppContext) {
         id: PairingId("p1".into()),
         allow: true,
         code: "428913".into(),
+        hosts: Vec::new(),
     }));
     // A finished pairing is not cancelled on close.
     cx.simulate_keystrokes("escape");
@@ -240,6 +247,8 @@ fn pixel() -> Device {
         last_seen_ms: None,
         push: true,
         connected: true,
+        via: None,
+        hosts: Vec::new(),
     }
 }
 

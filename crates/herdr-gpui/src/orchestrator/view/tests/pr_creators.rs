@@ -81,6 +81,7 @@ fn request(dir: &std::path::Path) -> Request {
         workspace_id: "app".into(),
         token: None,
         data_root: Some(dir.join("data")),
+        gitlab_store: Default::default(),
         timing: Timing::default(),
         linear: None,
     }

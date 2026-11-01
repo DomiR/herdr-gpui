@@ -88,13 +88,14 @@ fn demo_transcript() -> Transcript {
     transcript.entries = vec![
         entry(1, EntryKind::User { text: "Add the remote control plan".into(), files: 0 }),
         entry(2, EntryKind::Agent { text: "Done.".into() }),
-        entry(3, EntryKind::Turn(TurnSummary { duration_ms: 125_000, end: TurnEnd::Done, tokens: None })),
+        entry(3, EntryKind::Turn(TurnSummary { duration_ms: 125_000, ended_ms: None, end: TurnEnd::Done, tokens: None })),
         entry(4, EntryKind::User { text: "Write the plan in docs/ and give me mockups".into(), files: 0 }),
         entry(5, EntryKind::Tool(Tool {
             call_id: "1".into(),
             content: vec![ToolContent::Diff { new: "axum = \"0.8\"\ntokio = \"1\"".into(), old: Some("rustls = \"0.23\"".into()), path: "Cargo.toml".into() }],
             kind: ToolKind::Edit,
             locations: vec![],
+            parent: None,
             status: ToolStatus::Completed,
             title: "Edit Cargo.toml".into(),
         })),
@@ -103,6 +104,7 @@ fn demo_transcript() -> Transcript {
             content: vec![],
             kind: ToolKind::Execute,
             locations: vec![],
+            parent: None,
             status: ToolStatus::InProgress,
             title: "just check-file-size".into(),
         })),
@@ -145,15 +147,24 @@ fn write_preview_pages() {
     second.title = "Split equalize tests".into();
     second.agent = Some("codex".into());
     let mut first = workspace(vec![row("p1"), second]);
+    first.label = "remote control".into();
+    first.branch = Some("worktree/remote-control".into());
     let mut agent_tab = crate::hub::layout_terminal("t7", "Review PR 775");
-    agent_tab.agent = Some((Some("codex".into()), AgentStatus::Blocked));
+    agent_tab.agent = Some(crate::hub::TerminalAgent {
+        name: Some("codex".into()),
+        status: AgentStatus::Blocked,
+        pane: "p9".into(),
+        title: None,
+    });
     let mut shell = crate::hub::layout_terminal("t8", "cargo watch");
     shell.cwd = Some("/code/herdr-gpui".into());
     first.terminals = vec![agent_tab, shell];
     let mut other = workspace(vec![row("p3")]);
     other.id = "w2".into();
-    other.label = "moltis".into();
-    other.branch = None;
+    other.label = "agent-357-windows-gui".into();
+    other.branch = Some("agent/357-windows-gui".into());
+    other.cwd = "/code/herdr-gpui/windows".into();
+    other.chats[0].title = "#357 Windows GUI never connects".into();
     let layout = Layout {
         connected: true,
         boot: "b".into(),
@@ -184,7 +195,29 @@ fn write_preview_pages() {
             },
         ),
     ]);
+    let pull_requests = crate::control::pull_requests::PullRequests {
+        boot_id: layout.boot.clone(),
+        entries: layout
+            .workspaces
+            .iter()
+            .zip([
+                (850, crate::control::pull_requests::Tone::Held),
+                (361, crate::control::pull_requests::Tone::Merged),
+            ])
+            .map(|(workspace, (number, tone))| {
+                crate::control::pull_requests::WorkspacePullRequest {
+                    workspace_id: workspace.id.clone(),
+                    cwd: workspace.cwd.clone(),
+                    branch: workspace.branch.clone().unwrap_or_default(),
+                    number,
+                    url: format!("https://github.com/penso/herdr-gpui/pull/{number}"),
+                    tone,
+                }
+            })
+            .collect(),
+    };
     let lists = Lists {
+        pull_requests: Some(&pull_requests),
         computer: "MacBook Pro",
         layout: &layout,
         summaries: &summaries,
@@ -201,6 +234,22 @@ fn write_preview_pages() {
         &dir,
         "chat.html",
         chat(&layout.workspaces[0], &row("p1"), &view, 72_000),
+    );
+    page(
+        &dir,
+        "chat-empty.html",
+        chat(
+            &layout.workspaces[0],
+            &row("p1"),
+            &View {
+                transcript: Transcript {
+                    status: Status::Idle,
+                    ..Transcript::new("Claude")
+                },
+                connected: true,
+            },
+            0,
+        ),
     );
     let mut asking = demo_transcript();
     asking.permissions = vec![question("Run `just ci` in ~/code/herdr-gpui?")];

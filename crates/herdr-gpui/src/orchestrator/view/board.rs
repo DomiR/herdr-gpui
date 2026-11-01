@@ -8,8 +8,8 @@
 //! are drawn as Linear's (`linear_card.rs`).
 
 use super::{
-    IssueSource, Look, OrchestratorView, Tab, linear_card, linear_groups, linear_parts, rows,
-    worktree,
+    Event, IssueSource, Look, OrchestratorView, Tab, linear_card, linear_groups, linear_parts,
+    rows, worktree,
 };
 use crate::{
     config::mix,
@@ -26,6 +26,24 @@ pub(crate) enum Layout {
     #[default]
     List,
     Board,
+}
+
+impl Layout {
+    /// How it is stored with the window's chrome.
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Self::List => "list",
+            Self::Board => "board",
+        }
+    }
+
+    pub(crate) fn parse(name: &str) -> Option<Self> {
+        match name {
+            "list" => Some(Self::List),
+            "board" => Some(Self::Board),
+            _ => None,
+        }
+    }
 }
 
 /// `item`'s workflow state, when its tracker names one.
@@ -207,6 +225,18 @@ impl OrchestratorView {
         ))
     }
 
+    /// Lays the Linear issues out as `layout`, as picked here or remembered
+    /// by the window.
+    pub(crate) fn set_layout(&mut self, layout: Layout, cx: &mut Context<Self>) {
+        if self.layout == layout {
+            return;
+        }
+        self.layout = layout;
+        // The list folds groups the board shows whole.
+        self.refresh_rows();
+        cx.notify();
+    }
+
     /// List and Board, in the Linear section's header.
     pub(super) fn render_layout_switch(&self, cx: &mut Context<Self>) -> Option<Div> {
         if self.tab != Tab::Issues || self.issue_source != IssueSource::Linear {
@@ -217,10 +247,9 @@ impl OrchestratorView {
                 .toggle(id, label, self.layout == layout)
                 .debug_selector(move || id.into())
                 .on_click(cx.listener(move |this, _, _, cx| {
-                    this.layout = layout;
-                    // The list folds groups the board shows whole.
-                    this.refresh_rows();
-                    cx.notify();
+                    this.set_layout(layout, cx);
+                    // The window remembers it for the next run.
+                    cx.emit(Event::Layout(layout));
                 }))
         };
         Some(
@@ -435,7 +464,7 @@ impl OrchestratorView {
             &self.look,
             |chip, url| {
                 chip.on_click(cx.listener(move |_, _, _, cx| {
-                    cx.emit(super::Event::OpenUrl(url.clone()));
+                    cx.emit(Event::OpenUrl(url.clone()));
                 }))
             },
         )

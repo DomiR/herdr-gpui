@@ -51,6 +51,8 @@ class LinuxDistroTests(unittest.TestCase):
         (self.work / "herdr-acp").write_bytes(b"chat program")
         (self.work / "herdr-remote-control").write_bytes(b"remote control daemon")
         (self.work / "herdr-automate").write_bytes(b"automation daemon")
+        (self.work / "herdr-nearby").write_bytes(b"bluetooth helper")
+        (self.work / "herdr-core").write_bytes(b"herdr-core daemon")
         self.notices = self.work / "notices.txt"
         self.notices.write_text("Third-party license text\n")
 
@@ -95,11 +97,16 @@ class LinuxDistroTests(unittest.TestCase):
                 self.assertEqual(modes.pop("/usr/bin/herdr-acp"), 0o755)
                 self.assertEqual(modes.pop("/usr/bin/herdr-remote-control"), 0o755)
                 self.assertEqual(modes.pop("/usr/bin/herdr-automate"), 0o755)
+                self.assertEqual(modes.pop("/usr/bin/herdr-nearby"), 0o755)
+                self.assertEqual(modes.pop("/usr/bin/herdr-core"), 0o755)
                 self.assertEqual(set(modes.values()), {0o644})
                 depends = {packager: override["depends"] for packager, override in config["overrides"].items()}
                 self.assertIn("libc6 (>= 2.39)", depends["deb"])
                 self.assertIn("libc.so.6(GLIBC_2.39)(64bit)", depends["rpm"])
                 self.assertIn("glibc>=2.39", depends["archlinux"])
+                for requirements in depends.values():
+                    self.assertIn("wl-clipboard", requirements)
+                    self.assertIn("xclip", requirements)
                 # GPUI's platform text support links Fontconfig at startup.
                 self.assertIn("libfontconfig1", depends["deb"])
                 self.assertIn("libfontconfig.so.1()(64bit)", depends["rpm"])

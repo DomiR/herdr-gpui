@@ -1,8 +1,11 @@
 use super::*;
 use crate::control::DeviceId;
 
+mod addresses;
+
 fn offer(id: &str) -> Offer {
     Offer {
+        address_details: Default::default(),
         id: PairingId(id.into()),
         url: format!("https://192.168.1.20:7443/pair#t={id}&fp=5F:2A"),
         fingerprint: "5F:2A".into(),
@@ -154,6 +157,7 @@ fn a_claim_asks_the_user_and_allow_waits_for_approval() {
             id: PairingId("p1".into()),
             allow: true,
             code: "428913".into(),
+            hosts: Vec::new(),
         }
     );
     assert!(matches!(
@@ -208,6 +212,7 @@ fn deny_ends_the_pairing() {
             id: PairingId("p1".into()),
             allow: false,
             code: "000111".into(),
+            hosts: Vec::new(),
         }
     );
     assert_eq!(pairing.phase(), &Phase::Denied);

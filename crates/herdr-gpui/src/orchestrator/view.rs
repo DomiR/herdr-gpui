@@ -17,6 +17,7 @@ mod dispatch;
 mod hidden;
 mod hosts;
 mod inbox;
+mod keys;
 mod linear;
 mod linear_card;
 mod linear_groups;
@@ -39,6 +40,7 @@ mod worktree;
 #[allow(clippy::unwrap_used)]
 mod tests;
 
+pub(crate) use board::Layout as IssueLayout;
 pub(crate) use look::Look;
 pub(crate) use markdown::without_html;
 use pane::{PANE_DEFAULT, PaneDrag, Resize};
@@ -95,14 +97,18 @@ pub(crate) enum Event {
     },
     /// Open a web address, such as an issue's page, in a browser tab.
     OpenUrl(String),
-    /// Sign in to GitHub, which the view needs to list a repository.
-    SignIn,
+    /// Sign in to the provider the view needs to list a repository: the
+    /// account menu's GitHub or GitLab page.
+    SignIn(Provider),
     /// Start `request` on the host `endpoint`, which the window sets it up
     /// for, then hands back through [`OrchestratorView::dispatch_elsewhere`].
     Dispatch {
         request: Box<super::DispatchRequest>,
         endpoint: String,
     },
+    /// The user laid the Linear issues out as a list or a board, which the
+    /// window remembers with its chrome.
+    Layout(board::Layout),
 }
 
 impl EventEmitter<Event> for OrchestratorView {}
@@ -154,6 +160,15 @@ impl DetailTab {
             Self::Details => "Details",
         }
     }
+}
+
+/// A GitLab project a view reads: the host its remote names, the scheme
+/// that remote reads it over, and the checkout when it is on this computer.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct GitLabRead {
+    pub(crate) host: String,
+    pub(crate) scheme: herdr_orchestrator::gitlab::Scheme,
+    pub(crate) checkout: Option<std::path::PathBuf>,
 }
 
 pub(crate) struct OrchestratorView {
@@ -463,7 +478,7 @@ impl OrchestratorView {
             .detail
             .as_ref()
             .and_then(|detail| self.item(&detail.key))
-            .and_then(|item| item.pull_request.as_ref())
+            .and_then(|item| item.github_pull_request())
             .map(|pr| pr.number);
         if let (Some(number), Some(service)) = (number, self.service()) {
             service.load_pull_request(number);
@@ -650,6 +665,41 @@ impl OrchestratorView {
         self.reload_conversation();
     }
 
+    /// The GitLab hosts this view's repositories are read from.
+    pub(crate) fn gitlab_hosts(&self) -> impl Iterator<Item = GitLabRead> + '_ {
+        self.repos.iter().flat_map(|repo| {
+            let info = repo.snapshot.repo.as_ref();
+            // A remote checkout's .envrc is that machine's, not run here.
+            let checkout = (!repo.request.target.is_remote())
+                .then(|| std::path::PathBuf::from(&repo.request.checkout));
+            repo.snapshot
+                .sources
+                .iter()
+                .filter(|status| status.key.provider == Provider::Gitlab)
+                .map(move |status| GitLabRead {
+                    host: status.key.host.clone(),
+                    scheme: herdr_orchestrator::gitlab::Scheme::of_source(info, &status.key),
+                    checkout: checkout.clone(),
+                })
+        })
+    }
+
+    /// A GitLab source waits for a token that works.
+    pub(crate) fn gitlab_needs_sign_in(&self) -> bool {
+        self.repos
+            .iter()
+            .flat_map(|repo| &repo.snapshot.sources)
+            .any(|status| {
+                status.key.provider == Provider::Gitlab && matches!(status.state, SyncState::SignIn)
+            })
+    }
+
+    /// A saved credential changed: sync again, as Refresh does.
+    pub(crate) fn credentials_changed(&mut self, cx: &mut Context<Self>) {
+        self.refresh();
+        cx.notify();
+    }
+
     /// Whether a sync is under way, or Refresh was pressed so recently that
     /// the workers may not have reported starting one yet.
     pub(crate) fn refreshing(&self) -> bool {
@@ -734,7 +784,7 @@ impl OrchestratorView {
         let Some(item) = self.item(&key) else {
             return;
         };
-        let pull_request = item.pull_request.is_some();
+        let pull_request = item.github_pull_request().is_some();
         self.detail = Some(Detail {
             key,
             tab: if pull_request {
@@ -818,113 +868,6 @@ impl OrchestratorView {
                 });
                 cx.notify();
             }
-        }
-    }
-
-    fn on_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        if (self.dialog.is_some() || self.confirm.is_some() || self.linear.is_some())
-            && self.dialog_key(&event.keystroke.key, window, cx)
-        {
-            cx.stop_propagation();
-            return;
-        }
-        if self.dialog.is_some() || self.linear.is_some() {
-            return;
-        }
-        if self.creating() {
-            if self.create_key(event, window, cx) {
-                cx.stop_propagation();
-            }
-            return;
-        }
-        if self.comment.read(cx).focus.is_focused(window) {
-            match event.keystroke.key.as_str() {
-                "enter" => self.post_comment(cx),
-                "escape" => window.focus(&self.focus, cx),
-                _ => return,
-            }
-            cx.stop_propagation();
-            return;
-        }
-        if self.message.read(cx).focus.is_focused(window) {
-            match event.keystroke.key.as_str() {
-                "enter" => self.send_message(cx),
-                "escape" => window.focus(&self.focus, cx),
-                _ => return,
-            }
-            cx.stop_propagation();
-            return;
-        }
-        if self.search.read(cx).focus.is_focused(window) {
-            if event.keystroke.key == "escape" {
-                window.focus(&self.focus, cx);
-                cx.stop_propagation();
-            }
-            return;
-        }
-        let modifiers = &event.keystroke.modifiers;
-        if modifiers.platform || modifiers.control || modifiers.alt {
-            return;
-        }
-        let handled = match (event.keystroke.key.as_str(), &self.detail) {
-            ("escape", Some(_)) => {
-                self.detail = None;
-                cx.notify();
-                true
-            }
-            ("escape", None) if self.hide_open => {
-                self.hide_open = false;
-                cx.notify();
-                true
-            }
-            ("escape", None) if self.sort_open => {
-                self.sort_open = false;
-                cx.notify();
-                true
-            }
-            ("/", None) => {
-                window.focus(&self.search.read(cx).focus.clone(), cx);
-                true
-            }
-            ("up" | "k", None) => {
-                self.move_selection(-1, cx);
-                true
-            }
-            ("down" | "j", None) => {
-                self.move_selection(1, cx);
-                true
-            }
-            ("enter", None) => {
-                if let Some(key) = self.selected.clone() {
-                    self.open_detail(key, cx);
-                }
-                true
-            }
-            ("c", _) if self.issue_source == IssueSource::Linear => {
-                self.open_linear_create(None, window, cx);
-                true
-            }
-            ("r", _) => {
-                self.ask_refresh();
-                true
-            }
-            ("1" | "2" | "3" | "4" | "5", Some(detail)) => {
-                let index = event.keystroke.key.parse::<usize>().unwrap_or(1) - 1;
-                let pull_request = self
-                    .item(&detail.key)
-                    .is_some_and(|item| item.pull_request.is_some());
-                let tabs = DetailTab::tabs(pull_request);
-                let mut detail = detail.clone();
-                detail.tab = tabs[index.min(tabs.len() - 1)];
-                self.detail = Some(detail);
-                self.follow_pull_request();
-                cx.notify();
-                true
-            }
-            _ => false,
-        };
-        if handled {
-            cx.stop_propagation();
         }
     }
 }

@@ -2,12 +2,15 @@ use super::*;
 use gpui::TestAppContext;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-fn status(connected: usize) -> Status {
+pub(super) fn status(connected: usize) -> Status {
     Status {
+        boot_id: String::new(),
+        address_details: Default::default(),
         version: "dev".into(),
         port: 7443,
         addresses: vec!["https://192.168.1.20:7443".into()],
         fingerprint: "5F:2A".into(),
+        computer: String::new(),
         herdr: true,
         chats: 1,
         devices: 2,
@@ -23,6 +26,8 @@ fn device(id: &str) -> Device {
         last_seen_ms: None,
         push: true,
         connected: false,
+        via: None,
+        hosts: Vec::new(),
     }
 }
 

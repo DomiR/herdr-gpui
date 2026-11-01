@@ -2,6 +2,7 @@ use gpui::{Image, ImageFormat};
 pub(crate) use herdr_github::github_repo;
 mod cache;
 mod links;
+mod owner;
 mod profiles;
 use herdr_client::{ConnectTarget, protocol::ClientShellWorkspace};
 pub(crate) use profiles::ProfileAvatars;
@@ -132,7 +133,7 @@ impl Avatars {
             for (checkout, url) in network {
                 let image = owners
                     .entry(url.clone())
-                    .or_insert_with(|| download(&agent, &url))
+                    .or_insert_with(|| owner::download(&agent, &url))
                     .clone();
                 if let Some(image) = image
                     && updated.send((checkout, Ok(Some(image)))).is_err()
@@ -270,9 +271,7 @@ fn answer(
     refresh: &Refresh,
 ) -> bool {
     let url = match repo_owner(checkout.as_deref(), offline) {
-        Ok(owner) => {
-            owner.map(|owner| format!("https://avatars.githubusercontent.com/{owner}?size=48"))
-        }
+        Ok(owner) => owner.as_deref().map(owner::url),
         Err(error) => return outgoing.send((checkout, Err(error))).is_ok(),
     };
     let cached = url.as_deref().and_then(cached_image);
@@ -338,7 +337,7 @@ fn github_owner(remote: &str) -> Option<String> {
 }
 
 fn cached_image(url: &str) -> Option<(Arc<Image>, bool)> {
-    if !valid_profile_avatar(url) {
+    if !owner::valid(url) {
         return None;
     }
     cache::read(&cache::root()?, url, SystemTime::now())
@@ -388,10 +387,21 @@ fn avatar_agent() -> ureq::Agent {
         .into()
 }
 
+/// Where an account's picture may be downloaded from: GitHub's avatars, and
+/// GitLab.com's, which are its own uploads or Gravatar's. A self-managed
+/// GitLab's pictures are not fetched, since its address is the instance's own
+/// choice; its accounts show the GitLab mark instead.
+const PROFILE_AVATAR_ORIGINS: [&str; 3] = [
+    "https://avatars.githubusercontent.com/",
+    "https://gitlab.com/uploads/-/system/user/avatar/",
+    "https://secure.gravatar.com/avatar/",
+];
+
 fn valid_profile_avatar(url: &str) -> bool {
     url.len() <= 2048
-        && url
-            .strip_prefix("https://avatars.githubusercontent.com/")
+        && PROFILE_AVATAR_ORIGINS
+            .iter()
+            .find_map(|origin| url.strip_prefix(origin))
             .is_some_and(|path| {
                 !path.is_empty()
                     && path
@@ -404,6 +414,16 @@ fn download(agent: &ureq::Agent, url: &str) -> Option<Arc<Image>> {
     if !valid_profile_avatar(url) {
         return None;
     }
+    let (image, bytes) = fetch(agent, url)?;
+    if let Some(root) = cache::root() {
+        let _ = cache::write(&root, url, &bytes, SystemTime::now());
+    }
+    Some(image)
+}
+
+/// Downloads one picture, checked, with its bytes for the disk cache. The
+/// caller has checked `url`.
+fn fetch(agent: &ureq::Agent, url: &str) -> Option<(Arc<Image>, Vec<u8>)> {
     let mut response = agent.get(url).call().ok()?;
     if !response.status().is_success() {
         return None;
@@ -420,10 +440,7 @@ fn download(agent: &ureq::Agent, url: &str) -> Option<Arc<Image>> {
     if image.format != format {
         return None;
     }
-    if let Some(root) = cache::root() {
-        let _ = cache::write(&root, url, &bytes, SystemTime::now());
-    }
-    Some(image)
+    Some((image, bytes))
 }
 
 fn avatar_format(content_type: &str) -> Option<ImageFormat> {

@@ -74,6 +74,8 @@ fn the_daemon_runs_with_every_setting_as_an_argument() {
         keep_running: false,
         notifications: Privacy::Excerpt,
         port: 9443,
+        // Herdr UI's own: presence runs beside the daemon, not in its args.
+        presence: true,
     };
     assert_eq!(
         words(&custom.args()),
@@ -289,10 +291,13 @@ fn host(dir: &Path) -> Host {
 
 fn status(version: &str) -> Response {
     Response::Status(Status {
+        boot_id: String::new(),
+        address_details: Default::default(),
         version: version.into(),
         port: 7443,
         addresses: Vec::new(),
         fingerprint: String::new(),
+        computer: String::new(),
         herdr: true,
         chats: 0,
         devices: 0,

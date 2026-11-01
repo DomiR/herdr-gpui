@@ -1,3 +1,5 @@
+// i18n: migrated
+use crate::i18n::fl;
 use crate::{
     HerdrWindow,
     fonts::StyledFont,
@@ -89,6 +91,12 @@ impl HerdrWindow {
         }
     }
 
+    /// Whether this window reads and writes saved sign-ins. Headless windows
+    /// never touch them, so tests leave the user's keyring alone.
+    pub(crate) fn reads_credentials(&self) -> bool {
+        self.avatars.is_some()
+    }
+
     /// Start signing in the account the GitHub page shows.
     pub(crate) fn start_github(&mut self) {
         let config = &self.config;
@@ -167,8 +175,15 @@ impl HerdrWindow {
             self.menu.github.probe_github_cli(std::time::Instant::now());
         }
         if self.menu.page == Some(super::Page::GitHub) {
-            self.github_auth_mut()
-                .recheck_access(std::time::Instant::now());
+            let now = std::time::Instant::now();
+            let host = self.github_host().map(str::to_owned);
+            let menu = &mut self.menu;
+            host.and_then(|id| menu.github_hosts.get_mut(&id))
+                .unwrap_or(&mut menu.github)
+                .recheck_access(now);
+            for account in &mut menu.github_accounts {
+                account.auth.recheck_access(now);
+            }
         }
         let connected = self.github_auth().connected();
         let mut changed = self.menu.github.poll();
@@ -429,7 +444,6 @@ impl HerdrWindow {
     pub(super) fn render_github_auth(&self, cx: &mut Context<Self>) -> Div {
         let auth = self.github_auth();
         let theme = &self.theme;
-        let font = &self.config.ui;
         let mut body = div()
             .id("github-body")
             .debug_selector(|| "github-body".into())
@@ -456,12 +470,13 @@ impl HerdrWindow {
         }
         if let Some(label) = host {
             let note = match (&auth.profile, &self.menu.github.profile) {
-                (Some(_), _) => format!("Pull requests on {label} use this account."),
-                (None, Some(main)) => format!(
-                    "Pull requests on {label} use your main account @{}. Sign in to use a different account for this device.",
-                    main.login
+                (Some(_), _) => fl!("github-menu-host-own", device = label),
+                (None, Some(main)) => fl!(
+                    "github-menu-host-main",
+                    device = label,
+                    login = main.login.as_str()
                 ),
-                (None, None) => format!("Sign in to view pull requests on {label}."),
+                (None, None) => fl!("github-menu-host-signed-out", device = label),
             };
             body = body.child(
                 div()
@@ -504,9 +519,9 @@ impl HerdrWindow {
                                     .debug_selector(|| "github-connected".into())
                                     .text_color(rgb(theme.ink(theme.palette[2])))
                                     .child(if profile.source.github_cli() {
-                                        "Connected with GitHub CLI"
+                                        fl!("github-menu-connected-cli")
                                     } else {
-                                        "Connected"
+                                        fl!("github-menu-connected")
                                     }),
                             )
                             .child(
@@ -521,7 +536,7 @@ impl HerdrWindow {
         }
         if let Some(code) = auth.code() {
             body = body
-                .child(div().mb(px(12.)).child("1. Copy your one-time code"))
+                .child(div().mb(px(12.)).child(fl!("github-menu-copy-code-step")))
                 .child(
                     div()
                         .p(px(16.))
@@ -542,29 +557,32 @@ impl HerdrWindow {
                         )
                         .child(div().mt(px(12.)).child(self.github_button(
                             Action::Copy,
-                            if auth.copied() { "Copied" } else { "Copy code" },
+                            &if auth.copied() {
+                                fl!("github-menu-copied")
+                            } else {
+                                fl!("github-menu-copy-code")
+                            },
                             cx,
                         ))),
                 )
-                .child(div().mt(px(16.)).child("2. Open GitHub and paste the code"))
+                .child(div().mt(px(16.)).child(fl!("github-menu-paste-code-step")))
                 .child(
                     div()
                         .mt(px(4.))
                         .text_color(rgb(theme.muted))
-                        .child("github.com/login/device"),
+                        .child("github.com/login/device"), // i18n: data
                 );
         }
         let message = auth.message.clone().unwrap_or_else(|| {
             if auth.loading_profile() {
-                "Checking GitHub account..."
+                fl!("github-menu-checking")
             } else if auth.connected() {
-                "Your account is ready for pull request lookups."
+                fl!("github-menu-ready")
             } else if host.is_none() && !additional && auth.github_cli_available() {
-                "GitHub CLI is signed in on this computer. Use its session, or sign in securely in your browser."
+                fl!("github-menu-cli-available")
             } else {
-                "Sign in securely in your browser to view pull requests. No GitHub CLI required."
+                fl!("github-menu-sign-in-note")
             }
-            .into()
         });
         if let Some(field) = self.render_github_token() {
             body = body.child(field);
@@ -584,7 +602,7 @@ impl HerdrWindow {
                     .child(message),
             );
         }
-        if let Some(attention) = self.render_github_attention() {
+        if let Some(attention) = self.render_github_attention(cx) {
             body = body.child(attention);
         }
         if let Some(note) = auth
@@ -628,82 +646,45 @@ impl HerdrWindow {
                 let label = self
                     .github_attention()
                     .and_then(|attention| attention.links.into_iter().next())
-                    .map_or_else(String::new, |(label, _)| format!("{label} (R)"));
+                    .map_or_else(String::new, |(label, _)| {
+                        fl!("github-menu-approve-key", label = label)
+                    });
                 footer = footer.child(self.github_button(action, &label, cx));
                 continue;
             }
             let label = match action {
-                Action::Open => "Open GitHub (O)",
-                Action::GitHubCli => "Use GitHub CLI authentication (G)",
-                Action::Start if auth.failed => "Try again (S)",
+                Action::Open => fl!("github-menu-open"),
+                Action::GitHubCli => fl!("github-menu-use-cli"),
+                Action::Start if auth.failed => fl!("github-menu-try-again"),
                 Action::Start if host.is_some() && self.menu.github.connected() => {
-                    "Use another account (S)"
+                    fl!("github-menu-use-another")
                 }
-                Action::Start if additional => "Sign in with browser (S)",
-                Action::Start => "Sign in (S)",
-                Action::Token => "Use a token (T)",
-                Action::Add => "Add account (A)",
-                Action::SubmitToken => "Save token (Enter)",
-                Action::CancelToken => "Cancel (Esc)",
-                Action::SignOut if additional => "Remove account (D)",
+                Action::Start if additional => fl!("github-menu-sign-in-browser"),
+                Action::Start => fl!("github-menu-sign-in"),
+                Action::Token => fl!("github-menu-use-token"),
+                Action::Add => fl!("github-menu-add-account"),
+                Action::SubmitToken => fl!("github-menu-save-token"),
+                Action::CancelToken => fl!("github-menu-cancel-token"),
+                Action::SignOut if additional => fl!("github-menu-remove-account"),
                 Action::SignOut
                     if auth
                         .profile
                         .as_ref()
                         .is_some_and(|profile| profile.source.github_cli()) =>
                 {
-                    "Stop using GitHub CLI (D)"
+                    fl!("github-menu-stop-cli")
                 }
-                Action::SignOut => "Sign out (D)",
+                Action::SignOut => fl!("github-menu-sign-out"),
                 Action::Copy | Action::Approve | Action::Close => continue,
             };
-            footer = footer.child(self.github_button(action, label, cx));
+            footer = footer.child(self.github_button(action, &label, cx));
         }
         div()
             .flex()
             .flex_col()
             .w_full()
             .min_h_0()
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .flex_none()
-                    .gap(px(12.))
-                    .p(px(16.))
-                    .border_b_1()
-                    .border_color(rgb(theme.active))
-                    .child(
-                        crate::sidebar::github_mark(theme.foreground)
-                            .debug_selector(|| "github-mark".into())
-                            .size(px(28.)),
-                    )
-                    .child(
-                        div().flex_1().min_w_0().child(
-                            div()
-                                .text_size(px(font.size * 1.35))
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .child("GitHub"),
-                        ),
-                    )
-                    .child(
-                        div()
-                            .id("github-header-close")
-                            .debug_selector(|| "github-header-close".into())
-                            .cursor_pointer()
-                            .px(px(8.))
-                            .py(px(4.))
-                            .rounded(px(crate::config::corners::CONTROL))
-                            .when(self.menu.github_selected == Some(Action::Close), |style| {
-                                style.bg(rgb(theme.active))
-                            })
-                            .hover(|style| style.bg(rgb(theme.active)))
-                            .child(crate::sidebar::label_text("Close"))
-                            .on_click(
-                                cx.listener(|this, _, window, cx| this.dismiss_menu(window, cx)),
-                            ),
-                    ),
-            )
+            .child(self.render_account_tabs(super::Page::GitHub, cx))
             .child(body)
             .when(has_footer, |panel| panel.child(footer))
     }
@@ -711,19 +692,15 @@ impl HerdrWindow {
 
 /// What a GitHub CLI session should say: that `gh` owns the token, and how to
 /// reach private repositories when its scopes leave them out.
-fn github_cli_note(profile: &Profile, store: crate::github::Store) -> Option<&'static str> {
+fn github_cli_note(profile: &Profile, store: crate::github::Store) -> Option<String> {
     match profile.source {
-        crate::github::Source::GitHubCli { repo_scope: false } => Some(
-            "GitHub CLI's token lacks the repo scope, so private repositories are unavailable. Run `gh auth refresh --scopes repo`.",
-        ),
-        crate::github::Source::GitHubCli { .. } if store == crate::github::Store::Environment => {
-            Some(
-                "Using GitHub CLI's sign-in for this app session. This platform has no credential store to remember the choice.",
-            )
+        crate::github::Source::GitHubCli { repo_scope: false } => {
+            Some(fl!("github-menu-cli-no-repo-scope"))
         }
-        crate::github::Source::GitHubCli { .. } => Some(
-            "GitHub CLI keeps this token; Herdr UI saves none. After `gh auth logout`, this app signs out at its next check.",
-        ),
+        crate::github::Source::GitHubCli { .. } if store == crate::github::Store::Environment => {
+            Some(fl!("github-menu-cli-session"))
+        }
+        crate::github::Source::GitHubCli { .. } => Some(fl!("github-menu-cli-keeps-token")),
         crate::github::Source::Token => None,
     }
 }

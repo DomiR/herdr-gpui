@@ -117,6 +117,10 @@ impl HerdrWindow {
             self.fan_out_key(event, window, cx);
             return;
         }
+        if self.menu.page == Some(Page::RemoteControl) {
+            self.remote_pairing_key(event, window, cx);
+            return;
+        }
         if self.menu.page == Some(Page::DeviceTheme) {
             self.device_theme_key(event, window, cx);
             return;
@@ -178,6 +182,10 @@ impl HerdrWindow {
             self.remove_wsl_key(event, window, cx);
             return;
         }
+        if self.menu.page == Some(Page::Devices) && self.menu.session_edit.is_some() {
+            self.sessions_key(event, window, cx);
+            return;
+        }
         if matches!(self.menu.page, Some(Page::Devices | Page::AddDevice)) {
             self.devices_key(event, window, cx);
             return;
@@ -200,10 +208,6 @@ impl HerdrWindow {
             }
             return;
         }
-        if self.menu.page == Some(Page::Sessions) {
-            self.sessions_key(event, window, cx);
-            return;
-        }
         if self.menu.page == Some(Page::Palette) {
             self.palette_key(event, window, cx);
             return;
@@ -218,6 +222,10 @@ impl HerdrWindow {
         }
         if self.menu.page == Some(Page::GitHub) {
             self.github_key(event, window, cx);
+            return;
+        }
+        if self.menu.page == Some(Page::GitLab) {
+            self.gitlab_key(event, window, cx);
             return;
         }
         if self.menu.page == Some(Page::Themes) {

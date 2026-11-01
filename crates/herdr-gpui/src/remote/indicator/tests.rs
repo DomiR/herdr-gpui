@@ -7,10 +7,13 @@ use std::path::Path;
 
 fn status(connected: usize) -> Status {
     Status {
+        boot_id: String::new(),
+        address_details: Default::default(),
         version: "dev".into(),
         port: 7443,
         addresses: vec!["https://192.168.1.20:7443".into()],
         fingerprint: "5F:2A".into(),
+        computer: String::new(),
         herdr: true,
         chats: 0,
         devices: 2,
@@ -26,6 +29,8 @@ fn phone(id: &str, name: &str, connected: bool) -> Device {
         last_seen_ms: Some(0),
         push: true,
         connected,
+        via: None,
+        hosts: Vec::new(),
     }
 }
 

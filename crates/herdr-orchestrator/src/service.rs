@@ -31,6 +31,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+mod gitlab_source;
 mod retry;
 mod snapshot;
 mod sources;
@@ -88,6 +89,8 @@ pub struct Request {
     /// The accounts GitHub is read with; each source uses the one that
     /// reads its repository's owner.
     pub token: Option<Tokens>,
+    /// Where GitLab tokens pasted in the account menu are saved.
+    pub gitlab_store: herdr_credentials::Store,
     /// The folder holding the databases, and agent-launcher's to carry
     /// over, in place of the platform's; tests set it.
     pub data_root: Option<PathBuf>,
@@ -237,9 +240,9 @@ struct Worker {
     /// Where each GitHub source's next incremental sync continues.
     resume: HashMap<SourceKey, github::Resume>,
     /// The GitLab token, once looked up, and the instance it is for; Refresh
-    /// looks again, so a new `glab auth login` is picked up without
-    /// reopening the view.
-    gitlab_token: Option<(String, Option<SecretString>)>,
+    /// and a refusal look again, so a new `glab auth login` or a renewed
+    /// connected account is picked up without reopening the view.
+    gitlab_token: Option<(String, Option<gitlab::account::Found>)>,
     cooldown: Option<Duration>,
     linear_key: LinearKey,
     /// The Linear workspace's `urlKey`, once a sync has read it.

@@ -4,6 +4,7 @@
 //! run off the UI thread; [`super::pairing`] decides what each answer means.
 
 use super::{
+    nearby,
     pairing::{Answer, Pairing, Phase, spaced},
     qr::{self, Qr},
     supervisor::{Client, Lease, Supervisor},
@@ -15,6 +16,12 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+
+mod addresses;
+mod hosts;
+
+/// What keeps this computer advertised for nearby pairing.
+type NearbyAdvert = nearby::Advert;
 
 /// How often the dialog looks for a request to send, and redraws its ring.
 const STEP: Duration = Duration::from_millis(250);
@@ -29,8 +36,16 @@ const NAME_LIMIT: usize = 64;
 /// a pairing still open at the daemon, so its token stops working at once.
 pub(crate) struct PairingDialog {
     pub(crate) pairing: Pairing,
+    /// The other machines the phone may be allowed on too.
+    pub(crate) hosts: Vec<hosts::Choice>,
+    addresses_scroll: ScrollHandle,
+    other_addresses: crate::motion::Toggle,
     client: Option<Client>,
+    _addresses_task: Option<Task<()>>,
     _lease: Option<Lease>,
+    /// The nearby advertisement while an offer shows; dropping it stops
+    /// advertising this computer for pairing.
+    _nearby: Option<NearbyAdvert>,
     _task: Option<Task<()>>,
 }
 
@@ -39,8 +54,10 @@ impl PairingDialog {
     /// does. The dialog may still be drawn as it goes; it asks nothing more,
     /// and no longer keeps the daemon polled at the open dialog's pace.
     pub(crate) fn close(&mut self) {
+        self._nearby = None;
         self._lease = None;
         self._task = None;
+        self._addresses_task = None;
         if let (Some(client), Some(id)) = (self.client.take(), self.pairing.id())
             && self.pairing.cancels_on_close()
         {
@@ -62,6 +79,15 @@ impl HerdrWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
+        self.open_remote_pairing_at(None, window, cx)
+    }
+
+    pub(crate) fn open_remote_pairing_at(
+        &mut self,
+        address: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
         if self.menu.page.is_some() || !self.open_menu(window, cx) {
             return false;
         }
@@ -76,9 +102,14 @@ impl HerdrWindow {
             .filter(|_| self.config.remote.enabled)
             .map(|client| Self::drive_pairing(client, cx));
         self.menu.remote_pairing = Some(PairingDialog {
-            pairing,
+            pairing: pairing.with_address(address),
+            hosts: hosts::choices(Supervisor::hosts(cx)),
+            addresses_scroll: ScrollHandle::new(),
+            other_addresses: crate::motion::Toggle::default(),
             client,
+            _addresses_task: None,
             _lease: Supervisor::lease(cx),
+            _nearby: None,
             _task: task,
         });
         self.menu.page = Some(Page::RemoteControl);
@@ -113,7 +144,24 @@ impl HerdrWindow {
                     let Some(dialog) = view.menu.remote_pairing.as_mut() else {
                         return false;
                     };
+                    let new_offer = matches!(
+                        &result,
+                        Ok(herdr_remote_control::control::Response::Offer(_))
+                    );
                     dialog.pairing.receive(&ticket, result, Instant::now());
+                    if new_offer {
+                        dialog.reveal_selected_address();
+                    }
+                    // Nearby pairing runs while an offer or its claim shows,
+                    // and stops once the pairing is answered or fails.
+                    match dialog.pairing.phase() {
+                        Phase::Showing { offer, .. } if dialog._nearby.is_none() => {
+                            let offer = (offer.fingerprint.clone(), offer.url.clone());
+                            dialog._nearby = Self::advertise_nearby(offer, cx);
+                        }
+                        Phase::Showing { .. } | Phase::Claimed { .. } => {}
+                        _ => dialog._nearby = None,
+                    }
                     if matches!(dialog.pairing.phase(), Phase::Approved { .. }) {
                         Supervisor::refresh(cx);
                     }
@@ -127,9 +175,22 @@ impl HerdrWindow {
         })
     }
 
+    /// Advertises this computer for nearby pairing while the offer shows,
+    /// through the app's one `herdr-nearby` helper, which relays each
+    /// phone's frame to the daemon. Nothing starts when the helper is not
+    /// beside the executable.
+    fn advertise_nearby(
+        (fingerprint, url): (String, String),
+        cx: &mut Context<Self>,
+    ) -> Option<NearbyAdvert> {
+        let line = nearby::advertise(&nearby::host_name(), &fingerprint, nearby::port(&url));
+        nearby::Station::advertise_pairing(cx, line)
+    }
+
     fn answer_pairing(&mut self, allow: bool, cx: &mut Context<Self>) {
         if let Some(dialog) = &mut self.menu.remote_pairing {
-            dialog.pairing.answer(allow);
+            let ticked = hosts::ticked(&dialog.hosts);
+            dialog.pairing.answer_with_hosts(allow, ticked);
             cx.notify();
         }
     }
@@ -141,11 +202,69 @@ impl HerdrWindow {
         }
     }
 
+    pub(crate) fn remote_pairing_key(
+        &mut self,
+        event: &KeyDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        cx.stop_propagation();
+        window.prevent_default();
+        if event.keystroke.modifiers != Modifiers::default() {
+            return;
+        }
+        let key = event.keystroke.key.as_str();
+        if key == "escape" {
+            self.dismiss_menu(window, cx);
+            return;
+        }
+        let Some(dialog) = &self.menu.remote_pairing else {
+            return;
+        };
+        let Phase::Showing { offer, .. } = dialog.pairing.phase() else {
+            return;
+        };
+        let count = offer.addresses.len();
+        if count == 0 {
+            return;
+        }
+        let selected = offer
+            .addresses
+            .iter()
+            .position(|address| offer.url.starts_with(&format!("{address}/")))
+            .unwrap_or(0);
+        let index = match key {
+            "up" => (selected + count - 1) % count,
+            "down" => (selected + 1) % count,
+            "home" => 0,
+            "end" => count - 1,
+            "right" | "left" => {
+                self.set_other_addresses(key == "right", cx);
+                return;
+            }
+            _ => return,
+        };
+        let address = offer.addresses[index].clone();
+        self.select_pairing_address(&address, cx);
+    }
+
+    fn select_pairing_address(&mut self, address: &str, cx: &mut Context<Self>) {
+        let Some(dialog) = &mut self.menu.remote_pairing else {
+            return;
+        };
+        if let Err(error) = dialog.pairing.select_address(address) {
+            tracing::warn!(%error, "Could not select pairing address");
+            return;
+        }
+        dialog.reveal_selected_address();
+        cx.notify();
+    }
+
     /// Whether a remote control dialog is open, for the menu's layout.
     pub(crate) fn remote_dialog_open(&self) -> bool {
         matches!(
             self.menu.page,
-            Some(Page::RemoteControl | Page::RevokeDevice)
+            Some(Page::RemoteControl | Page::RevokeDevice | Page::RemoteHostAsk)
         )
     }
 
@@ -154,6 +273,7 @@ impl HerdrWindow {
         match self.menu.page {
             Some(Page::RemoteControl) => Some(self.render_pairing(cx)),
             Some(Page::RevokeDevice) => Some(self.render_revoke(cx)),
+            Some(Page::RemoteHostAsk) => Some(self.render_host_ask(cx)),
             _ => None,
         }
     }
@@ -233,7 +353,7 @@ impl HerdrWindow {
                             .hover(|button| button.bg(rgb(theme.active)))
                             .child(
                                 svg()
-                                    .path("icons/x.svg")
+                                    .path("icons/close.svg")
                                     .size(px(12.))
                                     .text_color(rgb(theme.subtext())),
                             )
@@ -248,7 +368,7 @@ impl HerdrWindow {
 
     /// The QR with what the phone needs beside it; a placeholder square
     /// until the daemon has answered.
-    fn pairing_offer(&self, pairing: Option<&Pairing>, _cx: &mut Context<Self>) -> Div {
+    fn pairing_offer(&self, pairing: Option<&Pairing>, cx: &mut Context<Self>) -> Div {
         let theme = &self.theme;
         let showing = pairing.and_then(|pairing| match pairing.phase() {
             Phase::Showing { offer, qr, .. } => Some((offer, qr.clone())),
@@ -273,23 +393,10 @@ impl HerdrWindow {
                         .font_weight(FontWeight::SEMIBOLD)
                         .child("Scan with your phone's camera"),
                 )
-                .child(
-                    div()
-                        .debug_selector(|| "remote-pair-addresses".into())
-                        .text_color(rgb(theme.subtext()))
-                        .child(addresses(&offer.addresses)),
-                )
-                .child(
-                    div()
-                        .debug_selector(|| "remote-pair-fingerprint".into())
-                        .text_font(&self.config.terminal)
-                        .text_size(px(10.))
-                        .text_color(rgb(theme.subtext()))
-                        .child(format!(
-                            "CA {}",
-                            crate::notifications::safe_text(&offer.fingerprint, 200)
-                        )),
-                )
+                .child(div().text_color(rgb(theme.subtext())).child(
+                    "Choose how your phone reaches this computer. Up/Down changes the QR address.",
+                ))
+                .child(self.pairing_selected_address(offer))
                 .children(countdown.map(|(left, share)| {
                     div()
                         .debug_selector(|| "remote-pair-countdown".into())
@@ -302,17 +409,66 @@ impl HerdrWindow {
                             "New code in {} s",
                             left.as_secs_f32().ceil() as u64
                         ))
-                })),
+                }))
+                .children(self.nearby_hint(cx)),
             None => div()
                 .text_color(rgb(theme.subtext()))
                 .child("Asking for a pairing code\u{2026}"),
         };
         div()
             .flex()
-            .gap(px(16.))
-            .items_start()
-            .child(div().flex_none().child(square))
-            .child(div().flex_1().min_w_0().child(details))
+            .flex_col()
+            .gap(px(12.))
+            .child(
+                div()
+                    .flex()
+                    .gap(px(16.))
+                    .items_start()
+                    .child(div().flex_none().child(square))
+                    .child(div().flex_1().min_w_0().child(details)),
+            )
+            .when_some(showing, |body, (offer, _)| {
+                body.child(self.pairing_addresses(offer, cx)).child(
+                    div()
+                        .debug_selector(|| "remote-pair-fingerprint".into())
+                        .text_font(&self.config.terminal)
+                        .text_size(px(10.))
+                        .text_color(rgb(theme.subtext()))
+                        .child(format!(
+                            "CA {}",
+                            crate::notifications::safe_text(&offer.fingerprint, 200)
+                        )),
+                )
+            })
+    }
+
+    /// One line on Bluetooth pairing, when the helper reported its radio.
+    fn nearby_hint(&self, cx: &App) -> Option<Div> {
+        self.menu.remote_pairing.as_ref()?;
+        let radio = nearby::Station::radio(cx)?;
+        let text = match radio {
+            nearby::Radio::On if cfg!(target_os = "macos") => {
+                "Or open Herdr Remote on an iPhone nearby: it finds this Mac over Bluetooth."
+            }
+            nearby::Radio::On => {
+                "Or open Herdr Remote on an iPhone nearby: it finds this computer over Bluetooth."
+            }
+            nearby::Radio::Unauthorized if cfg!(target_os = "macos") => {
+                "To pair nearby over Bluetooth, allow Herdr in System Settings > Privacy & Security > Bluetooth."
+            }
+            nearby::Radio::Unauthorized => {
+                "To pair nearby over Bluetooth, allow Herdr to use Bluetooth in your system's settings."
+            }
+            nearby::Radio::Off | nearby::Radio::Unsupported | nearby::Radio::Unknown => {
+                return None;
+            }
+        };
+        Some(
+            div()
+                .debug_selector(|| "remote-pair-nearby".into())
+                .text_color(rgb(self.theme.subtext()))
+                .child(text),
+        )
     }
 
     fn pairing_claim(
@@ -370,6 +526,7 @@ impl HerdrWindow {
                     .font_weight(FontWeight::SEMIBOLD)
                     .child(spaced(code)),
             )
+            .children(self.pairing_hosts(!waiting, cx))
             .child(
                 div()
                     .flex()

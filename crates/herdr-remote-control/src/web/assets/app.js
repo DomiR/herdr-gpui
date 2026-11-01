@@ -23,7 +23,7 @@ const INSTALL_CLOSED = "herdr.install-closed"; // true once the footer is closed
 const MARK_MS = 1600;
 /// How many commands the composer lists under a typed "/".
 const SLASH_SHOWN = 5;
-const HANDOFF = "herdr.handoff"; // { token, expires_ms } a tab offers its Home Screen app
+const HANDOFF = "herdr.handoff"; // { token, expires_ms, device, fingerprint }
 const RELOADED = "herdr.pair-reloaded"; // set once a failed pairing reloaded without the cache
 
 const app = {
@@ -42,6 +42,7 @@ const app = {
   // replaces the list marks the new row where the fade had reached.
   mark: null,
   retry: 0,
+  handoffBusy: false,
   // Android's install prompt, kept until the footer's Install uses it.
   install: null,
   // Counts the views shown, so work begun in one leaves alone a view the
@@ -421,7 +422,8 @@ async function route(event) {
       // show or hide groups before measuring rows.
       await Promise.resolve();
       applySearch();
-      window.scrollTo(0, location.pathname.startsWith("/chat/") ? document.body.scrollHeight : 0);
+      if (location.pathname.startsWith("/chat/")) scrollChatToEnd();
+      else window.scrollTo(0, 0);
       revealCameFrom();
     });
     fitTerminal();
@@ -469,6 +471,13 @@ function markRow() {
 function navigate(path) {
   if (path !== location.pathname + location.search) history.pushState(null, "", path);
   route();
+}
+
+// Empty chats start at the header, not at the bottom of the viewport's
+// safe-area/composer padding. Populated chats still follow the latest entry.
+function scrollChatToEnd() {
+  const entries = document.getElementById("chat-entries");
+  window.scrollTo(0, entries?.childElementCount ? document.body.scrollHeight : 0);
 }
 
 // ---- the patch stream: server-sent events read with fetch, so the
@@ -536,7 +545,10 @@ function handleEvent(block) {
       continue;
     }
     element.outerHTML = html;
-    if (id === "term-screen") fitTerminal();
+    if (id === "term-screen") {
+      fitTerminal();
+      echoScreen();
+    }
   }
   // New chat entries: the server sends only what changed after the
   // stream's first patch, so these follow the entries already shown.
@@ -545,7 +557,7 @@ function handleEvent(block) {
     if (!element || !view().contains(element) || "local" in view().dataset) continue;
     element.insertAdjacentHTML("beforeend", html);
   }
-  if (atBottom && document.getElementById("chat-turn")) window.scrollTo(0, document.body.scrollHeight);
+  if (atBottom && document.getElementById("chat-turn")) scrollChatToEnd();
   applySearch();
   markRow();
 }
@@ -597,27 +609,37 @@ function showInstallHint() {
 /// link too. One token serves until it nears expiry, so an icon already
 /// added keeps a valid one.
 async function offerHandoff() {
-  if (installed() || !app.device) return;
+  if (installed() || !app.device || app.handoffBusy) return;
   if (location.pathname !== "/" && location.pathname !== "/board") return;
   // The Home Screen app redeems the token at its own origin, so only the
   // computer this page was loaded from may offer one.
   if (!app.device.origins?.includes(location.origin)) return;
-  let offer = readJson(localStorage, HANDOFF);
-  if (!offer?.token || offer.expires_ms - Date.now() < 3_600_000) {
-    try {
-      offer = await (await api("/api/handoff", { method: "POST" })).json();
-    } catch {
-      return;
+  const device = app.device;
+  app.handoffBusy = true;
+  try {
+    let offer = readJson(localStorage, HANDOFF);
+    // A fresh browser pairing must not inherit the token consumed by the
+    // previous Home Screen installation. Legacy, unscoped caches refresh too.
+    if (!offer?.token || offer.device !== device.id || offer.fingerprint !== device.fingerprint || !Number.isFinite(offer.expires_ms) || offer.expires_ms - Date.now() < 3_600_000) {
+      try {
+        offer = { ...await (await api("/api/handoff", { method: "POST" })).json(), device: device.id, fingerprint: device.fingerprint };
+      } catch {
+        return;
+      }
+      if (app.device?.id !== device.id || app.device?.fingerprint !== device.fingerprint) return;
+      writeJson(localStorage, HANDOFF, offer);
     }
-    writeJson(localStorage, HANDOFF, offer);
-  }
-  const address = `${location.pathname}?handoff=${encodeURIComponent(offer.token)}`;
-  const link = document.querySelector('link[rel="manifest"]');
-  const loaded = link && new URL(link.href).searchParams.get("handoff");
-  if (loaded === offer.token) {
-    history.replaceState(history.state, "", address);
-  } else if (new URLSearchParams(location.search).get("handoff") !== offer.token) {
-    location.replace(address);
+    if (location.pathname !== "/" && location.pathname !== "/board") return;
+    const address = `${location.pathname}?handoff=${encodeURIComponent(offer.token)}`;
+    const link = document.querySelector('link[rel="manifest"]');
+    const loaded = link && new URL(link.href).searchParams.get("handoff");
+    if (loaded === offer.token) {
+      history.replaceState(history.state, "", address);
+    } else if (new URLSearchParams(location.search).get("handoff") !== offer.token) {
+      location.replace(address);
+    }
+  } finally {
+    app.handoffBusy = false;
   }
 }
 
@@ -640,7 +662,7 @@ async function redeemHandoff(token) {
     report("handoff", failure);
     show("t-unpaired");
     view().querySelector("[data-reason]").textContent =
-      `${failure.message}. Open Herdr in the browser, then add it to the Home Screen again.`;
+      `${failure.message}. Scan a fresh pairing code here to connect this installation.`;
   }
 }
 
@@ -659,6 +681,8 @@ async function adopt(pairKey, answer, fingerprint) {
   await saveKey(host, pairKey);
   if (older) await dropKey(older).catch(() => {});
   useHost(host);
+  // This approval has a new key, even when the server kept the same device ID.
+  writeJson(localStorage, HANDOFF, null);
   app.origin = null;
   writeJson(sessionStorage, TOKEN, null);
 }
@@ -783,7 +807,7 @@ window.addEventListener("popstate", route);
 // ---- terminal tabs: the screen arrives as patches; what is typed goes to
 // the pane key by key, in Herdr's key syntax, in order ----
 
-const term = { ctrl: false, alt: false, queue: [], sending: false, zoomed: false };
+const term = { ctrl: false, alt: false, queue: [], sending: false, zoomed: false, echo: [], screenAt: 0 };
 
 const termPane = () => document.getElementById("term")?.dataset.pane;
 const termInput = () => document.getElementById("term-input");
@@ -820,7 +844,11 @@ function showModifiers() {
 function sendKeys(keys) {
   const pane = termPane();
   if (!pane || !keys.length) return;
-  for (const key of keys) term.queue.push({ pane, key });
+  for (const key of keys) {
+    term.queue.push({ pane, key });
+    term.echo.push({ pane, glyph: glyphOf(key), state: "queued" });
+  }
+  showEcho();
   flushInput();
 }
 
@@ -828,6 +856,7 @@ function pasteText(text) {
   const pane = termPane();
   if (!pane || !text) return;
   term.queue.push({ pane, text });
+  term.echo.push({ pane, glyph: "", state: "queued" });
   flushInput();
 }
 
@@ -837,6 +866,7 @@ function pastePicture(file) {
   const pane = termPane();
   if (!pane || !file) return;
   term.queue.push({ pane, file });
+  term.echo.push({ pane, glyph: "", state: "queued" });
   flushInput();
 }
 
@@ -860,32 +890,104 @@ async function pasteClipboard() {
 }
 
 /// The next request: one paste or picture, or up to 64 keys in a row for
-/// one pane.
+/// one pane; `count` is how many queued inputs it carries.
 function nextInput() {
   const first = term.queue.shift();
-  if (first.file !== undefined) return { pane: first.pane, kind: "upload", raw: first.file };
-  if (first.text !== undefined) return { pane: first.pane, kind: "paste", body: { text: first.text } };
+  if (first.file !== undefined) return { pane: first.pane, kind: "upload", raw: first.file, count: 1 };
+  if (first.text !== undefined) return { pane: first.pane, kind: "paste", body: { text: first.text }, count: 1 };
   const keys = [first.key];
   while (keys.length < 64 && term.queue.length && term.queue[0].pane === first.pane && term.queue[0].key !== undefined) {
     keys.push(term.queue.shift().key);
   }
-  return { pane: first.pane, kind: "keys", body: { keys } };
+  return { pane: first.pane, kind: "keys", body: { keys }, count: keys.length };
 }
 
 async function flushInput() {
   if (term.sending) return;
   term.sending = true;
   while (term.queue.length) {
-    const { pane, kind, body, raw } = nextInput();
+    const { pane, kind, body, raw, count } = nextInput();
+    const sent = echoSending(count);
     try {
       await api(`/api/term/${encodeURIComponent(pane)}/${kind}`, { method: "POST", body, raw });
+      echoDelivered(sent);
     } catch (error) {
       // What followed was typed after it; sent alone, it would mean something else.
       term.queue = [];
+      term.echo = [];
+      showEcho();
       flash(error.message);
     }
   }
   term.sending = false;
+}
+
+// ---- the echo strip: what was typed but is not on the screen yet, so a
+// slow network does not leave typing blind. Each input keeps one entry,
+// in the order sent; an entry goes once the computer took it and a screen
+// arrived after, or a moment after it was taken when the screen did not
+// change (a password, a program that draws nothing) ----
+
+/// How long a taken input stays in the strip with no new screen.
+const ECHO_LINGER = 1000;
+
+const ECHO_GLYPHS = { space: " ", plus: "+", minus: "-", slash: "/", backtick: "`", enter: "⏎", tab: "⇥", backspace: "\b" };
+
+/// What a key shows in the strip: its character, a mark for Enter and Tab,
+/// backspace as removal, and nothing for arrows and chords.
+function glyphOf(key) {
+  return key.length === 1 ? key : ECHO_GLYPHS[key] || "";
+}
+
+/// Marks the next `count` queued entries as sent; answers when.
+function echoSending(count) {
+  const at = performance.now();
+  for (const entry of term.echo) {
+    if (!count) break;
+    if (entry.state !== "queued") continue;
+    entry.state = "sent";
+    count -= 1;
+  }
+  return at;
+}
+
+/// The computer took what went out at `sentAt`. A screen that arrived
+/// meanwhile was read after it, as the computer reads one at once.
+function echoDelivered(sentAt) {
+  const now = performance.now();
+  for (const entry of term.echo) {
+    if (entry.state === "sent") Object.assign(entry, { state: "taken", takenAt: now });
+  }
+  if (term.screenAt > sentAt) dropTaken(now);
+  setTimeout(() => dropTaken(performance.now() - ECHO_LINGER), ECHO_LINGER);
+}
+
+/// A screen arrived: whatever the computer took is on it.
+function echoScreen() {
+  term.screenAt = performance.now();
+  dropTaken(term.screenAt);
+}
+
+/// Drops the leading entries taken by `before`.
+function dropTaken(before) {
+  const kept = term.echo.findIndex((entry) => entry.state !== "taken" || entry.takenAt > before);
+  term.echo = kept < 0 ? [] : term.echo.slice(kept);
+  showEcho();
+}
+
+function showEcho() {
+  const strip = document.getElementById("term-echo");
+  if (!strip) return;
+  const pane = termPane();
+  const shown = [];
+  for (const { glyph } of term.echo.filter((entry) => entry.pane === pane)) {
+    if (glyph !== "\b") shown.push(...glyph);
+    else if (shown.length && shown[shown.length - 1] !== "⌫") shown.pop();
+    else shown.push("⌫");
+  }
+  strip.hidden = !shown.length;
+  strip.firstElementChild.textContent = shown.join("");
+  strip.scrollLeft = strip.scrollWidth;
 }
 
 /// Fits the widest line to the screen's width, unless the text was made

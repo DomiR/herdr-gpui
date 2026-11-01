@@ -25,9 +25,11 @@ mod error;
 mod failure;
 mod host_key;
 pub(crate) mod mux;
+mod unverified;
 pub use error::Error;
 pub use failure::SshFailure;
 pub use host_key::{HostKeyFingerprint, HostKeyScan, NewHostKey, scan_host_key, trust_host_key};
+pub use unverified::{HostKeys, MAX_UNVERIFIED_HOSTS, set_host_keys, set_unverified_hosts};
 mod powershell;
 
 const READY: &[u8] = b"herdr-remote-output-ready:1\n";
@@ -44,13 +46,24 @@ impl Drop for ChildGuard {
 
 pub(super) use crate::script::shell_quote as quote;
 
-// PATH first, excluding mise shims, followed by upstream's known install roots.
+// PATH first, followed by known install roots and mise's installed `latest`
+// links. Never invoke mise/shims: resolving project config can run hooks or
+// install tools, and need not work in a noninteractive SSH shell.
 // Keep paths in shell variables: discovered executable names are never eval'd.
 pub(super) const CANDIDATES: &str = r#"candidate=$(command -v herdr 2>/dev/null || :)
-case "$candidate" in /*/mise/shims/herdr) candidate=;; /*) ;; *) candidate=;; esac
+case "$candidate" in /*) ;; *) candidate=;; esac
 linuxbrew=
 case "$(PATH=/usr/bin:/bin uname -s)" in Linux) linuxbrew=/home/linuxbrew/.linuxbrew/bin/herdr;; esac
-for path in "$candidate" "$HOME/.local/bin/herdr" /opt/homebrew/bin/herdr /usr/local/bin/herdr "$linuxbrew" "$HOME/.nix-profile/bin/herdr" "/etc/profiles/per-user/$USER/bin/herdr" /nix/var/nix/profiles/default/bin/herdr /run/current-system/sw/bin/herdr; do"#;
+mise_data=${MISE_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/mise}
+case "$mise_data" in /*) ;; *) mise_data=;; esac
+set -- "$candidate" "$HOME/.local/bin/herdr" /opt/homebrew/bin/herdr /usr/local/bin/herdr "$linuxbrew" "$HOME/.nix-profile/bin/herdr" "/etc/profiles/per-user/$USER/bin/herdr" /nix/var/nix/profiles/default/bin/herdr /run/current-system/sw/bin/herdr
+if [ -n "$mise_data" ]; then
+    for tool in herdr github-herdrdev-herdr github-ogulcancelik-herdr; do
+        set -- "$@" "$mise_data/installs/$tool/latest/bin/herdr" "$mise_data/installs/$tool/latest/herdr"
+    done
+fi
+for path do
+    case "$path" in */mise/shims/herdr|"$mise_data/shims/herdr") continue;; esac"#;
 
 const PROBE_CANDIDATE: &str = "herdr-probe:candidate";
 const PROBE_DONE: &str = "herdr-probe:done";
@@ -177,9 +190,15 @@ fn lines(output: &[u8]) -> impl Iterator<Item = &[u8]> {
 
 /// Blocks for at most `PROBE_TIMEOUT`: call it from a background thread.
 pub fn probe_host(target: &str, session: &str) -> Result<HostProbe> {
+    probe_host_with(target, session, HostKeys::of(target))
+}
+
+/// [`probe_host`] checking host keys as `keys` says, for a host whose choice
+/// is not saved yet.
+pub fn probe_host_with(target: &str, session: &str, keys: HostKeys) -> Result<HostProbe> {
     validate_target(target)?;
     session_socket(Path::new(""), session)?;
-    let mut command = command(target, &probe_command(session));
+    let mut command = command_with(target, &probe_command(session), keys);
     // Stderr is read only to classify an `ssh` failure; its text is dropped.
     command.stderr(Stdio::piped());
     tracing::info!(category = "probe", "probing host");
@@ -200,7 +219,7 @@ pub fn probe_host(target: &str, session: &str) -> Result<HostProbe> {
     let probe = classify_probe(&output);
     if probe.is_none() && powershell::rejected_posix(status.code()) {
         tracing::info!(category = "probe", %status, "host cannot run /bin/sh; probing PowerShell");
-        return probe_powershell_host(target, session);
+        return probe_powershell_host(target, session, keys);
     }
     tracing::info!(
         category = "probe",
@@ -216,8 +235,8 @@ pub fn probe_host(target: &str, session: &str) -> Result<HostProbe> {
 }
 
 /// [`probe_host`] for a host whose shell is `cmd.exe` or PowerShell.
-fn probe_powershell_host(target: &str, session: &str) -> Result<HostProbe> {
-    let mut command = command(target, &powershell::probe_command(session));
+fn probe_powershell_host(target: &str, session: &str, keys: HostKeys) -> Result<HostProbe> {
+    let mut command = command_with(target, &powershell::probe_command(session), keys);
     command.stderr(Stdio::piped());
     let (status, output, stderr) = run_with_stderr(&mut command, PROBE_TIMEOUT, || false)?;
     if status.code() == Some(255) {
@@ -436,16 +455,22 @@ fn run_with_stderr(
 /// as a host without Herdr. There the policy sets `ControlPath=none`, so each
 /// connection authenticates on its own.
 pub(super) fn command(target: &str, remote_command: &str) -> Command {
-    let mut command = noninteractive();
+    command_with(target, remote_command, HostKeys::of(target))
+}
+
+/// [`command`] checking host keys as `keys` says rather than as the user's
+/// saved choice for `target` does.
+fn command_with(target: &str, remote_command: &str, keys: HostKeys) -> Command {
+    let mut command = noninteractive(keys);
     command.args(["-o", "ClearAllForwardings=yes", "--", target]);
     command.arg(remote_command);
     command
 }
 
 /// `ssh` with the bridge's connection policy and nothing to connect yet.
-fn noninteractive() -> Command {
+fn noninteractive(keys: HostKeys) -> Command {
     let mut command = crate::environment::command("ssh");
-    command.args(POLICY);
+    command.args(keys.options()).args(POLICY);
     command
 }
 
@@ -508,7 +533,7 @@ pub fn forward_command(
         Some(std::net::IpAddr::V4(address)) => address.to_string(),
         Some(std::net::IpAddr::V6(address)) => format!("[{address}]"),
     };
-    let mut command = noninteractive();
+    let mut command = noninteractive(HostKeys::of(target));
     command.args([
         "-N",
         "-o",

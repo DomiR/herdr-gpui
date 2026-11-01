@@ -9,6 +9,8 @@ pub enum Error {
     CertificatePath { which: &'static str },
     #[error(transparent)]
     Control(#[from] crate::control::Error),
+    #[error(transparent)]
+    Enroll(#[from] super::enroll::Error),
     #[error("remote.device_idle_days must be between 0 (never) and 365")]
     IdleDays,
     #[error("Could not {operation} {}", path.display())]
@@ -20,6 +22,10 @@ pub enum Error {
     },
     #[error("Herdr UI has no state directory for remote control")]
     NoStateDir,
+    #[error("The selected pairing address is not served by this computer")]
+    PairingAddress,
+    #[error("The daemon supplied an invalid pairing URL")]
+    PairingUrl(#[source] url::ParseError),
     #[error("{} cannot go in a service definition", path.display())]
     PathText { path: PathBuf },
     #[error("remote.port must be between 1 and 65535")]

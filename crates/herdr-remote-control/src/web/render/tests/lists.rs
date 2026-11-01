@@ -7,6 +7,7 @@ fn lists_html(summaries: HashMap<String, Summary>, board_view: bool) -> String {
         workspaces: vec![workspace(vec![row("p1"), row("p2")])],
     };
     let lists = Lists {
+        pull_requests: None,
         computer: "MacBook Pro",
         layout: &layout,
         summaries: &summaries,
@@ -66,6 +67,7 @@ fn a_title_from_daemon_data_is_escaped() {
     };
     let summaries = HashMap::new();
     let html = home(&Lists {
+        pull_requests: None,
         computer: "c",
         layout: &layout,
         summaries: &summaries,
@@ -80,7 +82,12 @@ fn a_title_from_daemon_data_is_escaped() {
 fn rows_show_the_daemons_status_dot_and_no_path() {
     let mut terminal = crate::hub::layout_terminal("t2", "zsh");
     terminal.cwd = Some("/srv/code/app/src".into());
-    terminal.agent = Some((Some("codex".into()), AgentStatus::Blocked));
+    terminal.agent = Some(crate::hub::TerminalAgent {
+        name: Some("codex".into()),
+        status: AgentStatus::Blocked,
+        pane: "t2".into(),
+        title: None,
+    });
     let mut shell = crate::hub::layout_terminal("t3", "bash");
     shell.cwd = Some("/srv/code/app".into());
     let mut workspace = workspace(vec![row("p1")]);
@@ -92,6 +99,7 @@ fn rows_show_the_daemons_status_dot_and_no_path() {
     };
     let summaries = HashMap::new();
     let lists = Lists {
+        pull_requests: None,
         computer: "MacBook Pro",
         layout: &layout,
         summaries: &summaries,

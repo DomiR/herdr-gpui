@@ -102,6 +102,18 @@ running another terminal emulator or wrapping the TUI.
       <sub><b>Light or dark, or both.</b> Any theme, or a light and dark pair that follows the system appearance; status colours keep their contrast on either.</sub>
     </td>
   </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/theme-favorites.png" alt="Color Scheme picker with three starred themes pinned above a rule, and an outline star on the selected row whose light theme is previewed">
+      <br>
+      <sub><b>Star your favorites.</b> Pin the themes you keep coming back to at the top of the Color Scheme picker; one click stars or unstars a theme, and the stars are saved with your settings.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/theme-search.png" alt="Color Scheme picker filtered by a search, with the starred Catppuccin Mocha first among the results">
+      <br>
+      <sub><b>Hundreds of themes, one search away.</b> Built-ins and Ghostty themes in one list: arrow or hover through them to preview each live, and your starred themes lead every search.</sub>
+    </td>
+  </tr>
 </table>
 
 Also included: saved SSH hosts with [file copies](crates/herdr-gpui/README.md#ssh-file-copies),
@@ -304,7 +316,9 @@ and `libasound2-dev` for Rodio/CPAL native audio. CI and release builds use the
 same script. Linux binaries require the system ALSA shared library (`libasound2t64`
 on Ubuntu 24.04), a configured default audio device, and Vulkan for rendering.
 Audio normally routes through the desktop's ALSA plugin configuration; no CLI
-audio player is required. Custom notification sounds are MP3 only. See
+audio player is required. Terminal clipboard paste needs `wl-paste` (the
+`wl-clipboard` package) on Wayland or `xclip` on X11; the distribution packages
+and Nix build include these dependencies. Custom notification sounds are MP3 only. See
 [notification sounds](crates/herdr-gpui/README.md#notification-sounds).
 
 ### Windows
@@ -404,6 +418,13 @@ The daemon owns the terminals and all session state. The GUI attaches to the
 binary **client** socket, renders the surfaces it is sent, and sends semantic
 input back. Closing or detaching the GUI leaves the daemon and its terminals
 running.
+
+### macOS Git permission errors
+
+If Git in a Herdr UI terminal reports `Operation not permitted`, restarting the
+GUI alone does not restart an already-running daemon. For a recovery option and
+its risks, see the [macOS Git permission troubleshooting
+section](crates/herdr-gpui/README.md#macos-git-permission-troubleshooting).
 
 [Browser tabs](crates/herdr-gpui/README.md#browser-tabs) are the exception:
 Herdr has no browser panes, so web pages shown beside a workspace's terminals

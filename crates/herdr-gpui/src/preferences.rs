@@ -127,10 +127,14 @@ pub struct Chrome {
     pub agent_sort: Option<AgentSort>,
     /// The notes panel's width, once dragged; `None` is its default.
     pub notes_width: Option<f32>,
+    /// The mod panel's width, once dragged.
+    pub mod_panel_width: Option<f32>,
     /// The review's file list's width, once dragged.
     pub review_files_width: Option<f32>,
     /// The device IDs in the order the user dragged them into.
     pub device_order: Vec<String>,
+    /// The Linear section's list or board, once picked.
+    pub issue_layout: Option<crate::orchestrator::IssueLayout>,
 }
 
 pub struct Preferences {
@@ -292,8 +296,13 @@ fn read_chrome(path: &Path) -> crate::Result<Chrome> {
         sidebar_split,
         agent_sort,
         notes_width: panel_width("notes_width_px"),
+        mod_panel_width: panel_width("mod_panel_width_px"),
         review_files_width: panel_width("review_files_width_px"),
         device_order: device_order(object.get("device_order")),
+        issue_layout: object
+            .get("issue_layout")
+            .and_then(serde_json::Value::as_str)
+            .and_then(crate::orchestrator::IssueLayout::parse),
     })
 }
 
@@ -373,10 +382,14 @@ fn write_chrome(path: &Path, chrome: Chrome) -> crate::Result<()> {
                 }),
                 "agent_sort_manual": chrome.agent_sort.map(|sort| sort.to_string()),
                 "notes_width_px": chrome.notes_width.filter(|width| width.is_finite() && *width > 0.0),
+                "mod_panel_width_px": chrome
+                    .mod_panel_width
+                    .filter(|width| width.is_finite() && *width > 0.0),
                 "review_files_width_px": chrome
                     .review_files_width
                     .filter(|width| width.is_finite() && *width > 0.0),
                 "device_order": chrome.device_order,
+                "issue_layout": chrome.issue_layout.map(crate::orchestrator::IssueLayout::name),
             }),
         )?;
         file.write_all(b"\n")?;

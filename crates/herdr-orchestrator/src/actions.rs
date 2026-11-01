@@ -48,6 +48,8 @@ pub struct DispatchRequest {
     /// Passed to the agent as `--model`, when chosen.
     pub model: Option<String>,
     pub prompt: String,
+    /// Human issue/PR context, independent of the agent's pasted prompt envelope.
+    pub title: String,
     pub branch: String,
     /// The Herdr workspace of the repository, whose worktree list gets the
     /// new checkout.
@@ -295,6 +297,33 @@ pub fn agent_name() -> String {
     // A UUID's simple form is 32 hex digits, so the slice stays in range.
     let hex = uuid::Uuid::new_v4().simple().to_string();
     format!("{PREFIX}{}", &hex[..MAX_AGENT_NAME_LEN - PREFIX.len()])
+}
+
+/// Start `kind` as `name` in `pane`, the root pane of a worktree just
+/// created on `host`, as a dispatch does. While the new shell is still
+/// starting, a busy rejection is retried for a bounded time, and only while
+/// the pane still holds `terminal`, the one creation returned; without it,
+/// the first answer stands. Blocks, so callers run it on a worker.
+pub fn start_agent(
+    host: &Host,
+    kind: AgentKind,
+    name: &str,
+    pane: &str,
+    terminal: Option<&str>,
+    cancelled: &AtomicBool,
+) -> Result<()> {
+    let args = [
+        "agent",
+        "start",
+        name,
+        "--kind",
+        kind.name(),
+        "--pane",
+        pane,
+        "--timeout",
+        AGENT_START_TIMEOUT_MS,
+    ];
+    start::agent(host, &args, pane, terminal, cancelled)
 }
 
 /// Where the new worktree goes: the host, its target, the workspace whose
@@ -581,6 +610,28 @@ fn launch(
         created.root_pane.terminal_id.as_deref(),
         cancelled,
     )?;
+    let title = herdr_client::text::safe_text(&request.title, 80);
+    // Herdr's variadic labels treat `--` as text; keep a title from being
+    // parsed as an option without inserting a visible separator.
+    let title = if title.trim_start().starts_with('-') {
+        format!("Task {title}").chars().take(80).collect()
+    } else {
+        title
+    };
+    if !title.trim().is_empty() {
+        herdr(
+            host,
+            &["tab", "rename", &created.tab.tab_id, &title],
+            "Naming the agent tab",
+            cancelled,
+        )?;
+        herdr(
+            host,
+            &["pane", "rename", &herdr_session.pane_id, &title],
+            "Naming the agent pane",
+            cancelled,
+        )?;
+    }
     // The pane is the target: a name could match an agent started elsewhere.
     herdr(
         host,

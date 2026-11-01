@@ -19,6 +19,7 @@ use rustls::{
 use sha2::{Digest, Sha256};
 use std::{
     fs, io,
+    net::IpAddr,
     path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, SystemTime},
@@ -43,7 +44,7 @@ const LEAF_COMMON_NAME: &str = "Herdr Remote";
 pub(crate) struct Authority {
     ca_der: CertificateDer<'static>,
     ca_pem: String,
-    /// Where the issued leaf is kept; none for a CA only held in memory.
+    /// Where issued leaves are kept; none for a CA only held in memory.
     dir: Option<PathBuf>,
     fingerprint: String,
     issuer: Issuer<'static, KeyPair>,
@@ -131,6 +132,20 @@ impl Authority {
         })
     }
 
+    /// Signs `message` with the CA's key, as P-256 ECDSA over SHA-256 in
+    /// IEEE P1363 form (r || s); `None` for a CA whose key is not P-256.
+    /// The phone checks it against the certificate it pinned at pairing.
+    pub(crate) fn sign(&self, message: &[u8]) -> Option<[u8; 64]> {
+        use p256::{ecdsa::signature::Signer as _, pkcs8::DecodePrivateKey as _};
+        let key = self.issuer.key();
+        if key.algorithm() != &PKCS_ECDSA_P256_SHA256 {
+            return None;
+        }
+        let secret = p256::SecretKey::from_pkcs8_der(&key.serialize_der()).ok()?;
+        let signature: p256::ecdsa::Signature = p256::ecdsa::SigningKey::from(secret).sign(message);
+        Some(signature.to_bytes().into())
+    }
+
     /// SHA-256 of the CA certificate, as uppercase colon-separated hex: what
     /// the pairing QR carries and both screens show.
     pub(crate) fn fingerprint(&self) -> &str {
@@ -142,16 +157,27 @@ impl Authority {
         &self.ca_pem
     }
 
-    /// The CA certificate as DER.
-    #[cfg(test)]
+    /// The CA certificate as DER: what a presence challenge carries, for
+    /// the phone to check against the fingerprint it pinned.
     pub(crate) fn ca_der(&self) -> &[u8] {
         &self.ca_der
     }
 
-    /// The leaf this CA issued and saved before, if it is still there.
+    /// A leaf this CA issued and saved before; `None` selects the DNS/legacy file.
     /// Blocking.
-    pub(super) fn stored(&self) -> Option<Stored> {
-        stored::load(self.dir.as_deref()?, &self.ca_der)
+    pub(super) fn stored(&self, address: Option<IpAddr>) -> Option<Stored> {
+        stored::load(self.dir.as_deref()?, address, &self.ca_der)
+    }
+
+    /// Preserve an already-trusted legacy leaf for an IP it covers. The caller
+    /// validates its issuer, key, names and expiry before migrating it.
+    pub(super) fn migrate_leaf(&self, address: IpAddr) -> Result<()> {
+        let Some(dir) = &self.dir else {
+            return Ok(());
+        };
+        let path = stored::path(dir, None);
+        let pem = fs::read(&path).map_err(|source| Error::Read { path, source })?;
+        write_private(&stored::path(dir, Some(address)), &pem)
     }
 
     /// The iOS configuration profile that installs this CA.
@@ -163,6 +189,15 @@ impl Authority {
     /// [`LEAF_LIFETIME`], with a fresh P-256 key. Its chain is the leaf then
     /// this CA. A CA kept on disk saves it there too, for the next start.
     pub(crate) fn issue(&self, names: &Names, now: SystemTime) -> Result<Arc<CertifiedKey>> {
+        self.issue_for(names, now, None)
+    }
+
+    pub(super) fn issue_for(
+        &self,
+        names: &Names,
+        now: SystemTime,
+        address: Option<IpAddr>,
+    ) -> Result<Arc<CertifiedKey>> {
         let key = KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256).map_err(Error::Certificate)?;
         let mut params = CertificateParams::default();
         params.distinguished_name = DistinguishedName::new();
@@ -182,12 +217,10 @@ impl Authority {
         let leaf = params
             .signed_by(&key, &self.issuer)
             .map_err(Error::Certificate)?;
-        if let Some(dir) = &self.dir
-            && let Err(error) = stored::save(dir, &leaf.pem(), &key.serialize_pem())
-        {
-            // Only costs phones that skipped installing the CA a prompt
-            // after the next restart.
-            tracing::warn!(error = %error, "Could not save the server certificate");
+        if let Some(dir) = &self.dir {
+            // Never present a replacement that a restart cannot recover.
+            // A failed refresh leaves the resolver's current certificate intact.
+            stored::save(dir, address, &leaf.pem(), &key.serialize_pem())?;
         }
         let key_der = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(key.serialize_der()));
         let signing_key = ring::default_provider()

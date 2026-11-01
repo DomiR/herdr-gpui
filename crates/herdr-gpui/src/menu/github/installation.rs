@@ -3,6 +3,7 @@
 //! names each owner with a link to approve it, the title bar's avatar carries
 //! a dot until nothing is left, and a toast says so once per window.
 
+use crate::i18n::fl;
 use crate::{
     HerdrWindow,
     github::{Access, Installation, Profile},
@@ -15,7 +16,7 @@ const LISTED: usize = 5;
 /// What the GitHub page and the toast say about one account.
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct Attention {
-    pub(super) title: &'static str,
+    pub(super) title: String,
     pub(super) body: String,
     /// Each owner's approval page, or the App's install page.
     pub(super) links: Vec<(String, String)>,
@@ -28,31 +29,20 @@ pub(super) fn attention(login: &str, access: &Access, install: Option<&str>) -> 
     match access {
         Access::Unknown | Access::Ready => None,
         Access::NotInstalled => Some(Attention {
-            title: "Install the GitHub App",
+            title: fl!("github-menu-install-title"),
             body: match install {
-                Some(_) => format!(
-                    "Herdr's GitHub App is not installed for @{login} or any organization, so only public repositories load. Install it and choose the repositories it may read."
-                ),
-                None => format!(
-                    "The GitHub App set as oauth_client_id is not installed for @{login} or any organization, so only public repositories load. Install it from that App's GitHub page."
-                ),
+                Some(_) => fl!("github-menu-install-body", login = login),
+                None => fl!("github-menu-install-custom-body", login = login),
             },
             links: install
-                .map(|url| ("Install on GitHub".to_owned(), url.to_owned()))
+                .map(|url| (fl!("github-menu-install-link"), url.to_owned()))
                 .into_iter()
                 .collect(),
             unlisted: 0,
         }),
         Access::Pending(pending) => Some(Attention {
-            title: "Approve GitHub App permissions",
-            body: format!(
-                "Herdr's GitHub App asks for new permissions. Until {} approved, private repositories there cannot show checks, open pull requests, comment, or merge.",
-                if pending.len() == 1 {
-                    "it is"
-                } else {
-                    "they are"
-                }
-            ),
+            title: fl!("github-menu-approve-title"),
+            body: fl!("github-menu-approve-body", count = pending.len()),
             links: pending
                 .iter()
                 .take(LISTED)
@@ -67,9 +57,15 @@ pub(super) fn attention(login: &str, access: &Access, install: Option<&str>) -> 
 /// for an organization, whose settings page GitHub shows owners only.
 fn owner_label(installation: &Installation) -> String {
     if !installation.organization {
-        format!("Approve for @{}", installation.owner)
+        fl!(
+            "github-menu-approve-own",
+            owner = installation.owner.as_str()
+        )
     } else {
-        format!("Approve for {} (needs an owner of it)", installation.owner)
+        fl!(
+            "github-menu-approve-organization",
+            owner = installation.owner.as_str()
+        )
     }
 }
 
@@ -105,13 +101,19 @@ impl HerdrWindow {
     }
 
     /// Open the first link the page offers, for its keyboard action.
-    pub(super) fn open_github_attention(&self, cx: &mut App) {
+    pub(super) fn open_github_attention(&mut self, cx: &mut App) {
         if let Some((_, url)) = self
             .github_attention()
             .and_then(|attention| attention.links.into_iter().next())
         {
-            cx.open_url(&url);
+            self.open_github_approval(&url, cx);
         }
+    }
+
+    fn open_github_approval(&mut self, url: &str, cx: &mut App) {
+        self.github_auth_mut()
+            .recheck_access(std::time::Instant::now());
+        cx.open_url(url);
     }
 
     /// Toast an account the first time this window finds it waiting, so a
@@ -132,17 +134,14 @@ impl HerdrWindow {
                 continue;
             }
             self.local_transfer_notice(
-                attention.title,
-                format!(
-                    "{} Open the GitHub page from your avatar in the title bar.",
-                    attention.body
-                ),
+                &attention.title,
+                fl!("github-menu-attention-toast", body = attention.body),
                 cx,
             );
         }
     }
 
-    pub(super) fn render_github_attention(&self) -> Option<Div> {
+    pub(super) fn render_github_attention(&self, cx: &mut Context<Self>) -> Option<Div> {
         let attention = self.github_attention()?;
         let theme = &self.theme;
         let warning = rgb(theme.ink(theme.palette[1]));
@@ -180,10 +179,10 @@ impl HerdrWindow {
                             .cursor_pointer()
                             .hover(|style| style.border_color(super::super::accent(theme)))
                             .child(crate::sidebar::label_text(&label))
-                            .on_click(move |_, _, cx| {
+                            .on_click(cx.listener(move |this, _, _, cx| {
                                 cx.stop_propagation();
-                                cx.open_url(&url);
-                            }),
+                                this.open_github_approval(&url, cx);
+                            })),
                     ),
                 );
             }
@@ -192,11 +191,15 @@ impl HerdrWindow {
             note = note.child(
                 div()
                     .text_color(rgb(theme.muted))
-                    .child(format!("And {} more on GitHub.", attention.unlisted)),
+                    .child(fl!("github-menu-more-owners", count = attention.unlisted)),
             );
         }
-        Some(note.child(div().text_color(rgb(theme.muted)).child(
-            "Herdr checks again shortly after you open this page, and the dot on your avatar clears.",
-        )))
+        Some(
+            note.child(
+                div()
+                    .text_color(rgb(theme.muted))
+                    .child(fl!("github-menu-recheck-note")),
+            ),
+        )
     }
 }

@@ -143,7 +143,11 @@ impl Worker {
                     error = %error,
                     "Orchestrator source sync failed"
                 );
-                SyncState::Failed(Arc::new(error))
+                match &error {
+                    // Waits as a failure does, but offers the sign-in.
+                    Error::Gitlab(source) if source.needs_sign_in() => SyncState::SignIn,
+                    _ => SyncState::Failed(Arc::new(error)),
+                }
             }
         };
         self.set_state(&key, state);
@@ -280,37 +284,11 @@ impl Worker {
                 })
             }
             Provider::Gitlab => {
-                let scheme = self
-                    .snapshot
-                    .repo
-                    .as_ref()
-                    .and_then(|info| info.remote.as_ref())
-                    .filter(|remote| remote.source == *key)
-                    .map_or(gitlab::Scheme::Https, |remote| {
-                        gitlab::Scheme::of_remote(&remote.url)
-                    });
-                let api = gitlab::Api::resolve(&key.host, scheme);
-                if self
-                    .gitlab_token
-                    .as_ref()
-                    .is_none_or(|(instance, _)| *instance != api.instance)
-                {
-                    let token = gitlab::token(&api.instance);
-                    self.gitlab_token = Some((api.instance.clone(), token));
-                }
-                let token = self
-                    .gitlab_token
-                    .as_ref()
-                    .and_then(|(_, token)| token.as_ref());
                 let previous = store.checkpoint(key)?;
-                let cancelled = &self.cancelled;
-                let listing = gitlab::sync(
-                    (key, &api),
-                    token,
-                    previous.as_ref(),
-                    &|| cancelled.load(Ordering::Relaxed),
-                    &mut self.cooldown,
-                )?;
+                let listing = self.gitlab_listing(key, previous.as_ref())?;
+                let Some(store) = self.store.as_mut() else {
+                    return Ok(SyncState::Unsupported);
+                };
                 let count = listing.items.len();
                 if !listing.complete || !writable {
                     self.uncached.insert(key.clone(), listing.items);

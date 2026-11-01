@@ -8,9 +8,11 @@
 
 mod channel;
 mod error;
+mod progress;
 pub use channel::UpdateChannel;
 pub use error::{Error, Result};
 pub use error::{quota_exhausted, rate_limit_reset, retry_hint};
+pub use progress::Progress;
 #[cfg(unix)]
 mod brew;
 #[cfg(unix)]
@@ -29,7 +31,7 @@ mod windows;
 #[cfg(windows)]
 use windows as install;
 
-pub use release::{RELEASES_PAGE, release_page};
+pub use release::{HOST_TARGETS, RELEASES_PAGE, download_host_build, release_page};
 
 use std::{
     ffi::OsString,
@@ -59,9 +61,10 @@ pub const APP_VERSION: &str = match option_env!("HERDR_RELEASE_VERSION") {
 const CHECK_INTERVAL: Duration = Duration::from_secs(60 * 60);
 
 /// The sample release body the QA preview shows, so the notes section can be
-/// reviewed without waiting for a real release. Shared with the layout test so
-/// the two cannot drift.
-pub const PREVIEW_NOTES: &str = "### Added\n- Release notes are shown before you update.\n\n### Fixed\n- A sample fix, so the preview shows a realistic body.";
+/// reviewed without waiting for a real release. Grouped the way several skipped
+/// releases are, so the preview exercises the multi-release form too. Shared
+/// with the layout test so the two cannot drift.
+pub const PREVIEW_NOTES: &str = "## 20260920.2\n\n### Added\n- Release notes are shown before you update.\n\n## 20260920.1\n\n### Fixed\n- A sample fix, so the preview shows several releases grouped.";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum State {
@@ -89,7 +92,7 @@ pub enum State {
         notes: String,
     },
     Upgrading {
-        detail: String,
+        detail: Progress,
     },
     Restart {
         version: String,
@@ -386,7 +389,7 @@ impl Updater {
             self.send(
                 Operation::Install,
                 State::Upgrading {
-                    detail: "Preparing installation...".into(),
+                    detail: Progress::Preparing,
                 },
             );
         }
@@ -397,7 +400,7 @@ impl Updater {
             self.send(
                 Operation::Upgrade,
                 State::Upgrading {
-                    detail: "Starting Homebrew...".into(),
+                    detail: Progress::Starting,
                 },
             );
         }
@@ -684,14 +687,7 @@ fn worker(
                     &offer.manifest.version,
                     &cancelled,
                     |detail| {
-                        publish(
-                            &mailbox,
-                            generation,
-                            State::Upgrading {
-                                detail: format!("Homebrew: {detail}"),
-                            },
-                            None,
-                        );
+                        publish(&mailbox, generation, State::Upgrading { detail }, None);
                     },
                 )
                 .map(|version| {

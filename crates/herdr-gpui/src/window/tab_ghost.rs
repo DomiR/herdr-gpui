@@ -4,8 +4,10 @@
 //! the pointer (`tab_float`). Elsewhere a window cannot be moved, so the
 //! card waits at the nearest edge of this one; either way it says the drop
 //! opens a new window, and the cursor turns to the copy cursor.
+// i18n: migrated
 
 use super::HerdrWindow;
+use crate::i18n::fl;
 use crate::{
     browser::{GroupId, Pick},
     config::FontConfig,
@@ -71,7 +73,7 @@ impl Card {
                         .debug_selector(|| "tab-ghost-new-window".into())
                         .text_size(px(self.hint_size))
                         .opacity(0.8)
-                        .child("Release to open in a new window"),
+                        .child(fl!("tab-strip-release-new-window")),
                 )
             })
     }
@@ -104,14 +106,16 @@ impl HerdrWindow {
     /// The card for `ghost`, labelled as its strip labels the tab.
     pub(super) fn ghost_card(&self, ghost: &Ghost, cx: &App) -> Option<Card> {
         let label = match &ghost.pick {
-            Pick::Herdr(id) => self
-                .live
-                .snapshot
-                .as_ref()?
-                .tabs
-                .iter()
-                .find(|tab| tab.tab_id == *id)
-                .map(|tab| SharedString::from(tab.label.clone())),
+            Pick::Herdr(id) => {
+                let snapshot = self.live.snapshot.as_ref()?;
+                snapshot
+                    .tabs
+                    .iter()
+                    .find(|tab| tab.tab_id == *id)
+                    .map(|tab| {
+                        SharedString::from(herdr_client::text::tab_label(snapshot, tab).to_owned())
+                    })
+            }
             Pick::Page(_) => self
                 .browser_tab_labels(cx)
                 .into_iter()

@@ -76,6 +76,10 @@ pub struct Pairing {
     epoch: u64,
     in_flight: bool,
     last_poll: Option<Instant>,
+    preferred_address: Option<String>,
+    /// The hosts ticked when the user allowed the phone, for it to be
+    /// paired with too.
+    hosts: Vec<control::hosts::HostId>,
 }
 
 impl Pairing {
@@ -90,11 +94,33 @@ impl Pairing {
             epoch: 0,
             in_flight: false,
             last_poll: None,
+            preferred_address: None,
+            hosts: Vec::new(),
         }
     }
 
     pub fn phase(&self) -> &Phase {
         &self.phase
+    }
+
+    /// Select an address before the first offer arrives, for a CLI-opened dialog.
+    pub fn with_address(mut self, address: Option<String>) -> Self {
+        self.preferred_address = address;
+        self
+    }
+
+    /// Changes only the QR's origin. The token, deadline and any in-flight
+    /// claim poll stay valid, and token rotation keeps the user's choice.
+    pub fn select_address(&mut self, address: &str) -> super::Result<()> {
+        let Phase::Showing { offer, qr, .. } = &mut self.phase else {
+            return Err(super::Error::PairingAddress);
+        };
+        let url = pairing_url(offer, address)?;
+        let next_qr = Qr::encode(&url)?;
+        offer.url = url;
+        *qr = Arc::new(next_qr);
+        self.preferred_address = Some(address.to_owned());
+        Ok(())
     }
 
     /// The pairing the daemon holds open for this dialog, if any.
@@ -133,6 +159,11 @@ impl Pairing {
                 allow: *allow,
                 // The daemon refuses an approval for any claim but this one.
                 code: code.clone(),
+                hosts: if *allow {
+                    self.hosts.clone()
+                } else {
+                    Vec::new()
+                },
             },
             Phase::Showing { offer, .. } | Phase::Claimed { offer, .. } if poll_due => {
                 Request::Pairing {
@@ -208,7 +239,18 @@ impl Pairing {
         }
     }
 
-    fn show(&mut self, offer: Offer, now: Instant) {
+    fn show(&mut self, mut offer: Offer, now: Instant) {
+        if let Some(address) = &self.preferred_address {
+            match pairing_url(&offer, address) {
+                Ok(url) => offer.url = url,
+                Err(error) => {
+                    self.phase = Phase::Failed {
+                        message: error.to_string(),
+                    };
+                    return;
+                }
+            }
+        }
         let lifetime = Duration::from_millis(offer.expires_in_ms);
         self.last_poll = Some(now);
         self.phase = match Qr::encode(&offer.url) {
@@ -283,10 +325,17 @@ impl Pairing {
 
     /// The user's Allow or Deny for the claimed device.
     pub fn answer(&mut self, allow: bool) {
+        self.answer_with_hosts(allow, Vec::new());
+    }
+
+    /// The user's Allow or Deny, with the hosts ticked for the phone to be
+    /// paired with too.
+    pub fn answer_with_hosts(&mut self, allow: bool, hosts: Vec<control::hosts::HostId>) {
         if let Phase::Claimed { answer, .. } = &mut self.phase
             && answer.is_none()
         {
             *answer = Some(Answer { allow, sent: false });
+            self.hosts = hosts;
             self.epoch += 1;
             self.in_flight = false;
         }
@@ -306,6 +355,9 @@ impl Pairing {
     pub fn restart(&mut self) {
         if matches!(self.phase, Phase::Off) {
             return;
+        }
+        if matches!(self.phase, Phase::Failed { .. }) {
+            self.preferred_address = None;
         }
         self.phase = Phase::Requesting;
         self.epoch += 1;
@@ -329,6 +381,21 @@ impl Pairing {
         };
         Some((left, share))
     }
+}
+
+fn pairing_url(offer: &Offer, address: &str) -> super::Result<String> {
+    if !offer.addresses.iter().any(|candidate| candidate == address) {
+        return Err(super::Error::PairingAddress);
+    }
+    let original = url::Url::parse(&offer.url).map_err(super::Error::PairingUrl)?;
+    let mut selected = url::Url::parse(address).map_err(super::Error::PairingUrl)?;
+    if selected.scheme() != "https" || selected.origin().ascii_serialization() != address {
+        return Err(super::Error::PairingAddress);
+    }
+    selected.set_path(original.path());
+    selected.set_query(original.query());
+    selected.set_fragment(original.fragment());
+    Ok(selected.into())
 }
 
 /// The matching code as people read it: `428913` as `428 913`.
