@@ -1,7 +1,7 @@
 //! `tab`, `code`, `devices`, `orchestrator`, `review`, and the page commands
 //! of `browser`: the app's own tabs, which the `browser::Store` keeps for
 //! every window.
-mod arrive;
+pub(super) mod arrive;
 mod page;
 
 use super::{Watches, main_windows, not_found, socket, valid_caller};
@@ -61,6 +61,7 @@ fn kind(tab: &Tab) -> TabKind {
         Some(Location::Review { .. }) => TabKind::Review,
         Some(Location::Orchestrator { .. }) => TabKind::Orchestrator,
         Some(Location::Code { .. }) => TabKind::Code,
+        Some(Location::Doc { .. }) => TabKind::Doc,
         Some(Location::Devices) => TabKind::Devices,
         Some(Location::CoreTerminal { .. }) => TabKind::CoreTerminal,
     }
@@ -81,6 +82,7 @@ fn location(tab: &Tab) -> Option<String> {
             .or_else(|| checkout.repo_key.clone())?,
         Location::Orchestrator { repo } => repo.checkout.clone(),
         Location::Code { file } => file.path.clone(),
+        Location::Doc { file } => file.path.clone(),
         // Every pane's terminal, for `herdr-core attach` and the like.
         Location::CoreTerminal { panes, .. } => panes
             .terminals()

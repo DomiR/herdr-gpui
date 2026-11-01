@@ -6,6 +6,7 @@ mod app;
 mod batch;
 mod browser;
 mod chat;
+mod doc;
 mod exec;
 mod hosts;
 mod mods;
@@ -21,6 +22,7 @@ pub use app::{AppCommand, UiCommand, WindowCommand};
 pub use batch::BatchCommand;
 pub use browser::{BrowserCommand, Placement};
 pub use chat::ChatCommand;
+pub use doc::{Change, DocCommand, Text};
 pub use exec::ExecCommand;
 pub use hosts::{
     AutomationCommand, CloudCommand, HostCommand, PortsCommand, PrCommand, SecurityCommand,
@@ -97,6 +99,7 @@ pub enum ControlCommand {
     Remote(RemoteCommand),
     /// The mods the window runs; `check` runs here.
     Mod(ModCommand),
+    Doc(DocCommand),
     Search {
         files: bool,
         query: String,
@@ -220,6 +223,10 @@ pub const FAMILIES: &[(&str, &str)] = &[
     (
         "mod",
         "Mods: list, reload, read logs, or check a mod folder",
+    ),
+    (
+        "doc",
+        "Markdown documents: open, read, and change them by version, with todos",
     ),
     ("search", "Find a symbol or a file in the focused checkout"),
     ("config", "Herdr UI settings: path, get, set, reload, check"),
@@ -376,6 +383,7 @@ fn command(family: &'static str, args: &mut Args) -> Result<ControlCommand, CliE
         "automation" => ControlCommand::Automation(hosts::automation(args)?),
         "remote" => ControlCommand::Remote(remote::remote(args)?),
         "mod" => ControlCommand::Mod(mods::command(args)?),
+        "doc" => ControlCommand::Doc(doc::command(args)?),
         "search" => {
             let files = match args.verb().as_ref().and_then(|verb| verb.to_str()) {
                 Some("symbol" | "symbols") => false,

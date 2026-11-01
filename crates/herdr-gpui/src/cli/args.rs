@@ -44,6 +44,12 @@ impl Args {
         std::mem::take(&mut self.rest).into_iter()
     }
 
+    /// Puts arguments taken with [`Self::take_all`] back, for a parser that
+    /// looked through them itself.
+    pub(crate) fn put_back(&mut self, args: impl IntoIterator<Item = OsString>) {
+        self.rest = args.into_iter().collect();
+    }
+
     /// The next word, which names a subcommand.
     pub(crate) fn verb(&mut self) -> Option<OsString> {
         self.rest.pop_front()

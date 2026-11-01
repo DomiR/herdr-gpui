@@ -6,6 +6,7 @@ mod app;
 mod browser;
 mod chat;
 mod cloud;
+mod doc;
 mod events;
 mod hosts;
 mod links;
@@ -249,6 +250,7 @@ fn named_window(request: &Request) -> Option<u64> {
         Request::Cloud(call) => call.caller.window,
         Request::Remote(call) => call.caller.window,
         Request::Mod(call) => call.caller.window,
+        Request::Doc(call) => call.caller.window,
     }
 }
 
@@ -262,6 +264,7 @@ fn serve(incoming: socket::Incoming, state: &mut State, cx: &mut App) {
             | Request::Events(_)
             | Request::Cloud(_)
             | Request::Remote(_)
+            | Request::Doc(_)
     );
     if let Some(id) = named_window(&incoming.request)
         && !main_windows(cx)
@@ -298,6 +301,7 @@ fn serve(incoming: socket::Incoming, state: &mut State, cx: &mut App) {
         Request::Cloud(call) => cloud::serve(call, incoming, &mut state.watches, cx),
         Request::Remote(call) => remote::serve(call, incoming, &mut state.watches, cx),
         Request::Mod(call) => incoming.respond(mods::serve(call, cx)),
+        Request::Doc(call) => doc::serve(call, incoming, &mut state.watches, cx),
     }
 }
 

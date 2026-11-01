@@ -75,6 +75,10 @@ pub(crate) enum Location {
     },
     /// Every device this window connects to, drawn by the app, never a page.
     Devices,
+    /// A Markdown document, edited in place by the app, never a page.
+    Doc {
+        file: crate::doc_view::DocFile,
+    },
     /// herdr-core (Herdr 2) terminals, emulated and drawn by the app, split
     /// into panes. Tabs saved before splits named one `terminal`.
     CoreTerminal {
@@ -231,6 +235,7 @@ impl Location {
             // Never loaded: a review is drawn by the app.
             Self::Review { .. }
             | Self::Code { .. }
+            | Self::Doc { .. }
             | Self::Orchestrator { .. }
             | Self::Devices
             | Self::CoreTerminal { .. } => "about:blank".to_owned(),
@@ -243,6 +248,7 @@ impl Location {
             self,
             Self::Review { .. }
                 | Self::Code { .. }
+                | Self::Doc { .. }
                 | Self::Orchestrator { .. }
                 | Self::Devices
                 | Self::CoreTerminal { .. }
@@ -257,6 +263,7 @@ impl Location {
             // i18n: data
             Self::Review { checkout } => format!("Review of {}", checkout.branch),
             Self::Code { file } => file.path.clone(),
+            Self::Doc { file } => file.path.clone(),
             // i18n: data
             Self::Orchestrator { repo } => format!("Orchestrator of {}", repo.name()),
             Self::Devices => "Devices overview".to_owned(), // i18n: data
@@ -277,6 +284,7 @@ impl Location {
             Self::Local { file } => file.entry.rsplit('/').next().unwrap_or_default().to_owned(),
             Self::Review { checkout } => format!("Review \u{00b7} {}", checkout.branch), // i18n: data
             Self::Code { file } => file.name().to_owned(),
+            Self::Doc { file } => file.name().to_owned(),
             // i18n: data
             Self::Orchestrator { repo } => format!("Orchestrator \u{00b7} {}", repo.name()),
             Self::Devices => "Devices".to_owned(), // i18n: data
@@ -296,7 +304,7 @@ impl Location {
             }
             Self::Devices => Some(fl!("browser-tab-devices")),
             Self::CoreTerminal { .. } => Some(fl!("browser-tab-terminal")),
-            Self::Web { .. } | Self::Local { .. } | Self::Code { .. } => None,
+            Self::Web { .. } | Self::Local { .. } | Self::Code { .. } | Self::Doc { .. } => None,
         }
     }
 
