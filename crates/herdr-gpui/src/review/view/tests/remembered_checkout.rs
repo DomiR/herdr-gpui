@@ -91,7 +91,7 @@ fn listed(
             .iter()
             .map(|file| file.path.clone())
             .collect()),
-        State::Failed(error) => Err(error.clone()),
+        State::Failed(error) => Err(error.to_string()),
         State::Loading => panic!("the review is still loading"),
     })
 }

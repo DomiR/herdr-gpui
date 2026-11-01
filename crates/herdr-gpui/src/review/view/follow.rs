@@ -98,7 +98,7 @@ fn branch_at(path: &str) -> Option<String> {
     crate::git::git(
         path,
         &["symbolic-ref", "--quiet", "--short", "HEAD"],
-        "read the checkout's branch",
+        "read the checkout's branch", // i18n: data
         deadline,
         &|| false,
     )
