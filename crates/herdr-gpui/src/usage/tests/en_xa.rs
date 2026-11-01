@@ -1,11 +1,15 @@
 //! The `en-XA` leak test for plan usage: the status bar's segments, the
 //! panel a segment opens (with a report and claude-swap's other accounts,
-//! OpenAI's daily spend, waiting on the Keychain, and asking to be set up),
-//! and the activity bar's Usage section.
+//! OpenAI's daily spend under a failed refresh, waiting on the Keychain,
+//! and asking to be set up, with the provider's error), and the activity
+//! bar's Usage section.
 use super::*;
 use crate::{
     config::status_bar::Detail,
-    i18n::leak_tests::{assert_translated, uncut, under_en_xa},
+    i18n::{
+        Localize,
+        leak_tests::{assert_translated, uncut, under_en_xa},
+    },
     sidebar::{
         ActivityPanel,
         layout_tests::{fixture_window, full_draw},
@@ -18,7 +22,10 @@ use herdr_usage::{
     details::{ClaudeAccount, ClaudeAccountStatus, OpenaiDaily},
     model::{Balance, Count, Section, Unit},
 };
-use std::time::{Duration, SystemTime};
+use std::{
+    sync::Arc,
+    time::{Duration, SystemTime},
+};
 
 /// Draws the whole window again: a view's own notify does not redraw a
 /// headless root.
@@ -36,6 +43,18 @@ fn fresh(seen: &mut Vec<String>, drawn: Vec<String>) -> Vec<String> {
     drawn
         .into_iter()
         .filter(|line| kept.contains(line))
+        .collect()
+}
+
+/// `drawn` without data cut short to fit, such as a long provider name in a
+/// narrow tab, whose whole GPUI may never shape.
+fn uncut_data(drawn: Vec<String>, data: &[String]) -> Vec<String> {
+    drawn
+        .into_iter()
+        .filter(|line| {
+            line.strip_suffix('…')
+                .is_none_or(|stem| !data.iter().any(|data| data.starts_with(stem)))
+        })
         .collect()
 }
 
@@ -97,11 +116,17 @@ fn full(provider: Provider) -> Report {
     ])
 }
 
+/// The providers that read with a report or an access prompt.
+const REPORTING: [&str; 4] = ["claude", "openai", "codex", "copilot"];
+
 /// A provider that reads a setting, so its panel shows how to set it up
-/// while it has no report.
+/// while it has no report. None of the others: the panel opens the first
+/// reading of a provider, which would then be another one's.
 fn configurable() -> Provider {
     registry::all()
-        .find(|provider| !provider.service().meta().settings.is_empty())
+        .find(|provider| {
+            !provider.service().meta().settings.is_empty() && !REPORTING.contains(&provider.id())
+        })
         .unwrap()
 }
 
@@ -124,8 +149,7 @@ fn others() -> Vec<ClaudeAccount> {
 }
 
 fn readings() -> Vec<Reading> {
-    let claude = provider("claude");
-    let openai = provider("openai");
+    let [claude, openai, codex, copilot] = REPORTING.map(provider);
     let daily = OpenaiDaily {
         days: vec![("Oct 28".into(), 1.5), ("Oct 29".into(), 3.25)],
     };
@@ -139,17 +163,18 @@ fn readings() -> Vec<Reading> {
         Reading {
             provider: openai,
             report: Some(full(openai).with_detail(daily)),
-            error: None,
+            // A failed refresh over an older report.
+            error: Some(Arc::new(herdr_usage::Error::Status(503))),
             access: None,
         },
         Reading {
-            provider: provider("codex"),
+            provider: codex,
             report: None,
             error: None,
             access: Some(Access::Needed),
         },
         Reading {
-            provider: provider("copilot"),
+            provider: copilot,
             report: None,
             error: None,
             access: Some(Access::Denied),
@@ -157,7 +182,7 @@ fn readings() -> Vec<Reading> {
         Reading {
             provider: configurable(),
             report: None,
-            error: None,
+            error: Some(Arc::new(herdr_usage::Error::NotSignedIn)),
             access: None,
         },
     ]
@@ -239,9 +264,21 @@ fn usage_shows_only_messages_and_what_services_report() {
                 })
             });
             draw(cx);
+            let drawn = recorder.take();
+            if provider == configurable() {
+                // Its own reading: no sign-in, and how to set one up.
+                let missing = herdr_usage::Error::NotSignedIn.localize();
+                assert!(
+                    drawn.iter().any(|text| text.contains(&missing)),
+                    "{drawn:?}"
+                );
+                let meta = provider.service().meta();
+                let key = format!("[usage.providers.{}] {}", meta.id, meta.settings[0].name);
+                assert!(drawn.iter().any(|text| text.contains(&key)), "{drawn:?}");
+            }
             assert_translated(
                 &format!("usage panel for {}", provider.id()),
-                &fresh(&mut seen, recorder.take()),
+                &uncut_data(fresh(&mut seen, drawn), &data),
                 &data,
             );
         }

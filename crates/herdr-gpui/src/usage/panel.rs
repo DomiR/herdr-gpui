@@ -4,7 +4,7 @@
 
 use super::{Access, KeychainGrants, Reading, model::Provider, service::Service, text, ui::Ui};
 use crate::{
-    i18n::{self, fl},
+    i18n::{self, Localize, fl},
     menu::Page,
     window::HerdrWindow,
 };
@@ -162,9 +162,10 @@ impl HerdrWindow {
         // A sign-in waiting on Keychain access is explained below instead.
         let errors = reading
             .filter(|r| r.access.is_none())
-            .and_then(|r| r.error.clone())
+            .and_then(|r| r.error.as_deref())
             .into_iter()
-            .chain(entry.and_then(|entry| entry.error.clone()));
+            .chain(entry.and_then(|entry| entry.error.as_deref()))
+            .map(Localize::localize);
         for error in errors {
             view = view.child(
                 div()
