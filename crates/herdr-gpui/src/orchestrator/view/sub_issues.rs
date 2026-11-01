@@ -5,6 +5,7 @@
 //! outside the current cycle, opens in Linear.
 
 use super::{Event, OrchestratorView, linear_parts};
+use crate::i18n::fl;
 use crate::{
     config::corners,
     orchestrator::{Item, ItemKey, Provider, SubItem},
@@ -29,16 +30,19 @@ impl OrchestratorView {
             .flex()
             .items_center()
             .gap_2()
-            .child(look.label("SUB-ISSUES"))
+            .child(look.label(fl!("orchestrator-linear-sub-issues")))
             .children(count.map(|count| look.muted(count)))
             .child(div().flex_1())
             .when(tracker.id.is_some(), |el| {
                 el.child(
-                    look.compact_button("orchestrator-add-sub-issue", "Add sub-issue")
-                        .debug_selector(|| "orchestrator-add-sub-issue".into())
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            this.open_linear_sub_issue(&parent, window, cx);
-                        })),
+                    look.compact_button(
+                        "orchestrator-add-sub-issue",
+                        fl!("orchestrator-linear-add-sub-issue"),
+                    )
+                    .debug_selector(|| "orchestrator-add-sub-issue".into())
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.open_linear_sub_issue(&parent, window, cx);
+                    })),
                 )
             });
         let rows = tracker
@@ -56,7 +60,7 @@ impl OrchestratorView {
                 .gap_1()
                 .child(header)
                 .when(tracker.children.is_empty(), |el| {
-                    el.child(look.muted("No sub-issues"))
+                    el.child(look.muted(fl!("orchestrator-linear-no-sub-issues")))
                 })
                 .children(rows)
                 .when_some(url.filter(|_| more), |el, url| {
@@ -65,7 +69,7 @@ impl OrchestratorView {
                             .id("orchestrator-sub-issues-more")
                             .cursor_pointer()
                             .text_color(rgb(theme.subtext()))
-                            .child("More in Linear")
+                            .child(fl!("orchestrator-linear-more-in-linear"))
                             .on_click(cx.listener(move |_, _, _, cx| {
                                 cx.emit(Event::OpenUrl(url.clone()));
                             })),

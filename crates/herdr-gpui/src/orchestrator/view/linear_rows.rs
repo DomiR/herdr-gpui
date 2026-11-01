@@ -15,6 +15,7 @@ use super::{
     rows::ItemRow,
     worktree::ROW_GROUP,
 };
+use crate::i18n::fl;
 use crate::{config::corners, orchestrator::Item};
 use gpui::{prelude::*, *};
 use std::collections::BTreeSet;
@@ -69,7 +70,7 @@ impl OrchestratorView {
                 .border_color(rgb(theme.muted))
                 .into_any_element(),
         };
-        let label = name.unwrap_or_else(|| "No assignee".into());
+        let label = name.unwrap_or_else(|| fl!("orchestrator-linear-no-assignee"));
         div()
             .id(("orchestrator-assignee", index))
             .debug_selector(move || selector.clone())
@@ -121,7 +122,10 @@ impl OrchestratorView {
         let status = status_of(item);
         let key = linear_groups::state_key(item);
         let selector = format!("orchestrator-{key}");
-        let label = status.map_or_else(|| "No status".to_owned(), |status| status.name.clone());
+        let label = status.map_or_else(
+            || fl!("orchestrator-linear-no-status"),
+            |status| status.name.clone(),
+        );
         div()
             .id(("orchestrator-state", index))
             .debug_selector(move || selector.clone())
