@@ -64,8 +64,8 @@ orchestrator-column-title-branch = TITLE · BRANCH
 orchestrator-column-review = REVIEW
 orchestrator-column-checks = CHECKS
 orchestrator-column-size = SIZE
-# A row's project when checkouts on several hosts hold it.
-orchestrator-project-hosts = { $project } · { $count } hosts
+# How many hosts hold checkouts of a row's project, beside its name.
+orchestrator-project-hosts = { $count } hosts
 
 # The list with nothing to show. $query is what the user typed.
 orchestrator-no-repositories = No repositories

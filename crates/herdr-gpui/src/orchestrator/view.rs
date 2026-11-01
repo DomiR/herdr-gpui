@@ -28,6 +28,7 @@ mod look;
 mod markdown;
 mod moves;
 pub(crate) mod pane;
+mod pickers;
 mod pills;
 mod pull;
 mod repo;
@@ -190,6 +191,8 @@ pub(crate) struct OrchestratorView {
     /// Only pull requests these people opened, by login; none picked lists
     /// everyone's.
     authors: HashSet<String>,
+    /// The open Project or Author menu and its field (`pickers.rs`).
+    picker: pickers::Picker,
     /// Counts changes to what is listed, so the window redraws the bar's
     /// counts only when they may have moved.
     revision: u64,
@@ -300,6 +303,7 @@ impl OrchestratorView {
             input.set_appearance(look.ui.clone(), look.theme.clone(), cx);
             input
         });
+        let picker = pickers::Picker::new(&look, cx);
         Self {
             repos: Vec::new(),
             skipped_repos: HashSet::new(),
@@ -308,6 +312,7 @@ impl OrchestratorView {
             backends: HashSet::new(),
             projects: HashSet::new(),
             authors: HashSet::new(),
+            picker,
             revision: 0,
             refresh_asked: None,
             look,

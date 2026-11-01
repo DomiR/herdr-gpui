@@ -6,6 +6,7 @@ use crate::orchestrator::{
 use chrono::{DateTime, Utc};
 use herdr_client::protocol::AgentStatus;
 
+mod check_counts;
 mod clicks;
 mod conversation;
 mod conversation_list;
@@ -34,6 +35,7 @@ mod list_switch;
 mod markdown;
 mod non_projects;
 mod outside_git;
+mod pickers;
 mod pills;
 mod pr_creators;
 mod pr_empty;

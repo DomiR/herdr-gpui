@@ -48,7 +48,7 @@ agent-launcher wrote it and check that migration keeps its rows.
 | `actions.rs` | Dispatch, stop, send, remove, delete: each on its own thread. |
 | `prompt.rs` | Prompt profiles, agent-launcher's built-in and review prompts. |
 | `naming.rs` | agent-launcher's branch names, and runs found from branches. |
-| `view/` | The view entity: the list of every repository (`view/repo.rs` keeps each one's worker, snapshot, and rows; an item's page and actions go to its own), the backend and project pills, filters, the item pane, dialogs. Pure row, merge, and grouping logic is in `view/rows.rs`. |
+| `view/` | The view entity: the list of every repository (`view/repo.rs` keeps each one's worker, snapshot, and rows; an item's page and actions go to its own), the backend pills and the Project and Author pickers (`view/pickers.rs`), filters, the item pane, dialogs. Pure row, merge, and grouping logic is in `view/rows.rs`. |
 | `host.rs` | The window's one view and the repositories it lists, one per Git common directory per host across every connected host's workspaces: the tick that feeds it, and its events. |
 | `section.rs` | The Pull requests and Issues sections, and the commands that open them narrowed to a project. |
 

@@ -33,7 +33,6 @@ orchestrator-linear-go-to-worktree = Go to worktree
 
 # Pull requests grouped by who opened them.
 orchestrator-linear-grouping-creator = Creator
-orchestrator-linear-authors-everyone = Everyone
 orchestrator-linear-unknown-author = Unknown author
 
 # Connect Linear.
