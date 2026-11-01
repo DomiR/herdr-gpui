@@ -203,6 +203,20 @@ impl HerdrWindow {
                         ),
                 )
         });
+        // Record, then Stop with the time while it runs; the pen draws only
+        // while the page is recorded.
+        #[cfg(target_os = "macos")]
+        let recording = match &self.browser.annotations.recording {
+            Some(recording) if recording.tab() == id => Some((
+                recording.label(now),
+                matches!(recording, super::recording::Recording::Live(_)),
+            )),
+            Some(_) => None,
+            None => Some((fl!("browser-notes-record"), false)),
+        };
+        #[cfg(not(target_os = "macos"))]
+        let recording: Option<(String, bool)> = None;
+        let live = recording.as_ref().is_some_and(|(_, live)| *live);
         let has_notes = !self.tab_notes(id).notes.is_empty();
         let panel = div()
             .id("annotations")
@@ -227,6 +241,15 @@ impl HerdrWindow {
                         div()
                             .flex()
                             .gap_1()
+                            .children(recording.map(|(label, live)| {
+                                let record = button("annotation-record", label.into(), live);
+                                #[cfg(target_os = "macos")]
+                                let record =
+                                    record.on_click(cx.listener(move |this, _, window, cx| {
+                                        this.toggle_recording(id, window, cx);
+                                    }));
+                                record
+                            }))
                             .child(
                                 // Drag draws a region while this is on;
                                 // Shift-drag draws one either way.
@@ -256,12 +279,11 @@ impl HerdrWindow {
                     .overflow_y_scroll()
                     .children(rows)
                     .when(!has_notes && armed, |list| {
-                        list.child(
-                            div()
-                                .p_2()
-                                .text_color(rgb(theme.muted))
-                                .child(fl!("browser-notes-empty")),
-                        )
+                        list.child(div().p_2().text_color(rgb(theme.muted)).child(if live {
+                            fl!("browser-notes-recording-hint")
+                        } else {
+                            fl!("browser-notes-empty")
+                        }))
                     }),
             )
             // A queued batch stays withdrawable after Clear sent empties the

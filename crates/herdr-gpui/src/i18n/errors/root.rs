@@ -154,6 +154,8 @@ impl Localize for Error {
             Self::PreferencesPath => fl!("error-preferences-path"),
             Self::Processes(error) => error.localize(),
             Self::Px0(error) => error.localize(),
+            #[cfg(any(target_os = "macos", test))]
+            Self::Record(error) => error.localize(),
             Self::RelativeConfigRoot => fl!("error-relative-config-root"),
             Self::Remote(error) => error.localize(),
             Self::RemoteAgentTools(source) => {

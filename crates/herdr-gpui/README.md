@@ -3129,7 +3129,10 @@ in view from the keyboard; it has no default key.
   week, and the prompt names each file. Windows notes have no screenshots.
 - Notes are written in the panel beside the page, not in the page, so the
   page never sees them. Queued notes are numbered on the page. Up to 20 wait
-  per tab. The panel slides open and closed; a new note grows into it, and
+  per tab. Pressing **Annotate** again always folds the panel away, notes,
+  recordings, and a waiting batch kept for when you open it next; a page
+  result or a finished recording arriving meanwhile opens it again. The panel
+  slides open and closed; a new note grows into it, and
   its number pops onto the page unless the system asks for reduced motion.
 - **Send to agent** turns them into one prompt: the page, then for each note
   the element's selector path, text, and a short HTML snippet (for a region:
@@ -3186,6 +3189,47 @@ in view from the keyboard; it has no default key.
   is refused rather than cut. `herdr.send` returns false for a result the
   app would refuse, so the page can say so; whether the app kept one it was
   handed shows in the window, as the note or a warning.
+
+#### Recording A Page Review
+
+On macOS 15 and later, **Record** in the notes panel records the page while
+you talk it through and draw on it, and builds what you said and drew into a
+note for the agent. It needs [Scrawl](https://scrawl.kitlangton.com) in
+`/Applications` or `~/Applications`, which does the transcribing and picks the
+keyframes; the button says so when Scrawl is missing.
+
+- Record starts annotating if you were not, then records the page's part of
+  the window with your microphone. macOS asks once for Screen Recording and
+  for the microphone; a Screen Recording grant takes effect once Herdr UI is
+  opened again. The button shows the time and becomes **Stop**.
+- While recording, the page works as usual: click, scroll, follow links, and
+  type. Hold Shift and drag to draw red strokes over it, which fade a moment
+  after you lift; the cursor turns to a crosshair while Shift is down, and a
+  stroke that ends on a link does not follow it. Escape drops a stroke being
+  drawn. Each stroke notes the elements under it, across the area
+  it encloses when it closes on itself, else along its path, with the
+  component and source file and line that drew each one when a dev build says
+  (React, or a `data-source-loc`, react-dev-inspector, or Sentry attribute).
+  Pages you move to while recording are noted too.
+- Stop finishes the video and hands it to `scrawl import` with a timeline of
+  the strokes, the elements, and the pages, in the format Scrawl reads from
+  its iPhone kit. Scrawl transcribes with the transcriber set in Scrawl
+  (Apple's, or Hex), splits the recording into keyframes at the marks and the
+  words, and writes the bundle into its own captures folder, where Scrawl
+  lists it and clears it out with its own. The video and timeline wait in
+  `$XDG_STATE_HOME/herdr/gpui/recordings/` until then and are removed once the
+  bundle is built.
+- The bundle arrives as a **Recording** note and goes with the others when
+  you press Send: the bundle's folder, then Scrawl's summary, each spoken line
+  with its time and the elements marked as it was said, for example
+  `marked <button> "Buy" · PricingCard (src/components/PricingCard.tsx:42)`.
+  The agent opens the contact sheet and keyframes in that folder; Scrawl's
+  agent skill (`bunx skills add kitlangton/scrawl`) teaches it the `scrawl zoom`
+  and `scrawl frames` commands for a closer look.
+- One page records at a time. Closing the page or putting its notes away stops
+  the recording; a closed page's recording is dropped. The strokes show in the
+  video as you drew them and again on Scrawl's keyframes, in the same place.
+  Windows and Linux have no recording.
 
 ### Reviewing An Agent's Changes
 

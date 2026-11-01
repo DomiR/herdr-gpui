@@ -198,6 +198,7 @@ objc2.workspace              = true
 objc2-app-kit.workspace      = true
 objc2-foundation.workspace   = true
 raw-window-handle            = { optional = true, workspace = true }
+screencapturekit.workspace   = true
 
 [[test]]
 name              = "live_gui"

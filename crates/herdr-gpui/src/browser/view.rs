@@ -421,6 +421,8 @@ impl HerdrWindow {
                         Store::update(cx, |store| store.visited(id, Some(location), None));
                     }
                     self.page_loaded(id);
+                    #[cfg(target_os = "macos")]
+                    self.recording_navigated(id, &url, cx);
                     self.browser.pages.script(id, &super::favicon::script());
                 }
                 Event::Posted(id, body, from) => match super::favicon::Favicon::parse(&body) {
