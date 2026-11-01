@@ -91,7 +91,13 @@ fn review_is_offered_for_a_tracked_checkout(cx: &mut TestAppContext) {
             view.git = crate::git::Git::fixture(
                 crate::pull_request::Input {
                     checkout: None,
-                    repo_key: Some("github.com/herdrdev/herdr-gpui".into()),
+                    // Absolute, as a saved review tab must name it.
+                    repo_key: Some(
+                        std::env::temp_dir()
+                            .join("herdr-gpui/.git")
+                            .to_string_lossy()
+                            .into_owned(),
+                    ),
                     branch: "develop".into(),
                 },
                 crate::git::Status::default(),

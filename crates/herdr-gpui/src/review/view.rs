@@ -21,9 +21,11 @@ use std::{
 
 mod base_menu;
 mod colours;
+pub(crate) use follow::same_checkout;
 pub(crate) use rows::code as styled_code;
 mod file_rows;
 mod files;
+mod follow;
 mod header;
 mod keys;
 mod loader;
@@ -334,8 +336,8 @@ impl HerdrWindow {
             review.ignore_whitespace,
         );
         let loading = cx.background_executor().spawn(async move {
-            super::diff::load(
-                &checkout,
+            follow::load_following(
+                checkout,
                 scope,
                 base.as_deref(),
                 base_hint.as_deref(),
@@ -343,8 +345,9 @@ impl HerdrWindow {
             )
         });
         cx.spawn(async move |this, cx| {
-            let result = loading.await;
+            let (checkout, result) = loading.await;
             this.update(cx, |this, cx| {
+                this.review_followed(id, request, checkout, cx);
                 this.review_loaded(id, request, result, cx);
                 this.schedule_review_reads(id, cx);
                 cx.notify();
@@ -395,7 +398,7 @@ impl HerdrWindow {
         };
         let mut moved = Vec::new();
         for (id, review) in &mut self.reviews {
-            if review.checkout != tracked {
+            if !same_checkout(&review.checkout, &tracked) {
                 continue;
             }
             match review.seen {

@@ -39,6 +39,7 @@ fn base(focused_pane: Option<&str>, agents: Vec<serde_json::Value>) -> serde_jso
         "workspaces": [], "tabs": [], "panes": [], "agents": agents, "commands": []
     })
 }
+mod base;
 
 /// The fixture window, its workspace `w0` focused, with an agent in pane
 /// `w0:p1` when `status` is given.
@@ -239,7 +240,6 @@ fn notes_go_to_the_focused_agent_or_the_workspace_s_first() {
 }
 
 mod any_repository;
-mod base;
 mod colours;
 mod editor;
 mod files;
@@ -251,6 +251,7 @@ mod origin;
 mod panel_editing;
 mod pending_send;
 mod remembered;
+mod remembered_checkout;
 mod resend;
 mod resize;
 mod scale;
@@ -261,4 +262,5 @@ mod selection;
 mod split_resize;
 mod tab;
 mod withdraw;
+mod workspace_branch;
 mod wrap;
