@@ -1,5 +1,5 @@
 [workspace]
-members  = ["crates/embed-resource", "crates/herdr-acp", "crates/herdr-automate", "crates/herdr-automation", "crates/herdr-backend", "crates/herdr-chat-protocol", "crates/herdr-client", "crates/herdr-commands", "crates/herdr-control-protocol", "crates/herdr-core-client", "crates/herdr-credentials", "crates/herdr-diagnostics", "crates/herdr-github", "crates/herdr-gpui", "crates/herdr-gpui-launcher", "crates/herdr-i18n", "crates/herdr-luau", "crates/herdr-mods", "crates/herdr-nearby", "crates/herdr-orchestrator", "crates/herdr-protocol", "crates/herdr-remote", "crates/herdr-remote-control", "crates/herdr-terminal", "crates/herdr-updater", "crates/herdr-usage", "crates/herdr-vcs"]
+members  = ["crates/embed-resource", "crates/herdr-acp", "crates/herdr-automate", "crates/herdr-automation", "crates/herdr-backend", "crates/herdr-chat-protocol", "crates/herdr-client", "crates/herdr-commands", "crates/herdr-control-protocol", "crates/herdr-core-client", "crates/herdr-credentials", "crates/herdr-diagnostics", "crates/herdr-doc", "crates/herdr-github", "crates/herdr-gpui", "crates/herdr-gpui-launcher", "crates/herdr-i18n", "crates/herdr-luau", "crates/herdr-mods", "crates/herdr-nearby", "crates/herdr-orchestrator", "crates/herdr-protocol", "crates/herdr-remote", "crates/herdr-remote-control", "crates/herdr-terminal", "crates/herdr-updater", "crates/herdr-usage", "crates/herdr-vcs"]
 resolver = "2"
 
 [workspace.package]
@@ -91,6 +91,7 @@ herdr-control-protocol = { path = "crates/herdr-control-protocol" }
 herdr-core-client    = { path = "crates/herdr-core-client" }
 herdr-credentials    = { path = "crates/herdr-credentials" }
 herdr-diagnostics    = { path = "crates/herdr-diagnostics" }
+herdr-doc            = { path = "crates/herdr-doc" }
 herdr-github         = { path = "crates/herdr-github" }
 herdr-i18n           = { path = "crates/herdr-i18n" }
 herdr-luau           = { path = "crates/herdr-luau" }
@@ -111,6 +112,9 @@ if-addrs             = "0.15"
 keepawake            = { default-features = false, version = "0.6.1" }
 image                = { default-features = false, features = ["gif", "jpeg", "png", "webp"], version = "0.25.10" }
 # The sandboxed Luau interpreter behind automation scripts, built from source.
+# The CRDT text behind Markdown documents (crates/herdr-doc): one LoroText per
+# open file, so the user and several agents edit it at once without lost edits.
+loro                 = { default-features = false, version = "1.17" }
 mlua                 = { features = ["error-send", "luau"], version = "0.12.2" }
 # Mermaid fences in chat answers become diagrams: parse, lay out, and write
 # SVG in pure Rust; GPUI rasterizes the SVG. No CLI and no PNG writer.
@@ -169,6 +173,9 @@ hkdf                 = "0.13"
 p256                 = { default-features = false, features = ["ecdh", "ecdsa", "pem", "std"], version = "0.14" }
 sha2                 = "0.11.0"
 # Reads embedded bitmap strikes to spot fonts GPUI's Linux rasterizer panics on.
+# Line and character diffs of a document file an agent rewrote, applied as
+# CRDT edits (crates/herdr-doc).
+similar              = "2.7"
 skrifa               = { default-features = false, features = ["std"], version = "0.48" }
 # Tests hold a port with a socket that is bound but never listens; mdns-sd
 # already locks this version.
