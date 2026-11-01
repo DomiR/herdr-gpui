@@ -11,6 +11,7 @@ use super::{
 };
 use crate::{
     config::corners,
+    i18n::{Localize, fl},
     orchestrator::{Access, SourceKey, SyncState},
 };
 use gpui::{prelude::*, *};
@@ -74,7 +75,7 @@ impl OrchestratorView {
             // With several projects listed, each says whose trouble it is.
             let of = |text: String| {
                 if named {
-                    format!("{}: {text}", repo.name())
+                    fl!("orchestrator-banner-of", project = repo.name(), text = text)
                 } else {
                     text
                 }
@@ -89,14 +90,15 @@ impl OrchestratorView {
                     slot(Of::ReadOnly),
                     RED,
                     "icons/lock.svg",
-                    of(format!(
-                        "Shared data is schema {found}; this herdr-gpui understands up to {}. Read-only until updated.",
-                        crate::orchestrator::SCHEMA_VERSION
+                    of(fl!(
+                        "orchestrator-newer-schema",
+                        found = found,
+                        known = crate::orchestrator::SCHEMA_VERSION
                     )),
                 ));
             }
             if let Some(error) = &snapshot.error {
-                banners.push((slot(Of::Error), RED, "icons/x.svg", of(error.to_string())));
+                banners.push((slot(Of::Error), RED, "icons/x.svg", of(error.localize())));
             }
             // Each section reports only its own sources' trouble, as its
             // header shows only their chips: GitHub's failures are not the
@@ -108,9 +110,10 @@ impl OrchestratorView {
             for status in sources {
                 let text = match &status.state {
                     SyncState::Failed(error) => failure_text(status.key.provider, error),
-                    SyncState::Capped { count } => format!(
-                        "{} has more than {count} items; the newest are shown and not cached.",
-                        status.key.provider.name()
+                    SyncState::Capped { count } => fl!(
+                        "orchestrator-capped",
+                        source = status.key.provider.name(),
+                        count = *count
                     ),
                     _ => continue,
                 };
@@ -136,7 +139,7 @@ impl OrchestratorView {
                     .icon_button(
                         ("orchestrator-banner-close", index),
                         "icons/close.svg",
-                        "Dismiss",
+                        fl!("orchestrator-dismiss"),
                     )
                     .debug_selector(|| "orchestrator-banner-close".into())
                     .on_click(cx.listener({

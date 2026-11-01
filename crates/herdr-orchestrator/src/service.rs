@@ -433,7 +433,7 @@ impl Worker {
         self.publish();
     }
 
-    fn notice(&self, outcome: std::result::Result<&'static str, Arc<Error>>) {
+    fn notice(&self, outcome: std::result::Result<crate::actions::Done, Arc<Error>>) {
         push(&self.notices, Notice { outcome });
     }
 

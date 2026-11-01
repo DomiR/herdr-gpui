@@ -11,6 +11,7 @@ use super::{
 };
 use crate::{
     config::corners,
+    i18n::{Localize, fl},
     orchestrator::{Access, Provider, SyncState},
 };
 use gpui::{prelude::*, *};
@@ -170,7 +171,7 @@ impl OrchestratorView {
                 )
                 .children(count.map(|count| look.muted(count.to_string())))
         };
-        let heading = |text: &'static str| look.label(text).pt_2().pb_1();
+        let heading = |text: String| look.label(text).pt_2().pb_1();
         let has_run = open
             .iter()
             .filter(|item| {
@@ -210,11 +211,11 @@ impl OrchestratorView {
             .flex_col()
             .border_r_1()
             .border_color(rgb(theme.active))
-            .child(heading("STATE"))
+            .child(heading(fl!("orchestrator-facets-state")))
             .child(
                 option(
                     "orchestrator-facet-run".into(),
-                    "Has agent".into(),
+                    fl!("orchestrator-has-agent").into(),
                     Some(has_run).filter(|count| *count > 0),
                     self.filters.has_run,
                 )
@@ -228,7 +229,7 @@ impl OrchestratorView {
             .child(
                 option(
                     "orchestrator-facet-blocked".into(),
-                    "Blocked".into(),
+                    fl!("orchestrator-blocked").into(),
                     Some(blocked).filter(|count| *count > 0),
                     self.filters.blocked,
                 )
@@ -243,7 +244,7 @@ impl OrchestratorView {
                 el.child(
                     option(
                         "orchestrator-facet-mine".into(),
-                        "Mine".into(),
+                        fl!("orchestrator-filter-mine").into(),
                         Some(mine),
                         self.filters.mine,
                     )
@@ -259,7 +260,7 @@ impl OrchestratorView {
                 el.child(
                     option(
                         "orchestrator-facet-cycle".into(),
-                        "Current cycle".into(),
+                        fl!("orchestrator-linear-filter-current-cycle").into(),
                         Some(cycle),
                         self.filters.cycle,
                     )
@@ -272,7 +273,7 @@ impl OrchestratorView {
                 )
             })
             .when(!statuses.is_empty(), |el| {
-                el.child(heading("STATUS"))
+                el.child(heading(fl!("orchestrator-linear-facets-status")))
                     .children(statuses.into_iter().map(|(status, count)| {
                         let on = self.status.as_deref() == Some(status.name.as_str());
                         let picked = status.name.clone();
@@ -292,7 +293,7 @@ impl OrchestratorView {
                     }))
             })
             .when(!labels.is_empty(), |el| {
-                el.child(heading("LABELS"))
+                el.child(heading(fl!("orchestrator-facets-labels")))
                     .children(labels.into_iter().map(|(label, count)| {
                         let on = self.label.as_deref() == Some(label.as_str());
                         let picked = label.clone();
@@ -353,7 +354,7 @@ impl OrchestratorView {
             .gap_2()
             .px_4()
             .pb_2()
-            .child(look.muted("Showing only"));
+            .child(look.muted(fl!("orchestrator-showing-only")));
         if let Some(provider) = self.filters.provider {
             row = row.child(chip(
                 "orchestrator-chip-source",
@@ -364,28 +365,36 @@ impl OrchestratorView {
             ));
         }
         if self.filters.has_run {
-            row = row.child(chip("orchestrator-chip-run", "Has agent".into(), |this| {
-                this.filters.has_run = false;
-            }));
+            row = row.child(chip(
+                "orchestrator-chip-run",
+                fl!("orchestrator-has-agent"),
+                |this| {
+                    this.filters.has_run = false;
+                },
+            ));
         }
         if self.filters.blocked {
             row = row.child(chip(
                 "orchestrator-chip-blocked",
-                "Blocked".into(),
+                fl!("orchestrator-blocked"),
                 |this| {
                     this.filters.blocked = false;
                 },
             ));
         }
         if self.filters.mine {
-            row = row.child(chip("orchestrator-chip-mine", "Mine".into(), |this| {
-                this.filters.mine = false;
-            }));
+            row = row.child(chip(
+                "orchestrator-chip-mine",
+                fl!("orchestrator-filter-mine"),
+                |this| {
+                    this.filters.mine = false;
+                },
+            ));
         }
         if self.filters.cycle {
             row = row.child(chip(
                 "orchestrator-chip-cycle",
-                "Current cycle".into(),
+                fl!("orchestrator-linear-filter-current-cycle"),
                 |this| {
                     this.filters.cycle = false;
                 },
@@ -410,10 +419,10 @@ impl OrchestratorView {
         let listed: Vec<_> = self.projects_named().collect();
         let linear = self.issue_source == IssueSource::Linear;
         let title = match listed.as_slice() {
-            _ if linear => "Linear".to_owned(),
-            [] => "No repositories yet".to_owned(),
+            _ if linear => "Linear".to_owned(), // i18n: data
+            [] => fl!("orchestrator-no-repositories-yet"),
             [only] => only.name(),
-            many => format!("{} projects", many.len()),
+            many => fl!("orchestrator-projects", count = many.len()),
         };
         // Each backend once, across every repository, with the items each
         // repository holds from it for a sync that has not reported a count.
@@ -487,8 +496,11 @@ impl OrchestratorView {
         // reads like a missing account without this.
         let no_github = (!github && !self.repos.is_empty() && source == IssueSource::Repositories)
             .then(|| {
-                source_chip(look, ("orchestrator-source-none", 0), Provider::Github)
-                    .child(div().text_color(rgb(theme.muted)).child("no GitHub remote"))
+                source_chip(look, ("orchestrator-source-none", 0), Provider::Github).child(
+                    div()
+                        .text_color(rgb(theme.muted))
+                        .child(fl!("orchestrator-no-github-remote")),
+                )
             });
         let dispatchable =
             self.selected.is_some() && self.snapshot().access == Some(Access::ReadWrite);
@@ -519,12 +531,16 @@ impl OrchestratorView {
             .child(self.render_refresh(cx))
             .when(dispatchable, |el| {
                 el.child(
-                    look.button("orchestrator-dispatch", "Dispatch agent", true)
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            if let Some(item) = this.selected.clone() {
-                                this.open_dispatch(item, window, cx);
-                            }
-                        })),
+                    look.button(
+                        "orchestrator-dispatch",
+                        fl!("orchestrator-dispatch-agent"),
+                        true,
+                    )
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        if let Some(item) = this.selected.clone() {
+                            this.open_dispatch(item, window, cx);
+                        }
+                    })),
                 )
             })
     }
@@ -534,7 +550,11 @@ impl OrchestratorView {
         let look = &self.look;
         if !self.refreshing() {
             return look
-                .icon_button("orchestrator-refresh", "icons/refresh.svg", "Refresh")
+                .icon_button(
+                    "orchestrator-refresh",
+                    "icons/refresh.svg",
+                    fl!("orchestrator-refresh"),
+                )
                 .debug_selector(|| "orchestrator-refresh".into())
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.ask_refresh();
@@ -570,7 +590,7 @@ impl OrchestratorView {
             .px_4()
             .py_2()
             .child(self.render_search_field(window, cx));
-        let toggle = |id: &'static str, label: &'static str, on: bool, flip: fn(&mut Self)| {
+        let toggle = |id: &'static str, label: String, on: bool, flip: fn(&mut Self)| {
             look.toggle(id, label, on)
                 .on_click(cx.listener(move |this, _, _, cx| {
                     flip(this);
@@ -600,7 +620,7 @@ impl OrchestratorView {
                         .cursor_pointer()
                         .text_size(look.small())
                         .child(look.icon("icons/panel-left.svg", 12., theme.subtext()))
-                        .child("Filters")
+                        .child(fl!("orchestrator-filters"))
                         .when(active > 0, |el| {
                             el.child(
                                 div()
@@ -622,7 +642,7 @@ impl OrchestratorView {
                 row = row
                     .child(toggle(
                         "orchestrator-open",
-                        "Open",
+                        fl!("orchestrator-filter-open"),
                         filters.open_only,
                         |this| {
                             this.filters.open_only = !this.filters.open_only;
@@ -633,14 +653,19 @@ impl OrchestratorView {
                         filters.mine
                             || self.repos.iter().any(|repo| repo.reading_login().is_some()),
                         |row| {
-                            row.child(toggle("orchestrator-mine", "Mine", filters.mine, |this| {
-                                this.filters.mine = !this.filters.mine;
-                            }))
+                            row.child(toggle(
+                                "orchestrator-mine",
+                                fl!("orchestrator-filter-mine"),
+                                filters.mine,
+                                |this| {
+                                    this.filters.mine = !this.filters.mine;
+                                },
+                            ))
                         },
                     )
                     .child(toggle(
                         "orchestrator-pr-has-run",
-                        "Has agent",
+                        fl!("orchestrator-has-agent"),
                         filters.has_run,
                         |this| {
                             this.filters.has_run = !this.filters.has_run;
@@ -680,7 +705,7 @@ impl OrchestratorView {
                     look.icon_button(
                         "orchestrator-search-clear",
                         "icons/close.svg",
-                        "Clear search",
+                        fl!("orchestrator-clear-search"),
                     )
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.search.update(cx, |search, cx| search.clear(cx));
@@ -778,10 +803,10 @@ pub(super) fn source_summary(states: &[(&SyncState, usize)]) -> (SourceState, St
     let syncing = any(|state| matches!(state, SyncState::Syncing { .. }));
     if !syncing {
         if any(|state| matches!(state, SyncState::Failed(_))) {
-            return (SourceState::Failed, "failed".to_owned());
+            return (SourceState::Failed, fl!("orchestrator-source-failed"));
         }
         if any(|state| matches!(state, SyncState::SignIn)) {
-            return (SourceState::SignIn, "sign in".to_owned());
+            return (SourceState::SignIn, fl!("orchestrator-source-sign-in"));
         }
     }
     let counted = any(|state| state.count().is_some());
@@ -803,19 +828,22 @@ pub(super) fn source_summary(states: &[(&SyncState, usize)]) -> (SourceState, St
     } else if counted {
         (SourceState::Synced, text)
     } else {
-        (SourceState::Unsupported, "not supported yet".to_owned())
+        (
+            SourceState::Unsupported,
+            fl!("orchestrator-source-unsupported"),
+        )
     }
 }
 
 /// A failed sync's banner text, led by its backend's name unless the error
 /// already starts with it, as "Beads is not installed…" does.
-pub(super) fn failure_text(provider: Provider, error: &impl std::fmt::Display) -> String {
+pub(super) fn failure_text(provider: Provider, error: &impl Localize) -> String {
     let name = provider.name();
-    let error = error.to_string();
+    let error = error.localize();
     if error.starts_with(name) {
         error
     } else {
-        format!("{name}: {error}")
+        fl!("orchestrator-source-error", source = name, error = error)
     }
 }
 

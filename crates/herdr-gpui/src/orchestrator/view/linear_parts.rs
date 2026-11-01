@@ -8,6 +8,7 @@ use super::{
     Look,
     look::{GREEN, MAGENTA, RED, YELLOW},
 };
+use crate::i18n::fl;
 use crate::{
     config::mix,
     kanban,
@@ -132,7 +133,7 @@ pub(super) fn pull_request_chip(
         .min_by_key(|link| (link.state.is_none(), link.state))?;
     let label = match links {
         [one] => format!("#{}", one.number),
-        _ => format!("{} PRs", links.len()),
+        _ => fl!("orchestrator-linear-pull-requests", count = links.len()),
     };
     Some((label, lead))
 }
@@ -157,7 +158,10 @@ pub(super) fn pull_request(
         .id(id)
         .debug_selector(move || selector.clone())
         .role(Role::Button)
-        .aria_label(format!("Open pull request {label}"))
+        .aria_label(fl!(
+            "orchestrator-linear-open-pull-request",
+            label = label.clone()
+        ))
         .cursor_pointer()
         .hover(move |style| style.border_color(rgb(border)))
         .child(look.icon("icons/pull-request.svg", 12., hue))

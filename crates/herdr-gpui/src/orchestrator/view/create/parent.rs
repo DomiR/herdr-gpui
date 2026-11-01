@@ -4,7 +4,7 @@
 //! several sub-issues are written in a row.
 
 use super::super::OrchestratorView;
-use crate::orchestrator::Item;
+use crate::{i18n::fl, orchestrator::Item};
 use gpui::{prelude::*, *};
 
 /// The issue a new one is created under.
@@ -71,7 +71,9 @@ impl OrchestratorView {
             .as_ref()
             .and_then(|dialog| dialog.parent.as_ref())
         else {
-            return look.muted("New issue").into_any_element();
+            return look
+                .muted(fl!("orchestrator-linear-new-issue"))
+                .into_any_element();
         };
         div()
             .id("linear-create-parent")
@@ -80,7 +82,7 @@ impl OrchestratorView {
             .flex()
             .items_center()
             .gap_1()
-            .child(look.muted("Sub-issue of"))
+            .child(look.muted(fl!("orchestrator-linear-sub-issue-of")))
             .child(look.mono(parent.identifier.clone()).flex_none())
             .child(
                 div()
@@ -93,7 +95,7 @@ impl OrchestratorView {
                 look.icon_button(
                     "linear-create-parent-clear",
                     "icons/close.svg",
-                    "Not a sub-issue",
+                    fl!("orchestrator-linear-not-a-sub-issue"),
                 )
                 .on_click(cx.listener(|this, _, _, cx| {
                     if let Some(dialog) = &mut this.create.dialog {

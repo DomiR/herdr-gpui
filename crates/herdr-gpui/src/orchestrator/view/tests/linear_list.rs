@@ -223,7 +223,7 @@ fn one_pull_request_names_its_number_and_several_count_and_open_the_liveliest() 
         link(4, Some(LinkState::Open)),
     ];
     let (label, lead) = linear_parts::pull_request_chip(&several).unwrap();
-    assert_eq!((label.as_str(), lead.number), ("4 PRs", 3));
+    assert_eq!((label.as_str(), lead.number), ("\u{2068}4\u{2069} PRs", 3));
 }
 
 fn shows(cx: &mut VisualTestContext, selector: &str) -> bool {

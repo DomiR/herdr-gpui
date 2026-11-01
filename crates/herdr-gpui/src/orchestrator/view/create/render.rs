@@ -4,8 +4,9 @@
 
 use super::{
     Dialog,
-    menu::{Menu, PRIORITIES, priority_hue},
+    menu::{Menu, PRIORITIES, priority_hue, priority_label},
 };
+use crate::i18n::fl;
 use crate::orchestrator::{
     IssueSource,
     linear::TeamOptions,
@@ -31,7 +32,11 @@ impl OrchestratorView {
         }
         Some(
             self.look
-                .button("linear-create-open", "New issue", false)
+                .button(
+                    "linear-create-open",
+                    fl!("orchestrator-linear-new-issue"),
+                    false,
+                )
                 .debug_selector(|| "linear-create-open".into())
                 .on_click(cx.listener(|this, _, window, cx| {
                     this.open_linear_create(None, window, cx);
@@ -60,10 +65,14 @@ impl OrchestratorView {
             .child(self.render_create_kind(cx))
             .child(div().flex_1())
             .child(
-                look.icon_button("linear-create-close", "icons/close.svg", "Close")
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.close_overlays(window, cx);
-                    })),
+                look.icon_button(
+                    "linear-create-close",
+                    "icons/close.svg",
+                    fl!("orchestrator-close"),
+                )
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.close_overlays(window, cx);
+                })),
             );
         let properties = match (team, self.linear_options()) {
             (Some(team), _) => self.render_properties(team, cx),
@@ -79,14 +88,18 @@ impl OrchestratorView {
                         .child(error.to_string()),
                 )
                 .child(
-                    look.button("linear-create-retry", "Try again", false)
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.open_linear_create(None, window, cx);
-                        })),
+                    look.button(
+                        "linear-create-retry",
+                        fl!("orchestrator-linear-try-again"),
+                        false,
+                    )
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.open_linear_create(None, window, cx);
+                    })),
                 )
                 .into_any_element(),
             (None, _) => look
-                .muted("Reading your Linear teams\u{2026}")
+                .muted(fl!("orchestrator-linear-reading-teams"))
                 .into_any_element(),
         };
         let sending = dialog.sending.is_some();
@@ -125,7 +138,7 @@ impl OrchestratorView {
                     )
                 })
                 .when_some(dialog.created.clone(), |el, created| {
-                    el.child(look.muted(format!("Created {created}")))
+                    el.child(look.muted(fl!("orchestrator-linear-created", issue = created)))
                 })
                 .child(
                     div()
@@ -138,9 +151,9 @@ impl OrchestratorView {
                             look.button(
                                 "linear-create-submit",
                                 if sending {
-                                    "Creating\u{2026}"
+                                    fl!("orchestrator-linear-creating")
                                 } else {
-                                    "Create issue"
+                                    fl!("orchestrator-linear-create-issue")
                                 },
                                 true,
                             )
@@ -190,7 +203,7 @@ impl OrchestratorView {
         };
         let (name, shown) = match team {
             Some(team) => (placeholder(menu), self.shown(menu, dialog, team)),
-            None => ("Team", None),
+            None => (fl!("orchestrator-linear-team"), None),
         };
         let open = dialog.menu == Some(menu) && team.is_some();
         let hover = theme.active;
@@ -264,8 +277,8 @@ impl OrchestratorView {
             }
             Menu::Priority => PRIORITIES
                 .iter()
-                .find(|(value, _)| *value == dialog.priority && *value != 0)
-                .map(|(value, label)| ((*label).to_owned(), Some(priority_hue(look, *value)))),
+                .find(|value| **value == dialog.priority && **value != 0)
+                .map(|value| (priority_label(*value), Some(priority_hue(look, *value)))),
             Menu::Assignee => named(&team.members, &dialog.assignee),
             Menu::Project => named(&team.projects, &dialog.project),
             Menu::Estimate => {
@@ -289,7 +302,10 @@ impl OrchestratorView {
             Menu::Cycle => {
                 let id = dialog.cycle.as_deref()?;
                 let choice = team.cycles.iter().find(|choice| choice.id == id)?;
-                Some((choice.cycle.label(), None))
+                Some((
+                    super::super::status::cycle_label(&choice.cycle, false),
+                    None,
+                ))
             }
         }
     }
@@ -304,7 +320,7 @@ impl OrchestratorView {
             .id("linear-create-more")
             .debug_selector(|| "linear-create-more".into())
             .role(Role::Switch)
-            .aria_label("Create more")
+            .aria_label(fl!("orchestrator-linear-create-more"))
             .aria_toggled(if on { Toggled::True } else { Toggled::False })
             .flex()
             .items_center()
@@ -328,7 +344,7 @@ impl OrchestratorView {
                         theme.muted
                     }))),
             )
-            .child("Create more")
+            .child(fl!("orchestrator-linear-create-more"))
             .on_click(cx.listener(|this, _, _, cx| {
                 if let Some(dialog) = &mut this.create.dialog {
                     dialog.more = !dialog.more;
@@ -339,15 +355,15 @@ impl OrchestratorView {
 }
 
 /// What `menu`'s chip reads while unset.
-fn placeholder(menu: Menu) -> &'static str {
+fn placeholder(menu: Menu) -> String {
     match menu {
-        Menu::Assignee => "Assignee",
-        Menu::Cycle => "Cycle",
-        Menu::Estimate => "Estimate",
-        Menu::Labels => "Labels",
-        Menu::Priority => "Priority",
-        Menu::Project => "Project",
-        Menu::Status => "Status",
-        Menu::Team => "Team",
+        Menu::Assignee => fl!("orchestrator-linear-assignee"),
+        Menu::Cycle => fl!("orchestrator-linear-cycle"),
+        Menu::Estimate => fl!("orchestrator-linear-estimate"),
+        Menu::Labels => fl!("orchestrator-linear-labels"),
+        Menu::Priority => fl!("orchestrator-sort-priority"),
+        Menu::Project => fl!("orchestrator-linear-project"),
+        Menu::Status => fl!("orchestrator-linear-status"),
+        Menu::Team => fl!("orchestrator-linear-team"),
     }
 }
