@@ -2452,7 +2452,14 @@ section's filters are its own, so they never narrow Issues or Pull requests. A L
 Dispatch uses the branch name Linear
 gives the issue. Any branch or Herdr workspace whose name holds an issue's
 identifier as a word, such as `dominique/eng-12-fix` for `ENG-12`, is found as
-that issue's run. Linear issues are not written to the database agent-launcher
+that issue's run. Linear's issues sync every 5 minutes, rather than every minute like the
+other sources, to stay within Linear's limits; Refresh, connecting, moving
+or creating an issue, and returning to the Linear section after a while sync
+it at once. When Linear cannot be reached it tries again after 30 seconds,
+then less often, up to every 5 minutes; a key Linear rejects is not tried
+again until you connect again or press Refresh. A sync error closes with its
+close button and shows again if a different error comes, or if a sync
+succeeds and then fails again. Linear issues are not written to the database agent-launcher
 shares, since agent-launcher could not read them; runs on them are, so
 agent-launcher lists those runs without their issue.
 

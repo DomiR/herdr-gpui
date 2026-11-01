@@ -30,11 +30,12 @@ mod gitlab;
 mod gitlab_hosts;
 mod incremental;
 mod keys;
+mod line_endings;
 mod linear;
 mod linear_branches;
+mod linear_complexity;
 mod linear_create;
 mod linear_move;
-mod line_endings;
 mod location;
 mod naming;
 #[cfg(unix)]

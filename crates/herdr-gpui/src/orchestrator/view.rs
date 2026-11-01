@@ -7,6 +7,7 @@
 //! It never blocks: the [`Service`] worker does the I/O, and the host pushes
 //! the theme, live agent statuses, and the GitHub account from its tick.
 
+mod banners;
 mod board;
 mod conversation;
 mod create;
@@ -243,6 +244,10 @@ pub(crate) struct OrchestratorView {
     /// What to type to the open item's newest run.
     message: Entity<SearchInput>,
     /// The open pull request's conversation, comment, and merge.
+    /// The banners closed, until they say something else.
+    dismissed: banners::Dismissed,
+    /// When the Linear section last showed this view, as of the last tick.
+    linear_shown: Option<Instant>,
     pr: crate::pr_actions::Actions,
     comment: Entity<SearchInput>,
     /// Conversation rows, the list drawing them, and the threads unfolded.
@@ -333,6 +338,8 @@ impl OrchestratorView {
             comment,
             conversation: conversation::Rows::default(),
             avatars: conversation::Avatars::default(),
+            dismissed: banners::Dismissed::default(),
+            linear_shown: None,
             merge_open: false,
             hosts: Arc::default(),
             _subscriptions: vec![subscription],
@@ -411,6 +418,7 @@ impl OrchestratorView {
             self.default_filters();
             self.reconcile_agents();
             self.refresh_rows();
+            self.dismissed.settle(&self.repos);
             self.follow_pull_request();
             self.request_avatars(cx);
             changed = true;

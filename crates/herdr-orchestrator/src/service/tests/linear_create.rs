@@ -121,7 +121,7 @@ fn a_created_issue_echoes_its_sequence_and_asks_for_a_sync() {
     assert_eq!(outcome.sequence, 4);
     assert_eq!(outcome.result.unwrap().identifier, "ENG-42");
     // The sync that follows lists it.
-    worker.sync(None);
+    worker.sync(None, Linear::Now);
     assert!(
         worker
             .snapshot

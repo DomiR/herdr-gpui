@@ -732,70 +732,6 @@ impl OrchestratorView {
             "orchestrator-sort-menu",
         ))
     }
-
-    fn render_banners(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
-        let look = &self.look;
-        let mut banners = Vec::new();
-        let named = self.projects_named().count() > 1;
-        for repo in self.projects_named() {
-            // With several projects listed, each says whose trouble it is.
-            let of = |text: String| {
-                if named {
-                    format!("{}: {text}", repo.name())
-                } else {
-                    text
-                }
-            };
-            let snapshot = &repo.snapshot;
-            if let Some(Access::ReadOnly { found }) = snapshot.access {
-                banners.push(banner(
-                    look,
-                    RED,
-                    "icons/lock.svg",
-                    of(format!(
-                        "Shared data is schema {found}; this herdr-gpui understands up to {}. Read-only until updated.",
-                        crate::orchestrator::SCHEMA_VERSION
-                    )),
-                ));
-            }
-            if let Some(error) = &snapshot.error {
-                banners.push(banner(look, RED, "icons/x.svg", of(error.to_string())));
-            }
-            for status in &snapshot.sources {
-                let text = match &status.state {
-                    SyncState::Failed(error) => {
-                        format!("{}: {error}", status.key.provider.name())
-                    }
-                    SyncState::Capped { count } => format!(
-                        "{} has more than {count} items; the newest are shown and not cached.",
-                        status.key.provider.name()
-                    ),
-                    _ => continue,
-                };
-                let hue = if matches!(status.state, SyncState::Capped { .. }) {
-                    YELLOW
-                } else {
-                    RED
-                };
-                banners.push(banner(look, hue, "icons/refresh.svg", of(text)));
-            }
-        }
-        banners
-            .into_iter()
-            .enumerate()
-            .map(|(index, banner)| {
-                banner
-                    .debug_selector(|| "orchestrator-banner".into())
-                    .id(("orchestrator-banner", index))
-                    .cursor_pointer()
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.ask_refresh();
-                        cx.notify();
-                    }))
-                    .into_any_element()
-            })
-            .collect()
-    }
 }
 
 /// The filters' column width, and the most labels it offers.
@@ -897,20 +833,4 @@ pub(super) fn provider_mark(look: &Look, provider: Provider) -> AnyElement {
         Provider::Gitlab => look.badge("gl", RED).into_any_element(),
         Provider::Linear => look.badge("ln", BLUE).into_any_element(),
     }
-}
-
-pub(super) fn banner(look: &Look, hue: usize, icon: &'static str, text: String) -> Div {
-    div()
-        .flex_none()
-        .mx_4()
-        .mb_2()
-        .flex()
-        .items_center()
-        .gap_2()
-        .px_3()
-        .py_2()
-        .rounded(px(corners::CONTROL))
-        .bg(rgb(look.wash(hue)))
-        .child(look.icon(icon, 13., look.hue(hue)))
-        .child(div().flex_1().min_w_0().text_size(look.small()).child(text))
 }

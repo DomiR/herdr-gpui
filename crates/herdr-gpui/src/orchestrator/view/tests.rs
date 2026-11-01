@@ -6,6 +6,7 @@ use crate::orchestrator::{
 use chrono::{DateTime, Utc};
 use herdr_client::protocol::AgentStatus;
 
+mod banners;
 mod clicks;
 mod conversation;
 mod conversation_list;
@@ -25,6 +26,7 @@ mod linear_list;
 mod linear_reorder;
 mod linear_repos;
 mod linear_scroll;
+mod linear_shown;
 mod list_switch;
 mod markdown;
 mod non_projects;

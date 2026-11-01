@@ -7,7 +7,11 @@ mod linear;
 #[cfg(unix)]
 mod linear_create;
 #[cfg(unix)]
+mod linear_interval;
+#[cfg(unix)]
 mod linear_move;
+#[cfg(unix)]
+mod linear_states;
 
 #[test]
 fn closing_the_view_does_not_cancel_an_accepted_action() {
@@ -36,6 +40,7 @@ fn closing_the_view_does_not_cancel_an_accepted_action() {
 
 mod extras;
 mod glab_mapping;
+mod retry;
 mod syncing_count;
 mod unreached;
 
@@ -70,6 +75,7 @@ pub(super) fn opened(dir: &std::path::Path) -> (Service, Worker, Host) {
         timing: Timing {
             reload: Duration::from_millis(20),
             sync: Duration::from_secs(3600),
+            ..Timing::default()
         },
         linear: None,
     });

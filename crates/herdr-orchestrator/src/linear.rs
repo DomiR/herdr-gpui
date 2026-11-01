@@ -24,7 +24,7 @@ pub use create::{
 };
 pub use http::post;
 #[cfg(test)]
-pub use http::{LIMIT, interpret};
+pub use http::{LIMIT, interpret, retry_after};
 #[cfg(test)]
 pub use key::resolve;
 pub use key::{VARIABLE, read as read_key, save as save_key, valid};
@@ -46,11 +46,13 @@ const HOST: &str = "linear.app";
 /// The most issues one sync reads for each scope. More are left unread.
 pub const CAP: usize = 500;
 
-/// Nested `first` values stay small: Linear limits a query's complexity, and
-/// nested connections otherwise default to 50.
+/// Nested `first` values stay small: Linear limits a query's complexity to
+/// 10,000 points, a connection multiplies its children's by `first`, and
+/// nested connections otherwise default to 50. A page of 50 issues costs
+/// about half the limit; [`CAP`] is ten pages.
 pub const QUERY: &str = r#"query($filter: IssueFilter!, $after: String) {
   organization { urlKey }
-  issues(first: 100, after: $after, orderBy: updatedAt, filter: $filter) {
+  issues(first: 50, after: $after, orderBy: updatedAt, filter: $filter) {
     pageInfo { hasNextPage endCursor }
     nodes {
       id identifier title description url priority branchName createdAt updatedAt sortOrder
@@ -70,9 +72,11 @@ pub const QUERY: &str = r#"query($filter: IssueFilter!, $after: String) {
   }
 }"#;
 
-/// Every team's workflow states, which a card can move between, read once
-/// per sync. A team rarely has more than a dozen states; a workspace with
-/// more than 50 teams leaves the rest unread, and their issues cannot move.
+/// Every team's workflow states, which a card can move between. The worker
+/// keeps them until the key changes, Refresh, a refused move, or an issue
+/// of a team they lack. A team rarely has more than a dozen states; a
+/// workspace with more than 50 teams leaves the rest unread, and their
+/// issues cannot move.
 pub const STATES: &str = r#"query {
   teams(first: 50) {
     nodes { id states(first: 50) { nodes { id name type position color } } }
@@ -135,27 +139,31 @@ pub struct Listing {
     pub workspace: String,
     pub items: Vec<Item>,
     pub complete: bool,
+    /// An issue's team is not among the states given, so they are read again.
+    pub missing_states: bool,
+}
+
+/// Each team's workflow states, by team id, in board order.
+pub type States = HashMap<String, Arc<Vec<Status>>>;
+
+/// Reads every team's workflow states with [`STATES`]. `fetch` sends a
+/// query, as for [`sync`].
+pub fn states(mut fetch: impl FnMut(&'static str, Value) -> Result<Value>) -> Result<States> {
+    fetch(STATES, json!({})).and_then(teams)
 }
 
 /// Lists every [`Scope`], an issue in both once, each with its team's
-/// workflow states. `fetch` sends a query with its variables and returns
+/// workflow `states`. `fetch` sends a query with its variables and returns
 /// the response.
 pub fn sync(
     mut fetch: impl FnMut(&'static str, Value) -> Result<Value>,
+    states: &States,
     cancelled: impl Fn() -> bool,
 ) -> Result<Listing> {
     if cancelled() {
         return Err(Error::Cancelled);
     }
-    // Without the states the listing still shows; its cards cannot move.
-    let states = match fetch(STATES, json!({})).and_then(teams) {
-        Ok(states) => states,
-        Err(Error::Cancelled) => return Err(Error::Cancelled),
-        Err(error) => {
-            tracing::warn!(category = "linear", %error, "Cannot read Linear's workflow states");
-            HashMap::new()
-        }
-    };
+    let mut missing_states = false;
     let mut items = Vec::new();
     let mut seen = HashSet::new();
     let mut workspace: Option<String> = None;
@@ -179,7 +187,11 @@ pub fn sync(
             for node in nodes.into_iter().take(room) {
                 read += 1;
                 if seen.insert(node.identifier.clone()) {
-                    items.push(node.into_item(&source, &states));
+                    missing_states |= node
+                        .team
+                        .as_ref()
+                        .is_some_and(|team| !states.contains_key(&team.id));
+                    items.push(node.into_item(&source, states));
                 }
             }
             if read >= CAP {
@@ -199,6 +211,7 @@ pub fn sync(
         workspace: workspace.unwrap_or_default(),
         items,
         complete,
+        missing_states,
     })
 }
 
@@ -215,8 +228,7 @@ fn data<T: serde::de::DeserializeOwned>(response: Value, operation: &'static str
     serde_json::from_value(data).map_err(|source| Error::OutputJson { operation, source })
 }
 
-/// Each team's workflow states, by team id, in board order.
-fn teams(response: Value) -> Result<HashMap<String, Arc<Vec<Status>>>> {
+fn teams(response: Value) -> Result<States> {
     let teams: Teams = data(response, "Reading Linear's workflow states")?;
     Ok(teams
         .teams
@@ -544,7 +556,7 @@ struct TeamRef {
 }
 
 impl Node {
-    fn into_item(self, source: &SourceKey, states: &HashMap<String, Arc<Vec<Status>>>) -> Item {
+    fn into_item(self, source: &SourceKey, states: &States) -> Item {
         // A relation `issue blocks relatedIssue` is listed on the blocked
         // issue as an inverse relation, so its `issue` is the blocker.
         let mut blocked_by: Vec<String> = self

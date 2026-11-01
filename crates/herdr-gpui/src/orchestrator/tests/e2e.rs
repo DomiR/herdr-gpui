@@ -115,6 +115,7 @@ fn pull_requests_and_issues_list_a_local_checkout(cx: &mut TestAppContext) {
         timing: Timing {
             reload: Duration::from_millis(20),
             sync: Duration::from_secs(3600),
+            ..Timing::default()
         },
         linear: None,
     };

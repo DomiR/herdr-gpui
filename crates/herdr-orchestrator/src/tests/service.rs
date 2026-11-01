@@ -40,6 +40,7 @@ pub(super) fn start(dir: &std::path::Path, checkout: String) -> Service {
         timing: Timing {
             reload: Duration::from_millis(20),
             sync: Duration::from_secs(3600),
+            ..Timing::default()
         },
         linear: None,
     })
