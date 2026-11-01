@@ -156,6 +156,8 @@ pub(crate) struct DocEditor {
     pub(super) links: FileLinks,
     /// What this view asks of its window: files to open, notes to send.
     requests: Vec<Request>,
+    /// The document's compaction count when anchors were last taken.
+    generation: u64,
     /// Comments waiting to be sent, and the one being written.
     pub(super) comments: Vec<Comment>,
     pub(super) draft: Option<Draft>,
@@ -205,6 +207,7 @@ impl DocEditor {
             requests: Vec::new(),
             comments: Vec::new(),
             draft: None,
+            generation: 0,
             highlights: Vec::new(),
             selecting: false,
             restore: Some((folded, line)),
@@ -401,6 +404,15 @@ impl DocEditor {
 
     /// A change to the document, from this view or anywhere else.
     fn changed(&mut self, event: &Changed, cx: &mut Context<Self>) {
+        let generation = self
+            .buffer
+            .read(cx)
+            .document()
+            .map_or(0, herdr_doc::Document::generation);
+        if generation != self.generation {
+            self.rebase(generation, cx);
+            return;
+        }
         let doc = self.buffer.read(cx).document();
         if let (Some(doc), Some((anchor, head))) = (doc, &self.anchors)
             && let (Some(anchor), Some(head)) = (doc.resolve(anchor), doc.resolve(head))
@@ -443,6 +455,29 @@ impl DocEditor {
         }
         self.stale = true;
         self.remember(cx);
+        self.track_comments(cx);
+        cx.notify();
+    }
+
+    /// The document started again from the same text (a compaction): every
+    /// anchor is taken again at the offset it last stood for.
+    fn rebase(&mut self, generation: u64, cx: &mut Context<Self>) {
+        self.generation = generation;
+        self.highlights.clear();
+        self.remember(cx);
+        let starts: Vec<usize> = self
+            .prepared
+            .folded
+            .keys()
+            .filter_map(|line| self.prepared.lines.get(*line).map(|l| l.range.start))
+            .collect();
+        let doc = self.buffer.read(cx).document();
+        self.folded = starts
+            .into_iter()
+            .filter_map(|start| doc?.anchor(start, false))
+            .collect();
+        self.reanchor_comments(cx);
+        self.stale = true;
         cx.notify();
     }
 

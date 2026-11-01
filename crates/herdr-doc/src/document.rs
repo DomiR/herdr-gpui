@@ -106,6 +106,8 @@ pub struct Document {
     agents: HashMap<String, PeerID>,
     /// Bumped by every change, from any writer.
     version: Version,
+    /// Bumped by every compaction.
+    generation: u64,
     /// Where recent versions are in the history.
     history: History,
 }
@@ -153,6 +155,7 @@ impl Document {
             writing: Vec::new(),
             agents: HashMap::new(),
             version,
+            generation: 0,
             history,
         })
     }
@@ -335,6 +338,49 @@ impl Document {
         }
         let old = self.text_at(version)?;
         version::unified(&old, &self.current, version, self.version)
+    }
+
+    /// How many CRDT operations the document's history holds.
+    pub fn history_len(&self) -> usize {
+        self.doc.len_ops()
+    }
+
+    /// Drops the history, as comet rebuilds a document grown fat, when
+    /// nothing waits to be written: the document starts again from its
+    /// current text. (Loro's shallow snapshots cannot fork at the synced
+    /// version, which merging a disk change needs.) The text, its version,
+    /// and each agent's peer stay; undo and diffs from older versions start
+    /// afresh, and anchors no longer resolve: holders take them again from
+    /// the same byte offsets when [`Self::generation`] moves. Whether it did.
+    pub fn compact(&mut self) -> Result<bool> {
+        if self.dirty() || !self.writing.is_empty() {
+            return Ok(false);
+        }
+        let doc = LoroDoc::new();
+        let text = doc.get_text(TEXT);
+        text.insert_utf8(0, &self.current)?;
+        doc.commit();
+        let mut undo = UndoManager::new(&doc);
+        undo.set_merge_interval(UNDO_MERGE_MS);
+        undo.set_max_undo_steps(UNDO_STEPS);
+        let mut history = History::default();
+        history.record(self.version, doc.oplog_frontiers());
+        self.synced = Synced {
+            frontiers: doc.oplog_frontiers(),
+            text: self.synced.text.clone(),
+            version: self.synced.version,
+        };
+        self.doc = doc;
+        self.text = text;
+        self.undo = undo;
+        self.history = history;
+        self.generation += 1;
+        Ok(true)
+    }
+
+    /// Bumped by [`Self::compact`]: anchors taken before it do not resolve.
+    pub fn generation(&self) -> u64 {
+        self.generation
     }
 
     /// The text at `version`, while the document still knows it.

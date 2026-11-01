@@ -126,12 +126,23 @@ fn indents_items_with_their_children() {
 #[test]
 fn moves_items_with_their_children() {
     let text = "- a\n  - a1\n- b\n- c\n";
-    let (edit, line) = move_item(text, 2, true).unwrap();
-    assert_eq!(apply(text, edit), "- b\n- a\n  - a1\n- c\n");
+    let (edits, line) = move_item(text, 2, true).unwrap();
+    assert_eq!(Edit::apply_all(text, &edits), "- b\n- a\n  - a1\n- c\n");
     assert_eq!(line, 0);
-    let (edit, line) = move_item(text, 0, false).unwrap();
-    assert_eq!(apply(text, edit), "- b\n- a\n  - a1\n- c\n");
+    // The shorter block is the one that moves: "- b" is deleted and put
+    // back, "- a" with its child stays where it is.
+    assert!(
+        edits.iter().all(|edit| edit.text.len() <= "- b\n".len()),
+        "{edits:?}"
+    );
+    let (edits, line) = move_item(text, 0, false).unwrap();
+    assert_eq!(Edit::apply_all(text, &edits), "- b\n- a\n  - a1\n- c\n");
     assert_eq!(line, 1);
+    let (edits, _) = move_item("- long item\n- x\n", 1, true).unwrap();
+    assert_eq!(
+        Edit::apply_all("- long item\n- x\n", &edits),
+        "- x\n- long item\n"
+    );
     assert_eq!(move_item(text, 0, true), None);
     assert_eq!(move_item(text, 3, false), None);
     // A sub-item moves only among its siblings.

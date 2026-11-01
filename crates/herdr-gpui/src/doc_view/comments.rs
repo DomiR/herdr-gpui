@@ -23,6 +23,8 @@ const CARD_QUOTE: usize = 80;
 pub(super) struct Comment {
     start: Anchor,
     end: Anchor,
+    /// Where it last was, to anchor it again after a compaction.
+    range: Range<usize>,
     text: String,
 }
 
@@ -30,6 +32,7 @@ pub(super) struct Comment {
 pub(super) struct Draft {
     start: Anchor,
     end: Anchor,
+    range: Range<usize>,
     pub(super) input: Entity<SearchInput>,
 }
 
@@ -62,7 +65,12 @@ impl DocEditor {
             input
         });
         let focus = input.read(cx).focus.clone();
-        self.draft = Some(Draft { start, end, input });
+        self.draft = Some(Draft {
+            start,
+            end,
+            range,
+            input,
+        });
         window.focus(&focus, cx);
         cx.notify();
     }
@@ -77,6 +85,7 @@ impl DocEditor {
             self.comments.push(Comment {
                 start: draft.start,
                 end: draft.end,
+                range: draft.range,
                 text,
             });
         }
@@ -134,6 +143,53 @@ impl DocEditor {
             !picked.contains(&(position - 1))
         });
         self.request(Request::Notes { pane, text: prompt }, cx);
+    }
+
+    /// Notes where each comment is after a change.
+    pub(super) fn track_comments(&mut self, cx: &mut Context<Self>) {
+        let ranges: Vec<Option<Range<usize>>> = self
+            .comments
+            .iter()
+            .map(|comment| self.comment_range(&comment.start, &comment.end, cx))
+            .collect();
+        for (comment, range) in self.comments.iter_mut().zip(ranges) {
+            if let Some(range) = range {
+                comment.range = range;
+            }
+        }
+        if let Some(range) = self
+            .draft
+            .as_ref()
+            .and_then(|draft| self.comment_range(&draft.start, &draft.end, cx))
+            && let Some(draft) = self.draft.as_mut()
+        {
+            draft.range = range;
+        }
+    }
+
+    /// Takes every comment's anchors again where it last was.
+    pub(super) fn reanchor_comments(&mut self, cx: &mut Context<Self>) {
+        let Some(doc) = self.buffer.read(cx).document() else {
+            return;
+        };
+        let take = |range: &Range<usize>| {
+            Some((
+                doc.anchor(range.start, false)?,
+                doc.anchor(range.end.saturating_sub(1).max(range.start), false)?,
+            ))
+        };
+        for comment in &mut self.comments {
+            if let Some((start, end)) = take(&comment.range) {
+                comment.start = start;
+                comment.end = end;
+            }
+        }
+        if let Some(draft) = self.draft.as_mut()
+            && let Some((start, end)) = take(&draft.range)
+        {
+            draft.start = start;
+            draft.end = end;
+        }
     }
 
     pub(super) fn delete_comment(&mut self, index: usize, cx: &mut Context<Self>) {

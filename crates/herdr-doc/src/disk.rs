@@ -35,6 +35,51 @@ impl Stamp {
     }
 }
 
+/// How a file spells what the document keeps plainly: its line breaks and
+/// whether it starts with a byte-order mark. A document always holds `\n`
+/// and no mark; a file keeps its own on every write, as comet's open files
+/// keep their encoding and line endings.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Format {
+    /// Lines end in `\r\n`, as the file's first line break did.
+    pub crlf: bool,
+    /// The file starts with a UTF-8 byte-order mark.
+    pub bom: bool,
+}
+
+const BOM: &str = "\u{feff}";
+
+impl Format {
+    /// `raw` file text as a document holds it, and how the file spelled it.
+    pub fn decode(raw: &str) -> (String, Self) {
+        let (bom, body) = match raw.strip_prefix(BOM) {
+            Some(body) => (true, body),
+            None => (false, raw),
+        };
+        let crlf = body.find('\n').is_some_and(|at| body[..at].ends_with('\r'));
+        let text = if body.contains("\r\n") {
+            body.replace("\r\n", "\n")
+        } else {
+            body.to_owned()
+        };
+        (text, Self { crlf, bom })
+    }
+
+    /// Document text as the file spells it.
+    pub fn encode(self, text: &str) -> String {
+        let mut out = String::with_capacity(text.len() + usize::from(self.bom) * BOM.len());
+        if self.bom {
+            out.push_str(BOM);
+        }
+        if self.crlf {
+            out.push_str(&text.replace('\n', "\r\n"));
+        } else {
+            out.push_str(text);
+        }
+        out
+    }
+}
+
 /// The file's stamp, or `None` when it is gone.
 pub fn stamp(path: &Path) -> Result<Option<Stamp>> {
     match fs::metadata(path) {
@@ -44,10 +89,17 @@ pub fn stamp(path: &Path) -> Result<Option<Stamp>> {
     }
 }
 
-/// Reads the file as UTF-8 text with its stamp. Refuses a file that is not
-/// a regular file, is over [`MAX_BYTES`], or is not UTF-8, each by its own
-/// variant, and reports a missing file as [`Error::Missing`].
-pub fn read(path: &Path) -> Result<(String, Stamp)> {
+/// Reads the file as UTF-8 text, as a document holds it, with its stamp
+/// and format. Refuses a file that is not a regular file, is over
+/// [`MAX_BYTES`], or is not UTF-8, each by its own variant, and reports a
+/// missing file as [`Error::Missing`].
+pub fn read(path: &Path) -> Result<(String, Stamp, Format)> {
+    let (raw, stamp) = read_raw(path)?;
+    let (text, format) = Format::decode(&raw);
+    Ok((text, stamp, format))
+}
+
+fn read_raw(path: &Path) -> Result<(String, Stamp)> {
     let metadata = match fs::metadata(path) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
@@ -91,7 +143,12 @@ pub enum Written {
 /// `expected`, the text last synced with it: another writer's change is
 /// returned to be merged instead of being overwritten. A change landing
 /// between this check and the rename is the one window left.
-pub fn write_if_unchanged(path: &Path, expected: &str, text: &str) -> Result<Written> {
+pub fn write_if_unchanged(
+    path: &Path,
+    expected: &str,
+    text: &str,
+    format: Format,
+) -> Result<Written> {
     // This process's own writes take turns, so two of them (a document's
     // last write as it closes and one still in flight) never both pass the
     // check before either renames.
@@ -99,37 +156,40 @@ pub fn write_if_unchanged(path: &Path, expected: &str, text: &str) -> Result<Wri
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let current = match read(path) {
-        Ok((current, _)) => current,
+        Ok((current, ..)) => current,
         Err(Error::Missing { .. }) => return Ok(Written::Missing),
         Err(error) => return Err(error),
     };
     if current != expected {
         return Ok(Written::Changed(current));
     }
-    write_unlocked(path, text).map(Written::Wrote)
+    write_unlocked(path, &format.encode(text)).map(Written::Wrote)
 }
 
 /// Writes `text` to `path` through a temporary file in the same folder and
 /// a rename, so a reader sees the old text or the new one, never half. An
 /// existing file keeps its permissions.
-pub fn write(path: &Path, text: &str) -> Result<Stamp> {
+pub fn write(path: &Path, text: &str, format: Format) -> Result<Stamp> {
     let _turn = WRITES
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    write_unlocked(path, text)
+    write_unlocked(path, &format.encode(text))
 }
 
 /// [`write`] when the file is gone: brings it back, but only while it is
 /// still gone; a file that reappeared meanwhile is left for the caller to
 /// merge.
-pub fn recreate(path: &Path, expected: &str, text: &str) -> Result<Written> {
+pub fn recreate(path: &Path, expected: &str, text: &str, format: Format) -> Result<Written> {
     let _turn = WRITES
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let encoded = format.encode(text);
     match read(path) {
-        Err(Error::Missing { .. }) => write_unlocked(path, text).map(Written::Wrote),
-        Ok((current, _)) if current == expected => write_unlocked(path, text).map(Written::Wrote),
-        Ok((current, _)) => Ok(Written::Changed(current)),
+        Err(Error::Missing { .. }) => write_unlocked(path, &encoded).map(Written::Wrote),
+        Ok((current, ..)) if current == expected => {
+            write_unlocked(path, &encoded).map(Written::Wrote)
+        }
+        Ok((current, ..)) => Ok(Written::Changed(current)),
         Err(error) => Err(error),
     }
 }

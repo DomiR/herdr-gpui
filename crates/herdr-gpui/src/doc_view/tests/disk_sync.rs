@@ -100,3 +100,54 @@ fn another_writer_ends_a_composition(cx: &mut TestAppContext) {
     assert_eq!(marked, None);
     assert_eq!(doc.text(), "new line\nxか\n");
 }
+
+#[gpui::test]
+fn a_windows_file_keeps_its_line_breaks(cx: &mut TestAppContext) {
+    let mut doc = open("- [ ] a\r\n- [ ] b\r\n", cx);
+    assert_eq!(doc.text(), "- [ ] a\n- [ ] b\n");
+    doc.caret_at("b", 1);
+    doc.keys("enter");
+    doc.type_text("c");
+    doc.wait(500);
+    assert_eq!(doc.disk(), "- [ ] a\r\n- [ ] b\r\n- [ ] c\r\n");
+}
+
+#[gpui::test]
+fn a_compacted_document_keeps_folds_comments_and_the_caret(cx: &mut TestAppContext) {
+    let mut doc = open("# A\nsome\n# B\nmore\n", cx);
+    doc.cx.update(|_, cx| {
+        doc.editor
+            .update(cx, |editor, cx| editor.toggle_fold(0, cx));
+    });
+    doc.caret_at("more", 0);
+    doc.keys(&primary("shift-m"));
+    doc.type_text("note");
+    doc.keys("enter");
+    // Enough typing to pass the test threshold, then a write compacts.
+    doc.caret_at("more", 4);
+    for _ in 0..30 {
+        doc.type_text("x");
+        doc.keys("backspace");
+    }
+    doc.type_text("!");
+    doc.wait(600);
+    let generation = doc.cx.update(|_, cx| {
+        doc.editor
+            .read(cx)
+            .buffer
+            .read(cx)
+            .document()
+            .map(herdr_doc::Document::generation)
+    });
+    assert_eq!(generation, Some(1));
+    assert_eq!(doc.disk(), "# A\nsome\n# B\nmore!\n");
+    assert_eq!(doc.rows(), vec![0, 2, 3, 4]);
+    assert_eq!(
+        doc.selection(),
+        Selection::caret("# A\nsome\n# B\nmore!".len())
+    );
+    doc.type_text("?");
+    assert_eq!(doc.text(), "# A\nsome\n# B\nmore!?\n");
+    let count = doc.cx.update(|_, cx| doc.editor.read(cx).comment_count());
+    assert_eq!(count, 1);
+}

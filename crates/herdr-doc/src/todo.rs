@@ -325,9 +325,14 @@ pub fn indent(text: &str, lines_range: Range<usize>, outdent: bool) -> Vec<Edit>
 }
 
 /// Moves the item on `line` with its sub-items above the previous sibling
-/// (or below the next one). The edit and the line the item starts on
-/// after it; `None` when there is no sibling that way.
-pub fn move_item(text: &str, line: usize, up: bool) -> Option<(Edit, usize)> {
+/// (or below the next one). The edits and the line the item starts on
+/// after them; `None` when there is no sibling that way.
+///
+/// A CRDT text has no move, only delete and insert, so an agent's edit
+/// inside the text that moves is applied to the deleted copy. Of the two
+/// blocks trading places, the shorter one is the one moved, so as little
+/// text as possible is exposed to that.
+pub fn move_item(text: &str, line: usize, up: bool) -> Option<(Vec<Edit>, usize)> {
     let lines = markdown::lines(text);
     let item = lines.get(line).filter(|item| item.is_item())?;
     let end = block_end(&lines, line);
@@ -352,13 +357,24 @@ pub fn move_item(text: &str, line: usize, up: bool) -> Option<(Edit, usize)> {
         |range: &Range<usize>| lines[range.start].range.start..lines[range.end - 1].range.end;
     let a = span(&first);
     let b = span(&second);
-    let replacement = format!("{}\n{}", &text[b.clone()], &text[a.clone()]);
+    // `a` is directly followed by its line break and then `b`.
+    let edits = if b.len() <= a.len() {
+        vec![
+            Edit::insert(a.start, format!("{}\n", &text[b.clone()])),
+            Edit::new(a.end..b.end, ""),
+        ]
+    } else {
+        vec![
+            Edit::new(a.start..b.start, ""),
+            Edit::insert(b.end, format!("\n{}", &text[a.clone()])),
+        ]
+    };
     let moved_to = if up {
         first.start
     } else {
         first.start + second.len()
     };
-    Some((Edit::new(a.start..b.end, replacement), moved_to))
+    Some((edits, moved_to))
 }
 
 /// Done and total tasks under each heading, nested sections included, by

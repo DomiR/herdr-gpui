@@ -215,3 +215,37 @@ fn a_diff_worked_out_from_a_stale_base_is_worked_out_again() {
         .unwrap();
     assert_eq!(doc.text(), "a\nc\n");
 }
+
+#[test]
+fn compacting_keeps_the_text_anchors_and_merging() {
+    let mut doc = Document::new("one\ntwo\n").unwrap();
+    for _ in 0..50 {
+        type_at(&mut doc, 3, "x");
+        doc.edit(&[Edit::new(3..4, "")]).unwrap();
+    }
+    let version = doc.agent_edit(&agent("p"), at(doc.version()), |text| {
+        Ok(vec![Edit::insert(text.len(), "three\n")])
+    });
+    assert!(version.is_ok());
+    // Nothing is written yet: no compaction.
+    assert!(!doc.compact().unwrap());
+    save(&mut doc);
+    let before = doc.history_len();
+    assert!(doc.compact().unwrap());
+    assert!(doc.history_len() < before);
+    assert_eq!(doc.generation(), 1);
+    assert_eq!(doc.text(), "one\ntwo\nthree\n");
+    // Anchors are taken again after a compaction, at the same offsets.
+    let anchor = doc.anchor(4, false).unwrap();
+    assert!(!doc.can_undo());
+    // Disk changes and agents still merge, and versions go on.
+    let version = doc.version();
+    doc.merge_disk("zero\none\ntwo\nthree\n").unwrap();
+    assert_eq!(doc.version(), Version(version.0 + 1));
+    doc.agent_edit(&agent("p"), at(doc.version()), |text| {
+        Ok(vec![Edit::insert(text.len(), "four\n")])
+    })
+    .unwrap();
+    assert_eq!(doc.text(), "zero\none\ntwo\nthree\nfour\n");
+    assert_eq!(doc.resolve(&anchor), Some(9));
+}

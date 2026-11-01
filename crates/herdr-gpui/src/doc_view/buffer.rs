@@ -11,7 +11,7 @@ use super::Error;
 use gpui::{App, AppContext, Context, Entity, EventEmitter, Global, Task, WeakEntity};
 use herdr_doc::{
     Applied, Author, Document, Edit, Merge, Scope, Synced, Version, diff,
-    disk::{self, Stamp, Written},
+    disk::{self, Format, Stamp, Written},
 };
 use std::{
     collections::HashMap,
@@ -22,6 +22,12 @@ use std::{
 
 /// How often the file is checked for changes.
 const POLL: Duration = Duration::from_millis(500);
+/// CRDT operations a document's history holds before it starts again from
+/// its written text.
+#[cfg(not(test))]
+const COMPACT_OPS: usize = 20_000;
+#[cfg(test)]
+const COMPACT_OPS: usize = 40;
 /// How often a closing document merges and writes again before it gives up.
 const CLOSING_WRITES: usize = 4;
 /// How long typing pauses before it is written.
@@ -73,6 +79,9 @@ pub(crate) struct DocBuffer {
     recreate: bool,
     /// The poll timer fired: read the file's stamp when next free.
     poll_due: bool,
+    /// How the file spells line breaks and its byte-order mark, kept on
+    /// every write.
+    format: Format,
     /// The agent that last changed the document through a command, whom
     /// comments go to.
     last_agent: Option<Author>,
@@ -86,6 +95,7 @@ pub(crate) struct DocBuffer {
 struct Read {
     text: String,
     stamp: Stamp,
+    format: Format,
     base: String,
     edits: Vec<Edit>,
 }
@@ -154,6 +164,7 @@ impl DocBuffer {
             recreate: false,
             poll_due: false,
             last_agent: None,
+            format: Format::default(),
             write_error: None,
             _poll: poll,
             debounce: None,
@@ -203,7 +214,8 @@ impl DocBuffer {
             let _ = this.update(cx, |this, cx| {
                 this.busy = false;
                 match result {
-                    Ok((text, stamp)) => {
+                    Ok((text, stamp, format)) => {
+                        this.format = format;
                         let version = this.reopened_version(&text, cx);
                         match Document::at(&text, version) {
                             Ok(doc) => {
@@ -251,12 +263,13 @@ impl DocBuffer {
         // seen, or a write of its own still landing, is merged and the
         // write tried again, rather than either losing the last typing.
         let path = self.path.clone();
+        let format = self.format;
         cx.background_executor()
             .spawn(async move {
                 for _ in 0..CLOSING_WRITES {
                     let write = doc.to_write();
                     let expected = doc.synced().text().to_owned();
-                    match disk::write_if_unchanged(&path, &expected, write.text()) {
+                    match disk::write_if_unchanged(&path, &expected, write.text(), format) {
                         Ok(Written::Changed(disk)) => {
                             doc.not_written(&write);
                             if let Err(error) = doc.merge_disk(&disk) {
@@ -399,11 +412,12 @@ impl DocBuffer {
         self.busy = true;
         let path = self.path.clone();
         let text = write.text().to_owned();
+        let format = self.format;
         let job = cx.background_executor().spawn(async move {
             if recreate {
-                return disk::recreate(&path, &expected, &text);
+                return disk::recreate(&path, &expected, &text, format);
             }
-            disk::write_if_unchanged(&path, &expected, &text)
+            disk::write_if_unchanged(&path, &expected, &text, format)
         });
         cx.spawn(async move |this, cx| {
             let result = job.await;
@@ -426,6 +440,14 @@ impl DocBuffer {
                 self.stamp = Some(stamp);
                 self.missing = false;
                 self.write_error = None;
+                // A history grown long starts again from the text written;
+                // editors take their anchors again.
+                if doc.history_len() > COMPACT_OPS && doc.compact().unwrap_or(false) {
+                    cx.emit(Changed {
+                        by: Who::User,
+                        inserted: Vec::new(),
+                    });
+                }
             }
             Ok(Written::Changed(disk)) => {
                 doc.not_written(&write);
@@ -460,11 +482,12 @@ impl DocBuffer {
             match disk::stamp(&path)? {
                 None => Ok(None),
                 Some(stamp) if Some(stamp) == known => Ok(Some(None)),
-                Some(_) => disk::read(&path).map(|(text, stamp)| {
+                Some(_) => disk::read(&path).map(|(text, stamp, format)| {
                     let edits = diff::edits(&base, &text);
                     Some(Some(Read {
                         text,
                         stamp,
+                        format,
                         base,
                         edits,
                     }))
@@ -483,6 +506,8 @@ impl DocBuffer {
                     Ok(Some(None)) => {}
                     Ok(Some(Some(read))) => {
                         this.stamp = Some(read.stamp);
+                        // Another program may have saved it its own way.
+                        this.format = read.format;
                         this.merge(&read.text, Some((&read.base, read.edits)), cx);
                     }
                     Err(herdr_doc::Error::Missing { .. }) => {

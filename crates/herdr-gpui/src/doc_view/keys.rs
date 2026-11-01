@@ -366,15 +366,15 @@ impl DocEditor {
     fn move_item(&mut self, up: bool, cx: &mut Context<Self>) {
         let line = self.caret_line();
         let text = self.text(cx);
-        let Some((edit, moved_to)) = todo::move_item(text, line, up) else {
+        let Some((edits, moved_to)) = todo::move_item(text, line, up) else {
             return;
         };
         let column = self.selection.head - self.prepared.lines[line].range.start;
-        let after = Edit::apply_all(text, std::slice::from_ref(&edit));
+        let after = Edit::apply_all(text, &edits);
         let start = markdown::lines(&after)
             .get(moved_to)
             .map_or(0, |l| l.range.start);
-        self.apply(vec![edit], start + column, cx);
+        self.apply(edits, start + column, cx);
     }
 
     /// Cmd-Enter on each selected line: a task is checked or unchecked, a
