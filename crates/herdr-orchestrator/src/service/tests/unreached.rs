@@ -58,7 +58,7 @@ fn an_unreached_host_keeps_the_repository_shown_until_a_sync_finds_it() {
     );
     assert_eq!(cached(&worker), shown, "the next start shows it too");
     // The next sync finds the repository first, and the failure goes.
-    worker.sync(None);
+    worker.sync(None, Linear::Due);
     assert!(!worker.unreached);
     assert!(worker.snapshot.error.is_none());
     assert_eq!(worker.snapshot.repo, shown);
@@ -73,7 +73,7 @@ fn an_unreached_host_with_nothing_shown_is_found_on_a_later_sync() {
     worker.found(&host, Err(unreached())).unwrap();
     assert!(worker.snapshot.repo.is_none());
     assert!(worker.snapshot.error.is_some());
-    worker.sync(None);
+    worker.sync(None, Linear::Due);
     assert!(worker.snapshot.error.is_none());
     assert_eq!(worker.snapshot.repo, found);
 }

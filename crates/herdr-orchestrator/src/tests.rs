@@ -41,6 +41,7 @@ mod keys;
 mod line_endings;
 mod linear;
 mod linear_branches;
+mod linear_complexity;
 mod linear_create;
 mod linear_move;
 mod linear_sub_issues;

@@ -9,6 +9,7 @@
 use super::{IssueSource, List, OrchestratorView, ViewId};
 use crate::{HerdrWindow, browser::OrchestratorRepo, i18n::fl, sidebar::ActivityPanel};
 use gpui::{prelude::*, *};
+use std::time::Instant;
 
 impl HerdrWindow {
     /// Keeps the shown section on the focused workspace's view, making it
@@ -20,6 +21,11 @@ impl HerdrWindow {
             return;
         };
         let id = self.sections_view(cx);
+        if source == IssueSource::Linear
+            && let Some(view) = self.orchestrator_view(id)
+        {
+            view.update(cx, |view, _| view.linear_shown(Instant::now()));
+        }
         let changed = Some(id) != self.activity.section_view
             || self.activity.section_list != Some((list, source));
         self.activity.section_view = Some(id);

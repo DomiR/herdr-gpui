@@ -1,6 +1,7 @@
 //! A source syncing again keeps the count its last sync reported, so the
 //! view need not drop it, even when it was nothing.
 use super::*;
+use chrono::Utc;
 
 #[test]
 fn a_sync_keeps_the_last_count_until_it_ends() {

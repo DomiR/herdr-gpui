@@ -13,7 +13,6 @@ use super::{
     ssh_slots,
 };
 use crate::cache::{Cache, Kind};
-use chrono::Utc;
 use herdr_client::ConnectTarget;
 use herdr_github::Tokens;
 use herdr_remote::teleport::{AgentKind, Host};
@@ -33,22 +32,33 @@ use std::{
 };
 
 mod gitlab_source;
+mod retry;
 mod snapshot;
 mod sources;
+mod sync;
 
+use retry::Retry;
+pub use retry::retry_wait;
 pub use snapshot::{Notice, PullRequestLookup, Snapshot, SourceStatus, SyncState};
 pub use sources::sources;
+use sync::Linear;
 
 /// How often other applications' writes (agent-launcher's runs) are looked for.
 const RELOAD: Duration = Duration::from_secs(5);
 /// How often sources sync, as agent-launcher's default poll interval.
 const SYNC: Duration = Duration::from_secs(60);
+/// How often Linear syncs. A page of its issues costs about 4,650 of the
+/// 3,000,000 complexity points Linear allows a user an hour, so a listing
+/// of 500 each minute would use them all.
+const LINEAR_SYNC: Duration = Duration::from_secs(300);
 
 /// The worker's periods; tests shorten them.
 #[derive(Clone, Copy, Debug)]
 pub struct Timing {
     pub reload: Duration,
     pub sync: Duration,
+    /// Linear's own sync interval, checked on each sync.
+    pub linear: Duration,
 }
 
 impl Default for Timing {
@@ -56,32 +66,12 @@ impl Default for Timing {
         Self {
             reload: RELOAD,
             sync: SYNC,
+            linear: LINEAR_SYNC,
         }
     }
 }
-/// After a failure, a source waits this long before trying again.
-const BACKOFF: Duration = Duration::from_secs(300);
-/// A repository GitHub would not show this sign-in waits for the user to
-/// install the App or change token; Refresh asks sooner.
-const HIDDEN_BACKOFF: Duration = Duration::from_secs(1800);
 const COMMANDS: usize = 8;
 
-/// How long a failed source waits. A rate limit or refused token pauses as
-/// long as the provider asked; a repository the sign-in cannot see waits for
-/// a user action. The `cooldown` applies only to a provider's own failures,
-/// so a Beads failure never inherits a pause a GitHub request left behind.
-pub fn retry_wait(error: &Error, cooldown: Option<Duration>) -> Duration {
-    let floor = match error {
-        Error::Github(source) => match **source {
-            herdr_github::Error::RepositoryHidden { .. } => HIDDEN_BACKOFF,
-            _ => BACKOFF,
-        },
-        Error::Gitlab(source) if source.needs_user() => HIDDEN_BACKOFF,
-        Error::Gitlab(_) => BACKOFF,
-        _ => return BACKOFF,
-    };
-    cooldown.map_or(floor, |wait| wait.max(floor))
-}
 /// Actions running at once; more wait for the user to try again.
 const MAX_ACTIONS: usize = 4;
 /// Outcomes kept for the view between its polls.
@@ -123,9 +113,11 @@ enum Command {
         endpoint: Option<String>,
         target: ConnectTarget,
     },
-    /// Save the Linear API key, or with `None` remove it, then sync.
+    /// Sync Linear now: its section shows again.
+    SyncLinear,
+    /// Save the Linear API key, or with `None` remove it, then sync Linear.
     SaveLinearKey(Option<SecretString>),
-    /// Move a Linear issue to another workflow state, then sync.
+    /// Move a Linear issue to another workflow state, then sync Linear.
     MoveLinearIssue(super::linear::Move),
     /// Read what the new issue dialog offers, or create the issue it asks for.
     LinearCreate(linear_create::Ask),
@@ -241,8 +233,7 @@ struct Worker {
     /// SQLite's `data_version` at the last load: it changes when another
     /// connection commits, so unchanged means nothing to reload.
     data_version: Option<i64>,
-    /// Sources waiting out a failure, and until when.
-    retry: Vec<(SourceKey, Instant)>,
+    retry: Retry,
     /// Listings shown but not written: capped, the database is newer, or
     /// Linear's, which is never written.
     uncached: HashMap<SourceKey, Vec<Item>>,
@@ -256,6 +247,10 @@ struct Worker {
     linear_key: LinearKey,
     /// The Linear workspace's `urlKey`, once a sync has read it.
     linear_workspace: Option<String>,
+    /// When Linear last began a sync.
+    linear_synced: Option<Instant>,
+    /// Every team's workflow states, once read; see [`linear::STATES`].
+    linear_states: Option<super::linear::States>,
     /// Sends a Linear query; tests answer without a network.
     linear_fetch: fn(&SecretString, &str, Value) -> Result<Value>,
 }
@@ -276,13 +271,15 @@ impl Worker {
             unreached: false,
             branches_fresh: false,
             data_version: None,
-            retry: Vec::new(),
+            retry: Retry::default(),
             uncached: HashMap::new(),
             resume: HashMap::new(),
             gitlab_token: None,
             cooldown: None,
             linear_key: LinearKey::Missing,
             linear_workspace: None,
+            linear_synced: None,
+            linear_states: None,
             linear_fetch: super::linear::post,
         }
     }
@@ -297,9 +294,9 @@ impl Worker {
         // The host was just found unreachable: the next sync looks again.
         if !self.unreached {
             let token = self.request.token.clone();
-            self.sync(token.as_ref());
+            self.sync(token.as_ref(), Linear::Due);
         }
-        let Timing { reload, sync } = self.request.timing;
+        let Timing { reload, sync, .. } = self.request.timing;
         let mut next_sync = Instant::now() + sync;
         while !self.cancelled() {
             let wait = reload.min(next_sync.saturating_duration_since(Instant::now()));
@@ -310,28 +307,23 @@ impl Worker {
                     self.retry.clear();
                     self.read_linear_key();
                     let token = self.request.token.clone();
-                    self.sync(token.as_ref());
+                    self.sync(token.as_ref(), Linear::Now);
                     next_sync = Instant::now() + sync;
                 }
                 Ok(Command::Act(action)) => self.act(action),
+                Ok(Command::SyncLinear) => self.sync_linear_now(),
                 Ok(Command::SaveLinearKey(key)) => {
                     self.save_linear_key(key.as_ref());
-                    let token = self.request.token.clone();
-                    self.sync(token.as_ref());
-                    next_sync = Instant::now() + sync;
+                    self.sync_linear_now();
                 }
                 Ok(Command::MoveLinearIssue(change)) => {
                     if self.move_linear_issue(&change) {
-                        let token = self.request.token.clone();
-                        self.sync(token.as_ref());
-                        next_sync = Instant::now() + sync;
+                        self.sync_linear_now();
                     }
                 }
                 Ok(Command::LinearCreate(ask)) => {
                     if self.linear_create(ask) {
-                        let token = self.request.token.clone();
-                        self.sync(token.as_ref());
-                        next_sync = Instant::now() + sync;
+                        self.sync_linear_now();
                     }
                 }
                 Ok(Command::LoadPullRequest(number)) => self.load_pull_request(number),
@@ -356,14 +348,14 @@ impl Worker {
                 Ok(Command::Acted { resync }) => {
                     if resync {
                         let token = self.request.token.clone();
-                        self.sync(token.as_ref());
+                        self.sync(token.as_ref(), Linear::Due);
                     } else {
                         self.reload_if_changed();
                     }
                 }
                 Err(RecvTimeoutError::Timeout) if Instant::now() >= next_sync => {
                     let token = self.request.token.clone();
-                    self.sync(token.as_ref());
+                    self.sync(token.as_ref(), Linear::Due);
                     next_sync = Instant::now() + sync;
                 }
                 Err(RecvTimeoutError::Timeout) => self.reload_if_changed(),
@@ -659,256 +651,6 @@ impl Worker {
                 self.snapshot.error = Some(Arc::new(error));
             }
             self.publish();
-        }
-    }
-
-    fn sync(&mut self, token: Option<&Tokens>) {
-        if self.unreached {
-            let found = Host::new(&self.request.target)
-                .map_err(|_| Error::UnsupportedHost)
-                .and_then(|host| self.find(&host));
-            if let Err(error) = found
-                && !matches!(error, Error::Cancelled)
-            {
-                self.snapshot.error = Some(Arc::new(error));
-                self.publish();
-            }
-            // Still unreached: the sources' scripts would not reach it either.
-            if self.unreached {
-                return;
-            }
-        }
-        self.recognize(gitlab::cli_hosts::read);
-        let Some(info) = self.snapshot.repo.clone() else {
-            return;
-        };
-        let (target, cancelled) = (&self.request.target, &self.cancelled);
-        if !std::mem::take(&mut self.branches_fresh)
-            && let Some(host) = &self.host
-        {
-            // The branches last read stay when they cannot be read now.
-            match ssh_slots::run(target, cancelled, || {
-                naming::local_branches(host, &info.main_root, cancelled)
-            }) {
-                Ok(branches) => self.snapshot.branches = Arc::new(branches),
-                Err(error) => tracing::debug!(%error, "Cannot read the branches"),
-            }
-        }
-        for (key, supported) in sources(&info, self.linear_source()) {
-            if self.cancelled() {
-                return;
-            }
-            let now = Instant::now();
-            self.retry.retain(|(_, until)| *until > now);
-            if !supported || self.retry.iter().any(|(waiting, _)| *waiting == key) {
-                continue;
-            }
-            self.set_syncing(&key);
-            self.publish();
-            // Only this source's own GitHub reply may set its pause: a delay
-            // left by a pull request lookup or another source must not apply.
-            self.cooldown = None;
-            let result = self.sync_source(&key, token);
-            // A Linear sync learns its workspace, which keys the source.
-            let key = match key.provider {
-                Provider::Linear => {
-                    super::linear::source(self.linear_workspace.as_deref().unwrap_or(""))
-                }
-                _ => key,
-            };
-            let state = match result {
-                // The view shows no sync times, so the log keeps them.
-                Ok(state) => {
-                    tracing::debug!(
-                        category = "orchestrator_sync",
-                        provider = ?key.provider,
-                        host = key.host.as_str(),
-                        repository = key.repository.as_str(),
-                        elapsed_ms = now.elapsed().as_millis(),
-                        state = ?state,
-                        "Orchestrator source synced"
-                    );
-                    state
-                }
-                Err(Error::Cancelled) => return,
-                Err(error) => {
-                    let wait = retry_wait(&error, self.cooldown.take());
-                    tracing::warn!(
-                        category = "orchestrator_sync",
-                        provider = ?key.provider,
-                        host = key.host.as_str(),
-                        repository = key.repository.as_str(),
-                        retry_in_secs = wait.as_secs(),
-                        error = %error,
-                        "Orchestrator source sync failed"
-                    );
-                    self.retry.push((key.clone(), Instant::now() + wait));
-                    match &error {
-                        // Waits as a failure does, but offers the sign-in.
-                        Error::Gitlab(source) if source.needs_sign_in() => SyncState::SignIn,
-                        _ => SyncState::Failed(Arc::new(error)),
-                    }
-                }
-            };
-            self.set_state(&key, state);
-            if let Err(error) = self.reload() {
-                self.snapshot.error = Some(Arc::new(error));
-            }
-            self.publish();
-        }
-    }
-
-    fn sync_source(&mut self, key: &SourceKey, token: Option<&Tokens>) -> Result<SyncState> {
-        let (Some(store), Some(host)) = (self.store.as_mut(), self.host.as_ref()) else {
-            return Ok(SyncState::Unsupported);
-        };
-        let writable = store.access() == Access::ReadWrite;
-        match key.provider {
-            Provider::Beads => {
-                let (items, checkpoint) =
-                    ssh_slots::run(&self.request.target, &self.cancelled, || {
-                        beads::sync(host, key, &self.cancelled)
-                    })?;
-                let count = items.len();
-                if writable {
-                    store.replace_items(key, &items, &checkpoint)?;
-                    self.uncached.remove(key);
-                } else {
-                    self.uncached.insert(key.clone(), items);
-                }
-                Ok(SyncState::Synced {
-                    at: Utc::now(),
-                    count,
-                })
-            }
-            Provider::Github => {
-                let Some(tokens) = token else {
-                    return Ok(SyncState::SignIn);
-                };
-                let owner = key
-                    .repository
-                    .split_once('/')
-                    .map_or(key.repository.as_str(), |(owner, _)| owner);
-                let token = tokens.for_owner(owner);
-                let previous = store.checkpoint(key)?;
-                // What the last complete sync stored, for reading only the
-                // changes since; a read-only store keeps none.
-                let cached = match (&previous, writable) {
-                    (Some(_), true) => Some(
-                        store
-                            .items()?
-                            .into_iter()
-                            .filter(|item| item.key.source == *key)
-                            .collect(),
-                    ),
-                    _ => None,
-                };
-                // Only while the stored checkpoint is still the one this
-                // worker wrote: agent-launcher shares the database and may
-                // have stored an older listing since.
-                let resume = self.resume.get(key).copied().filter(|resume| {
-                    previous
-                        .as_ref()
-                        .and_then(|checkpoint| checkpoint.updated_at)
-                        == Some(resume.oldest())
-                });
-                let cancelled = &self.cancelled;
-                let listing = github::sync(
-                    key,
-                    token,
-                    previous.as_ref(),
-                    (cached, resume),
-                    &|| cancelled.load(Ordering::Relaxed),
-                    &mut self.cooldown,
-                )?;
-                let count = listing.items.len();
-                // Reviews and checks change with every CI run, so they are
-                // read again each sync. Failing to read them keeps the last
-                // ones rather than failing the listing.
-                let statuses = super::review::fetch(&key.repository, |query, variables| {
-                    herdr_github::graphql(
-                        "orchestrator",
-                        token,
-                        query,
-                        variables,
-                        super::review::timeout(),
-                        || cancelled.load(Ordering::Relaxed),
-                        &mut self.cooldown,
-                    )
-                    .map_err(|error| match error {
-                        herdr_github::Error::PullRequest(
-                            herdr_github::pull_request::Error::Cancelled,
-                        ) => Error::Cancelled,
-                        error => Error::Github(Box::new(error)),
-                    })
-                });
-                match statuses {
-                    Ok(statuses) => {
-                        if writable
-                            && let Err(error) =
-                                store.replace_pr_statuses(&key.repository, &statuses)
-                        {
-                            tracing::warn!(%error, "Cannot keep pull request checks");
-                        }
-                        let mut all = (*self.snapshot.pr_status).clone();
-                        all.retain(|(repository, _), _| *repository != key.repository);
-                        all.extend(
-                            statuses
-                                .into_iter()
-                                .map(|(number, status)| ((key.repository.clone(), number), status)),
-                        );
-                        self.snapshot.pr_status = Arc::new(all);
-                    }
-                    Err(Error::Cancelled) => return Err(Error::Cancelled),
-                    Err(error) => tracing::warn!(%error, "Cannot read pull request checks"),
-                }
-                // A listing that is not stored is no place to resume from.
-                self.resume.remove(key);
-                if !listing.complete || !writable {
-                    self.uncached.insert(key.clone(), listing.items);
-                    return Ok(if listing.complete {
-                        SyncState::Synced {
-                            at: Utc::now(),
-                            count,
-                        }
-                    } else {
-                        SyncState::Capped { count }
-                    });
-                }
-                store.replace_items(key, &listing.items, &listing.checkpoint)?;
-                self.resume.insert(key.clone(), listing.resume);
-                self.uncached.remove(key);
-                Ok(SyncState::Synced {
-                    at: Utc::now(),
-                    count,
-                })
-            }
-            Provider::Gitlab => {
-                let previous = store.checkpoint(key)?;
-                let listing = self.gitlab_listing(key, previous.as_ref())?;
-                let Some(store) = self.store.as_mut() else {
-                    return Ok(SyncState::Unsupported);
-                };
-                let count = listing.items.len();
-                if !listing.complete || !writable {
-                    self.uncached.insert(key.clone(), listing.items);
-                    return Ok(if listing.complete {
-                        SyncState::Synced {
-                            at: Utc::now(),
-                            count,
-                        }
-                    } else {
-                        SyncState::Capped { count }
-                    });
-                }
-                store.replace_items(key, &listing.items, &listing.checkpoint)?;
-                self.uncached.remove(key);
-                Ok(SyncState::Synced {
-                    at: Utc::now(),
-                    count,
-                })
-            }
-            Provider::Linear => self.sync_linear(),
         }
     }
 

@@ -91,10 +91,16 @@ Linear lists open issues across one workspace, keyed
 
 - A sync runs one query per `linear::Scope`: `Mine` (assigned to whoever owns
   the key) and `Cycles` (the active cycle of any team that person belongs to),
-  both open issues only, at most 500 each, deduped by identifier. One query
+  both open issues only, at most 500 each in pages of 50, deduped by identifier. One query
   with an `or` filter would be cheaper, but Linear answered it with rows
-  matching neither side. A sync costs about five requests against Linear's
-  limit of 2,500 an hour.
+  matching neither side. A page of 50 costs about 4,650 of Linear's complexity points, against its
+  limit of 10,000 a query (`tests/linear_complexity.rs` estimates each query
+  by Linear's rules), so a sync of about 500 issues is about eleven requests.
+  Linear therefore syncs on its own interval of 5 minutes (`Timing::linear`),
+  about 132 requests and 600,000 points an hour against Linear's 2,500
+  requests and 3,000,000 points. Refresh, a new key, a move or new issue,
+  and the Linear section showing again after longer than the interval sync
+  it at once; all but Refresh sync Linear alone.
 - What Linear says that the shared schema cannot hold (the branch name, the
   assignee and whether it is the key's owner, the cycle) is the item's
   `Tracker`, never stored; rows read from the database have none. The Issues
@@ -148,6 +154,17 @@ Linear lists open issues across one workspace, keyed
   the assignee's `avatarUrl`, `parent`, `project`, GitHub pull request
   `attachments`, and the first ten `children` states for sub-issue progress
   (marked `+` past ten), all kept on the `Tracker`, never stored.
+- A failed sync waits before its source syncs again (`service/retry.rs`). A
+  network failure (no route, DNS, timeout, or HTTP 5xx) waits 30 seconds,
+  doubling with each failure in a row up to 5 minutes, and starts over after
+  a success or Refresh. Linear's rate limit waits as long as its
+  `Retry-After` says (1 minute to an hour; 5 minutes without one). A key
+  Linear rejects waits until the key changes or Refresh.
+- Each banner above the list has a close button (`view/banners.rs`). A
+  closed banner stays closed while its source keeps failing the same way,
+  and shows again when it says something else or when the source syncs and
+  then fails again. The native Tickets board's read error and notice close
+  the same way.
 - **Go to worktree** opens an issue's newest run the way a run's Open does
   (`view/worktree.rs`), and remembers the issue: while the window is on
   Workspaces with it pending, Toggle Sidebar (Cmd-B) and Back return to the

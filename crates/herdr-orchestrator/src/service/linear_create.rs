@@ -81,6 +81,14 @@ impl Recorder {
         }
         (options, issues)
     }
+
+    /// How many times Linear was asked to sync now since the last call.
+    pub fn linear_syncs(&self) -> usize {
+        self.0
+            .try_iter()
+            .filter(|command| matches!(command, Command::SyncLinear))
+            .count()
+    }
 }
 
 impl Worker {

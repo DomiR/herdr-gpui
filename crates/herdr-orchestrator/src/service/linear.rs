@@ -24,6 +24,12 @@ impl Service {
         self.commands.try_send(Command::SaveLinearKey(key)).is_ok()
     }
 
+    /// Asks for Linear to sync now, outside its interval, as when its
+    /// section shows again; a full queue drops it.
+    pub fn sync_linear(&self) {
+        let _ = self.commands.try_send(Command::SyncLinear);
+    }
+
     /// Asks for a Linear issue to move. `false` means the worker is behind
     /// and nothing was queued.
     pub fn move_linear_issue(&self, change: linear::Move) -> bool {
@@ -56,8 +62,8 @@ impl Worker {
     /// Takes `key` as the Linear key: Linear syncs at the next chance even
     /// after a failure, and without a key its listing goes.
     pub(super) fn set_linear_key(&mut self, key: LinearKey) {
-        self.retry
-            .retain(|(source, _)| source.provider != Provider::Linear);
+        self.retry.forget(Provider::Linear);
+        self.linear_states = None;
         self.linear_key = key;
         if matches!(self.linear_key, LinearKey::Missing) {
             let before = self.uncached.len();
@@ -98,10 +104,26 @@ impl Worker {
             LinearKey::Found(key) => key,
         };
         let (fetch, cancelled) = (self.linear_fetch, &self.cancelled);
+        if self.linear_states.is_none() {
+            // Without the states the listing still shows; its cards cannot
+            // move, and the next sync reads them again.
+            match linear::states(|query, variables| fetch(key, query, variables)) {
+                Ok(states) => self.linear_states = Some(states),
+                Err(Error::Cancelled) => return Err(Error::Cancelled),
+                Err(error) => {
+                    tracing::warn!(category = "linear", %error, "Cannot read Linear's workflow states");
+                }
+            }
+        }
+        let none = linear::States::new();
         let listing = linear::sync(
             |query, variables| fetch(key, query, variables),
+            self.linear_states.as_ref().unwrap_or(&none),
             || cancelled.load(Ordering::Relaxed),
         )?;
+        if listing.missing_states {
+            self.linear_states = None;
+        }
         let count = listing.items.len();
         let old = linear::source(self.linear_workspace.as_deref().unwrap_or(""));
         let new = linear::source(&listing.workspace);
@@ -164,6 +186,16 @@ impl Worker {
                 true
             }
             Err(source) => {
+                // Linear refused the state, which may be gone: the next
+                // sync reads the states again.
+                if change.state.is_some()
+                    && matches!(
+                        *source,
+                        Error::LinearStatus { status, .. } if status < 500
+                    )
+                {
+                    self.linear_states = None;
+                }
                 push(
                     &self.notices,
                     Notice {

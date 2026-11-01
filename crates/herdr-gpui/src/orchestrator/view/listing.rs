@@ -12,9 +12,27 @@ use super::{
 };
 use crate::orchestrator::{Item, Provider, Request, Snapshot};
 use gpui::Context;
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::HashSet, sync::Arc, time::Instant};
 
 impl OrchestratorView {
+    /// Notes that the Linear section shows this view at `now`, as each tick
+    /// does while it shows. Shown again after longer than Linear's own sync
+    /// interval, Linear syncs at once rather than at its next turn.
+    pub(crate) fn linear_shown(&mut self, now: Instant) {
+        let Some(last) = self.linear_shown.replace(now) else {
+            return;
+        };
+        let away = now.saturating_duration_since(last);
+        for repo in &self.repos {
+            if let Some(service) = &repo.service
+                && repo.request.linear.is_some()
+                && away > repo.request.timing.linear
+            {
+                service.sync_linear();
+            }
+        }
+    }
+
     /// The repositories the header, pills, and banners name: every one
     /// asked for but folders outside Git.
     pub(super) fn projects_named(&self) -> impl Iterator<Item = &Repo> {

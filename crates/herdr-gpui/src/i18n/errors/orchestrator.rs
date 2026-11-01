@@ -89,7 +89,7 @@ impl Localize for Error {
             Self::LinearVariable => fl!("error-orchestrator-linear-variable"),
             Self::LinearKeyFormat => fl!("error-orchestrator-linear-key-format"),
             Self::LinearKeyRejected => fl!("error-orchestrator-linear-key-rejected"),
-            Self::LinearRateLimited => fl!("error-orchestrator-linear-rate-limited"),
+            Self::LinearRateLimited { .. } => fl!("error-orchestrator-linear-rate-limited"),
             Self::LinearStatus { status, message } => match message {
                 Some(message) => fl!(
                     "error-orchestrator-linear-status-message",

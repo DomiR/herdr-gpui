@@ -27,7 +27,9 @@ const COMMENTS: &str = r#"{"ok":true,"data":[{"id":2,"ticket":18,"replyTo":null,
     "author":{"kind":"agent","name":"claude"},"body":"Plan","createdAt":0,"read":true,
     "question":false}]}"#;
 
-fn native(cx: &mut gpui::TestAppContext) -> (Entity<HerdrWindow>, &mut VisualTestContext) {
+pub(super) fn native(
+    cx: &mut gpui::TestAppContext,
+) -> (Entity<HerdrWindow>, &mut VisualTestContext) {
     let (view, cx, _) = native_with_requests(cx);
     (view, cx)
 }
@@ -72,7 +74,7 @@ const COMMENT: &str = r#"{"ok":true,"data":{"id":9,"ticket":18,"replyTo":null,"t
     "author":{"kind":"operator"},"body":"**hello**","createdAt":0,"read":true,"question":false}}"#;
 
 /// Reads what is due, waits for it, and draws.
-fn tick(view: &Entity<HerdrWindow>, cx: &mut VisualTestContext) {
+pub(super) fn tick(view: &Entity<HerdrWindow>, cx: &mut VisualTestContext) {
     cx.update(|_, cx| view.update(cx, |view, cx| view.poll_tickets(cx)));
     cx.run_until_parked();
     cx.update(|window, cx| {
