@@ -9,6 +9,7 @@
 //! dialog applies them when it is next drawn ([`OrchestratorView::settle_create`]).
 
 mod menu;
+mod parent;
 mod render;
 
 use super::{IssueSource, OrchestratorView};
@@ -70,6 +71,8 @@ pub(super) struct Dialog {
     asked_state: Option<String>,
     /// Create more: after creating, the dialog stays open for the next.
     pub(super) more: bool,
+    /// The issue the new one is a sub-issue of.
+    pub(super) parent: Option<parent::Parent>,
     pub(super) menu: Option<Menu>,
     /// Why the last attempt did not create the issue.
     pub(super) problem: Option<SharedString>,
@@ -162,6 +165,7 @@ impl OrchestratorView {
             cycle: None,
             asked_state: None,
             more: false,
+            parent: None,
             menu: None,
             problem: None,
             created: None,
@@ -216,10 +220,18 @@ impl OrchestratorView {
             return;
         };
         let asked = dialog.asked_state.as_deref();
+        // A sub-issue starts in its parent's team.
+        let parent_team = dialog.parent.as_ref().map(parent::Parent::team_key);
         let team = options
             .teams
             .iter()
-            .find(|team| asked.is_some_and(|id| team.state(id).is_some()))
+            .find(|team| parent_team == Some(team.key.as_str()))
+            .or_else(|| {
+                options
+                    .teams
+                    .iter()
+                    .find(|team| asked.is_some_and(|id| team.state(id).is_some()))
+            })
             .or_else(|| options.teams.first());
         if let Some(team) = team {
             dialog.start_in(team, &options.viewer);
@@ -288,6 +300,7 @@ impl OrchestratorView {
             estimate: dialog.estimate,
             labels: dialog.labels.clone(),
             cycle: dialog.cycle.clone(),
+            parent: dialog.parent.as_ref().map(|parent| parent.id.clone()),
             sequence,
         };
         if service.is_some_and(|service| service.create_linear_issue(issue)) {

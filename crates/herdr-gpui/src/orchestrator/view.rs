@@ -34,6 +34,7 @@ mod pull;
 mod repo;
 mod rows;
 mod status;
+mod sub_issues;
 mod worktree;
 
 #[cfg(test)]

@@ -203,6 +203,8 @@ pub struct NewIssue {
     pub estimate: Option<i64>,
     pub labels: Vec<String>,
     pub cycle: Option<String>,
+    /// The parent issue's id, for a sub-issue.
+    pub parent: Option<String>,
     /// The view's count of creations, which the worker's answer echoes.
     pub sequence: u64,
 }
@@ -221,6 +223,7 @@ impl NewIssue {
             ("assigneeId", &self.assignee),
             ("projectId", &self.project),
             ("cycleId", &self.cycle),
+            ("parentId", &self.parent),
         ];
         for (field, id) in ids {
             if let Some(id) = id {

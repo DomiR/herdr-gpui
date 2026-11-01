@@ -30,6 +30,7 @@ mod linear_reorder;
 mod linear_repos;
 mod linear_scroll;
 mod linear_shown;
+mod linear_sub_issues;
 mod list_switch;
 mod markdown;
 mod non_projects;
