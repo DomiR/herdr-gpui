@@ -117,8 +117,10 @@ fn the_estimate_follows_linears_rules() {
 
 #[test]
 fn a_page_of_issues_costs_well_under_linears_limit() {
+    // With up to ten sub-issues each, a page costs a little over half the
+    // limit; the margin keeps one page far from a refusal.
     let cost = complexity(QUERY);
-    assert!(cost <= LIMIT / 2, "{cost}");
+    assert!(cost <= LIMIT * 6 / 10, "{cost}");
     assert!(QUERY.contains("issues(first: 50,"), "pages of 50 issues");
     assert_eq!(CAP % 50, 0, "a scope's cap is whole pages");
 }

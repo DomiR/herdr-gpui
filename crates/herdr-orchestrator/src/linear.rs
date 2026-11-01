@@ -48,8 +48,8 @@ pub const CAP: usize = 500;
 
 /// Nested `first` values stay small: Linear limits a query's complexity to
 /// 10,000 points, a connection multiplies its children's by `first`, and
-/// nested connections otherwise default to 50. A page of 50 issues costs
-/// about half the limit; [`CAP`] is ten pages.
+/// nested connections otherwise default to 50. A page of 50 issues, with
+/// up to ten sub-issues each, costs a little over half the limit; [`CAP`] is ten pages.
 pub const QUERY: &str = r#"query($filter: IssueFilter!, $after: String) {
   organization { urlKey }
   issues(first: 50, after: $after, orderBy: updatedAt, filter: $filter) {
