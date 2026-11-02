@@ -53,7 +53,7 @@ impl DocEditor {
         let m = event.keystroke.modifiers;
         let shift = m.shift;
         if primary(m) {
-            return self.primary_key(key, m, cx);
+            return self.primary_key(event, cx);
         }
         if actions::word_modifiers(m) && matches!(key, "left" | "right" | "backspace" | "delete") {
             self.word_key(key, shift, cx);
@@ -105,8 +105,18 @@ impl DocEditor {
         true
     }
 
-    fn primary_key(&mut self, key: &str, m: Modifiers, cx: &mut Context<Self>) -> bool {
+    fn primary_key(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) -> bool {
+        let key = event.keystroke.key.as_str();
+        let m = event.keystroke.modifiers;
         let shift = m.shift;
+        if m.alt
+            && !shift
+            && !alt_gr_typing(event)
+            && let Some(level) = fold_level(key)
+        {
+            self.fold_to_level(level, cx);
+            return true;
+        }
         match (key, m.alt) {
             ("z", false) => self.undo(shift, cx),
             ("y", false) if CTRL_SHORTCUTS => self.undo(true, cx),
@@ -435,4 +445,19 @@ impl DocEditor {
         self.insert(&text.replace("\r\n", "\n"), cx);
         self.buffer.update(cx, |buffer, _| buffer.break_undo());
     }
+}
+
+fn fold_level(key: &str) -> Option<usize> {
+    match key.as_bytes() {
+        [digit @ b'0'..=b'9'] => Some(usize::from(digit - b'0')),
+        _ => None,
+    }
+}
+
+pub(super) fn alt_gr_typing(event: &KeyDownEvent) -> bool {
+    CTRL_SHORTCUTS
+        && event.prefer_character_input
+        && event.keystroke.modifiers.control
+        && event.keystroke.modifiers.alt
+        && event.keystroke.key_char.is_some()
 }

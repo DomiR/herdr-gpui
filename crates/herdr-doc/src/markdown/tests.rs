@@ -1,6 +1,7 @@
 #![allow(clippy::unwrap_used)]
 use super::*;
 
+mod fold_levels;
 mod fold_regions;
 
 fn kinds(text: &str) -> Vec<Kind> {
