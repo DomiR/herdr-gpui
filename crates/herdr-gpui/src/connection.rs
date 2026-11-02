@@ -13,6 +13,8 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
+mod branches;
+
 pub(crate) struct ConnectionBridge {
     pub target: ConnectTarget,
     pub handle: Option<ClientHandle>,
@@ -243,9 +245,21 @@ impl ConnectionBridge {
                 let integrations = self.integrations.clone();
                 let links = self.links.clone();
                 let scrollback = self.scrollback.clone();
+                let mut branches = branches::Branches::default();
                 // Drain ordered events even while GPUI is busy; retain only coherent state.
                 spawn(Box::new(move || {
                     while let Ok(event) = client.events.recv() {
+                        // Only this machine's checkouts are read for their
+                        // branch, the boundary Git is run behind. The
+                        // connector has settled it before any snapshot.
+                        let event = match &event {
+                            ClientEvent::Snapshot(_)
+                                if inbox.lock().is_ok_and(|state| state.local_daemon_peer) =>
+                            {
+                                branches.apply(event, std::time::Instant::now())
+                            }
+                            _ => event,
+                        };
                         match &event {
                             ClientEvent::Connected(_) => tracing::debug!("Connection bridge connected"),
                             ClientEvent::Disconnected { .. } => tracing::debug!(category = "transport_disconnected", "Connection bridge disconnected"),

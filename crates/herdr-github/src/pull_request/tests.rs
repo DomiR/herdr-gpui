@@ -24,6 +24,7 @@ mod batch;
 mod by_number;
 mod cache;
 mod fetch;
+mod files_first;
 mod fork_branch;
 mod fork_remote;
 mod lookup;
