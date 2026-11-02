@@ -247,7 +247,7 @@ fn an_issue_linear_did_not_create_fails() {
     assert!(matches!(refused, Err(Error::Output { .. })), "{refused:?}");
     // GraphQL refusals arrive as an error envelope, whose message is kept.
     let envelope = br#"{"errors":[{"message":"Argument Validation Error","extensions":{"code":"INVALID_INPUT"}}],"data":null}"#;
-    let rejected = linear::create_issue(|_, _| interpret(200, envelope), &issue());
+    let rejected = linear::create_issue(|_, _| interpret(200, envelope, None), &issue());
     let Err(Error::LinearStatus { status, message }) = rejected else {
         panic!("{rejected:?}");
     };
@@ -262,13 +262,18 @@ fn an_issue_linear_did_not_create_fails() {
 
 #[test]
 fn a_failed_creation_says_why() {
-    let error = Error::LinearCreate(std::sync::Arc::new(Error::LinearRateLimited));
+    let error = Error::LinearCreate(std::sync::Arc::new(Error::LinearRateLimited {
+        retry_after: None,
+    }));
     assert_eq!(
         error.to_string(),
         "Could not create the issue: Linear is limiting requests; the list syncs again later"
     );
     let source = std::error::Error::source(&error).unwrap();
-    assert_eq!(source.to_string(), Error::LinearRateLimited.to_string());
+    assert_eq!(
+        source.to_string(),
+        (Error::LinearRateLimited { retry_after: None }).to_string()
+    );
     let error = Error::LinearOptions(std::sync::Arc::new(Error::LinearKeyMissing));
     assert_eq!(
         error.to_string(),

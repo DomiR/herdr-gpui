@@ -2,7 +2,7 @@ use super::*;
 use crate::linear::{self, CAP, LIMIT, Listing, QUERY, STATES, Scope, interpret, resolve, valid};
 use secrecy::{ExposeSecret, SecretString};
 use serde_json::{Value, json};
-use std::{cell::Cell, ffi::OsString, sync::Arc};
+use std::{cell::Cell, ffi::OsString, sync::Arc, time::Duration};
 
 fn acme() -> SourceKey {
     SourceKey {
@@ -52,6 +52,15 @@ fn states() -> Value {
     }] } } })
 }
 
+/// The states [`states`] answers, as the worker keeps them.
+fn read_states() -> linear::States {
+    linear::states(|query, _| {
+        assert_eq!(query, STATES);
+        Ok(states())
+    })
+    .unwrap()
+}
+
 /// Team `team-eng`'s states as an issue of the team holds them, in board
 /// order.
 fn eng_states() -> Arc<Vec<Status>> {
@@ -78,13 +87,11 @@ fn listing(pages: Vec<Value>) -> (Listing, Vec<Value>) {
     let mut seen = Vec::new();
     let listing = linear::sync(
         |query, variables| {
-            if query == STATES {
-                return Ok(states());
-            }
             assert_eq!(query, QUERY);
             seen.push(variables);
             Ok(pages.next().unwrap())
         },
+        &read_states(),
         || false,
     )
     .unwrap();
@@ -348,22 +355,21 @@ fn each_scope_stops_at_its_cap() {
     let fetched = Cell::new(0);
     let listing = linear::sync(
         |query, variables| {
-            if query == STATES {
-                return Ok(states());
-            }
+            assert_eq!(query, QUERY);
             fetched.set(fetched.get() + 1);
-            let start = fetched.get() * 100;
-            let nodes = (start..start + 100)
+            let start = fetched.get() * 50;
+            let nodes = (start..start + 50)
                 .map(|n| node(&format!("ENG-{n}")))
                 .collect();
-            // Mine always has more; Cycles ends on its fifth page.
-            let more = variables["filter"].get("assignee").is_some() || fetched.get() < 10;
+            // Pages of 50: Mine always has more; Cycles ends on its tenth.
+            let more = variables["filter"].get("assignee").is_some() || fetched.get() < 20;
             Ok(page(nodes, more.then_some("more")))
         },
+        &read_states(),
         || false,
     )
     .unwrap();
-    assert_eq!(fetched.get(), 10);
+    assert_eq!(fetched.get(), 20);
     assert_eq!(listing.items.len(), 2 * CAP);
     assert!(!listing.complete);
 }
@@ -383,13 +389,11 @@ fn a_cycle_reads_as_its_name_or_number() {
 fn listing_stops_when_cancelled_between_pages() {
     let fetched = Cell::new(0);
     let result = linear::sync(
-        |query, _| {
-            if query == STATES {
-                return Ok(states());
-            }
+        |_, _| {
             fetched.set(fetched.get() + 1);
             Ok(page(vec![node("ENG-1")], Some("c1")))
         },
+        &read_states(),
         || fetched.get() == 1,
     );
     assert!(matches!(result, Err(Error::Cancelled)));
@@ -404,25 +408,28 @@ fn responses_say_why_linear_refused() {
             .into_bytes()
     };
     assert!(matches!(
-        interpret(400, &refusal("AUTHENTICATION_ERROR")),
+        interpret(400, &refusal("AUTHENTICATION_ERROR"), None),
         Err(Error::LinearKeyRejected)
     ));
     assert!(matches!(
-        interpret(200, &refusal("AUTHENTICATION_ERROR")),
+        interpret(200, &refusal("AUTHENTICATION_ERROR"), None),
         Err(Error::LinearKeyRejected)
     ));
-    assert!(matches!(interpret(401, b""), Err(Error::LinearKeyRejected)));
     assert!(matches!(
-        interpret(400, &refusal("RATELIMITED")),
-        Err(Error::LinearRateLimited)
+        interpret(401, b"", None),
+        Err(Error::LinearKeyRejected)
     ));
     assert!(matches!(
-        interpret(429, b"{}"),
-        Err(Error::LinearRateLimited)
+        interpret(400, &refusal("RATELIMITED"), None),
+        Err(Error::LinearRateLimited { retry_after: None })
+    ));
+    assert!(matches!(
+        interpret(429, b"{}", Some(Duration::from_secs(90))),
+        Err(Error::LinearRateLimited { retry_after: Some(wait) }) if wait == Duration::from_secs(90)
     ));
 
     let broken = json!({ "errors": [{ "message": "  Server\u{202e} broke\n" }] }).to_string();
-    let error = interpret(500, broken.as_bytes()).unwrap_err();
+    let error = interpret(500, broken.as_bytes(), None).unwrap_err();
     assert!(
         matches!(
             &error,
@@ -435,25 +442,25 @@ fn responses_say_why_linear_refused() {
         "Linear request failed with HTTP 500: Server  broke"
     );
     assert!(matches!(
-        interpret(502, b"<html>"),
+        interpret(502, b"<html>", None),
         Err(Error::LinearStatus {
             status: 502,
             message: None
         })
     ));
     assert!(matches!(
-        interpret(200, &vec![b' '; LIMIT + 1]),
+        interpret(200, &vec![b' '; LIMIT + 1], None),
         Err(Error::LinearSize)
     ));
     assert!(matches!(
-        interpret(200, b"not json"),
+        interpret(200, b"not json", None),
         Err(Error::OutputJson {
             operation: "Reading Linear",
             ..
         })
     ));
     assert_eq!(
-        interpret(200, br#"{"data":{"viewer":null}}"#).unwrap(),
+        interpret(200, br#"{"data":{"viewer":null}}"#, None).unwrap(),
         json!({ "data": { "viewer": null } })
     );
 }

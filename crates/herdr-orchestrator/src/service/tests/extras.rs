@@ -20,8 +20,8 @@ fn branches_read_on_opening_are_not_read_again_by_the_next_sync() {
     );
     assert_eq!(*worker.snapshot.branches, std::slice::from_ref(&branch));
     // The checkout has no such branch: a sync that read again would drop it.
-    worker.sync(None);
+    worker.sync(None, Linear::Due);
     assert_eq!(*worker.snapshot.branches, [branch]);
-    worker.sync(None);
+    worker.sync(None, Linear::Due);
     assert!(worker.snapshot.branches.is_empty(), "later syncs read them");
 }

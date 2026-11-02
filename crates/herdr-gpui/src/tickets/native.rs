@@ -39,6 +39,9 @@ pub(crate) struct Native {
     pub(super) open: Option<i64>,
     pub(super) opened: Option<Rc<Opened>>,
     pub(super) error: Option<SharedString>,
+    /// The read error the user closed, hidden until another error, or one
+    /// after a read succeeds.
+    pub(super) dismissed: Option<SharedString>,
     /// Why the last status change failed, kept past the reads after it
     /// until the next change.
     pub(super) notice: Option<SharedString>,
@@ -169,6 +172,13 @@ fn markdown(server: &Server, body: &str) -> Vec<Block> {
 }
 
 impl Native {
+    /// The read error to show: none once the user closed this one.
+    pub(super) fn shown_error(&self) -> Option<&SharedString> {
+        self.error
+            .as_ref()
+            .filter(|error| self.dismissed.as_ref() != Some(*error))
+    }
+
     fn due(&self, now: Instant) -> bool {
         self.task.is_none() && self.next.is_none_or(|next| now >= next)
     }
@@ -191,6 +201,7 @@ impl Native {
             }
         };
         self.error = None;
+        self.dismissed = None;
         self.read_at = Some(now);
         self.projects = read.projects;
         self.tickets = read.tickets;

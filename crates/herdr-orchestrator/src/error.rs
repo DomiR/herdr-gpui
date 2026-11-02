@@ -113,7 +113,10 @@ pub enum Error {
     #[error("Linear did not accept the API key; connect Linear with a new one")]
     LinearKeyRejected,
     #[error("Linear is limiting requests; the list syncs again later")]
-    LinearRateLimited,
+    LinearRateLimited {
+        /// How long Linear's `Retry-After` asked to wait.
+        retry_after: Option<std::time::Duration>,
+    },
     #[error(
         "Linear request failed with HTTP {status}{}",
         .message.as_deref().map(|message| format!(": {message}")).unwrap_or_default()

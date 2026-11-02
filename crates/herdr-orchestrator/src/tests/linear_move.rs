@@ -107,14 +107,17 @@ fn a_move_linear_did_not_make_fails() {
 fn a_failed_move_names_the_issue_and_keeps_why() {
     let error = Error::LinearMove {
         issue: "ENG-12".into(),
-        source: std::sync::Arc::new(Error::LinearRateLimited),
+        source: std::sync::Arc::new(Error::LinearRateLimited { retry_after: None }),
     };
     assert_eq!(
         error.to_string(),
         "Could not move ENG-12: Linear is limiting requests; the list syncs again later"
     );
     let source = std::error::Error::source(&error).unwrap();
-    assert_eq!(source.to_string(), Error::LinearRateLimited.to_string());
+    assert_eq!(
+        source.to_string(),
+        (Error::LinearRateLimited { retry_after: None }).to_string()
+    );
 }
 
 /// The listing's issues, each a node of team `team-eng` in Todo.
@@ -137,21 +140,19 @@ fn page() -> Value {
 }
 
 #[test]
-fn the_listing_still_shows_when_the_states_cannot_be_read() {
+fn the_listing_still_shows_without_the_states() {
     let listing = linear::sync(
         |query, _| match query {
-            STATES => Err(Error::LinearStatus {
-                status: 400,
-                message: Some("Query too complex".into()),
-            }),
             QUERY => Ok(page()),
             other => panic!("unexpected query {other}"),
         },
+        &linear::States::new(),
         || false,
     )
     .unwrap();
     // Listed twice, once per scope, and kept once.
     assert_eq!(listing.items.len(), 1);
+    assert!(listing.missing_states);
     let tracker = listing.items[0].tracker.as_ref().unwrap();
     assert_eq!(tracker.id.as_deref(), Some("uuid-1"));
     assert!(tracker.states.is_empty());
@@ -165,7 +166,10 @@ fn the_listing_still_shows_when_the_states_cannot_be_read() {
 }
 
 #[test]
-fn a_cancelled_states_read_stops_the_listing() {
-    let result = linear::sync(|_, _| Err(Error::Cancelled), || false);
+fn a_states_read_says_why_it_failed() {
+    let result = linear::states(|query, _| {
+        assert_eq!(query, STATES);
+        Err(Error::Cancelled)
+    });
     assert!(matches!(result, Err(Error::Cancelled)));
 }

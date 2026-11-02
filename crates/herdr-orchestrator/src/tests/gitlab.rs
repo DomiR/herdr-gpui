@@ -352,12 +352,15 @@ fn gitlab_failures_wait_for_the_user_or_the_rate_limit() {
     let sign_in = Error::from(gitlab::Error::SignIn {
         repository: "g/app".into(),
     });
-    assert_eq!(retry_wait(&sign_in, None), half_hour);
+    assert_eq!(retry_wait(&sign_in, None, 1), Some(half_hour));
     let refused = Error::from(gitlab::Error::Authentication);
-    assert_eq!(retry_wait(&refused, None), half_hour);
+    assert_eq!(retry_wait(&refused, None, 1), Some(half_hour));
     let limited = Error::from(gitlab::Error::RateLimit);
-    assert_eq!(retry_wait(&limited, Some(hour)), hour);
-    assert_eq!(retry_wait(&limited, None), Duration::from_secs(300));
+    assert_eq!(retry_wait(&limited, Some(hour), 1), Some(hour));
+    assert_eq!(
+        retry_wait(&limited, None, 1),
+        Some(Duration::from_secs(300))
+    );
 }
 
 fn environment(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<OsString> {

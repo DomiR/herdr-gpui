@@ -3,6 +3,7 @@ use super::*;
 
 mod api;
 mod board;
+mod dismiss;
 mod native;
 mod server;
 

@@ -38,6 +38,7 @@ pub fn post(key: &SecretString, query: &str, variables: Value) -> Result<Value> 
         .send(body.as_bytes())
         .map_err(|error| Error::LinearNetwork(Box::new(error)))?;
     let status = reply.status().as_u16();
+    let retry_after = retry_after(reply.headers());
     let mut bytes = Vec::new();
     reply
         .body_mut()
@@ -45,7 +46,20 @@ pub fn post(key: &SecretString, query: &str, variables: Value) -> Result<Value> 
         .take(LIMIT as u64 + 1)
         .read_to_end(&mut bytes)
         .map_err(Error::LinearRead)?;
-    interpret(status, &bytes)
+    interpret(status, &bytes, retry_after)
+}
+
+/// How long Linear asked a limited request to wait: its `Retry-After`
+/// seconds.
+pub fn retry_after(headers: &ureq::http::HeaderMap) -> Option<Duration> {
+    headers
+        .get("retry-after")?
+        .to_str()
+        .ok()?
+        .trim()
+        .parse()
+        .ok()
+        .map(Duration::from_secs)
 }
 
 /// A personal API key goes in the header as it is, with no `Bearer`. The
@@ -59,9 +73,10 @@ fn authorization(key: &SecretString) -> Result<ureq::http::HeaderValue> {
 }
 
 /// What a response with `status` and `body` means: its JSON, or why Linear
-/// refused. GraphQL failures can arrive with any status, so the first error's
+/// refused, with the wait `retry_after` asked for when it limits requests.
+/// GraphQL failures can arrive with any status, so the first error's
 /// `extensions.code` decides as much as the status does.
-pub fn interpret(status: u16, body: &[u8]) -> Result<Value> {
+pub fn interpret(status: u16, body: &[u8], retry_after: Option<Duration>) -> Result<Value> {
     if body.len() > LIMIT {
         tracing::warn!(
             category = "linear_http",
@@ -94,7 +109,7 @@ pub fn interpret(status: u16, body: &[u8]) -> Result<Value> {
     );
     Err(match (status, code) {
         (401, _) | (_, Some("AUTHENTICATION_ERROR")) => Error::LinearKeyRejected,
-        (429, _) | (_, Some("RATELIMITED")) => Error::LinearRateLimited,
+        (429, _) | (_, Some("RATELIMITED")) => Error::LinearRateLimited { retry_after },
         _ => Error::LinearStatus {
             status,
             message: error.and_then(message),

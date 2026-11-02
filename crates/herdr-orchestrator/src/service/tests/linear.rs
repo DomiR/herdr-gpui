@@ -101,7 +101,7 @@ fn linear_syncs_in_memory_and_follows_its_workspace() {
     let mut worker = worker(dir.path());
 
     worker.linear_fetch = acme;
-    worker.sync(None);
+    worker.sync(None, Linear::Now);
     let (key, state) = status(&worker);
     assert_eq!(key, "linear:linear.app:acme");
     assert!(
@@ -119,7 +119,7 @@ fn linear_syncs_in_memory_and_follows_its_workspace() {
     assert_eq!(stored, []);
 
     worker.linear_fetch = beta;
-    worker.sync(None);
+    worker.sync(None, Linear::Now);
     let (key, state) = status(&worker);
     assert_eq!(key, "linear:linear.app:beta");
     assert!(
@@ -129,27 +129,28 @@ fn linear_syncs_in_memory_and_follows_its_workspace() {
     assert_eq!(listed(&worker), ["linear:linear.app:beta:OPS-3"]);
 
     worker.linear_fetch = rejected;
-    worker.sync(None);
+    worker.sync(None, Linear::Now);
     let (key, state) = status(&worker);
     assert_eq!(key, "linear:linear.app:beta");
     assert!(
         matches!(state, SyncState::Failed(error) if matches!(**error, Error::LinearKeyRejected)),
         "{state:?}"
     );
-    let waiting: Vec<String> = worker
+    // A refused key waits for a new one or Refresh, however long it takes.
+    let waiting: Vec<(String, Option<Instant>)> = worker
         .retry
-        .iter()
-        .map(|(source, _)| source.canonical())
+        .waiting()
+        .map(|(source, until)| (source.canonical(), until))
         .collect();
-    assert_eq!(waiting, ["linear:linear.app:beta"]);
+    assert_eq!(waiting, [("linear:linear.app:beta".to_owned(), None)]);
     assert_eq!(listed(&worker), ["linear:linear.app:beta:OPS-3"]);
 
     worker.linear_fetch = unreachable;
-    worker.sync(None);
+    worker.sync(None, Linear::Now);
     assert!(matches!(status(&worker).1, SyncState::Failed(_)));
 
     worker.set_linear_key(LinearKey::Missing);
-    worker.sync(None);
+    worker.sync(None, Linear::Now);
     let (key, state) = status(&worker);
     assert_eq!(key, "linear:linear.app:beta");
     assert!(matches!(state, SyncState::SignIn), "{state:?}");

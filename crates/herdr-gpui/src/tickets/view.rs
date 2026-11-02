@@ -59,6 +59,23 @@ pub(super) fn button(
         .child(text.into())
 }
 
+/// A failure above the board, with room for its close button.
+fn failure(look: &Look, text: SharedString) -> Div {
+    div()
+        .debug_selector(|| "tickets-error".into())
+        .flex_none()
+        .flex()
+        .items_center()
+        .gap_2()
+        .pl_5()
+        .pr_3()
+        .py_1()
+        .bg(rgb(look.wash(RED)))
+        .text_color(rgb(look.hue(RED)))
+        .text_size(look.small())
+        .child(div().flex_1().min_w_0().child(text))
+}
+
 impl HerdrWindow {
     fn ticket_look(&self) -> Look {
         Look {
@@ -75,20 +92,26 @@ impl HerdrWindow {
             Some(number) => self.render_ticket_page(number, &look, cx),
             None => self.render_ticket_lanes(&look, cx),
         };
-        let notices = [board.notice.clone(), board.error.clone()]
-            .into_iter()
-            .flatten()
-            .map(|text| {
-                div()
-                    .debug_selector(|| "tickets-error".into())
-                    .flex_none()
-                    .px_5()
-                    .py_2()
-                    .bg(rgb(look.wash(RED)))
-                    .text_color(rgb(look.hue(RED)))
-                    .text_size(look.small())
-                    .child(text)
-            });
+        let notice = board.notice.clone().map(|text| {
+            failure(&look, text).child(
+                look.icon_button("tickets-notice-close", "icons/close.svg", "Dismiss")
+                    .debug_selector(|| "tickets-notice-close".into())
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.ticket_board.notice = None;
+                        cx.notify();
+                    })),
+            )
+        });
+        let error = board.shown_error().cloned().map(|text| {
+            failure(&look, text.clone()).child(
+                look.icon_button("tickets-error-close", "icons/close.svg", "Dismiss")
+                    .debug_selector(|| "tickets-error-close".into())
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.ticket_board.dismissed = Some(text.clone());
+                        cx.notify();
+                    })),
+            )
+        });
         div()
             .id("tickets-native")
             .debug_selector(|| "tickets-native".into())
@@ -107,7 +130,8 @@ impl HerdrWindow {
             .text_size(look.size())
             .child(self.render_tickets_header(&look, cx))
             .children(self.render_ticket_form(&look, cx))
-            .children(notices)
+            .children(notice)
+            .children(error)
             .child(body)
             .into_any_element()
     }

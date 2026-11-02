@@ -166,7 +166,7 @@ fn c_opens_the_dialog_and_a_refusal_keeps_it_open_with_why(cx: &mut gpui::TestAp
             view.repo_mut().snapshot.linear_create.created = Some(Outcome {
                 sequence: 1,
                 result: Err(Arc::new(crate::orchestrator::Error::LinearCreate(
-                    Arc::new(crate::orchestrator::Error::LinearRateLimited),
+                    Arc::new(crate::orchestrator::Error::LinearRateLimited { retry_after: None }),
                 ))),
             });
             cx.notify();

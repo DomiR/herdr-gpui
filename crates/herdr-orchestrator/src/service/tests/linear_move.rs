@@ -76,7 +76,7 @@ fn a_move_shows_linears_answer_before_the_next_sync() {
     let dir = tempfile::tempdir().unwrap();
     let mut worker = worker(dir.path());
     worker.linear_fetch = moved;
-    worker.sync(None);
+    worker.sync(None, Linear::Now);
     assert!(worker.move_linear_issue(&change()));
     assert_eq!(worker.snapshot.linear_moved, 7);
     assert_eq!(
@@ -108,7 +108,7 @@ fn a_refused_move_names_the_issue_and_leaves_the_listing() {
     let dir = tempfile::tempdir().unwrap();
     let mut worker = worker(dir.path());
     worker.linear_fetch = refused;
-    worker.sync(None);
+    worker.sync(None, Linear::Now);
     assert!(!worker.move_linear_issue(&change()));
     assert_eq!(worker.snapshot.linear_moved, 7);
     assert_eq!(
