@@ -72,13 +72,13 @@ pub use agents_placement::AgentsPlacement;
 pub use backdrop::{Backdrop, Material};
 pub use chat::{ChatLauncher, ChatLayoutMode};
 pub use cloud::CloudConfig;
-pub use documents::{DocumentTheme, DocumentsConfig};
 #[cfg(test)]
 use daemon::MAX_DAEMON_CONFIG_BYTES;
 pub(crate) use daemon::daemon_config_path;
 use daemon::{Daemon, daemon_settings};
 use devices::MAX_DEVICES;
 pub(crate) use devices::{DeviceSettings, KeybindingSource};
+pub use documents::{DocumentTheme, DocumentsConfig};
 pub(crate) use edit::{Layer, parse_value};
 pub(crate) use error::{Error, ThemeParseError};
 pub use features::{Feature, Features};

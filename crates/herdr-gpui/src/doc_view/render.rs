@@ -309,10 +309,10 @@ impl DocEditor {
                     .min_w_0()
                     .when(code, |body| body.bg(rgb(theme.surface)).px(px(6.)))
                     .when(row.kind == Kind::Quote, |body| {
-                        let color = self.look.inks.map_or_else(
-                            || rgb(theme.muted).into(),
-                            |inks| inks.separator,
-                        );
+                        let color = self
+                            .look
+                            .inks
+                            .map_or_else(|| rgb(theme.muted).into(), |inks| inks.separator);
                         body.border_l_2().border_color(color).pl(px(8.))
                     })
                     .text_size(px(row.size))
@@ -555,10 +555,11 @@ impl DocEditor {
                     .px(px(PAD))
                     .py(px(6.))
                     .border_b_1()
-                    .border_color(self.look.inks.map_or_else(
-                        || rgb(theme.surface).into(),
-                        |inks| inks.separator,
-                    ))
+                    .border_color(
+                        self.look
+                            .inks
+                            .map_or_else(|| rgb(theme.surface).into(), |inks| inks.separator),
+                    )
                     .text_size(px(self.look.ui.size * 0.9))
                     .child(div().text_color(rgb(theme.foreground)).child(name))
                     .when_some(version, |bar, version| {

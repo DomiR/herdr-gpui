@@ -5,7 +5,10 @@ fn document_theme_defaults_when_table_or_key_is_absent() -> anyhow::Result<()> {
     for text in ["", "[documents]", "[documents]\ntheme = 'app'"] {
         assert_eq!(Config::parse(text)?.documents.theme, DocumentTheme::App);
     }
-    assert_eq!(Config::parse(DEFAULT_CONFIG)?.documents.theme, DocumentTheme::App);
+    assert_eq!(
+        Config::parse(DEFAULT_CONFIG)?.documents.theme,
+        DocumentTheme::App
+    );
     assert_eq!(Config::default().documents.theme, DocumentTheme::App);
     Ok(())
 }
@@ -34,7 +37,10 @@ fn document_theme_rejects_unknown_and_non_string_values() {
         "[documents]\ntheme = true",
         "[documents]\ntheme = 1",
     ] {
-        assert!(matches!(Config::parse(text), Err(crate::Error::Toml(_))), "{text}");
+        assert!(
+            matches!(Config::parse(text), Err(crate::Error::Toml(_))),
+            "{text}"
+        );
     }
 }
 
@@ -58,10 +64,7 @@ fn document_theme_edit_round_trip_uses_the_default_layer() -> anyhow::Result<()>
     )?;
     assert_eq!(
         Config::effective_value_at(&path, "documents.theme")?,
-        Some((
-            toml::Value::String("plaintasks".into()),
-            Layer::Local,
-        ))
+        Some((toml::Value::String("plaintasks".into()), Layer::Local,))
     );
     assert!(fs::read_to_string(&local)?.contains("# Keep this comment"));
 

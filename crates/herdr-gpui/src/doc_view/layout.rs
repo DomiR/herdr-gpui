@@ -361,13 +361,15 @@ fn run(len: usize, paint: Paint, look: &Look) -> TextRun {
         }),
         strikethrough: (paint.strike && !paint.hidden).then(|| StrikethroughStyle {
             thickness: px(1.),
-            color: Some(if let Some(inks) = look.inks
-                && paint.done
-            {
-                inks.done
-            } else {
-                color
-            }),
+            color: Some(
+                if let Some(inks) = look.inks
+                    && paint.done
+                {
+                    inks.done
+                } else {
+                    color
+                },
+            ),
         }),
     }
 }

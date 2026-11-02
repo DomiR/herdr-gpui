@@ -9,7 +9,10 @@ fn document_theme_labels_are_fluent_and_searchable() {
     );
     assert_eq!(
         crate::i18n::fl!("settings-documents-theme-description"),
-        "Colors and task markers for Markdown document tabs."
+        concat!(
+            "Markdown document tabs follow the app theme or use the ",
+            "PlainTasks yellow notepad colors and task markers."
+        )
     );
     assert_eq!(
         crate::i18n::fl!("settings-documents-theme-app"),
@@ -19,9 +22,16 @@ fn document_theme_labels_are_fluent_and_searchable() {
         crate::i18n::fl!("settings-documents-theme-plaintasks"),
         "PlainTasks yellow notepad"
     );
-    assert!(catalog::search("yellow notepad")
-        .iter()
-        .any(|index| catalog::CATALOG[*index].id == "theme-documents"));
+    assert!(
+        catalog::search("yellow notepad")
+            .iter()
+            .any(|index| catalog::CATALOG[*index].id == "theme-documents")
+    );
+    assert!(
+        catalog::search("plaintasks")
+            .iter()
+            .any(|index| catalog::CATALOG[*index].id == "theme-documents")
+    );
 }
 
 #[gpui::test]

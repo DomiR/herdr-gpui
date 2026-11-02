@@ -234,10 +234,7 @@ impl SettingsWindow {
             &self.theme,
             "theme-documents-control",
             &[
-                (
-                    DocumentTheme::App,
-                    fl!("settings-documents-theme-app"),
-                ),
+                (DocumentTheme::App, fl!("settings-documents-theme-app")),
                 (
                     DocumentTheme::PlainTasks,
                     fl!("settings-documents-theme-plaintasks"),
@@ -245,7 +242,7 @@ impl SettingsWindow {
             ],
             Some(selected),
             !self.busy(),
-            on_value(cx, |this, theme, _, cx| {
+            on_value(cx, |this, theme: DocumentTheme, _, cx| {
                 this.save_native(
                     move || Config::set_key("documents.theme", theme.as_str().into()),
                     cx,

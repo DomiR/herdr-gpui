@@ -12,11 +12,7 @@ const SAMPLE: &str = concat!(
 fn themed(choice: DocumentTheme) -> Look {
     let app = look();
     let (theme, inks) = theme::resolve(choice, &app.theme);
-    Look {
-        theme,
-        inks,
-        ..app
-    }
+    Look { theme, inks, ..app }
 }
 
 fn run_at<'a>(row: &'a Row, needle: &str) -> &'a TextRun {
