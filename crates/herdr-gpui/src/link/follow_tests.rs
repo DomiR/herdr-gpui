@@ -120,7 +120,7 @@ fn a_refused_link_answers_the_command_line_in_english() {
 #[test]
 fn a_refused_link_tells_the_window_in_messages() {
     crate::i18n::leak_tests::under_en_xa("link refusals en-XA leak", |_, _| {
-        for refusal in REFUSALS.iter().cloned() {
+        for refusal in REFUSALS {
             let shown = crate::i18n::fl!("link-open-failed", reason = refusal.shown());
             assert!(
                 herdr_i18n::pseudo::is_marked(&shown),
