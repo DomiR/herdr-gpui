@@ -4,7 +4,7 @@
 // i18n: migrated
 use super::{SettingsWindow, on_value, ui};
 use crate::{
-    config::{Config, ThemeName},
+    config::{Config, DocumentTheme, ThemeName},
     contrast::{Contrast, luminance},
     i18n::fl,
     settings_window::themes::{Choice, FOLLOW, Scope},
@@ -56,6 +56,7 @@ impl SettingsWindow {
         let side_row = self.theme_side_row(cx);
         let follow_row = self.theme_follow_row(cx);
         let contrast_row = self.theme_contrast_row(cx);
+        let documents_row = self.theme_documents_row(cx);
         let source_row = self.theme_source_row(cx);
         let search = self.render_theme_search(cx);
         let open_file = self.theme_open_file(cx);
@@ -77,6 +78,7 @@ impl SettingsWindow {
             .children(side_row)
             .child(follow_row)
             .child(contrast_row)
+            .child(documents_row)
             .child(ui::section(
                 theme,
                 &fl!("settings-theme-section-themes"),
@@ -217,6 +219,39 @@ impl SettingsWindow {
                 },
             )),
         )
+    }
+
+    fn theme_documents_row(&self, cx: &mut Context<Self>) -> ui::Row {
+        let selected = self.config.documents.theme;
+        ui::row(
+            &self.theme,
+            "theme-documents",
+            fl!("settings-documents-theme"),
+        )
+        .tag(ui::Source::HerdrUi)
+        .description(fl!("settings-documents-theme-description"))
+        .control(ui::segmented(
+            &self.theme,
+            "theme-documents-control",
+            &[
+                (
+                    DocumentTheme::App,
+                    fl!("settings-documents-theme-app"),
+                ),
+                (
+                    DocumentTheme::PlainTasks,
+                    fl!("settings-documents-theme-plaintasks"),
+                ),
+            ],
+            Some(selected),
+            !self.busy(),
+            on_value(cx, |this, theme, _, cx| {
+                this.save_native(
+                    move || Config::set_key("documents.theme", theme.as_str().into()),
+                    cx,
+                );
+            }),
+        ))
     }
 
     fn theme_source_row(&self, cx: &mut Context<Self>) -> ui::Row {

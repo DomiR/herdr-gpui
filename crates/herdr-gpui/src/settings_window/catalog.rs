@@ -101,6 +101,12 @@ pub(super) const CATALOG: &[Entry] = &[
     ),
     entry(
         Section::Theme,
+        "theme-documents",
+        "settings-documents-theme",
+        "settings-documents-theme-description",
+    ),
+    entry(
+        Section::Theme,
         "theme-source",
         "settings-theme-source",
         "settings-theme-source-description",

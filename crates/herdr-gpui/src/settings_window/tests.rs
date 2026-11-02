@@ -9,6 +9,7 @@ use std::sync::{
 mod activity_bar_windows;
 mod appearance_messages;
 mod config_watch;
+mod document_theme;
 mod en_xa;
 mod gpu_settings;
 mod language_picker;
