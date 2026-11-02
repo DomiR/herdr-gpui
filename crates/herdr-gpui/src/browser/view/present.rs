@@ -5,7 +5,7 @@
 //! those reaches is hidden while it shows. Only Windows builds carry that.
 
 use crate::HerdrWindow;
-#[cfg(windows)]
+#[cfg(any(target_os = "macos", windows))]
 use crate::browser::TabId;
 use gpui::*;
 
@@ -47,7 +47,7 @@ impl HerdrWindow {
         #[cfg(any(target_os = "macos", windows))]
         {
             self.browser.pages.set_theme(&self.theme);
-            let mut live = self.live_pages(cx);
+            let mut live = self.presented_pages(cx);
             live.extend(self.shown_chat_pages());
             // A tab's zoom may change in any window, or from the command
             // line, so each window's pages follow the store as they show.
@@ -75,6 +75,18 @@ impl HerdrWindow {
         {
             let _ = cx;
             false
+        }
+    }
+
+    /// The pages the window draws: the Tickets page across its section,
+    /// none under another section, which hides the groups, else the groups'.
+    #[cfg(any(target_os = "macos", windows))]
+    fn presented_pages(&self, cx: &App) -> Vec<TabId> {
+        use crate::sidebar::ActivityPanel;
+        match self.activity_section() {
+            Some(ActivityPanel::Tickets) => vec![TabId::TICKETS],
+            Some(_) => Vec::new(),
+            None => self.live_pages(cx),
         }
     }
 

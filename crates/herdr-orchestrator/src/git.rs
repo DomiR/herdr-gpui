@@ -203,6 +203,33 @@ pub fn branches(main_root: &Path, prefix: &str, max: usize) -> Result<Vec<String
         .collect()
 }
 
+/// The `max` branches of `main_root` most recently committed to, newest
+/// first, as `git for-each-ref --sort=-committerdate` lists them.
+pub(super) fn recent_branches(main_root: &Path, max: usize) -> Result<Vec<String>> {
+    const READING: &str = "Reading the recent branches";
+    let repo = gix::open(main_root).map_err(|error| git(READING)(error.into()))?;
+    let references = repo
+        .references()
+        .map_err(|error| git(READING)(error.into()))?;
+    let mut dated = Vec::new();
+    for reference in references
+        .local_branches()
+        .map_err(|error| git(READING)(error.into()))?
+    {
+        let mut reference = reference.map_err(|error| git(READING)(error.into()))?;
+        let name = reference.name().shorten().to_string();
+        let time = reference
+            .peel_to_commit()
+            .map_err(|error| git(READING)(error.into()))?
+            .time()
+            .map_err(|error| git(READING)(error.into()))?;
+        dated.push((time.seconds, name));
+    }
+    // Stable, so branches committed at one second keep their name order.
+    dated.sort_by_key(|(seconds, _)| std::cmp::Reverse(*seconds));
+    Ok(dated.into_iter().take(max).map(|(_, name)| name).collect())
+}
+
 /// The full commit id `base` names in `main_root`: a reference such as
 /// `HEAD` or a branch, peeled through tags, else a full commit id.
 pub fn commit(main_root: &Path, base: &str) -> Result<String> {

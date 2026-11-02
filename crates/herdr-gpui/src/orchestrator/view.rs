@@ -7,31 +7,61 @@
 //! It never blocks: the [`Service`] worker does the I/O, and the host pushes
 //! the theme, live agent statuses, and the GitHub account from its tick.
 
+mod board;
 mod conversation;
+mod create;
+mod creators;
 mod detail;
 mod dispatch;
+mod hidden;
 mod hosts;
 mod inbox;
+mod keys;
+mod linear;
+mod linear_card;
+mod linear_groups;
+mod linear_parts;
+mod linear_rows;
 mod list;
 mod listing;
 mod look;
 mod markdown;
+mod moves;
 pub(crate) mod pane;
 mod pills;
 mod pull;
 mod repo;
 mod rows;
 mod status;
+mod worktree;
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests;
 
+pub(crate) use board::Layout as IssueLayout;
 pub(crate) use look::Look;
 pub(crate) use markdown::without_html;
 use pane::{PANE_DEFAULT, PaneDrag, Resize};
 pub(crate) use repo::RepoSpec;
 pub(crate) use rows::{LiveAgent, Tab as List, key_label};
+
+/// Which issues a view lists: its repositories' own, or Linear's, which
+/// belong to the user rather than to a repository and have a section of
+/// their own. Pull requests are only ever the repositories'.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum IssueSource {
+    #[default]
+    Repositories,
+    Linear,
+}
+
+impl IssueSource {
+    /// Whether this source lists items from `provider`.
+    pub(crate) fn lists(self, provider: Provider) -> bool {
+        (provider == Provider::Linear) == (self == Self::Linear)
+    }
+}
 
 use super::{Notice, Provider, Request, Service, Snapshot, SyncState};
 use crate::{
@@ -43,7 +73,7 @@ use repo::Repo;
 pub(crate) use rows::Tab;
 use rows::{Filters, Runs, Sort};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -78,6 +108,9 @@ pub(crate) enum Event {
         request: Box<super::DispatchRequest>,
         endpoint: String,
     },
+    /// The user laid the Linear issues out as a list or a board, which the
+    /// window remembers with its chrome.
+    Layout(board::Layout),
 }
 
 impl EventEmitter<Event> for OrchestratorView {}
@@ -153,6 +186,9 @@ pub(crate) struct OrchestratorView {
     /// lists them all.
     backends: HashSet<Provider>,
     projects: HashSet<String>,
+    /// Only pull requests these people opened, by login; none picked lists
+    /// everyone's.
+    authors: HashSet<String>,
     /// Counts changes to what is listed, so the window redraws the bar's
     /// counts only when they may have moved.
     revision: u64,
@@ -166,12 +202,31 @@ pub(crate) struct OrchestratorView {
     tab: Tab,
     sort: Sort,
     sort_open: bool,
+    /// How the Pull requests list is grouped.
+    grouping: creators::Grouping,
     filters: Filters,
-    mine: bool,
+    /// Which issues are listed; `filters` are that source's, and
+    /// `stashed_filters` the other's, swapped in when it shows again.
+    issue_source: IssueSource,
+    stashed_filters: Filters,
+    /// A filter was clicked, or the Linear default already applied: the
+    /// default never overrides a choice and applies at most once.
+    filters_set: bool,
     /// Whether the Issues filters' column is unfolded.
     filters_open: bool,
     /// Only issues with this label.
     label: Option<String>,
+    /// Only issues in the workflow state of this name.
+    status: Option<String>,
+    /// Linear's workflow states whose issues are hidden, by name: rows out
+    /// of the list, lanes off the board (`hidden.rs`).
+    hidden_statuses: BTreeSet<String>,
+    /// Whether the Hide statuses menu is open.
+    hide_open: bool,
+    /// Whether the issues show as a list or, for Linear's, a board.
+    layout: board::Layout,
+    /// Where the board is scrolled, kept while the section is not drawn.
+    board_scrolls: board::Scrolls,
     collapsed: HashSet<String>,
     search: Entity<SearchInput>,
     query: String,
@@ -192,6 +247,15 @@ pub(crate) struct OrchestratorView {
     description: markdown::Markdown,
     dialog: Option<dispatch::Dialog>,
     confirm: Option<dispatch::Confirm>,
+    /// The Connect Linear dialog, while open.
+    linear: Option<linear::Dialog>,
+    /// The new issue dialog, and what outlives it (`create.rs`).
+    create: create::Create,
+    /// Linear cards dropped in another lane, shown there until done.
+    moves: moves::Moves,
+    /// The Linear issue whose run was last opened, which Back and Cmd-B
+    /// return to (`worktree.rs`).
+    worktree_issue: Option<String>,
     /// The newest action's outcome, until dismissed or replaced.
     notice: Option<Notice>,
     /// What to type to the open item's newest run.
@@ -242,6 +306,7 @@ impl OrchestratorView {
             blank: Snapshot::default(),
             backends: HashSet::new(),
             projects: HashSet::new(),
+            authors: HashSet::new(),
             revision: 0,
             refresh_asked: None,
             look,
@@ -250,10 +315,18 @@ impl OrchestratorView {
             tab: Tab::default(),
             sort: Sort::default(),
             sort_open: false,
+            grouping: creators::Grouping::default(),
             filters: Filters::default(),
-            mine: false,
+            issue_source: IssueSource::default(),
+            stashed_filters: Filters::default(),
+            filters_set: false,
             filters_open: false,
             label: None,
+            status: None,
+            hidden_statuses: BTreeSet::new(),
+            hide_open: false,
+            layout: board::Layout::default(),
+            board_scrolls: board::Scrolls::default(),
             collapsed: HashSet::new(),
             search,
             query: String::new(),
@@ -268,6 +341,10 @@ impl OrchestratorView {
             description: markdown::Markdown::default(),
             dialog: None,
             confirm: None,
+            linear: None,
+            create: create::Create::default(),
+            moves: moves::Moves::default(),
+            worktree_issue: None,
             notice: None,
             message,
             pr: crate::pr_actions::Actions::default(),
@@ -347,10 +424,13 @@ impl OrchestratorView {
             }
         }
         if read {
+            self.settle_moves();
             self.discard_non_projects();
+            self.default_filters();
             self.reconcile_agents();
             self.refresh_rows();
             self.follow_pull_request();
+            self.request_avatars(cx);
             changed = true;
         }
         if self.pr.poll() {
@@ -364,6 +444,27 @@ impl OrchestratorView {
         if changed {
             cx.notify();
         }
+    }
+
+    /// Turns on Mine and Current cycle the first time a tracker's items
+    /// arrive, unless the user already chose filters.
+    fn default_filters(&mut self) {
+        if self.filters_set {
+            return;
+        }
+        let items = self
+            .repos
+            .iter()
+            .flat_map(|repo| repo.snapshot.items.iter());
+        // Mine and Current cycle hide every issue but Linear's, so they are
+        // Linear's filters, whichever source shows.
+        let linear = match self.issue_source {
+            IssueSource::Linear => &mut self.filters,
+            IssueSource::Repositories => &mut self.stashed_filters,
+        };
+        let defaults = rows::linear_defaults(*linear, items);
+        self.filters_set = defaults != *linear;
+        *linear = defaults;
     }
 
     /// Asks the worker for the open pull request's status.
@@ -627,6 +728,23 @@ impl OrchestratorView {
         }
     }
 
+    /// Lists `source`'s issues, with the filters last used on them; the
+    /// activity bar's Issues and Linear sections pick theirs.
+    pub(crate) fn set_issue_source(&mut self, source: IssueSource, cx: &mut Context<Self>) {
+        if self.issue_source == source {
+            return;
+        }
+        self.issue_source = source;
+        std::mem::swap(&mut self.filters, &mut self.stashed_filters);
+        // Only Linear's issues have statuses to pick.
+        self.status = None;
+        self.selected = None;
+        // The open item belongs to the source left behind.
+        self.detail = None;
+        self.refresh_rows();
+        cx.notify();
+    }
+
     fn select_tab(&mut self, tab: Tab, cx: &mut Context<Self>) {
         self.tab = tab;
         self.selected = None;
@@ -676,7 +794,22 @@ impl OrchestratorView {
             self.reload_pull_request();
         }
         self.follow_pull_request();
+        self.request_description_images(cx);
         cx.notify();
+    }
+
+    /// Reads the images the open item's description shows, as it opens.
+    fn request_description_images(&self, cx: &mut Context<Self>) {
+        let Some(body) = self
+            .detail
+            .as_ref()
+            .and_then(|detail| self.item(&detail.key))
+            .and_then(|item| item.description.as_deref())
+        else {
+            return;
+        };
+        let blocks = self.description.blocks(body);
+        crate::markdown_view::request_images(crate::markdown_view::image_urls(&blocks), cx);
     }
 
     fn toggle_children(&mut self, key: String, cx: &mut Context<Self>) {
@@ -690,6 +823,7 @@ impl OrchestratorView {
     /// Shows run `run`: its agent's pane while Herdr shows the agent, else
     /// the workspace it worked in, else says why there is nothing to show.
     fn open_run(&mut self, run: usize, cx: &mut Context<Self>) {
+        self.leave_for_run(run);
         let runs = Runs::new(&self.snapshot().runs, &self.snapshot().sessions, &self.live);
         if let Some(agent) = runs.live(run) {
             cx.emit(Event::OpenRun {
@@ -732,98 +866,6 @@ impl OrchestratorView {
             }
         }
     }
-
-    fn on_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        if (self.dialog.is_some() || self.confirm.is_some())
-            && self.dialog_key(&event.keystroke.key, window, cx)
-        {
-            cx.stop_propagation();
-            return;
-        }
-        if self.dialog.is_some() {
-            return;
-        }
-        if self.comment.read(cx).focus.is_focused(window) {
-            match event.keystroke.key.as_str() {
-                "enter" => self.post_comment(cx),
-                "escape" => window.focus(&self.focus, cx),
-                _ => return,
-            }
-            cx.stop_propagation();
-            return;
-        }
-        if self.message.read(cx).focus.is_focused(window) {
-            match event.keystroke.key.as_str() {
-                "enter" => self.send_message(cx),
-                "escape" => window.focus(&self.focus, cx),
-                _ => return,
-            }
-            cx.stop_propagation();
-            return;
-        }
-        if self.search.read(cx).focus.is_focused(window) {
-            if event.keystroke.key == "escape" {
-                window.focus(&self.focus, cx);
-                cx.stop_propagation();
-            }
-            return;
-        }
-        let modifiers = &event.keystroke.modifiers;
-        if modifiers.platform || modifiers.control || modifiers.alt {
-            return;
-        }
-        let handled = match (event.keystroke.key.as_str(), &self.detail) {
-            ("escape", Some(_)) => {
-                self.detail = None;
-                cx.notify();
-                true
-            }
-            ("escape", None) if self.sort_open => {
-                self.sort_open = false;
-                cx.notify();
-                true
-            }
-            ("/", None) => {
-                window.focus(&self.search.read(cx).focus.clone(), cx);
-                true
-            }
-            ("up" | "k", None) => {
-                self.move_selection(-1, cx);
-                true
-            }
-            ("down" | "j", None) => {
-                self.move_selection(1, cx);
-                true
-            }
-            ("enter", None) => {
-                if let Some(key) = self.selected.clone() {
-                    self.open_detail(key, cx);
-                }
-                true
-            }
-            ("r", _) => {
-                self.ask_refresh();
-                true
-            }
-            ("1" | "2" | "3" | "4" | "5", Some(detail)) => {
-                let index = event.keystroke.key.parse::<usize>().unwrap_or(1) - 1;
-                let pull_request = self
-                    .item(&detail.key)
-                    .is_some_and(|item| item.github_pull_request().is_some());
-                let tabs = DetailTab::tabs(pull_request);
-                let mut detail = detail.clone();
-                detail.tab = tabs[index.min(tabs.len() - 1)];
-                self.detail = Some(detail);
-                self.follow_pull_request();
-                cx.notify();
-                true
-            }
-            _ => false,
-        };
-        if handled {
-            cx.stop_propagation();
-        }
-    }
 }
 
 impl Focusable for OrchestratorView {
@@ -834,6 +876,7 @@ impl Focusable for OrchestratorView {
 
 impl Render for OrchestratorView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.settle_create(window, cx);
         let body = self.render_inbox(window, cx);
         let notice = self.render_notice(cx);
         let overlay = self.render_overlay(cx);

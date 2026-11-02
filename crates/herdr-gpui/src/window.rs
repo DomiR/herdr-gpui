@@ -224,6 +224,9 @@ pub(crate) struct HerdrWindow {
     pub(crate) input_probe: smoke::InputProbe,
     pub(crate) install_warning_shown: bool,
     pub(crate) integrations: crate::integrations::Integrations,
+    /// The Linear section's list or board, as last picked and stored with
+    /// the chrome; `None` until the user picks one.
+    pub(crate) issue_layout: Option<crate::orchestrator::IssueLayout>,
     /// What a key code types in the active layout, to restore a dropped Shift.
     pub(crate) key_layout: fn(u16) -> Option<prefix::KeyChars>,
     /// The key code and Shift of the key being handled, from AppKit's event.
@@ -394,6 +397,11 @@ pub(crate) struct HerdrWindow {
     /// told. It trails the system while the theme for a new appearance
     /// loads, so Herdr never pairs the new appearance with the old colors.
     pub(crate) theme_light: bool,
+    /// The Tickets section's board when drawn natively.
+    pub(crate) ticket_board: crate::tickets::Native,
+    /// The Tickets section's page, which this window creates the first time
+    /// the section shows.
+    pub(crate) tickets: crate::browser::TicketsPage,
     /// Last title pushed to the OS, so the window is renamed only when it changes.
     pub(crate) title: String,
     /// Toasts sliding in and out of their corners.
@@ -540,6 +548,10 @@ impl HerdrWindow {
             self.agent_sort = sort;
             self.agent_sort_modified = true;
         }
+        // A layout picked before the stored chrome loaded wins.
+        if self.issue_layout.is_none() {
+            self.issue_layout = chrome.issue_layout;
+        }
         // Saved once the whole chrome is merged, so the save keeps it all.
         if resave {
             self.save_chrome();
@@ -569,6 +581,7 @@ impl HerdrWindow {
         }
         if let Some(chrome) = self.sidebar_preferences.as_mut().and_then(|p| p.loaded()) {
             self.apply_stored_chrome(chrome);
+            self.apply_issue_layout(cx);
             cx.notify();
         }
         let old_pane = self
@@ -706,6 +719,7 @@ impl HerdrWindow {
         self.poll_overview(cx);
         self.poll_security(cx);
         self.poll_automations(cx);
+        self.poll_tickets(cx);
         if self.update_system_load() {
             cx.notify();
         }

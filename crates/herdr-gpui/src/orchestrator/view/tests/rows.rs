@@ -216,9 +216,8 @@ fn pull_requests_hide_merged_and_closed_until_asked_for() {
             &items,
             &runs,
             "",
-            filters,
+            Filters { mine, ..filters },
             Some("penso"),
-            mine,
             Sort::Updated,
         )
         .iter()

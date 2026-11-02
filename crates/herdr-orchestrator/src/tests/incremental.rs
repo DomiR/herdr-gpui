@@ -31,6 +31,7 @@ fn item(native_id: &str, state: &str, updated: &str) -> Item {
         created_at: None,
         updated_at: Some(at(updated)),
         pull_request,
+        tracker: None,
         activity: None,
     }
 }

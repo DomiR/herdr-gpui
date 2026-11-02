@@ -18,6 +18,7 @@ fn start_agent_stays_on_a_row_beside_an_open_page(cx: &mut TestAppContext) {
         data_root: Some(dir.path().join("data")),
         gitlab_store: Default::default(),
         timing: Timing::default(),
+        linear: None,
     };
     let config = crate::config::Config::default();
     let look = Look {

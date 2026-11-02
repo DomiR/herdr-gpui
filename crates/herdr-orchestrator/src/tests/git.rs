@@ -4,7 +4,7 @@
 use crate::git;
 use std::{path::Path, process::Command};
 
-fn run(dir: &Path, args: &[&str]) -> String {
+pub(super) fn run(dir: &Path, args: &[&str]) -> String {
     let output = Command::new("git")
         .arg("-C")
         .arg(dir)
@@ -29,7 +29,7 @@ fn run(dir: &Path, args: &[&str]) -> String {
 }
 
 /// A repository with one commit at `dir/app`.
-fn repository(dir: &Path) -> std::path::PathBuf {
+pub(super) fn repository(dir: &Path) -> std::path::PathBuf {
     let main = dir.join("app");
     std::fs::create_dir_all(&main).unwrap();
     run(&main, &["init", "-q"]);

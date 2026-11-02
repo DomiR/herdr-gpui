@@ -104,6 +104,7 @@ impl Listed for MergeRequestNode {
                 comments: self.user_notes_count,
                 ..Activity::default()
             }),
+            tracker: None,
         }
     }
 }

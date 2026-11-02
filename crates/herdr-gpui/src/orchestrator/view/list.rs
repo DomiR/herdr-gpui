@@ -3,7 +3,7 @@
 //! an item is open beside the list, rows keep only the columns that fit.
 
 use super::{
-    OrchestratorView,
+    IssueSource, OrchestratorView,
     look::{BLUE, CYAN, GREEN, Look, MAGENTA, RED, YELLOW, age, agent_icon},
     rows::{Heading, ItemRow, Line, Next, Tab},
 };
@@ -18,6 +18,8 @@ use gpui::{prelude::*, *};
 /// A list's headings take its rows' height, as the list is uniform.
 const ISSUE_ROW: f32 = 32.;
 const PULL_REQUEST_ROW: f32 = 40.;
+/// The Linear section's rows, as roomy as Linear's own list.
+const LINEAR_ROW: f32 = 40.;
 /// The project column, while several projects are listed.
 const PROJECT_WIDTH: f32 = 130.;
 /// The source column, while the list mixes backends.
@@ -40,13 +42,16 @@ pub(super) enum Empty {
 }
 impl OrchestratorView {
     /// Whether rows keep only the columns that fit beside an open item.
-    fn compact(&self) -> bool {
+    pub(super) fn compact(&self) -> bool {
         self.detail.is_some()
     }
 
     /// Whether rows of several projects are listed, so each names its own.
     fn listing_projects(&self) -> bool {
-        self.projects_named().count() > 1 && self.projects.len() != 1
+        // Linear's issues are the user's, not a project's.
+        self.issue_source != IssueSource::Linear
+            && self.projects_named().count() > 1
+            && self.projects.len() != 1
     }
 
     /// A row's project, in its own column while several are listed.
@@ -87,8 +92,15 @@ impl OrchestratorView {
         })
     }
 
-    fn row_height(&self) -> f32 {
+    /// Whether the list is the Linear section's issues, which it draws as
+    /// Linear's own list (`linear_rows.rs`).
+    fn linear_list(&self) -> bool {
+        self.tab == Tab::Issues && self.issue_source == IssueSource::Linear
+    }
+
+    pub(super) fn row_height(&self) -> f32 {
         self.look.row(match self.tab {
+            Tab::Issues if self.linear_list() => LINEAR_ROW,
             Tab::Issues => ISSUE_ROW,
             Tab::PullRequests => PULL_REQUEST_ROW,
         })
@@ -164,8 +176,11 @@ impl OrchestratorView {
             .min_w_0()
             .flex()
             .flex_col()
-            // Column heads over nothing to line up are clutter.
-            .when(count > 0, |el| el.child(column_head(look, &head)))
+            // Column heads over nothing to line up are clutter, and Linear's
+            // rows carry no columns.
+            .when(count > 0 && !self.linear_list(), |el| {
+                el.child(column_head(look, &head))
+            })
             .child(list)
             .into_any_element()
     }
@@ -186,8 +201,10 @@ impl OrchestratorView {
         let filtered = !self.projects.is_empty()
             || !self.backends.is_empty()
             || match self.tab {
-                Tab::Issues => self.active_filters() > 0,
-                Tab::PullRequests => self.mine || self.filters.has_run,
+                Tab::Issues => self.active_filters() > 0 || self.hiding(),
+                Tab::PullRequests => {
+                    self.filters.mine || self.filters.has_run || !self.authors.is_empty()
+                }
             };
         if self.repos.is_empty() {
             Empty::NoRepositories
@@ -279,8 +296,11 @@ impl OrchestratorView {
 
     fn render_line(&self, index: usize, cx: &mut Context<Self>) -> AnyElement {
         match self.lines.get(index) {
-            Some(Line::Heading { heading, count }) => self.render_heading(*heading, *count),
+            Some(Line::Heading { heading, count }) => {
+                self.render_heading(index, *heading, *count, cx)
+            }
             Some(Line::Row(row)) => match self.tab {
+                Tab::Issues if self.linear_list() => self.render_linear_row(index, *row, cx),
                 Tab::Issues => self.render_issue_row(index, *row, cx),
                 Tab::PullRequests => self.render_pull_request_row(index, *row, cx),
             },
@@ -288,10 +308,18 @@ impl OrchestratorView {
         }
     }
 
-    fn render_heading(&self, heading: Heading, count: usize) -> AnyElement {
+    fn render_heading(
+        &self,
+        index: usize,
+        heading: Heading,
+        count: usize,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let look = &self.look;
         let theme = &look.theme;
         let (label, hue): (String, u32) = match heading {
+            Heading::Assignee(group) => return self.render_assignee(index, group, count, cx),
+            Heading::State(group) => return self.render_state(index, group, count, cx),
             Heading::Next(next) => match next {
                 Next::Review => (fl!("orchestrator-next-review"), look.hue(MAGENTA)),
                 Next::Fix => (fl!("orchestrator-next-fix"), look.hue(RED)),
@@ -304,6 +332,10 @@ impl OrchestratorView {
                 look.hue(look.priority_hue(priority)),
             ),
             Heading::Priority(None) => (fl!("orchestrator-no-priority"), theme.muted),
+            Heading::Creator(row) => match &self.row_item(&row).author {
+                Some(author) => (author.clone(), look.hue(BLUE)),
+                None => (fl!("orchestrator-linear-unknown-author"), theme.muted),
+            },
         };
         div()
             .w_full()
@@ -329,7 +361,7 @@ impl OrchestratorView {
     /// A row's shell: selection, and a click to open it.
     /// `item` names the row for a screen reader by its identifier, title, and
     /// state.
-    fn row_shell(
+    pub(super) fn row_shell(
         &self,
         id: (&'static str, usize),
         item: &crate::orchestrator::model::Item,
@@ -401,22 +433,12 @@ impl OrchestratorView {
                     }),
                 )
         });
-        let writable = self.repos[row.repo].snapshot.access == Some(Access::ReadWrite);
-        let blocked = !item.blocked_by.is_empty() || item.state == "blocked";
-        let start = (writable && row.run.is_none() && !blocked).then(|| {
-            let key = key.clone();
-            look.compact_button(
-                ("orchestrator-start", index),
-                fl!("orchestrator-start-agent"),
-            )
-            .debug_selector(|| "orchestrator-start".into())
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .on_click(cx.listener(move |this, _, window, cx| {
-                this.open_dispatch(key.clone(), window, cx);
-            }))
-        });
+        let blocked = blocked(item);
+        let start = self.start_button(index, &row, cx);
+        let worktree = self.worktree_button(&row, super::worktree::ROW_GROUP, cx);
         self.row_shell(("orchestrator-issue", index), item, cx)
             .debug_selector(move || format!("orchestrator-row-{key}"))
+            .group(super::worktree::ROW_GROUP)
             .child(
                 div()
                     .flex_none()
@@ -442,6 +464,7 @@ impl OrchestratorView {
                             .flex_none()
                             .text_color(rgb(theme.muted)),
                     )
+                    .children(self.status_pill(item))
                     .child(div().min_w_0().truncate().child(item.title.clone()))
                     .when(!compact, |el| {
                         el.children(
@@ -487,6 +510,7 @@ impl OrchestratorView {
                     .flex()
                     .justify_end()
                     .children(start)
+                    .children(worktree)
                     .when(blocked, |el| {
                         el.child(look.badge(fl!("orchestrator-badge-blocked"), YELLOW))
                     }),
@@ -625,7 +649,35 @@ impl OrchestratorView {
             .into_any_element()
     }
 
-    fn run_mark(&self, row: &ItemRow) -> Div {
+    /// Start agent on `row`, when its repository is writable and its item
+    /// neither blocked nor already run.
+    pub(super) fn start_button(
+        &self,
+        index: usize,
+        row: &ItemRow,
+        cx: &mut Context<Self>,
+    ) -> Option<Stateful<Div>> {
+        let item = self.row_item(row);
+        let writable = self.repos[row.repo].snapshot.access == Some(Access::ReadWrite);
+        if !writable || row.run.is_some() || blocked(item) {
+            return None;
+        }
+        let key = item.key.canonical();
+        Some(
+            self.look
+                .compact_button(
+                    ("orchestrator-start", index),
+                    fl!("orchestrator-start-agent"),
+                )
+                .debug_selector(|| "orchestrator-start".into())
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.open_dispatch(key.clone(), window, cx);
+                })),
+        )
+    }
+
+    pub(super) fn run_mark(&self, row: &ItemRow) -> Div {
         let look = &self.look;
         div()
             .flex_none()
@@ -641,6 +693,11 @@ impl OrchestratorView {
     }
 }
 
+/// Whether `item` waits on another, or its tracker says it is blocked.
+pub(super) fn blocked(item: &crate::orchestrator::Item) -> bool {
+    !item.blocked_by.is_empty() || item.state == "blocked"
+}
+
 /// A backend's muted mark in a row.
 pub(super) fn source_mark(look: &Look, provider: Provider) -> AnyElement {
     look.icon(source_icon(provider), 12., look.theme.muted)
@@ -652,6 +709,7 @@ pub(super) fn source_icon(provider: Provider) -> &'static str {
         Provider::Github => "icons/github.svg",
         Provider::Beads => "icons/beads.svg",
         Provider::Gitlab => "icons/gitlab.svg",
+        Provider::Linear => "icons/linear.svg",
     }
 }
 

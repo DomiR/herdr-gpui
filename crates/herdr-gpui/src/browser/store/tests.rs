@@ -4,6 +4,7 @@ use super::*;
 mod editors;
 mod orchestrator_tabs;
 mod px0;
+mod tickets_id;
 
 fn url(value: &str) -> Option<Location> {
     Some(Location::Web {

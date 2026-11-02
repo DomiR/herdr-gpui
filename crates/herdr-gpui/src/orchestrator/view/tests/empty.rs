@@ -29,6 +29,7 @@ pub(super) fn open(
         data_root: Some(dir.path().join("data")),
         gitlab_store: Default::default(),
         timing: Timing::default(),
+        linear: None,
     };
     let (view, cx) = cx.add_window_view(|_, cx| OrchestratorView::with_repo(request, look, cx));
     cx.simulate_resize(gpui::size(gpui::px(1100.), gpui::px(600.)));

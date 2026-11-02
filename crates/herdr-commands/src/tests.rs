@@ -1,4 +1,6 @@
 use super::*;
+use herdr_client::{Method, protocol::ClientShellSnapshot};
+use serde_json::json;
 
 fn snapshot() -> ClientShellSnapshot {
     serde_json::from_str(include_str!(
@@ -95,6 +97,7 @@ fn catalog_has_all_native_commands_and_gpui_shortcuts() {
         (AgentNumber(9), &[]),
         (ToggleSidebar, &["cmd-b"]),
         (ToggleStatusBar, &["cmd-alt-b"]),
+        (ToggleSidebarPorts, &[]),
         (ToggleModPanel, &[]),
         (FocusNextRegion, &["cmd-f6"]),
         (FocusPreviousRegion, &["cmd-shift-f6"]),
@@ -123,6 +126,7 @@ fn catalog_has_all_native_commands_and_gpui_shortcuts() {
         (OpenOrchestrator, &[]),
         (ReviewChanges, &[]),
         (GitMenu, &[]),
+        (ToggleTickets, &[]),
         (ToggleAnnotate, &[]),
         (InstallBrowserSkill, &[]),
         (SplitEditor, &["cmd-\\"]),
@@ -194,6 +198,7 @@ fn gui_commands_never_send_daemon_requests() {
         Command::AnnotateSelection,
         Command::ToggleSidebar,
         Command::ToggleStatusBar,
+        Command::ToggleSidebarPorts,
         Command::ToggleZenMode,
         Command::IncreaseFontSize,
         Command::DecreaseFontSize,

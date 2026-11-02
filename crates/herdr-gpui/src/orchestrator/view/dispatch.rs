@@ -88,6 +88,9 @@ pub(crate) enum Confirm {
 pub(super) fn done(done: Done) -> String {
     match done {
         Done::BeadDeleted => fl!("orchestrator-done-bead-deleted"),
+        Done::LinearConnected => fl!("orchestrator-linear-done-connected"),
+        Done::LinearIssueCreated => fl!("orchestrator-linear-done-issue-created"),
+        Done::LinearKeyRemoved => fl!("orchestrator-linear-done-key-removed"),
         Done::Removed => fl!("orchestrator-done-removed"),
         Done::Sent => fl!("orchestrator-done-sent"),
         Done::Started => fl!("orchestrator-done-started"),
@@ -280,7 +283,10 @@ impl OrchestratorView {
     }
 
     pub(super) fn close_overlays(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        let open = self.dialog.take().is_some() | self.confirm.take().is_some();
+        let open = self.dialog.take().is_some()
+            | self.confirm.take().is_some()
+            | self.linear.take().is_some()
+            | self.create.close();
         if open {
             window.focus(&self.focus, cx);
             cx.notify();
@@ -448,10 +454,11 @@ impl OrchestratorView {
 
     /// The dialog or confirmation over the view, if one is open.
     pub(super) fn render_overlay(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let card = match (&self.dialog, &self.confirm) {
-            (Some(dialog), _) => self.render_dialog(dialog, cx),
-            (None, Some(confirm)) => self.render_confirm(confirm, cx),
-            (None, None) => return None,
+        let card = match (&self.dialog, &self.confirm, &self.linear) {
+            (Some(dialog), _, _) => self.render_dialog(dialog, cx),
+            (None, Some(confirm), _) => self.render_confirm(confirm, cx),
+            (None, None, Some(linear)) => self.render_linear(linear, cx),
+            (None, None, None) => self.render_create(cx)?,
         };
         let theme = &self.look.theme;
         let backdrop = (mix(theme.background, theme.foreground, 12) << 8) | 0xB0;
@@ -744,17 +751,21 @@ impl OrchestratorView {
             .into_any_element()
     }
 
-    /// Keys while the dialog is open: Enter dispatches, Escape cancels.
+    /// Keys while a dialog is open: Enter dispatches or saves, Escape cancels.
     pub(super) fn dialog_key(
         &mut self,
         key: &str,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        match (key, self.dialog.is_some(), self.confirm.is_some()) {
-            ("escape", true, _) | ("escape", _, true) => self.close_overlays(window, cx),
-            ("enter", true, _) => {
+        match key {
+            "escape" => self.close_overlays(window, cx),
+            "enter" if self.dialog.is_some() => {
                 self.submit_dispatch(window, cx);
+                true
+            }
+            "enter" if self.linear.is_some() => {
+                self.save_linear(false, window, cx);
                 true
             }
             _ => false,
@@ -762,7 +773,7 @@ impl OrchestratorView {
     }
 }
 
-fn card(look: &super::Look) -> Div {
+pub(super) fn card(look: &super::Look) -> Div {
     let theme = &look.theme;
     div()
         .flex()

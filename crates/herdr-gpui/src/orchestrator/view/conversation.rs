@@ -567,23 +567,24 @@ impl OrchestratorView {
                 .rounded_full()
                 .into_any_element();
         }
-        initials(&self.look, author)
+        initials(&self.look, author, AVATAR)
     }
 }
 
-fn initials(look: &Look, author: &str) -> AnyElement {
+/// `author`'s initial on a color of their own, `size` across.
+pub(super) fn initials(look: &Look, author: &str, size: f32) -> AnyElement {
     let hues = [BLUE, GREEN, YELLOW, RED, MAGENTA, CYAN];
     let pick = author.bytes().map(usize::from).sum::<usize>() % hues.len();
     let fill = mix(look.theme.background, look.hue(hues[pick]), 70);
     div()
         .flex_none()
-        .size(px(AVATAR))
+        .size(px(size))
         .rounded_full()
         .bg(rgb(fill))
         .flex()
         .items_center()
         .justify_center()
-        .text_size(px(AVATAR * 0.45))
+        .text_size(px(size * 0.45))
         .font_weight(FontWeight::SEMIBOLD)
         .text_color(rgb(look.theme.text_on(fill)))
         .child(

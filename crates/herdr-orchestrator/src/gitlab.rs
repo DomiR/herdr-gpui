@@ -771,6 +771,7 @@ impl Listed for IssueNode {
             created_at: Some(self.created_at),
             updated_at: Some(self.updated_at),
             pull_request: None,
+            tracker: None,
             activity: Some(Activity {
                 comments: self.user_notes_count,
                 ..Activity::default()

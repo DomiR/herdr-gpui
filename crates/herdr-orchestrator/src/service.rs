@@ -8,16 +8,18 @@ use super::{
     actions::{Action, Site},
     beads, database_path, github, gitlab,
     location::{database_path_in, legacy_path, legacy_path_in},
-    naming,
-    prompt::{self, Profile},
+    naming, prompt,
     repo::{self, Extras, RepoInfo},
     ssh_slots,
 };
 use crate::cache::{Cache, Kind};
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use herdr_client::ConnectTarget;
 use herdr_github::Tokens;
 use herdr_remote::teleport::{AgentKind, Host};
+use linear::LinearKey;
+use secrecy::SecretString;
+use serde_json::Value;
 use sources::{recognize, statuses};
 use std::{
     collections::{HashMap, VecDeque},
@@ -31,8 +33,10 @@ use std::{
 };
 
 mod gitlab_source;
+mod snapshot;
 mod sources;
 
+pub use snapshot::{Notice, PullRequestLookup, Snapshot, SourceStatus, SyncState};
 pub use sources::sources;
 
 /// How often other applications' writes (agent-launcher's runs) are looked for.
@@ -101,6 +105,8 @@ pub struct Request {
     /// over, in place of the platform's; tests set it.
     pub data_root: Option<PathBuf>,
     pub timing: Timing,
+    /// Where the Linear API key is saved; `None` leaves Linear out entirely.
+    pub linear: Option<herdr_credentials::Store>,
 }
 
 enum Command {
@@ -117,73 +123,12 @@ enum Command {
         endpoint: Option<String>,
         target: ConnectTarget,
     },
-}
-
-/// A pull request looked up for the open item.
-#[derive(Clone, Debug)]
-pub struct PullRequestLookup {
-    pub number: u64,
-    pub result: Arc<herdr_github::Result<Option<herdr_github::pull_request::PullRequest>>>,
-}
-
-/// How an action the user asked for ended.
-#[derive(Clone, Debug)]
-pub struct Notice {
-    pub outcome: std::result::Result<crate::actions::Done, Arc<Error>>,
-}
-
-/// How one source is doing.
-#[derive(Clone, Debug)]
-pub enum SyncState {
-    /// With the count its last sync reported, shown until this one ends.
-    Syncing {
-        count: Option<usize>,
-    },
-    Synced {
-        at: DateTime<Utc>,
-        count: usize,
-    },
-    /// Larger than one sync reads; shown, not cached.
-    Capped {
-        count: usize,
-    },
-    /// GitHub needs a signed-in account, or GitLab a token that works.
-    SignIn,
-    /// A provider or host this build cannot read yet, such as GitHub Enterprise.
-    Unsupported,
-    Failed(Arc<Error>),
-}
-
-#[derive(Clone, Debug)]
-pub struct SourceStatus {
-    pub key: SourceKey,
-    pub state: SyncState,
-}
-
-/// Everything the view shows, replaced whole on every change.
-#[derive(Clone, Debug, Default)]
-pub struct Snapshot {
-    pub repo: Option<RepoInfo>,
-    pub access: Option<Access>,
-    pub items: Arc<Vec<Item>>,
-    pub runs: Arc<Vec<Run>>,
-    pub sessions: Arc<Vec<HerdrSession>>,
-    pub sources: Vec<SourceStatus>,
-    /// Opening the repository or its database failed.
-    pub error: Option<Arc<Error>>,
-    /// agent-launcher's prompt profiles, read once when the view opened.
-    pub profiles: Arc<Vec<Profile>>,
-    /// The agents installed on the repository's host, once known.
-    pub installed: Option<Arc<Vec<AgentKind>>>,
-    pub installed_endpoint: Option<String>,
-    pub installed_error: Option<Arc<Error>>,
-    /// The newest pull request lookup.
-    pub pull_request: Option<PullRequestLookup>,
-    /// The repository's branches named for items, as each sync read them.
-    pub branches: Arc<Vec<String>>,
-    /// Each open pull request's review and checks, by repository and number,
-    /// as the last sync of its source read them. Never stored.
-    pub pr_status: Arc<HashMap<(String, u64), super::PrStatus>>,
+    /// Save the Linear API key, or with `None` remove it, then sync.
+    SaveLinearKey(Option<SecretString>),
+    /// Move a Linear issue to another workflow state, then sync.
+    MoveLinearIssue(super::linear::Move),
+    /// Read what the new issue dialog offers, or create the issue it asks for.
+    LinearCreate(linear_create::Ask),
 }
 
 pub struct Service {
@@ -210,36 +155,29 @@ impl Service {
     /// The service and the worker it will talk to, not yet started.
     fn prepare(request: Request) -> (Self, Worker, mpsc::Receiver<Command>) {
         let (commands, receiver) = mpsc::sync_channel(COMMANDS);
-        let mailbox = Arc::new(Mutex::new(None));
-        let notices = Arc::new(Mutex::new(VecDeque::new()));
-        let cancelled = Arc::new(AtomicBool::new(false));
-        let worker = Worker {
-            request,
-            mailbox: mailbox.clone(),
-            notices: notices.clone(),
-            commands: commands.clone(),
-            actions: Arc::new(AtomicUsize::new(0)),
-            site: None,
-            cancelled: cancelled.clone(),
-            snapshot: Snapshot::default(),
-            store: None,
-            host: None,
-            unreached: false,
-            branches_fresh: false,
-            data_version: None,
-            retry: Vec::new(),
-            uncached: HashMap::new(),
-            resume: HashMap::new(),
-            gitlab_token: None,
-            cooldown: None,
-        };
+        let worker = Worker::new(request, commands.clone());
         let service = Self {
+            mailbox: worker.mailbox.clone(),
+            notices: worker.notices.clone(),
+            cancelled: worker.cancelled.clone(),
             commands,
-            mailbox,
-            notices,
-            cancelled,
         };
         (service, worker, receiver)
+    }
+
+    /// A service whose commands queue and are never served, for view tests
+    /// that ask for work without a worker. Its queue is leaked, so asks
+    /// succeed until it is full.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn unserved() -> Self {
+        let (commands, receiver) = mpsc::sync_channel(COMMANDS);
+        std::mem::forget(receiver);
+        Self {
+            commands,
+            mailbox: Arc::default(),
+            notices: Arc::default(),
+            cancelled: Arc::default(),
+        }
     }
 
     /// Asks for `action`. A full queue means the worker is behind; the user
@@ -305,7 +243,8 @@ struct Worker {
     data_version: Option<i64>,
     /// Sources waiting out a failure, and until when.
     retry: Vec<(SourceKey, Instant)>,
-    /// Listings shown but not written: capped, or the database is newer.
+    /// Listings shown but not written: capped, the database is newer, or
+    /// Linear's, which is never written.
     uncached: HashMap<SourceKey, Vec<Item>>,
     /// Where each GitHub source's next incremental sync continues.
     resume: HashMap<SourceKey, github::Resume>,
@@ -314,15 +253,47 @@ struct Worker {
     /// connected account is picked up without reopening the view.
     gitlab_token: Option<(String, Option<gitlab::account::Found>)>,
     cooldown: Option<Duration>,
+    linear_key: LinearKey,
+    /// The Linear workspace's `urlKey`, once a sync has read it.
+    linear_workspace: Option<String>,
+    /// Sends a Linear query; tests answer without a network.
+    linear_fetch: fn(&SecretString, &str, Value) -> Result<Value>,
 }
 
 impl Worker {
+    fn new(request: Request, commands: SyncSender<Command>) -> Self {
+        Self {
+            request,
+            mailbox: Arc::default(),
+            notices: Arc::default(),
+            commands,
+            actions: Arc::new(AtomicUsize::new(0)),
+            site: None,
+            cancelled: Arc::new(AtomicBool::new(false)),
+            snapshot: Snapshot::default(),
+            store: None,
+            host: None,
+            unreached: false,
+            branches_fresh: false,
+            data_version: None,
+            retry: Vec::new(),
+            uncached: HashMap::new(),
+            resume: HashMap::new(),
+            gitlab_token: None,
+            cooldown: None,
+            linear_key: LinearKey::Missing,
+            linear_workspace: None,
+            linear_fetch: super::linear::post,
+        }
+    }
+
     fn run(mut self, commands: mpsc::Receiver<Command>) {
         if let Err(error) = self.open() {
             self.snapshot.error = Some(Arc::new(error));
             self.publish();
             return;
         }
+        self.read_linear_key();
         // The host was just found unreachable: the next sync looks again.
         if !self.unreached {
             let token = self.request.token.clone();
@@ -337,11 +308,32 @@ impl Worker {
                     self.request.token = token;
                     self.gitlab_token = None;
                     self.retry.clear();
+                    self.read_linear_key();
                     let token = self.request.token.clone();
                     self.sync(token.as_ref());
                     next_sync = Instant::now() + sync;
                 }
                 Ok(Command::Act(action)) => self.act(action),
+                Ok(Command::SaveLinearKey(key)) => {
+                    self.save_linear_key(key.as_ref());
+                    let token = self.request.token.clone();
+                    self.sync(token.as_ref());
+                    next_sync = Instant::now() + sync;
+                }
+                Ok(Command::MoveLinearIssue(change)) => {
+                    if self.move_linear_issue(&change) {
+                        let token = self.request.token.clone();
+                        self.sync(token.as_ref());
+                        next_sync = Instant::now() + sync;
+                    }
+                }
+                Ok(Command::LinearCreate(ask)) => {
+                    if self.linear_create(ask) {
+                        let token = self.request.token.clone();
+                        self.sync(token.as_ref());
+                        next_sync = Instant::now() + sync;
+                    }
+                }
                 Ok(Command::LoadPullRequest(number)) => self.load_pull_request(number),
                 Ok(Command::LoadAgents { endpoint, target }) => {
                     self.snapshot.installed_endpoint = endpoint;
@@ -614,7 +606,7 @@ impl Worker {
         }
         let store = Store::open(&path)?;
         self.snapshot.access = Some(store.access());
-        self.snapshot.sources = statuses(&info);
+        self.snapshot.sources = statuses(&info, self.linear_source());
         self.site = Some(Site {
             host: host.clone(),
             target: self.request.target.clone(),
@@ -702,7 +694,7 @@ impl Worker {
                 Err(error) => tracing::debug!(%error, "Cannot read the branches"),
             }
         }
-        for (key, supported) in sources(&info) {
+        for (key, supported) in sources(&info, self.linear_source()) {
             if self.cancelled() {
                 return;
             }
@@ -716,7 +708,15 @@ impl Worker {
             // Only this source's own GitHub reply may set its pause: a delay
             // left by a pull request lookup or another source must not apply.
             self.cooldown = None;
-            let state = match self.sync_source(&key, token) {
+            let result = self.sync_source(&key, token);
+            // A Linear sync learns its workspace, which keys the source.
+            let key = match key.provider {
+                Provider::Linear => {
+                    super::linear::source(self.linear_workspace.as_deref().unwrap_or(""))
+                }
+                _ => key,
+            };
+            let state = match result {
                 // The view shows no sync times, so the log keeps them.
                 Ok(state) => {
                     tracing::debug!(
@@ -908,6 +908,7 @@ impl Worker {
                     count,
                 })
             }
+            Provider::Linear => self.sync_linear(),
         }
     }
 
@@ -918,7 +919,7 @@ impl Worker {
             return;
         };
         if recognize(&mut info, cli) {
-            self.snapshot.sources = statuses(&info);
+            self.snapshot.sources = statuses(&info, self.linear_source());
             self.snapshot.repo = Some(info);
         }
     }
@@ -944,6 +945,8 @@ fn spawn_action(
         .spawn(move || action(&AtomicBool::new(false)))
 }
 
+mod linear;
+pub mod linear_create;
 #[cfg(test)]
 mod tests;
 

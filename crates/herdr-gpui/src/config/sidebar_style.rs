@@ -1,7 +1,7 @@
 //! The `[sidebar]` table beyond its font: spacing that overrides the layout
 //! preset, a colour per host, how a selection marks its host's group, when
-//! the device footer is drawn, whose change counts a row shows, and whether
-//! the activity bar leads it.
+//! the device footer is drawn, whose change counts a row shows, whether
+//! the activity bar leads it, and whether rows carry their listening ports.
 
 use super::Error;
 use super::fonts::FontSettings;
@@ -138,6 +138,10 @@ pub struct SidebarStyle {
     /// A colour per host, keyed by the host's display name, as `0xRRGGBB`.
     pub hosts: BTreeMap<String, u32>,
     pub overrides: SidebarOverrides,
+    /// `ports`: the line of listening ports under a workspace's row. On
+    /// unless turned off; the top-level `show_listening_ports` still hides
+    /// them everywhere and stops the scan.
+    pub ports: bool,
     pub select: SelectMode,
 }
 
@@ -150,6 +154,7 @@ impl Default for SidebarStyle {
             device_footer: DeviceFooter::default(),
             hosts: BTreeMap::new(),
             overrides: SidebarOverrides::default(),
+            ports: true,
             select: SelectMode::default(),
         }
     }
@@ -182,6 +187,7 @@ pub(super) struct SidebarSettings {
     pub(super) hosts: BTreeMap<String, String>,
     pub(super) activity_bar: Option<bool>,
     pub(super) automations: Option<bool>,
+    pub(super) ports: Option<bool>,
 }
 
 impl SidebarSettings {
@@ -207,6 +213,7 @@ impl SidebarSettings {
             device_footer: self.device_footer,
             hosts,
             overrides: self.overrides,
+            ports: self.ports.unwrap_or(true),
             select: self.select,
         })
     }
@@ -245,6 +252,7 @@ impl<'de> Deserialize<'de> for SidebarSettings {
                         "change_counts" => settings.change_counts = map.next_value()?,
                         "activity_bar" => settings.activity_bar = Some(map.next_value()?),
                         "automations" => settings.automations = Some(map.next_value()?),
+                        "ports" => settings.ports = Some(map.next_value()?),
                         "hosts" => settings.hosts = map.next_value()?,
                         _ => {
                             map.next_value::<serde::de::IgnoredAny>()?;

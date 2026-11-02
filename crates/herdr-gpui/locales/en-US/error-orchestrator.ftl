@@ -155,3 +155,23 @@ error-orchestrator-gitlab-status = GitLab request failed (HTTP { $status })
 error-orchestrator-gitlab-store = The GitLab token could not be read or saved: { $error }
 error-orchestrator-gitlab-token = The GitLab token is not one an HTTP header can carry
 error-orchestrator-gitlab-too-many-hosts = GitLab tokens are saved for at most { $limit } hosts
+
+# Linear, its API key, and its API. $error is the key store's, the network's,
+# or another Linear error's text; $status an HTTP status code; $message
+# Linear's own reason; $issue an identifier such as ENG-12.
+error-orchestrator-linear-key = Could not read or save the Linear API key: { $error }
+error-orchestrator-linear-key-record = Saved Linear API key is not valid. Connect Linear again.
+error-orchestrator-linear-variable = LINEAR_API_KEY is set but is not a valid Linear API key
+error-orchestrator-linear-key-format = That is not a Linear API key
+error-orchestrator-linear-key-rejected = Linear did not accept the API key; connect Linear with a new one
+error-orchestrator-linear-rate-limited = Linear is limiting requests; the list syncs again later
+error-orchestrator-linear-status = Linear request failed with HTTP { $status }
+error-orchestrator-linear-status-message = Linear request failed with HTTP { $status }: { $message }
+error-orchestrator-linear-network = Could not reach Linear: { $error }
+error-orchestrator-linear-read = Could not read Linear's response: { $error }
+error-orchestrator-linear-size = Linear's response was larger than this app reads
+error-orchestrator-linear-header = The Linear API key cannot be sent in a request header
+error-orchestrator-linear-key-missing = Connect Linear first
+error-orchestrator-linear-move = Could not move { $issue }: { $error }
+error-orchestrator-linear-options = Could not read your Linear teams: { $error }
+error-orchestrator-linear-create = Could not create the issue: { $error }

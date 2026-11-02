@@ -2,6 +2,13 @@
 
 use super::*;
 
+#[cfg(unix)]
+mod linear;
+#[cfg(unix)]
+mod linear_create;
+#[cfg(unix)]
+mod linear_move;
+
 #[test]
 fn closing_the_view_does_not_cancel_an_accepted_action() {
     let (commands, _receiver) = mpsc::sync_channel(COMMANDS);
@@ -65,6 +72,7 @@ pub(super) fn opened(dir: &std::path::Path) -> (Service, Worker, Host) {
             reload: Duration::from_millis(20),
             sync: Duration::from_secs(3600),
         },
+        linear: None,
     });
     worker.open().unwrap();
     assert!(worker.snapshot.repo.is_some());

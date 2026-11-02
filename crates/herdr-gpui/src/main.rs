@@ -80,6 +80,7 @@ mod input;
 mod integrations;
 #[cfg(windows)]
 mod jump_list;
+mod kanban;
 mod keymap;
 #[cfg(windows)]
 mod launch_at_login;
@@ -90,6 +91,7 @@ mod listening_ports;
 mod log_targets;
 mod log_window;
 mod mark_layer;
+mod markdown_view;
 mod menu;
 mod menus;
 mod merged_cleanup;
@@ -146,7 +148,9 @@ mod teleport;
 mod terminal;
 mod terminal_notes;
 mod terminal_painter;
+mod text_area;
 mod theme_picker;
+mod tickets;
 mod titlebar;
 mod toggles;
 mod truncate;

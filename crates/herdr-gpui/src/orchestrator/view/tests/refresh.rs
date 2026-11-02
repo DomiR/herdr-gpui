@@ -25,6 +25,7 @@ fn refresh_spins_until_the_sync_it_asked_for_ends(cx: &mut TestAppContext) {
         data_root: Some(dir.path().join("data")),
         gitlab_store: Default::default(),
         timing: Timing::default(),
+        linear: None,
     };
     let config = crate::config::Config::default();
     let look = Look {

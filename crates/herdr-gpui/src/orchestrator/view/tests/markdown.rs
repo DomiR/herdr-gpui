@@ -1,5 +1,4 @@
 use crate::orchestrator::view::markdown::{Markdown, without_html};
-use crate::release_notes::Kind;
 
 #[test]
 fn github_html_without_text_is_dropped_and_media_named() {
@@ -18,18 +17,18 @@ fn github_html_without_text_is_dropped_and_media_named() {
 }
 
 #[test]
-fn bodies_become_markdown_lines_once_per_change() {
+fn bodies_become_markdown_blocks_once_per_change() {
+    use crate::markdown_view::Block;
     let markdown = Markdown::default();
-    let first = markdown.lines("### Steps\n- **bold** step\n");
-    let kinds: Vec<_> = first.iter().map(|line| line.kind).collect();
-    assert_eq!(kinds, [Kind::Heading, Kind::Bullet]);
-    assert_eq!(first[1].bold.len(), 1, "bold spans are kept");
-    let again = markdown.lines("### Steps\n- **bold** step\n");
+    let first = markdown.blocks("### Steps\n- **bold** step\n![shot](https://a.test/s.png)\n");
+    assert!(matches!(first[0], Block::Heading(3, _)));
+    assert!(matches!(first[1], Block::List { .. }));
+    let again = markdown.blocks("### Steps\n- **bold** step\n![shot](https://a.test/s.png)\n");
     assert!(
         std::rc::Rc::ptr_eq(&first, &again),
         "the same body is parsed once"
     );
-    let changed = markdown.lines("Other");
+    let changed = markdown.blocks("Other");
     assert!(!std::rc::Rc::ptr_eq(&first, &changed));
 }
 
@@ -50,14 +49,13 @@ fn code_keeps_its_html_and_prose_decodes_entities() {
 fn media_placeholders_follow_a_language_switch() {
     use herdr_i18n::{Locale, Pseudo};
     let body = "See <img src=\"https://x/y.png\">";
-    let markdown = Markdown::default();
     crate::i18n::show(&Locale::FALLBACK);
-    let english = markdown.lines(body);
-    assert_eq!(english[0].text, "See [image]");
+    let english = without_html(body);
+    assert_eq!(english, "See [image]");
     crate::i18n::show(&Pseudo::Accented.locale());
-    let accented = markdown.lines(body);
+    let accented = without_html(body);
     let image = crate::i18n::fl!("orchestrator-markdown-image");
     crate::i18n::show(&Locale::FALLBACK);
     assert!(herdr_i18n::pseudo::is_marked(&image), "{image}");
-    assert_eq!(accented[0].text, format!("See {image}"));
+    assert_eq!(accented, format!("See {image}"));
 }

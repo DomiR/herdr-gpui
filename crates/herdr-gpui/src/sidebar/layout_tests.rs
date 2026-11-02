@@ -99,6 +99,8 @@ mod short_list_scroll;
 #[cfg(test)]
 mod sidebar_cache;
 #[cfg(test)]
+mod sidebar_ports;
+#[cfg(test)]
 mod spacing_overrides;
 #[cfg(test)]
 mod split_pane;
@@ -646,6 +648,8 @@ pub(crate) fn fixture_window(window: &mut Window, cx: &mut Context<HerdrWindow>)
         },
         theme: Default::default(),
         theme_light: crate::app::light_appearance(cx),
+        ticket_board: Default::default(),
+        tickets: Default::default(),
         config_load: None,
         config_watch: None,
         config_load_revision: 0,
@@ -764,6 +768,7 @@ pub(crate) fn fixture_window(window: &mut Window, cx: &mut Context<HerdrWindow>)
         menu: crate::menu::MenuState::new(cx),
         settings: Default::default(),
         integrations: Default::default(),
+        issue_layout: None,
         install_warning_shown: false,
         version_notice_shown: false,
         collapsed_repos: Default::default(),

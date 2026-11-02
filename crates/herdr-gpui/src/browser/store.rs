@@ -16,6 +16,13 @@ const MAX_TITLE_CHARS: usize = 200;
 #[serde(transparent)]
 pub(crate) struct TabId(u64);
 
+impl TabId {
+    /// The Tickets section's page (`crate::tickets`), which lives outside
+    /// the store: the store numbers its tabs upward from zero and never
+    /// restores one with this ID.
+    pub(crate) const TICKETS: Self = Self(u64::MAX);
+}
+
 #[cfg(test)]
 impl TabId {
     pub(crate) fn test(id: u64) -> Self {
@@ -260,6 +267,9 @@ impl Store {
         // Earlier builds hosted the orchestrator in a tab; its sections now
         // own it, so such tabs are dropped rather than restored.
         tabs.retain(|tab| !matches!(tab.location, Some(Location::Orchestrator { .. })));
+        // The Tickets page's ID is reserved, and the next one past it would
+        // not fit.
+        tabs.retain(|tab| tab.id != TabId::TICKETS);
         let next = tabs.iter().map(|tab| tab.id.0 + 1).max().unwrap_or(0);
         Self {
             tabs,

@@ -2,12 +2,14 @@
 //! what the window shows. Workspaces is the sidebar beside the terminals, as
 //! it was; every other section takes the window's body, keeping the bar,
 //! title bar, and status bar: Overview what needs the user on every host
-//! (`crate::overview`), Orchestrator, Pull requests, and Issues the focused
-//! workspace's orchestrator on that list (see `orchestrator::section`),
+//! (`crate::overview`), Pull requests, Issues, and Linear the orchestrator
+//! on that list, Linear's issues only in Linear (see `orchestrator::section`),
 //! Security the Dependabot alerts of every repository (`crate::security`),
 //! listed only once GitHub reports them on for one, Automations the
 //! `herdr-automate` scripts and runs of every host (`crate::automations`),
-//! and Usage the plan limits of every host (`crate::usage::section`).
+//! Usage the plan limits of every host (`crate::usage::section`), and
+//! Tickets the herdr-dog ticket board in its web UI, with Tickets (native)
+//! the board the app draws itself, still being built (`crate::tickets`).
 //! `[sidebar] activity_bar = false` turns the bar off, and `[sidebar]
 //! automations = false` leaves Automations off it. With the bar on, the
 //! sidebar toggle sits at the end of the Workspaces title, and collapsing the
@@ -19,7 +21,7 @@ use crate::fonts::StyledFont;
 use crate::i18n::fl;
 use crate::{
     Command, HerdrWindow,
-    orchestrator::{List, OrchestratorView, ViewId},
+    orchestrator::{IssueSource, List, OrchestratorView, ViewId},
 };
 use chrono::{DateTime, Utc};
 use gpui::{prelude::*, *};
@@ -51,6 +53,9 @@ fn label(panel: ActivityPanel) -> SharedString {
         ActivityPanel::Workspaces => fl!("sidebar-activity-workspaces"),
         ActivityPanel::PullRequests => fl!("sidebar-activity-pull-requests"),
         ActivityPanel::Issues => fl!("sidebar-activity-issues"),
+        ActivityPanel::Linear => fl!("sidebar-activity-linear"),
+        ActivityPanel::Tickets => fl!("sidebar-activity-tickets"),
+        ActivityPanel::TicketsNative => fl!("sidebar-activity-tickets-native"),
         ActivityPanel::Security => fl!("sidebar-activity-security"),
         ActivityPanel::Automations => fl!("sidebar-activity-automations"),
         ActivityPanel::Usage => fl!("sidebar-activity-usage"),
@@ -64,6 +69,9 @@ fn icon(panel: ActivityPanel) -> &'static str {
         ActivityPanel::Workspaces => "icons/terminal.svg",
         ActivityPanel::PullRequests => "icons/pull-request.svg",
         ActivityPanel::Issues => "icons/issue.svg",
+        ActivityPanel::Linear => "icons/linear.svg",
+        ActivityPanel::Tickets => "icons/ticket.svg",
+        ActivityPanel::TicketsNative => "icons/board.svg",
         ActivityPanel::Security => "icons/shield.svg",
         ActivityPanel::Automations => "icons/automations.svg",
         ActivityPanel::Usage => "icons/chart.svg",
@@ -90,7 +98,7 @@ pub(crate) struct Activity {
     pub(crate) section_project: Option<String>,
     /// The list last picked on that tab's view, so the user's own choice of
     /// list there stands until another section is picked.
-    pub(crate) section_list: Option<List>,
+    pub(crate) section_list: Option<(List, IssueSource)>,
     /// The section the window left for a pane it opened, which Back
     /// returns to before walking the focus trail.
     pub(crate) return_to: Option<ActivityPanel>,
@@ -300,11 +308,16 @@ impl HerdrWindow {
             self.save_chrome();
         }
         self.sync_activity_section(cx);
-        match self.activity_section() {
+        let section = self.activity_section();
+        if section != Some(ActivityPanel::Tickets) {
+            self.blur_tickets_page();
+        }
+        match section {
             Some(
                 ActivityPanel::Overview
                 | ActivityPanel::Security
                 | ActivityPanel::Automations
+                | ActivityPanel::Tickets
                 | ActivityPanel::Usage,
             ) => {
                 let focus = self
@@ -313,7 +326,13 @@ impl HerdrWindow {
                     .get_or_insert_with(|| cx.focus_handle())
                     .clone();
                 window.focus(&focus, cx);
+                // The Tickets page takes the keyboard from the section once
+                // it has one.
+                if section == Some(ActivityPanel::Tickets) {
+                    self.show_tickets_page(window, cx);
+                }
             }
+            Some(ActivityPanel::TicketsNative) => self.focus_native_tickets(window, cx),
             Some(_) => self.focus_activity_section(window, cx),
             None => {}
         }
@@ -335,7 +354,9 @@ impl HerdrWindow {
             ActivityPanel::Security => self.render_security_section(window, cx),
             ActivityPanel::Automations => self.render_automations_section(cx),
             ActivityPanel::Usage => self.render_usage_section(cx),
-            ActivityPanel::PullRequests | ActivityPanel::Issues => {
+            ActivityPanel::Tickets => self.render_tickets_section(cx),
+            ActivityPanel::TicketsNative => self.render_native_tickets(cx),
+            ActivityPanel::PullRequests | ActivityPanel::Issues | ActivityPanel::Linear => {
                 return self.render_orchestrator_section();
             }
         };
@@ -716,6 +737,9 @@ fn panel_selector(panel: ActivityPanel) -> &'static str {
         ActivityPanel::Workspaces => "activity-workspaces",
         ActivityPanel::PullRequests => "activity-pull-requests",
         ActivityPanel::Issues => "activity-issues",
+        ActivityPanel::Linear => "activity-linear",
+        ActivityPanel::Tickets => "activity-tickets",
+        ActivityPanel::TicketsNative => "activity-tickets-native",
         ActivityPanel::Security => "activity-security",
         ActivityPanel::Automations => "activity-automations",
         ActivityPanel::Usage => "activity-usage",

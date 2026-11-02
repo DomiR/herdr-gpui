@@ -1,14 +1,12 @@
-//! Issue and pull request bodies as the views draw them: the release notes'
-//! bounded Markdown lines (headings, lists, bold, code, links), drawn as
-//! native text. GitHub bodies also hold HTML that carries no text of its
-//! own, such as template comments and image tags, which is dropped first.
-//! Parsing happens once per body and language; a repaint reuses the lines.
+//! Issue and pull request bodies as the views draw them: an issue's
+//! description as full Markdown, images included (`crate::markdown_view`),
+//! parsed once per body so a repaint reuses the blocks. `without_html`
+//! serves the views that still draw a body as plain lines.
 
 use crate::{
     i18n::fl,
-    release_notes::{self, Line},
+    markdown_view::{self, Block},
 };
-use herdr_i18n::Locale;
 use std::{cell::RefCell, rc::Rc};
 
 /// Tags dropped with their brackets; their text, if any, stays.
@@ -28,34 +26,21 @@ fn media(tag: &str) -> Option<String> {
 /// The longest tag looked at; anything longer is left as text.
 const MAX_TAG: usize = 1024;
 
-/// The lines of the last body drawn, in the language they were drawn in:
-/// media placeholders are words of the window's language.
+/// The blocks of the last body drawn.
 #[derive(Default)]
-pub(crate) struct Markdown(RefCell<Option<Drawn>>);
-
-struct Drawn {
-    body: String,
-    locale: Option<Locale>,
-    lines: Rc<[Line]>,
-}
+pub(crate) struct Markdown(RefCell<Option<(String, Rc<[Block]>)>>);
 
 impl Markdown {
-    pub(crate) fn lines(&self, body: &str) -> Rc<[Line]> {
-        let locale = crate::i18n::shown_locale();
+    pub(crate) fn blocks(&self, body: &str) -> Rc<[Block]> {
         let mut cached = self.0.borrow_mut();
-        if let Some(drawn) = cached.as_ref()
-            && drawn.body == body
-            && drawn.locale == locale
+        if let Some((drawn, blocks)) = cached.as_ref()
+            && drawn == body
         {
-            return drawn.lines.clone();
+            return blocks.clone();
         }
-        let lines: Rc<[Line]> = release_notes::parse(&without_html(body)).into();
-        *cached = Some(Drawn {
-            body: body.to_owned(),
-            locale,
-            lines: lines.clone(),
-        });
-        lines
+        let blocks: Rc<[Block]> = markdown_view::parse(body).into();
+        *cached = Some((body.to_owned(), blocks.clone()));
+        blocks
     }
 }
 

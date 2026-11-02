@@ -15,8 +15,7 @@ use crate::{
     config::{corners, mix},
     fonts::StyledFont,
     i18n::fl,
-    orchestrator::{Access, Item, Owner},
-    release_notes,
+    orchestrator::{Access, Item, Owner, Provider},
 };
 use gpui::{prelude::*, *};
 
@@ -49,7 +48,7 @@ impl OrchestratorView {
                     el.child(self.render_status_box(&item, &runs, &item_runs, cx))
                 })
                 .child(self.render_meta(&item))
-                .child(self.render_description(&item))
+                .child(self.render_description(&item, cx))
                 .into_any_element(),
             DetailTab::Conversation => div()
                 .flex_1()
@@ -271,12 +270,13 @@ impl OrchestratorView {
                 item.state.replace('_', " "),
                 look.hue(look.state_hue(&item.state)),
             ))
-            .when_some(item.priority, |el, priority| {
-                el.child(look.tag(
-                    format!("P{priority}"),
-                    look.hue(look.priority_hue(priority)),
-                ))
-            })
+            // Linear's words for its priorities, P0 to P4 for Beads.
+            .when_some(
+                item.priority.zip(item.priority_label()),
+                |el, (priority, label)| {
+                    el.child(look.tag(label, look.hue(look.priority_hue(priority))))
+                },
+            )
             .when_some(item.pull_request.as_ref(), |el, pr| {
                 el.child(look.icon("icons/git-branch.svg", 11., theme.muted))
                     .child(
@@ -378,15 +378,15 @@ impl OrchestratorView {
             )
     }
 
-    fn render_description(&self, item: &Item) -> AnyElement {
+    fn render_description(&self, item: &Item, cx: &App) -> AnyElement {
         let look = &self.look;
         let body = item.description.as_deref().unwrap_or("");
         let content = if body.trim().is_empty() {
             look.muted(fl!("orchestrator-no-description-short"))
                 .into_any_element()
         } else {
-            let lines = self.description.lines(body);
-            release_notes::render("orchestrator-description", &lines, &look.theme, &look.mono)
+            let blocks = self.description.blocks(body);
+            crate::markdown_view::render("orchestrator-description", &blocks, look, cx)
                 .into_any_element()
         };
         div()
@@ -575,11 +575,22 @@ impl OrchestratorView {
         let time = |value: Option<chrono::DateTime<chrono::Utc>>| {
             value.map_or_else(|| "\u{2014}".to_owned(), |value| value.to_rfc3339())
         };
-        let deletable = item.key.source.provider == crate::orchestrator::Provider::Beads
+        let deletable = item.key.source.provider == Provider::Beads
             && self.snapshot().access == Some(Access::ReadWrite);
         let (source, id) = (item.key.source.clone(), item.key.native_id.clone());
         rows.push((fl!("orchestrator-details-created"), time(item.created_at)));
         rows.push((fl!("orchestrator-details-updated"), time(item.updated_at)));
+        if let Some(tracker) = &item.tracker {
+            if let Some(assignee) = &tracker.assignee {
+                rows.push((fl!("orchestrator-linear-assignee"), assignee.clone()));
+            }
+            if let Some(cycle) = &tracker.cycle {
+                rows.push((
+                    fl!("orchestrator-linear-cycle"),
+                    super::status::cycle_label(cycle, false),
+                ));
+            }
+        }
         div()
             .id("orchestrator-details")
             .flex_1()

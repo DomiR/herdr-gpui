@@ -18,6 +18,7 @@ fn the_dispatch_dialog_stays_within_a_short_window(cx: &mut TestAppContext) {
         data_root: Some(dir.path().join("data")),
         gitlab_store: Default::default(),
         timing: Timing::default(),
+        linear: None,
     };
     let config = crate::config::Config::default();
     let mut ui = config.ui.clone();

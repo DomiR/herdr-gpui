@@ -304,6 +304,23 @@ impl SettingsWindow {
                 ),
             )
             .child(
+                ui::row(theme, "sidebar-ports", fl!("settings-sidebar-ports"))
+                    .description(fl!("settings-sidebar-ports-description"))
+                    .switch(
+                        ui::toggle(
+                            theme,
+                            "sidebar-ports-toggle",
+                            self.config.sidebar_style.ports,
+                            ready,
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            let mut intent = SidebarIntent::of(&this.config);
+                            intent.style.ports = !intent.style.ports;
+                            this.commit_sidebar(intent, cx);
+                        })),
+                    ),
+            )
+            .child(
                 ui::row(
                     theme,
                     "sidebar-show-agents-header",

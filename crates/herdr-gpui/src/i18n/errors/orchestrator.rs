@@ -80,6 +80,50 @@ impl Localize for Error {
             Self::HostCannotTake => fl!("error-orchestrator-host-cannot-take"),
             Self::Teleport(error) => fl!("error-orchestrator-teleport", error = error.localize()),
             Self::PullRequestChanged => fl!("error-orchestrator-pull-request-changed"),
+            Self::LinearKey(error) => {
+                fl!("error-orchestrator-linear-key", error = error.localize())
+            }
+            Self::Credentials(error) => error.localize(),
+            Self::ConfigPath(error) => error.localize(),
+            Self::LinearKeyRecord => fl!("error-orchestrator-linear-key-record"),
+            Self::LinearVariable => fl!("error-orchestrator-linear-variable"),
+            Self::LinearKeyFormat => fl!("error-orchestrator-linear-key-format"),
+            Self::LinearKeyRejected => fl!("error-orchestrator-linear-key-rejected"),
+            Self::LinearRateLimited => fl!("error-orchestrator-linear-rate-limited"),
+            Self::LinearStatus { status, message } => match message {
+                Some(message) => fl!(
+                    "error-orchestrator-linear-status-message",
+                    status = *status,
+                    message = message.as_str()
+                ),
+                None => fl!("error-orchestrator-linear-status", status = *status),
+            },
+            Self::LinearNetwork(error) => {
+                fl!(
+                    "error-orchestrator-linear-network",
+                    error = error.to_string()
+                )
+            }
+            Self::LinearRead(error) => {
+                fl!("error-orchestrator-linear-read", error = error.to_string())
+            }
+            Self::LinearSize => fl!("error-orchestrator-linear-size"),
+            Self::LinearHeader(_) => fl!("error-orchestrator-linear-header"),
+            Self::LinearKeyMissing => fl!("error-orchestrator-linear-key-missing"),
+            Self::LinearMove { issue, source } => fl!(
+                "error-orchestrator-linear-move",
+                issue = issue.as_str(),
+                error = source.localize()
+            ),
+            Self::LinearOptions(error) => {
+                fl!(
+                    "error-orchestrator-linear-options",
+                    error = error.localize()
+                )
+            }
+            Self::LinearCreate(error) => {
+                fl!("error-orchestrator-linear-create", error = error.localize())
+            }
         }
     }
 }

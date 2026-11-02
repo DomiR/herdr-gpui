@@ -10,10 +10,12 @@ mod back;
 mod bubbles;
 mod counts;
 mod layout;
+mod linear_return;
 mod mod_apps;
 mod pulse;
 mod sections;
 mod startup_counts;
+mod tickets;
 mod toggle;
 
 fn item(native_id: &str, title: &str) -> Item {
@@ -40,6 +42,7 @@ fn item(native_id: &str, title: &str) -> Item {
         updated_at: None,
         pull_request: None,
         activity: None,
+        tracker: None,
     }
 }
 
