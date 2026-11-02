@@ -43,6 +43,9 @@ impl OrchestratorView {
             cx.stop_propagation();
             return;
         }
+        if self.picker_key(event, window, cx) {
+            return;
+        }
         if self.search.read(cx).focus.is_focused(window) {
             if event.keystroke.key == "escape" {
                 window.focus(&self.focus, cx);

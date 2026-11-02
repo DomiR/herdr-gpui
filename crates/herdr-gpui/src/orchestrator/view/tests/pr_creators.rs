@@ -148,9 +148,9 @@ fn pull_requests_group_by_creator_and_narrow_to_the_people_picked(cx: &mut TestA
         ]
     );
     // Several people narrow the list to theirs; the counts stay everyone's.
-    assert!(cx.debug_bounds("orchestrator-author-pills").is_some());
-    click(cx, "orchestrator-pill-author-leo");
-    click(cx, "orchestrator-pill-author-bob");
+    click(cx, "orchestrator-picker-author");
+    click(cx, "orchestrator-pick-author-leo");
+    click(cx, "orchestrator-pick-author-bob");
     assert_eq!(shown(cx), ["bob:1", "#5", "leo:2", "#1", "#3"]);
     assert_eq!(
         cx.update(|_, cx| view.read(cx).authors.clone()),
@@ -165,10 +165,10 @@ fn pull_requests_group_by_creator_and_narrow_to_the_people_picked(cx: &mut TestA
         ]
     );
     // Clicking a picked person again drops them.
-    click(cx, "orchestrator-pill-author-bob");
+    click(cx, "orchestrator-pick-author-bob");
     assert_eq!(shown(cx), ["leo:2", "#1", "#3"]);
-    // Everyone clears the pick.
-    click(cx, "orchestrator-pill-authors-everyone");
+    // Clear drops every pick.
+    click(cx, "orchestrator-pick-author-clear");
     assert!(cx.update(|_, cx| view.read(cx).authors.is_empty()));
     assert_eq!(
         shown(cx),
@@ -209,21 +209,21 @@ fn a_person_picked_stays_pickable_once_none_of_theirs_is_listed(cx: &mut TestApp
     cx.run_until_parked();
     assert!(cx.update(|_, cx| view.read(cx).lines.is_empty()));
     assert_eq!(cx.update(|_, cx| view.read(cx).empty()), Empty::Filtered);
-    // Only Leo's is open, yet Amy's pill stays so the pick can be undone.
+    // Only Leo's is open, yet Amy's chip stays so the pick can be undone.
     assert_eq!(
         cx.update(|_, cx| view.read(cx).people()),
         [("amy".to_owned(), 0), ("leo".to_owned(), 1)]
     );
-    assert!(cx.debug_bounds("orchestrator-pill-author-amy").is_some());
+    assert!(cx.debug_bounds("orchestrator-picked-author-amy").is_some());
     let at = cx
-        .debug_bounds("orchestrator-pill-author-amy")
+        .debug_bounds("orchestrator-picked-author-amy")
         .unwrap()
         .center();
     cx.simulate_click(at, Modifiers::none());
     cx.run_until_parked();
     assert!(cx.update(|_, cx| view.read(cx).authors.is_empty()));
     assert_eq!(cx.update(|_, cx| view.read(cx).keys().len()), 1);
-    // The Issues list has no people pills.
+    // The Issues list has no Author picker.
     cx.update(|_, cx| {
         view.update(cx, |view, cx| {
             view.tab = Tab::Issues;
@@ -232,5 +232,5 @@ fn a_person_picked_stays_pickable_once_none_of_theirs_is_listed(cx: &mut TestApp
         })
     });
     cx.run_until_parked();
-    assert!(cx.debug_bounds("orchestrator-author-pills").is_none());
+    assert!(cx.debug_bounds("orchestrator-picker-author").is_none());
 }

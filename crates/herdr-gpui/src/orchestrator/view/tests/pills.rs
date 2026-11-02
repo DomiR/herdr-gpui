@@ -1,4 +1,5 @@
-//! Pills narrow a list of several repositories by backend and by project.
+//! Pills narrow a list of several repositories by backend, the Project
+//! picker by project.
 use super::*;
 use crate::orchestrator::{
     Request, Timing,
@@ -89,7 +90,9 @@ fn pills_narrow_the_list_by_backend_and_by_project(cx: &mut TestAppContext) {
     assert_eq!(listed(cx), ["12", "hg-1", "377"]);
     click(cx, "orchestrator-pill-backend-Beads");
     click(cx, "orchestrator-pill-backend-GitHub");
-    // A project narrows to its repository's items.
-    click(cx, "orchestrator-pill-project-1");
+    // A project picked from the Project menu narrows to its repository's
+    // items.
+    click(cx, "orchestrator-picker-project");
+    click(cx, "orchestrator-pick-project-1");
     assert_eq!(listed(cx), ["12"]);
 }
