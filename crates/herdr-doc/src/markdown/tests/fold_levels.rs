@@ -24,7 +24,7 @@ fn a_document_starting_at_a_deeper_heading_keeps_absolute_depth() {
 fn items_are_below_the_nearest_heading_and_each_enclosing_item() {
     assert_eq!(
         depths("## A\n- parent\n  - child\n    - grandchild\n## B\ntext\n"),
-        vec![(0, 2), (1, 3), (2, 4)]
+        vec![(0, 2), (1, 3), (2, 4), (4, 2)]
     );
 }
 
