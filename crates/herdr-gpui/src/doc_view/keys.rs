@@ -265,7 +265,7 @@ impl DocEditor {
             Some(at) => at,
             None if line.is_bulleted_task() => self
                 .shown_neighbour(false)
-                .map_or(head, |line| self.prepared.lines[line].range.end),
+                .map_or(head, |l| self.prepared.lines[l].range.end),
             None => line.range.start,
         }
     }

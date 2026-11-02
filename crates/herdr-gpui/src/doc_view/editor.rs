@@ -360,6 +360,13 @@ impl DocEditor {
             blocks,
             open_picture,
         };
+        if self.selection.is_empty() {
+            let snapped = self.caret_snap(self.selection.head);
+            if snapped != self.selection.head {
+                self.selection = Selection::caret(snapped);
+                self.remember(cx);
+            }
+        }
         self.keep_caret_shown(cx);
     }
 
@@ -535,12 +542,6 @@ impl DocEditor {
         self.stale = true;
         self.select(selection, cx);
         self.prepare(cx);
-        if self.selection.is_empty() {
-            let snapped = self.caret_snap(self.selection.head);
-            if snapped != self.selection.head {
-                self.select(Selection::caret(snapped), cx);
-            }
-        }
         self.reveal(cx);
     }
 

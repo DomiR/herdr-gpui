@@ -120,3 +120,14 @@ fn making_a_task_snaps_the_inserted_caret_to_content(cx: &mut TestAppContext) {
     assert_eq!(doc.text(), "- [ ] buy");
     assert_eq!(doc.selection(), Selection::caret(6));
 }
+
+#[gpui::test]
+fn undo_and_redo_keep_a_task_caret_out_of_its_marker(cx: &mut TestAppContext) {
+    let mut doc = open("buy", cx);
+    doc.caret_at("buy", 0);
+    doc.keys(&primary("enter"));
+    doc.keys(&primary("z"));
+    doc.keys(&primary("shift-z"));
+    assert_eq!(doc.text(), "- [ ] buy");
+    assert!(doc.selection().head >= 6);
+}
