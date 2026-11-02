@@ -170,7 +170,7 @@ pub enum Reply {
     Text {
         text: String,
     },
-    /// The zoom a page tab draws at now, in percent.
+    /// The zoom a page or document tab draws at now, in percent.
     Zoom {
         id: u64,
         percent: u16,

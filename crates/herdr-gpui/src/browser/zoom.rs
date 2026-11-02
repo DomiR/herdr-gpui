@@ -1,11 +1,12 @@
-//! Page zoom: how large a browser tab draws its page, as a web browser's
-//! View menu zooms one. Each tab keeps its own, saved with it, and every
-//! window's page for the tab follows it as the window presents its pages.
-//! The font size commands zoom the focused page rather than the terminal
-//! font, so the same keys serve both.
+//! Tab zoom: how large a browser page or document draws, as a web browser's
+//! View menu zooms one. Each tab keeps its own, saved with it. Every window's
+//! page for the tab follows it as the window presents its pages, and document
+//! editors apply it to their text. The font size commands zoom the focused
+//! page or document rather than the terminal font, so the same keys serve
+//! both.
 use super::{Location, Shown, Store, Tab, TabId, view::store};
 use crate::{HerdrWindow, control::ZoomChange, controls::Command};
-use gpui::{App, Context, Div, Stateful, div, prelude::*, px, rgb};
+use gpui::{App, Context, Div, Stateful, Window, div, prelude::*, px, rgb};
 use serde::{Deserialize, Serialize};
 
 /// The zooms a step lands on, in percent, as web browsers offer them.
@@ -14,13 +15,13 @@ const ACTUAL: u16 = 100;
 pub(crate) const MIN_PERCENT: u16 = 50;
 pub(crate) const MAX_PERCENT: u16 = 300;
 
-/// A page's zoom in percent, from `MIN_PERCENT` to `MAX_PERCENT`.
+/// A tab's zoom in percent, from `MIN_PERCENT` to `MAX_PERCENT`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "u16", into = "u16")]
 pub(crate) struct Zoom(u16);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
-#[error("Page zoom must be between {MIN_PERCENT}% and {MAX_PERCENT}%, not {0}%")]
+#[error("Tab zoom must be between {MIN_PERCENT}% and {MAX_PERCENT}%, not {0}%")]
 pub(crate) struct OutOfRange(pub u16);
 
 impl Default for Zoom {
@@ -34,8 +35,7 @@ impl Zoom {
         self.0
     }
 
-    /// The scale a web view takes, where 1 draws the page at its own size.
-    #[cfg(any(target_os = "macos", windows, test))]
+    /// The scale a page or document takes, where 1 draws it at its own size.
     pub(crate) fn factor(self) -> f64 {
         f64::from(self.0) / f64::from(ACTUAL)
     }
@@ -92,48 +92,58 @@ impl From<Zoom> for u16 {
 }
 
 impl HerdrWindow {
-    /// The tab the zoom keys zoom: the one whose page holds the keyboard,
-    /// as a click into a page of another group leaves it, else the one the
-    /// group in use shows. Only a tab a page draws zooms: a web page, a
-    /// local page, or a blank tab waiting for one. Tabs the app draws
-    /// itself, such as a review, follow the terminal font instead.
-    pub(super) fn zoomed_tab(&self, cx: &App) -> Option<Tab> {
-        if !super::EMBEDDED {
-            return None;
-        }
+    /// The tab the zoom keys zoom: a focused document editor first, then the
+    /// page whose web view holds the keyboard, or what the group in use shows.
+    /// Only pages and documents zoom; other tabs the app draws itself, such
+    /// as a review or code tab, follow the terminal font instead.
+    pub(super) fn zoomed_tab(&self, window: &Window, cx: &App) -> Option<Tab> {
+        let focused_doc = self.doc_views.iter().find_map(|(id, editor)| {
+            editor
+                .read(cx)
+                .focus
+                .contains_focused(window, cx)
+                .then_some(*id)
+        });
         #[cfg(any(target_os = "macos", windows))]
-        let typing = self.browser.pages.keyboard_page();
+        let keyboard_page = self.browser.pages.keyboard_page();
         #[cfg(not(any(target_os = "macos", windows)))]
-        let typing = None;
-        let id = match typing {
-            Some(id) => id,
-            None => match self.group_shown(self.active_group()?, cx) {
-                Shown::Page(id) => id,
-                _ => return None,
-            },
-        };
-        store(cx)?
-            .get(id)
-            .filter(|tab| tab.location.as_ref().is_none_or(Location::is_page))
-            .cloned()
+        let keyboard_page = None;
+        let id = focused_doc.or(keyboard_page).or_else(|| {
+            match self.group_shown(self.active_group()?, cx) {
+                Shown::Page(id) => Some(id),
+                _ => None,
+            }
+        })?;
+        let tab = store(cx)?.get(id)?;
+        let zoomable = matches!(&tab.location, Some(Location::Doc { .. }))
+            || (super::EMBEDDED && tab.location.as_ref().is_none_or(Location::is_page));
+        zoomable.then(|| tab.clone())
     }
 
-    /// Zooms the page the zoom keys reach, as a font size `command` asks.
-    /// Returns `false` when there is none, so the command sizes the terminal
-    /// font instead. The page keeps the keyboard if it held it.
-    pub(crate) fn zoom_focused_page(&mut self, command: Command, cx: &mut Context<Self>) -> bool {
+    /// Zooms the page or document the zoom keys reach, as a font size
+    /// `command` asks. Returns `false` when there is none, so the command
+    /// sizes the terminal font instead. The page or document keeps the
+    /// keyboard if it held it.
+    pub(crate) fn zoom_focused_page(
+        &mut self,
+        command: Command,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
         let change = match command {
             Command::IncreaseFontSize => ZoomChange::In,
             Command::DecreaseFontSize => ZoomChange::Out,
             Command::ResetFontSize => ZoomChange::Reset,
             _ => return false,
         };
-        let Some(tab) = self.zoomed_tab(cx) else {
+        let Some(tab) = self.zoomed_tab(window, cx) else {
             return false;
         };
         if let Ok(zoom) = tab.zoom.changed(change) {
             Store::update(cx, |store| store.set_zoom(tab.id, zoom));
-            self.apply_page_zoom(tab.id, zoom);
+            if tab.location.as_ref().is_none_or(Location::is_page) {
+                self.apply_page_zoom(tab.id, zoom);
+            }
         }
         cx.notify();
         true

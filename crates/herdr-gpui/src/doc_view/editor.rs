@@ -242,6 +242,11 @@ impl DocEditor {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn look(&self) -> &Look {
+        &self.look
+    }
+
     /// The document's text, empty while it loads.
     pub(super) fn text<'a>(&self, cx: &'a App) -> &'a str {
         self.buffer

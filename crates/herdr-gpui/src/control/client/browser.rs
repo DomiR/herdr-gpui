@@ -145,7 +145,7 @@ fn text(id: u64, context: &Context) -> crate::Result<Output> {
     }
 }
 
-/// Zooms a page tab.
+/// Zooms a page or document tab.
 fn zoom(id: u64, change: ZoomChange, context: &Context) -> crate::Result<Output> {
     zoomed(context.call(Request::Tab, TabOp::Zoom { id, change })?)
 }

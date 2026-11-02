@@ -5,6 +5,47 @@ fn zoom_of(id: crate::browser::TabId, cx: &App) -> u16 {
 }
 
 #[gpui::test]
+fn a_document_tab_takes_zoom_on_every_platform(cx: &mut gpui::TestAppContext) {
+    cx.update(|cx| {
+        let scope = Scope::local(Path::new("/tmp/herdr.sock"));
+        let document = Store::update(cx, |store| {
+            store.open(
+                scope.clone(),
+                "w_1",
+                Some(Location::Doc {
+                    file: crate::doc_view::DocFile {
+                        path: "/tmp/document.md".into(),
+                        line: None,
+                        folded: Vec::new(),
+                    },
+                }),
+                None,
+            )
+        })
+        .unwrap();
+        let devices = Store::update(cx, |store| {
+            store.open(scope, "w_1", Some(Location::Devices), None)
+        })
+        .unwrap();
+        let zoomed = zoom(&Caller::default(), document.into(), ZoomChange::In, cx);
+        assert_eq!(
+            zoomed,
+            Response::Tab {
+                reply: Reply::Zoom {
+                    id: document.into(),
+                    percent: 110,
+                }
+            }
+        );
+        assert_eq!(zoom_of(document, cx), 110);
+        assert!(matches!(
+            zoom(&Caller::default(), devices.into(), ZoomChange::In, cx),
+            Response::Error { .. }
+        ));
+    });
+}
+
+#[gpui::test]
 fn a_page_tab_zooms_and_keeps_its_zoom(cx: &mut gpui::TestAppContext) {
     cx.update(|cx| {
         let scope = Scope::local(Path::new("/tmp/herdr.sock"));

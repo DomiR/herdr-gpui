@@ -1,4 +1,5 @@
-//! `browser ...`: page tabs, and the notes the user sends from them.
+//! `browser ...`: page tabs, with document tabs accepted for zoom, and the
+//! notes the user sends from pages.
 pub use herdr_control_protocol::Placement;
 
 use super::{Args, CliError, ZoomChange};

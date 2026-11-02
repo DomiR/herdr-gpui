@@ -49,7 +49,7 @@ fn a_zoom_of_its_own_must_be_in_range() {
     }
     assert_eq!(
         OutOfRange(400).to_string(),
-        "Page zoom must be between 50% and 300%, not 400%"
+        "Tab zoom must be between 50% and 300%, not 400%"
     );
 }
 
