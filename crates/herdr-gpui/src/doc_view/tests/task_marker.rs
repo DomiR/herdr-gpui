@@ -58,13 +58,7 @@ fn plain_bullets_keep_raw_home_and_shift_home_keeps_the_anchor(cx: &mut TestAppC
     let mut doc = open("- [ ] buy", cx);
     doc.caret_at("buy", 1);
     doc.keys("shift-home");
-    assert_eq!(
-        doc.selection(),
-        Selection {
-            anchor: 7,
-            head: 6,
-        }
-    );
+    assert_eq!(doc.selection(), Selection { anchor: 7, head: 6 });
 }
 
 fn word(key: &str) -> String {

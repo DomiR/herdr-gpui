@@ -256,11 +256,7 @@ impl DocEditor {
                 .shown_neighbour(false)
                 .map_or(head, |l| self.prepared.lines[l].range.end);
         }
-        let previous = self
-            .boundaries(cx)
-            .into_iter()
-            .rev()
-            .find(|at| *at < head);
+        let previous = self.boundaries(cx).into_iter().rev().find(|at| *at < head);
         match previous {
             Some(at) => at,
             None if line.is_bulleted_task() => self
