@@ -258,6 +258,22 @@ pub struct Tracker {
     pub pull_requests: Vec<LinkedPullRequest>,
     /// How many of its sub-items are done, when it has any.
     pub progress: Option<Progress>,
+    /// Its sub-items, in the tracker's order, as many as one sync reads;
+    /// `progress` says when there are more.
+    pub children: Vec<SubItem>,
+}
+
+/// A sub-item a tracker lists under an item, such as a Linear sub-issue,
+/// whether or not it is listed itself.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SubItem {
+    pub identifier: String,
+    pub title: String,
+    /// Its page on the tracker.
+    pub url: Option<String>,
+    pub status: Option<Status>,
+    /// The assignee's display name.
+    pub assignee: Option<String>,
 }
 
 /// How many of an item's sub-items are done. Canceled ones count in

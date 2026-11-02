@@ -62,7 +62,7 @@ impl OrchestratorView {
             .gap_2()
             .child(self.render_chip(Menu::Team, team, cx))
             .child(look.icon("icons/chevron-right.svg", 10., theme.muted))
-            .child(look.muted(fl!("orchestrator-linear-new-issue")))
+            .child(self.render_create_kind(cx))
             .child(div().flex_1())
             .child(
                 look.icon_button(

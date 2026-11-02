@@ -49,6 +49,7 @@ impl OrchestratorView {
                 })
                 .child(self.render_meta(&item))
                 .child(self.render_description(&item, cx))
+                .children(self.render_sub_issues(&item, cx))
                 .into_any_element(),
             DetailTab::Conversation => div()
                 .flex_1()
@@ -129,7 +130,7 @@ impl OrchestratorView {
                     .flex()
                     .flex_col()
                     .gap_2()
-                    .child(self.render_tags(item))
+                    .child(self.render_tags(item, cx))
                     .child(
                         div()
                             .debug_selector(|| "orchestrator-detail-title".into())
@@ -258,7 +259,7 @@ impl OrchestratorView {
     }
 
     /// The item's state, priority, branches, and parent, as tags.
-    fn render_tags(&self, item: &Item) -> Div {
+    fn render_tags(&self, item: &Item, cx: &mut Context<Self>) -> Div {
         let look = &self.look;
         let theme = &look.theme;
         div()
@@ -291,8 +292,29 @@ impl OrchestratorView {
                             .text_color(rgb(theme.subtext())),
                     )
             })
+            // The parent opens its own page when it is listed.
             .when_some(item.parent_id.clone(), |el, parent| {
-                el.child(look.muted(fl!("orchestrator-child-of", parent = parent)))
+                let key = crate::orchestrator::ItemKey {
+                    source: item.key.source.clone(),
+                    native_id: parent.clone(),
+                }
+                .canonical();
+                let listed = self.item(&key).is_some();
+                let hover = theme.foreground;
+                el.child(
+                    div()
+                        .id("orchestrator-parent")
+                        .debug_selector(|| "orchestrator-parent".into())
+                        .text_color(rgb(theme.muted))
+                        .child(fl!("orchestrator-child-of", parent = parent))
+                        .when(listed, |el| {
+                            el.cursor_pointer()
+                                .hover(move |style| style.text_color(rgb(hover)))
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.open_detail(key.clone(), cx);
+                                }))
+                        }),
+                )
             })
     }
 

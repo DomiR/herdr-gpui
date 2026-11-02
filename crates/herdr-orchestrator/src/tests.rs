@@ -43,6 +43,7 @@ mod linear;
 mod linear_branches;
 mod linear_create;
 mod linear_move;
+mod linear_sub_issues;
 mod location;
 mod naming;
 #[cfg(unix)]

@@ -77,3 +77,12 @@ orchestrator-linear-priority-urgent = Urgent
 orchestrator-linear-priority-high = High
 orchestrator-linear-priority-medium = Medium
 orchestrator-linear-priority-low = Low
+
+# An issue's sub-issues, on its page and in the New issue dialog.
+orchestrator-linear-sub-issues = SUB-ISSUES
+orchestrator-linear-add-sub-issue = Add sub-issue
+orchestrator-linear-no-sub-issues = No sub-issues
+orchestrator-linear-more-in-linear = More in Linear
+# Followed by the parent issue's identifier and title.
+orchestrator-linear-sub-issue-of = Sub-issue of
+orchestrator-linear-not-a-sub-issue = Not a sub-issue
