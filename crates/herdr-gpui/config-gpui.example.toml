@@ -53,7 +53,9 @@ accent = "theme"
 # output, names, and what the daemon reports never change with it.
 language = "system"
 
-# Ask before closing a tab (closing terminates its terminal processes).
+# Ask before closing a tab (closing terminates its terminal processes):
+# true asks only while an agent in it is working or blocked on a prompt,
+# "always" asks every time, and false never asks.
 confirm_close_tab = true
 # Ask before closing a pane, independently of tabs. The dialog's "Do not ask
 # again" checkbox sets this to false in config-gpui.local.toml.

@@ -10,7 +10,7 @@ fn targeted_preferences_round_trip_and_reset_without_erasing_unknown_toml() -> a
         "# personal\nfuture = 'keep'\nlayout = 'orca' # mode\n[notifications]\nfuture = 42\nenabled = false # enabled\n",
     )?;
     for edit in [
-        Preference::ConfirmCloseTab(false),
+        Preference::ConfirmCloseTab(TabCloseConfirm::Never),
         Preference::ConfirmClosePane(false),
         Preference::ConfirmCloseWorkspace(false),
         Preference::RemoveMergedWorktrees(true),

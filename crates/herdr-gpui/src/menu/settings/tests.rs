@@ -195,9 +195,12 @@ fn notification_reload_retimes_pending_clears_disabled_and_keeps_failed_settings
 #[gpui::test]
 fn config_reload_toggles_tab_flags_and_preserves_them_on_failure(cx: &mut gpui::TestAppContext) {
     let (view, cx) = cx.add_window_view(crate::sidebar::layout_tests::fixture_window);
-    for (confirm_close_tab, show_agents) in
-        [(false, true), (true, false), (false, false), (true, true)]
-    {
+    for (confirm_close_tab, show_agents) in [
+        (crate::config::TabCloseConfirm::Never, true),
+        (crate::config::TabCloseConfirm::Always, false),
+        (crate::config::TabCloseConfirm::Never, false),
+        (crate::config::TabCloseConfirm::Busy, true),
+    ] {
         view.update(cx, |view, cx| {
             view.load_gui_config_with(
                 move || {

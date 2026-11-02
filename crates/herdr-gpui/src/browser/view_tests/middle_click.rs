@@ -34,7 +34,10 @@ fn middle_click_closes_a_tab(cx: &mut gpui::TestAppContext) {
     view.read_with(cx, |view, _| assert!(view.menu.close.is_none()));
     middle_click(cx, "tab-t0");
     view.read_with(cx, |view, _| {
-        assert!(view.config.confirm_close_tab);
+        assert_eq!(
+            view.config.confirm_close_tab,
+            crate::config::TabCloseConfirm::Busy
+        );
         assert!(view.menu.close.is_some());
     });
 }

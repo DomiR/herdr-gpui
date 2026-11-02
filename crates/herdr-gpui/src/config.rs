@@ -47,6 +47,7 @@ mod sprites;
 pub(crate) mod ssh_hosts;
 pub(crate) mod status_bar;
 mod status_icons;
+mod tab_close;
 pub(crate) mod tab_layout;
 #[cfg(any(
     feature = "azure",
@@ -137,6 +138,7 @@ use std::{
     io::ErrorKind,
     path::{Path, PathBuf},
 };
+pub use tab_close::TabCloseConfirm;
 pub use tab_layout::TabLayoutMode;
 pub use theme::Theme;
 pub(crate) use theme::ThemeName;
@@ -189,7 +191,8 @@ pub struct Config {
     pub code: CodeConfig,
     pub coder: CoderConfig,
     pub confirm_close_pane: bool,
-    pub confirm_close_tab: bool,
+    /// When closing a Herdr tab shows its dialog.
+    pub confirm_close_tab: TabCloseConfirm,
     /// Whether a workspace close shows its dialog when the check finds no
     /// unpublished work. Uncommitted or unpushed work always asks.
     pub confirm_close_workspace: bool,
@@ -419,7 +422,7 @@ impl Default for Config {
             code: CodeConfig::default(),
             coder: CoderConfig::default(),
             confirm_close_pane: true,
-            confirm_close_tab: true,
+            confirm_close_tab: TabCloseConfirm::default(),
             confirm_close_workspace: true,
             container: ContainerConfig::default(),
             contrast: Contrast::default(),
@@ -509,7 +512,7 @@ struct Settings {
     code: CodeConfig,
     coder: CoderConfig,
     confirm_close_pane: Option<bool>,
-    confirm_close_tab: Option<bool>,
+    confirm_close_tab: Option<TabCloseConfirm>,
     confirm_close_workspace: Option<bool>,
     container: ContainerConfig,
     contrast: Contrast,
@@ -904,7 +907,7 @@ impl Config {
         // keep-sorted start
         config.agent_checkpoints = settings.agent_checkpoints.unwrap_or(true);
         config.confirm_close_pane = settings.confirm_close_pane.unwrap_or(true);
-        config.confirm_close_tab = settings.confirm_close_tab.unwrap_or(true);
+        config.confirm_close_tab = settings.confirm_close_tab.unwrap_or_default();
         config.confirm_close_workspace = settings.confirm_close_workspace.unwrap_or(true);
         config.focus_follows_mouse = settings.focus_follows_mouse.unwrap_or(true);
         config.remove_merged_worktrees = settings.remove_merged_worktrees.unwrap_or(false);

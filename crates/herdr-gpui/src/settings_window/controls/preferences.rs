@@ -123,8 +123,8 @@ mod tests {
         for (section, selector, edit) in [
             (
                 Section::Tabs,
-                "tabs-confirm-tab-toggle",
-                Preference::ConfirmCloseTab(false),
+                "tabs-confirm-tab-control-0",
+                Preference::ConfirmCloseTab(crate::config::TabCloseConfirm::Never),
             ),
             (
                 Section::Tabs,

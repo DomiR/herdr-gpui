@@ -151,7 +151,11 @@ fn every_focus_changing_command_fences_immediate_input_until_ack_and_surface(
                 view.options = ConnectOptions::default();
                 view.reset_selected(cx);
                 view.activation_deadline = None;
-                view.config.confirm_close_tab = confirm_close;
+                view.config.confirm_close_tab = if confirm_close {
+                    crate::config::TabCloseConfirm::Busy
+                } else {
+                    crate::config::TabCloseConfirm::Never
+                };
                 view.config.confirm_close_pane = confirm_close;
                 assert!(view.input_ready());
                 if let Some(id) = explicit_tab {
