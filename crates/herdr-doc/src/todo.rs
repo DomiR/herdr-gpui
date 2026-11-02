@@ -136,7 +136,7 @@ pub fn add(text: &str, item: &str, under: Option<&str>) -> Result<Edit> {
     let Some(heading) = under.map(str::trim).filter(|heading| !heading.is_empty()) else {
         let last = lines.iter().rposition(|line| line.task().is_some());
         return Ok(match last {
-            Some(index) => after_item(text, &lines, index, &task),
+            Some(index) => after_item(text, &lines, index, block_end(&lines, index), &task),
             None => append_block(text, &task),
         });
     };
@@ -161,7 +161,7 @@ pub fn add(text: &str, item: &str, under: Option<&str>) -> Result<Edit> {
         .rposition(|line| line.task().is_some())
         .map(|at| index + 1 + at);
     Ok(match last {
-        Some(at) => after_item(text, &lines, at, &task),
+        Some(at) => after_item(text, &lines, at, block_end(&lines, at), &task),
         None => {
             // Right under the heading, after a blank line.
             let at = lines[index].range.end;
@@ -235,11 +235,37 @@ fn append_block(text: &str, block: &str) -> Edit {
 }
 
 /// `task` as a sibling after the item on `index` and its sub-items.
-fn after_item(text: &str, lines: &[Line], index: usize, task: &str) -> Edit {
-    let end = block_end(lines, index);
+fn after_item(text: &str, lines: &[Line], index: usize, end: usize, task: &str) -> Edit {
     let last = &lines[end - 1];
     let indent = &text[lines[index].range.start..lines[index].range.start + lines[index].indent];
     Edit::insert(last.range.end, format!("\n{indent}{task}"))
+}
+
+fn next_marker(list: List) -> String {
+    match list {
+        List::Bullet(ch) => format!("{ch} "),
+        List::Ordered { number, delimiter } => format!("{}{delimiter} ", number + 1),
+    }
+}
+
+/// A new open task (`{marker}[ ] `) as a sibling of the item on `line`, after
+/// line `end - 1` (the last line of its block as the caller sees it, such as a
+/// fold's hidden lines), and the caret after its `[ ] `. `None` when `line`
+/// is not a list item or `end` is not past it.
+pub fn task_after(text: &str, line: usize, end: usize) -> Option<(Edit, usize)> {
+    let lines = markdown::lines(text);
+    let item = lines.get(line)?;
+    if end <= line || end > lines.len() {
+        return None;
+    }
+    let Kind::Item { list, .. } = item.kind else {
+        return None;
+    };
+    let task = format!("{}[ ] ", next_marker(list));
+    let indent = item.indent;
+    let edit = after_item(text, &lines, line, end, &task);
+    let caret = lines[end - 1].range.end + 1 + indent + task.len();
+    Some((edit, caret))
 }
 
 /// The line after the item on `index` and everything nested under it.
@@ -281,10 +307,7 @@ pub fn enter(text: &str, caret: usize) -> Option<(Edit, usize)> {
         return Some((edit, line.range.start + line.indent));
     }
     let indent = &text[line.range.start..line.range.start + line.indent];
-    let marker = match list {
-        List::Bullet(ch) => format!("{ch} "),
-        List::Ordered { number, delimiter } => format!("{}{delimiter} ", number + 1),
-    };
+    let marker = next_marker(list);
     let checkbox = if task.is_some() { "[ ] " } else { "" };
     let insert = format!("\n{indent}{marker}{checkbox}");
     let caret_after = caret + insert.len();
