@@ -51,6 +51,23 @@ fn a_task_box_is_drawn_not_its_brackets() {
 }
 
 #[test]
+fn editing_rows_hide_only_a_bulleted_task_prefix() {
+    let text = "- [ ] a";
+    let lines = markdown::lines(text);
+    let row = row(text, &lines[0], &look(), false, &[], &|_| None);
+    assert_eq!(row.text.as_ref(), "[ ] a");
+    assert_eq!(row.checkbox, Some((0..3, false)));
+    assert_eq!(row.map.to_display(2), 0);
+    assert_eq!(row.map.to_source(0), 2);
+
+    for text in ["- a", "## h"] {
+        let lines = markdown::lines(text);
+        let row = row(text, &lines[0], &look(), false, &[], &|_| None);
+        assert_eq!(row.text.as_ref(), text);
+    }
+}
+
+#[test]
 fn headings_draw_larger_and_links_are_found() {
     let heading = styled("## Plan");
     assert!(heading.size > look().ui.size);

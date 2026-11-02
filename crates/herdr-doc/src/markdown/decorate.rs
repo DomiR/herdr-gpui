@@ -14,6 +14,18 @@ pub struct Decoration {
     pub with: &'static str,
 }
 
+fn bulleted_task_decoration(line: &Line) -> Option<Decoration> {
+    line.is_bulleted_task().then(|| Decoration {
+        range: line.marker.start..line.marker.start + 2,
+        with: "",
+    })
+}
+
+/// The decoration needed while editing a bulleted task line.
+pub fn editing_decorations(line: &Line) -> Vec<Decoration> {
+    bulleted_task_decoration(line).into_iter().collect()
+}
+
 /// The replacements for `line` of `text`, ascending and not overlapping.
 pub fn decorations(text: &str, line: &Line) -> Vec<Decoration> {
     let mut out = Vec::new();
@@ -27,13 +39,14 @@ pub fn decorations(text: &str, line: &Line) -> Vec<Decoration> {
             task,
         } => {
             let bullet = line.marker.start..line.marker.start + 1;
-            match task {
+            if let Some(decoration) = bulleted_task_decoration(line) {
                 // The checkbox stands in for the bullet.
-                Some(_) => out.push(hide(line.marker.start..line.marker.start + 2)),
-                None => out.push(Decoration {
+                out.push(decoration);
+            } else if task.is_none() {
+                out.push(Decoration {
                     range: bullet,
                     with: "•",
-                }),
+                });
             }
         }
         _ => {}
