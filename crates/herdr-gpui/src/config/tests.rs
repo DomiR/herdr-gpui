@@ -48,6 +48,7 @@ mod px0;
 mod remote;
 mod repository_icons;
 mod sidebar_ports;
+mod sidebar_numbers;
 mod sidebar_scope;
 mod sidebar_search;
 mod sidebar_settings;

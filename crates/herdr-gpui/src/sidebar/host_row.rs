@@ -100,10 +100,12 @@ impl HerdrWindow {
                 );
                 (width, gauges, reading)
             });
-        // The Devices layout counts the agents listed under the header.
-        let working = (!self.config.layout.mode.lists_workspaces())
-            .then(|| self.working_summary(endpoint))
-            .flatten();
+        // The Devices layout counts the agents listed under the header,
+        // unless the sidebar prints no numbers.
+        let working = (self.config.sidebar_style.numbers
+            && !self.config.layout.mode.lists_workspaces())
+        .then(|| self.working_summary(endpoint))
+        .flatten();
         let working_width = working.as_ref().map_or(0., |text| {
             text.chars().count() as f32 * super::metrics::glyph_width(font) + host_gap
         });

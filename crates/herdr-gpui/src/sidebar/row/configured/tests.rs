@@ -29,6 +29,7 @@ fn teleported_rows_fade_only_their_workspace_tokens() {
         nest: 0.,
         mark: Default::default(),
         host: None,
+        numbers: true,
     };
     let here = TokenLook {
         kind: RowKind::Workspace,

@@ -229,7 +229,7 @@ fn text_color(state: RowState, theme: &Theme) -> u32 {
 
 impl RowLayout for Superset {
     fn workspace(&self, row: WorkspaceRow<'_>, state: RowState, cx: &RowContext<'_>) -> Div {
-        let (status, upstream) = (row.status(), row.upstream());
+        let (status, upstream) = (row.status(), row.upstream(cx.numbers));
         let WorkspaceRow {
             label,
             tree,

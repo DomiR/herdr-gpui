@@ -284,6 +284,23 @@ impl SettingsWindow {
                 )),
             )
             .child(
+                ui::row(theme, "sidebar-numbers", fl!("settings-sidebar-numbers"))
+                    .description(fl!("settings-sidebar-numbers-description"))
+                    .switch(
+                        ui::toggle(
+                            theme,
+                            "sidebar-numbers-toggle",
+                            self.config.sidebar_style.numbers,
+                            ready,
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            let mut intent = SidebarIntent::of(&this.config);
+                            intent.style.numbers = !intent.style.numbers;
+                            this.commit_sidebar(intent, cx);
+                        })),
+                    ),
+            )
+            .child(
                 ui::row(
                     theme,
                     "sidebar-show-agents",

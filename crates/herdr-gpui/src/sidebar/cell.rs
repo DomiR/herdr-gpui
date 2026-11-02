@@ -40,6 +40,8 @@ pub(super) struct RowContext<'a> {
     /// The host these rows live on, named only while several hosts are
     /// listed and this one is remote, so a single-host sidebar stays quiet.
     pub(super) host: Option<&'a str>,
+    /// `[sidebar] numbers`: whether rows draw their counts at all.
+    pub(super) numbers: bool,
 }
 
 impl RowContext<'_> {
@@ -94,9 +96,10 @@ impl<'a> WorkspaceRow<'a> {
             .filter(|branch| !branch.is_empty())
     }
 
-    /// Commits to push and pull against the branch's upstream, if any.
-    pub(super) fn upstream(&self) -> Option<Upstream> {
-        Upstream::new(self.workspace.git_ahead_behind)
+    /// Commits to push and pull against the branch's upstream, if any, and
+    /// none without `numbers`: the counts are all they say.
+    pub(super) fn upstream(&self, numbers: bool) -> Option<Upstream> {
+        Upstream::new(self.workspace.git_ahead_behind.filter(|_| numbers))
     }
 
     pub(super) fn status(&self) -> AgentStatus {

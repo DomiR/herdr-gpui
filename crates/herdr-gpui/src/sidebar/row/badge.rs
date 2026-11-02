@@ -33,6 +33,21 @@ impl RowBadge {
         self.pr.is_some() || self.counts.is_some() || self.dirty || self.teleported || self.noted
     }
 
+    /// The badge `[sidebar] numbers = false` draws: no pull request number
+    /// and no counts, and nothing in their place. The marks that were never
+    /// numbers stay, and a badge left with none is no badge, so the label
+    /// takes the room back.
+    pub(in crate::sidebar) fn without_numbers(self) -> Option<Self> {
+        Self::new(
+            None,
+            None,
+            self.dirty,
+            self.teleported,
+            self.noted,
+            self.muted,
+        )
+    }
+
     pub(in crate::sidebar) fn lines(&self, layout: &SidebarMetrics) -> usize {
         1 + usize::from(self.counts.is_some() && layout.pr_counts())
     }

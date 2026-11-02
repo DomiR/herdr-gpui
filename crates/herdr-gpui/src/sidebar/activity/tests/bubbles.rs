@@ -9,7 +9,9 @@ use chrono::{DateTime, Duration, Utc};
 use gpui::{AppContext as _, Entity, VisualTestContext, px, size};
 use std::collections::{HashMap, HashSet};
 
-fn fixture(cx: &mut gpui::TestAppContext) -> (Entity<HerdrWindow>, &mut VisualTestContext) {
+pub(super) fn fixture(
+    cx: &mut gpui::TestAppContext,
+) -> (Entity<HerdrWindow>, &mut VisualTestContext) {
     let (fixture, cx) = cx.add_window_view(|window, cx| {
         let view = cx.new(|cx| {
             let mut view = fixture_window(window, cx);
@@ -24,14 +26,14 @@ fn fixture(cx: &mut gpui::TestAppContext) -> (Entity<HerdrWindow>, &mut VisualTe
     (view, cx)
 }
 
-fn draw(cx: &mut VisualTestContext) {
+pub(super) fn draw(cx: &mut VisualTestContext) {
     cx.update(|window, cx| {
         window.refresh();
         full_draw(window, cx).clear(cx);
     });
 }
 
-fn alerts(count: u64, created_at: DateTime<Utc>) -> Repo {
+pub(super) fn alerts(count: u64, created_at: DateTime<Utc>) -> Repo {
     let alert = |number| Alert {
         number,
         severity: Severity::Critical,

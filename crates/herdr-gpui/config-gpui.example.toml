@@ -393,6 +393,10 @@ size = 12
 # keep their shortcuts and command palette entries, and Devices Overview in
 # the palette still offers Add Device.
 # device_footer = "always"
+# false draws none of the sidebar's numbers, and nothing in their place:
+# pull request numbers, change and drift counts, the collapsed rail's
+# workspace numbers, agent tallies, and the activity bar's count bubbles.
+# numbers = true
 # Whose +added/-deleted line counts a worktree row shows: "pr" (its cached
 # pull request's) or "local" (the checkout's uncommitted changes against HEAD,
 # for checkouts on this machine, drawn inside the pencil chip that marks
