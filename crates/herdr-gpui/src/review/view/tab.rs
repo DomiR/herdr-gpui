@@ -51,7 +51,7 @@ impl HerdrWindow {
             store
                 .in_workspace(&scope, &workspace)
                 .find(|tab| {
-                    matches!(&tab.location, Some(Location::Review { checkout: open }) if *open == checkout)
+                    matches!(&tab.location, Some(Location::Review { checkout: open }) if super::same_checkout(&Input::from(open), &Input::from(&checkout)))
                 })
                 .map(|tab| tab.id)
         });
@@ -118,6 +118,7 @@ impl HerdrWindow {
     /// have no state yet, such as ones restored from the last run, get one
     /// and read their changes; the state of closed tabs goes.
     pub(crate) fn poll_reviews(&mut self, cx: &mut Context<Self>) {
+        self.follow_review_workspace(cx);
         let Some(store) = cx.try_global::<Store>() else {
             self.reviews.clear();
             return;

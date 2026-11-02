@@ -12,7 +12,7 @@ use std::{
     sync::Arc,
 };
 
-fn git(directory: &Path, args: &[&str]) {
+pub(super) fn git(directory: &Path, args: &[&str]) {
     let output = Command::new("git")
         .arg("-C")
         .arg(directory)
@@ -139,14 +139,18 @@ fn a_worktree_herdr_made_is_still_reviewed_by_its_daemon_key(cx: &mut gpui::Test
     };
     space_in(&view, cx, &space, Some("main"), Some(worktree));
     let (checkout, files) = review(&view, cx);
+    // Daemon metadata wins, and the directory is never trusted: the checkout
+    // remembered is the one Git's worktree list has for the branch.
     assert_eq!(
-        checkout,
-        Input {
-            checkout: None,
-            repo_key: Some(key),
-            branch: "main".into(),
-        },
-        "daemon metadata wins, and the directory is never trusted"
+        (checkout.repo_key, checkout.branch),
+        (Some(key), "main".to_owned())
+    );
+    let remembered = checkout.checkout.unwrap();
+    assert_eq!(
+        Path::new(&remembered).canonicalize().unwrap(),
+        clone.canonicalize().unwrap(),
+        "{remembered}, not {}",
+        space.display()
     );
     assert_eq!(files, ["src/lib.rs"]);
 }

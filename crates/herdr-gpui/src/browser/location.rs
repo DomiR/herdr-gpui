@@ -157,27 +157,38 @@ impl TryFrom<SavedReviewCheckout> for ReviewCheckout {
     type Error = crate::Error;
 
     fn try_from(saved: SavedReviewCheckout) -> crate::Result<Self> {
+        Self::new(saved.repo_key, saved.branch, saved.checkout)
+    }
+}
+
+impl ReviewCheckout {
+    /// A checkout as a saved tab may name it: anything else would make the
+    /// tabs file unreadable on the next start.
+    fn new(
+        repo_key: Option<String>,
+        branch: String,
+        checkout: Option<String>,
+    ) -> crate::Result<Self> {
         let path = |text: &str| {
             !text.is_empty()
                 && text.len() <= 4096
                 && !text.chars().any(char::is_control)
                 && Path::new(text).is_absolute()
         };
-        let branch = !saved.branch.is_empty()
-            && saved.branch.len() <= 1024
-            && !saved.branch.chars().any(char::is_control);
-        let named = saved.repo_key.is_some() || saved.checkout.is_some();
+        let valid_branch =
+            !branch.is_empty() && branch.len() <= 1024 && !branch.chars().any(char::is_control);
+        let named = repo_key.is_some() || checkout.is_some();
         if !named
-            || saved.repo_key.as_deref().is_some_and(|key| !path(key))
-            || !branch
-            || saved.checkout.as_deref().is_some_and(|c| !path(c))
+            || repo_key.as_deref().is_some_and(|key| !path(key))
+            || !valid_branch
+            || checkout.as_deref().is_some_and(|c| !path(c))
         {
             return Err(crate::Error::InvalidReviewCheckout);
         }
         Ok(Self {
-            repo_key: saved.repo_key,
-            branch: saved.branch,
-            checkout: saved.checkout,
+            repo_key,
+            branch,
+            checkout,
         })
     }
 }
@@ -192,11 +203,11 @@ impl TryFrom<&crate::pull_request::Input> for ReviewCheckout {
         if input.repo_key.is_none() && input.checkout.is_none() {
             return Err(herdr_github::pull_request::Error::Metadata.into());
         }
-        Ok(Self {
-            repo_key: input.repo_key.clone(),
-            branch: input.branch.clone(),
-            checkout: input.checkout.clone(),
-        })
+        Self::new(
+            input.repo_key.clone(),
+            input.branch.clone(),
+            input.checkout.clone(),
+        )
     }
 }
 
