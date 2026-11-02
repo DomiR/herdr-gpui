@@ -48,6 +48,8 @@ mod port_forward;
 mod processes;
 mod protocol;
 mod px0;
+#[cfg(any(target_os = "macos", test))]
+mod record;
 mod remote;
 mod remote_control;
 mod review;

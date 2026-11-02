@@ -71,6 +71,13 @@ fn main() -> Result<(), BuildError> {
     let out =
         std::path::PathBuf::from(std::env::var_os("OUT_DIR").ok_or(BuildError::MissingOutDir)?);
     locales::generate(&manifest, &out).map_err(BuildError::Locales)?;
+    // screencapturekit's Swift bridge (page recordings) loads the Swift
+    // runtime through @rpath, and a dependency's link arguments never reach
+    // this binary. macOS has carried that runtime in /usr/lib/swift since 12,
+    // below this app's 14.2 floor.
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+        println!("cargo:rustc-link-arg=-Wl,-rpath,/usr/lib/swift");
+    }
     let identity = build_identity::detect(&manifest);
     windows_resource::embed(&manifest, identity.worktree).map_err(BuildError::WindowsResource)?;
     for path in &identity.watched {

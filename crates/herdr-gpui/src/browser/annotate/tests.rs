@@ -230,3 +230,4 @@ fn empty_notes_are_refused_and_markers_are_json_data() {
 
 /// Results a local page hands the agent with `herdr.send`.
 mod page_results;
+mod strokes;

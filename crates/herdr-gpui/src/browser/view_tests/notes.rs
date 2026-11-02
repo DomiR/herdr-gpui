@@ -1,5 +1,6 @@
 use super::*;
 
+mod fold;
 mod page_editing;
 mod pending_send;
 mod resend;

@@ -1,6 +1,6 @@
 //! Notes on a page for the agent that opened it. The page only reports what
-//! the user picked: an element, a text selection, or a region drawn over the
-//! page. The notes are written in the app and reach the agent as one prompt
+//! the user picked: an element, a text selection, a region drawn over the
+//! page, or a pen stroke drawn while the page is recorded (`record`). The notes are written in the app and reach the agent as one prompt
 //! when the user sends them. Everything a page reports is untrusted: it is
 //! bounded, stripped of control characters, and marked as quoted data in the
 //! prompt, which is pasted into an agent's terminal.
@@ -23,6 +23,17 @@ pub(crate) const MAX_NOTES: usize = 20;
 const MAX_COMMENT_CHARS: usize = 2000;
 /// Elements a region lists; the rest are summed up by their container.
 const MAX_COVERED: usize = 8;
+/// Points a pen stroke keeps, elements it names, and how long it may last.
+/// Only macOS records a page, so only there does the page draw strokes.
+#[cfg(any(target_os = "macos", test))]
+const MAX_STROKE_POINTS: usize = 2000;
+#[cfg(any(target_os = "macos", test))]
+const MAX_MARKED: usize = 5;
+#[cfg(any(target_os = "macos", test))]
+const MAX_STROKE_MS: u64 = 10 * 60 * 1000;
+/// The most of Scrawl's summary a recording's note carries to the agent.
+#[cfg(any(target_os = "macos", test))]
+const MAX_RECORDING_SUMMARY: usize = 16 * 1024;
 /// Coordinates beyond this are not a real page.
 const MAX_COORDINATE: f64 = 10_000_000.;
 /// What a local page may hand the agent with `herdr.send`: a one-line
@@ -99,11 +110,34 @@ struct RawCovered {
     text: String,
 }
 
+#[cfg(any(target_os = "macos", test))]
+#[derive(Deserialize)]
+struct RawMarked {
+    tag: String,
+    selector: String,
+    #[serde(default)]
+    text: String,
+    #[serde(default)]
+    component: Option<String>,
+    #[serde(default)]
+    source: Option<String>,
+}
+
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum Message {
     Pick {
         target: Picked,
+    },
+    /// A pen stroke: its points as `[x, y, ms since it began]` in viewport
+    /// pixels, how long it took, and the elements under it.
+    #[cfg(any(target_os = "macos", test))]
+    Stroke {
+        duration: u64,
+        points: Vec<[f64; 3]>,
+        viewport: Size,
+        #[serde(default)]
+        elements: Vec<RawMarked>,
     },
     Cancel,
     /// `herdr.send(summary, data)`: a result from the page, such as the
@@ -160,6 +194,81 @@ pub(crate) enum Report {
         summary: String,
         data: String,
     },
+    /// A pen stroke, for the recording under way.
+    #[cfg(any(target_os = "macos", test))]
+    Stroke(Stroke),
+}
+
+/// A pen stroke drawn over the page, checked when it is parsed.
+#[cfg(any(target_os = "macos", test))]
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Stroke {
+    pub duration_ms: u64,
+    /// `[x, y, ms since the stroke began]`, in viewport pixels.
+    pub points: Vec<[f64; 3]>,
+    pub viewport: (f64, f64),
+    pub elements: Vec<Marked>,
+}
+
+/// An element under a pen stroke, and what drew it when the page says: a
+/// component's name and its source file and line.
+#[cfg(any(target_os = "macos", test))]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Marked {
+    pub tag: String,
+    pub selector: String,
+    pub text: String,
+    pub component: Option<String>,
+    pub source: Option<String>,
+}
+
+#[cfg(any(target_os = "macos", test))]
+impl Stroke {
+    fn parse(
+        duration: u64,
+        points: Vec<[f64; 3]>,
+        viewport: Size,
+        elements: Vec<RawMarked>,
+    ) -> Option<Self> {
+        let sane = |value: f64| value.is_finite() && value.abs() <= MAX_COORDINATE;
+        let viewport = (viewport.width, viewport.height);
+        if duration > MAX_STROKE_MS
+            || points.is_empty()
+            || points.len() > MAX_STROKE_POINTS
+            || !(sane(viewport.0) && viewport.0 >= 1. && sane(viewport.1) && viewport.1 >= 1.)
+        {
+            return None;
+        }
+        let ceiling = duration as f64;
+        let in_time = |dt: f64| dt.is_finite() && (0. ..=ceiling).contains(&dt);
+        if !points
+            .iter()
+            .all(|&[x, y, dt]| sane(x) && sane(y) && in_time(dt))
+        {
+            return None;
+        }
+        let optional = |text: Option<String>, limit| {
+            text.map(|text| one_line(&text, limit))
+                .filter(|text| !text.is_empty())
+        };
+        let elements = elements
+            .into_iter()
+            .take(MAX_MARKED)
+            .map(|element| Marked {
+                tag: tag(&element.tag),
+                selector: one_line(&element.selector, 300),
+                text: one_line(&element.text, 80),
+                component: optional(element.component, 80),
+                source: optional(element.source, 200),
+            })
+            .collect();
+        Some(Self {
+            duration_ms: duration,
+            points,
+            viewport,
+            elements,
+        })
+    }
 }
 
 fn tag(text: &str) -> String {
@@ -185,6 +294,13 @@ impl Report {
         let target = match serde_json::from_str::<Message>(body).ok()? {
             Message::Cancel => return Some(Self::Cancelled),
             Message::Send { summary, data } => return Self::sent(&summary, &data),
+            #[cfg(any(target_os = "macos", test))]
+            Message::Stroke {
+                duration,
+                points,
+                viewport,
+                elements,
+            } => return Stroke::parse(duration, points, viewport, elements).map(Self::Stroke),
             Message::Pick { target } => target,
         };
         Some(match target {
@@ -312,6 +428,15 @@ pub(crate) enum Anchor {
         summary: String,
         data: String,
     },
+    /// A recording of the page with the user's narration and pen strokes,
+    /// which Scrawl built into a bundle: its folder, its summary for the
+    /// agent, and how long it ran.
+    #[cfg(any(target_os = "macos", test))]
+    Recording {
+        bundle: PathBuf,
+        summary: String,
+        seconds: u64,
+    },
 }
 
 impl Anchor {
@@ -335,6 +460,13 @@ impl Anchor {
                 crate::i18n::fl!(
                     "browser-notes-page-result-summary",
                     summary = one_line(summary, 60)
+                )
+            }
+            #[cfg(any(target_os = "macos", test))]
+            Self::Recording { seconds, .. } => {
+                crate::i18n::fl!(
+                    "browser-notes-recording",
+                    time = format!("{}:{:02}", seconds / 60, seconds % 60)
                 )
             }
         }
@@ -381,6 +513,29 @@ impl Note {
         }
     }
 
+    /// A recording Scrawl built, as a note the user has not written
+    /// anything on. Its summary keeps its lines but loses anything that
+    /// could steer a terminal.
+    #[cfg(any(target_os = "macos", test))]
+    pub(crate) fn recording(bundle: PathBuf, summary: &str, seconds: u64) -> Self {
+        let summary: String = summary
+            .chars()
+            .filter(|c| *c == '\n' || !crate::notifications::unsafe_char(*c))
+            .take(MAX_RECORDING_SUMMARY)
+            .collect();
+        Self {
+            anchor: Anchor::Recording {
+                bundle,
+                summary: summary.trim().to_owned(),
+                seconds,
+            },
+            comment: String::new(),
+            image: None,
+            capture: None,
+            sent: None,
+        }
+    }
+
     pub(crate) fn new(anchor: Anchor, comment: &str) -> Option<Self> {
         let comment = one_line(comment, MAX_COMMENT_CHARS);
         (!comment.is_empty()).then_some(Self {
@@ -414,11 +569,35 @@ pub(crate) fn reveal_script() -> &'static str {
     REVEAL
 }
 
-/// Switches between picking elements and drawing regions.
+/// What a press in the page does while annotating.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum Mode {
+    /// Picks an element or selects text; Shift-drag draws a region.
+    #[default]
+    Pick,
+    /// Drag draws a region.
+    Region,
+    /// Drag draws a pen stroke, for a recording.
+    Pen,
+}
+
+impl Mode {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Pick => "pick",
+            Self::Region => "region",
+            Self::Pen => "pen",
+        }
+    }
+}
+
+/// Switches what a press in the page does.
 #[cfg(any(target_os = "macos", windows))]
-pub(crate) fn mode_script(regions: bool) -> String {
-    let mode = if regions { "region" } else { "pick" };
-    format!("window.__herdrAnnotate && window.__herdrAnnotate.mode({mode:?})")
+pub(crate) fn mode_script(mode: Mode) -> String {
+    format!(
+        "window.__herdrAnnotate && window.__herdrAnnotate.mode({:?})",
+        mode.name()
+    )
 }
 
 /// Inline code that survives backticks in the text.
@@ -544,6 +723,29 @@ pub(crate) fn prompt(
             }
             // i18n: data
             Anchor::Page => text.push_str(&format!("\n{number}. On the page as a whole\n")),
+            #[cfg(any(target_os = "macos", test))]
+            Anchor::Recording {
+                bundle,
+                summary,
+                seconds,
+            } => {
+                text.push_str(&format!(
+                    // i18n: data
+                    "\n{number}. A {}:{:02} recording of the page with the user's narration and pen marks, built by Scrawl: {}\n   Each mark lists the elements under it, with the component and source file when the page says. Read the bundle's contact-sheet.png and frames/ before changing anything.\n",
+                    seconds / 60,
+                    seconds % 60,
+                    bundle.display()
+                ));
+                // It quotes page text (the elements' labels), so it is fenced
+                // as data like a page's HTML.
+                let fence = fence(summary);
+                // i18n: data
+                text.push_str(&format!("   Scrawl's summary:\n   {fence}text\n"));
+                for summary_line in summary.lines() {
+                    text.push_str(&format!("   {summary_line}\n"));
+                }
+                text.push_str(&format!("   {fence}\n"));
+            }
             Anchor::Sent { summary, data } => {
                 // i18n: data
                 text.push_str(&format!("\n{number}. The page sent a result"));

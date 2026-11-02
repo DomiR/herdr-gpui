@@ -23,6 +23,8 @@ browser-notes-clear-sent = Clear sent
 # What a note points at. $width and $height are in pixels.
 browser-notes-region-size = Region { $width }×{ $height }
 browser-notes-whole-page = Whole page
+# A recording of the page with the user's narration. $time is its length, such as 1:12.
+browser-notes-recording = Recording { $time }
 # Something the page itself sent for the agent. $summary is the page's own
 # one-line summary of it.
 browser-notes-page-result = Page result
@@ -38,3 +40,17 @@ browser-notes-copied = Notes copied
 browser-notes-pending = The previous notes are still pending delivery
 browser-notes-delivered = The agent already has those notes
 browser-notes-withdrawn = Notes withdrawn
+
+# Recording a page review with Scrawl (macOS).
+browser-notes-record = Record
+browser-notes-record-starting = Starting…
+# The button while recording. $time is how long it has run, such as 0:42.
+browser-notes-record-stop = Stop { $time }
+browser-notes-record-building = Building…
+browser-notes-recording-hint = Talk through what should change; hold Shift and drag to draw on the page. Without Shift the page works as usual. Stop builds the recording into a note.
+browser-notes-record-busy = Another page is being recorded
+browser-notes-record-started = Recording: talk, and hold Shift to draw on the page
+browser-notes-record-added = The recording is in the notes; send it to the agent
+# $path is the folder Scrawl built the recording into.
+browser-notes-record-orphaned = The page closed; its recording is in { $path }
+browser-notes-record-no-room = No room for the recording's note; it is in { $path }
