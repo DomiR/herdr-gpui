@@ -1,0 +1,3 @@
+[submodule "references/scrawl"]
+	path = references/scrawl
+	url = https://github.com/kitlangton/scrawl.git
