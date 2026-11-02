@@ -64,10 +64,7 @@ fn focus_links_reject_invalid_values() {
             "herdr-gpui://focus?path=/tmp&tab=%0Abuild",
             Error::FocusText("tab"),
         ),
-        (
-            "herdr-gpui://focus?path=/tmp&id=",
-            Error::FocusId,
-        ),
+        ("herdr-gpui://focus?path=/tmp&id=", Error::FocusId),
         (
             "herdr-gpui://focus?path=/tmp&device=a%20b",
             Error::FocusDevice,
@@ -93,7 +90,10 @@ fn focus_links_reject_unknown_duplicate_and_oversize_parameters() {
         Err(Error::DuplicateParameter("path"))
     );
     assert_eq!(
-        Link::parse(&format!("herdr-gpui://focus?workspace={}", "a".repeat(4100))),
+        Link::parse(&format!(
+            "herdr-gpui://focus?workspace={}",
+            "a".repeat(4100)
+        )),
         Err(Error::TooLong)
     );
 }

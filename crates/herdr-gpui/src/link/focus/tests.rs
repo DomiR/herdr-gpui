@@ -116,7 +116,10 @@ fn path_matches_after_trailing_separator_is_trimmed() {
 fn workspace_label_matches_exactly() {
     let mut focus = focus();
     focus.workspace = Some("Notes".into());
-    assert_eq!(resolve(&focus, &snapshot()), Err(Miss::Ambiguous(What::Workspace)));
+    assert_eq!(
+        resolve(&focus, &snapshot()),
+        Err(Miss::Ambiguous(What::Workspace))
+    );
     focus.id = Some("w1".into());
     assert_eq!(
         resolve(&focus, &snapshot()),
@@ -167,7 +170,10 @@ fn ambiguous_and_gone_targets_are_not_picked_by_order() {
     let mut focus = focus();
     focus.tab_or_agent = Some(Below::Tab("build".into()));
     focus.workspace = Some("Notes".into());
-    assert_eq!(resolve(&focus, &snapshot()), Err(Miss::Ambiguous(What::Tab)));
+    assert_eq!(
+        resolve(&focus, &snapshot()),
+        Err(Miss::Ambiguous(What::Tab))
+    );
 
     focus.workspace = Some("Missing".into());
     assert_eq!(
@@ -191,8 +197,14 @@ fn agent_links_work_with_and_without_workspace_keys() {
     );
 
     focus.workspace = Some("Notes".into());
-    assert_eq!(resolve(&focus, &snapshot()), Ok(OwnedNavigationTarget::Pane("w1:p1".into())));
+    assert_eq!(
+        resolve(&focus, &snapshot()),
+        Ok(OwnedNavigationTarget::Pane("w1:p1".into()))
+    );
 
     focus.id = None;
-    assert_eq!(resolve(&focus, &snapshot()), Err(Miss::Ambiguous(What::Agent)));
+    assert_eq!(
+        resolve(&focus, &snapshot()),
+        Err(Miss::Ambiguous(What::Agent))
+    );
 }

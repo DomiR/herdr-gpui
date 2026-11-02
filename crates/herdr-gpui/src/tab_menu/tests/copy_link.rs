@@ -33,7 +33,7 @@ fn copy_link_is_before_close_and_confirms_with_a_flash(cx: &mut TestAppContext) 
             focused: false,
             right_click_passthrough: false,
         });
-        view.live.snapshot = Some(std::sync::Arc::new(shown));
+        view.live.snapshot = Some(Arc::new(shown));
         view
     });
     cx.update(|window, cx| {
@@ -55,10 +55,11 @@ fn copy_link_is_before_close_and_confirms_with_a_flash(cx: &mut TestAppContext) 
                 Some("Link copied")
             );
             let clipboard = cx.read_from_clipboard().and_then(|item| item.text());
-            assert!(clipboard
-                .as_deref()
-                .is_some_and(|text| text.starts_with('[')
-                    && text.contains("herdr-gpui://focus?")));
+            assert!(
+                clipboard.as_deref().is_some_and(
+                    |text| text.starts_with('[') && text.contains("herdr-gpui://focus?")
+                )
+            );
         })
     });
 }

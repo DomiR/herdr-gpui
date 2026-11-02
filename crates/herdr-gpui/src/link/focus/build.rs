@@ -34,7 +34,12 @@ pub(crate) fn link_for(
     let (workspace_id, below, label, id) = match target {
         NavigationTarget::Workspace(workspace_id) => {
             let workspace = workspace(snapshot, workspace_id)?;
-            (workspace_id, None, workspace.label.clone(), workspace.workspace_id.clone())
+            (
+                workspace_id,
+                None,
+                workspace.label.clone(),
+                workspace.workspace_id.clone(),
+            )
         }
         NavigationTarget::Tab(tab_id) => {
             let tab = snapshot.tabs.iter().find(|tab| tab.tab_id == tab_id)?;
@@ -68,8 +73,7 @@ pub(crate) fn link_for(
         }
     };
     let workspace = workspace(snapshot, workspace_id)?;
-    let path = crate::palette::launch_root(snapshot, workspace_id)
-        .and_then(validated_local_path);
+    let path = crate::palette::launch_root(snapshot, workspace_id).and_then(validated_local_path);
     let workspace_label =
         (workspace.custom_label || path.is_none()).then(|| workspace.label.clone());
     let device = device
@@ -88,10 +92,7 @@ pub(crate) fn link_for(
     Some(Made { link, label })
 }
 
-fn workspace<'a>(
-    snapshot: &'a ClientShellSnapshot,
-    id: &str,
-) -> Option<&'a ClientShellWorkspace> {
+fn workspace<'a>(snapshot: &'a ClientShellSnapshot, id: &str) -> Option<&'a ClientShellWorkspace> {
     snapshot
         .workspaces
         .iter()

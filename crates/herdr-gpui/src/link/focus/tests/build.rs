@@ -1,20 +1,21 @@
 use super::*;
 use crate::{
     link::{Below, Focus, Link},
+    link::focus::build::{Made, link_for},
     navigation::{NavigationTarget, OwnedNavigationTarget},
 };
-use std::path::Path;
 use herdr_doc::markdown::{Style, inline, lines, link_url};
+use std::path::Path;
 
-fn made(snapshot: &ClientShellSnapshot, target: NavigationTarget<&str>) -> build::Made {
-    build::link_for(snapshot, target, None).expect("fixture target makes a link")
+fn made(snapshot: &ClientShellSnapshot, target: NavigationTarget<&str>) -> Made {
+    link_for(snapshot, target, None).expect("fixture target makes a link")
 }
 
-fn focus_link(made: &build::Made) -> &Focus {
-    let Link::Focus(focus) = &made.link else {
-        panic!("builder did not make a focus link");
-    };
-    focus
+fn focus_link(made: &Made) -> &Focus {
+    match &made.link {
+        Link::Focus(focus) => focus,
+        _ => panic!("builder did not make a focus link"),
+    }
 }
 
 #[test]
@@ -84,20 +85,19 @@ fn two_named_agents_keep_the_tab_link() {
 fn unnamed_pane_does_not_make_a_link() {
     let mut snapshot = snapshot();
     snapshot.agents[0].name = None;
-    assert!(build::link_for(&snapshot, NavigationTarget::Pane("w0:p1"), None).is_none());
+    assert!(link_for(&snapshot, NavigationTarget::Pane("w0:p1"), None).is_none());
 }
 
 #[test]
 fn device_is_only_emitted_for_a_non_local_endpoint() {
     let snapshot = snapshot();
-    let local = build::link_for(
+    let local = link_for(
         &snapshot,
         NavigationTarget::Workspace("w0"),
         Some(crate::endpoint::LOCAL),
     )
     .unwrap();
-    let remote = build::link_for(&snapshot, NavigationTarget::Workspace("w0"), Some("box"))
-        .unwrap();
+    let remote = link_for(&snapshot, NavigationTarget::Workspace("w0"), Some("box")).unwrap();
     assert_eq!(focus_link(&local).device, None);
     assert_eq!(focus_link(&remote).device.as_deref(), Some("box"));
 }
@@ -119,7 +119,7 @@ fn made_links_resolve_to_their_targets() {
             OwnedNavigationTarget::Pane("w0:p1".into()),
         ),
     ] {
-        let made = build::link_for(&snapshot, target, None).unwrap();
+        let made = link_for(&snapshot, target, None).unwrap();
         let Link::Focus(focus) = made.link else {
             panic!("not a focus link");
         };
@@ -131,7 +131,7 @@ fn made_links_resolve_to_their_targets() {
 fn markdown_escapes_labels_and_keeps_the_form_url_whole() {
     let snapshot = snapshot();
     let made = made(&snapshot, NavigationTarget::Workspace("w0"));
-    let made = build::Made {
+    let made = Made {
         link: made.link,
         label: "A[\\]\nB".into(),
     };

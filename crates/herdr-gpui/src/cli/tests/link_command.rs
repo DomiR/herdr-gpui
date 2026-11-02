@@ -1,5 +1,5 @@
 use super::*;
-use control::{ControlCommand, LinkCommand, LinkTarget, Invocation};
+use control::{ControlCommand, Invocation, LinkCommand, LinkTarget};
 
 fn parse(args: &[&str]) -> Result<Invocation, CliError> {
     LaunchOptions::parse(args.iter().copied()).map(|options| match options.mode {
@@ -34,10 +34,13 @@ fn link_accepts_global_options_and_rejects_bad_targets() {
     let invocation = parse(&["link", "tab", "--json", "--window", "7"]).unwrap();
     assert!(invocation.json);
     assert_eq!(invocation.window, Some(7));
-    assert_eq!(invocation.command, ControlCommand::Link(LinkCommand {
-        target: LinkTarget::Tab,
-        pane: None,
-    }));
+    assert_eq!(
+        invocation.command,
+        ControlCommand::Link(LinkCommand {
+            target: LinkTarget::Tab,
+            pane: None,
+        })
+    );
     assert!(matches!(
         parse(&["link", "other"]),
         Err(CliError::UnknownCommand { family: "link", .. })

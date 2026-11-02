@@ -439,9 +439,7 @@ impl DocEditor {
             && let Some((_, target)) = links.iter().find(|(range, _)| range.contains(&source))
         {
             match target {
-                layout::Target::Url(url)
-                    if crate::link::is_link(std::ffi::OsStr::new(url)) =>
-                {
+                layout::Target::Url(url) if crate::link::is_link(std::ffi::OsStr::new(url)) => {
                     self.request(super::Request::Link(url.clone()), cx);
                     return;
                 }

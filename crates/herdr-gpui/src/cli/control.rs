@@ -18,6 +18,7 @@ mod work;
 
 use super::CliError;
 pub(crate) use super::args::Args;
+pub use crate::control::LinkTarget;
 pub use crate::control::{Cursor, EventKind, FontSize, Script, Size, Sound, Switch, ZoomChange};
 pub use app::{AppCommand, UiCommand, WindowCommand};
 pub use batch::BatchCommand;
@@ -28,7 +29,6 @@ pub use exec::ExecCommand;
 pub use hosts::{
     AutomationCommand, CloudCommand, HostCommand, PortsCommand, PrCommand, SecurityCommand,
 };
-pub use crate::control::LinkTarget;
 pub use link::LinkCommand;
 pub use mods::ModCommand;
 pub use remote::RemoteCommand;

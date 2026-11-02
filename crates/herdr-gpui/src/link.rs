@@ -134,9 +134,7 @@ impl Link {
             "device" => {
                 parameters.only(&["id"])?;
                 let id = parameters.take("id")?;
-                Ok(Self::Device {
-                    id: device_id(id)?,
-                })
+                Ok(Self::Device { id: device_id(id)? })
             }
             "focus" => {
                 parameters.only(&["agent", "device", "id", "path", "tab", "workspace"])?;
@@ -267,10 +265,7 @@ impl Parameters {
     }
 
     fn take_optional(&mut self, key: &'static str) -> Result<Option<String>, Error> {
-        let at = self
-            .0
-            .iter()
-            .position(|(seen, _)| *seen == key);
+        let at = self.0.iter().position(|(seen, _)| *seen == key);
         Ok(at.map(|at| self.0.swap_remove(at).1))
     }
 }

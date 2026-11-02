@@ -65,9 +65,12 @@ pub(crate) fn resolve(
             OwnedNavigationTarget::Tab,
         ),
         None => choose(
-            workspaces
-                .into_iter()
-                .map(|workspace| (workspace.workspace_id.as_str(), workspace.workspace_id.clone())),
+            workspaces.into_iter().map(|workspace| {
+                (
+                    workspace.workspace_id.as_str(),
+                    workspace.workspace_id.clone(),
+                )
+            }),
             focus.id.as_deref(),
             What::Workspace,
             OwnedNavigationTarget::Workspace,
@@ -80,7 +83,10 @@ fn workspace_matches(
     snapshot: &ClientShellSnapshot,
     workspace: &herdr_client::protocol::ClientShellWorkspace,
 ) -> bool {
-    focus.workspace.as_ref().is_none_or(|label| workspace.label == *label)
+    focus
+        .workspace
+        .as_ref()
+        .is_none_or(|label| workspace.label == *label)
         && focus.path.as_ref().is_none_or(|path| {
             crate::palette::launch_root(snapshot, &workspace.workspace_id).is_some_and(|root| {
                 let path = path.to_string_lossy();
@@ -93,8 +99,8 @@ fn normalize_path(path: &str) -> &str {
     path.trim_end_matches(['/', '\\'])
 }
 
-fn choose(
-    candidates: impl IntoIterator<Item = (&str, String)>,
+fn choose<'a>(
+    candidates: impl IntoIterator<Item = (&'a str, String)>,
     id_hint: Option<&str>,
     what: What,
     target: impl FnOnce(String) -> OwnedNavigationTarget,

@@ -36,20 +36,27 @@ fn link_make_rejects_unknown_fields() {
         r#"{"method":"link.make","caller":{},"op":{"target":"tab","pane":"p"}}"#,
         r#"{"method":"link.make","caller":{},"op":{"target":"build"}}"#,
     ] {
-        assert!(serde_json::from_str::<Request>(invalid).is_err(), "{invalid}");
+        assert!(
+            serde_json::from_str::<Request>(invalid).is_err(),
+            "{invalid}"
+        );
     }
 }
 
 #[test]
 fn pane_ids_are_bounded() {
-    assert!(LinkMakeOp {
-        target: LinkTarget::Agent,
-        pane_id: Some("w:p".into()),
-    }
-    .bounded());
-    assert!(!LinkMakeOp {
-        target: LinkTarget::Agent,
-        pane_id: Some("x".repeat(MAX_PANE_ID + 1)),
-    }
-    .bounded());
+    assert!(
+        LinkMakeOp {
+            target: LinkTarget::Agent,
+            pane_id: Some("w:p".into()),
+        }
+        .bounded()
+    );
+    assert!(
+        !LinkMakeOp {
+            target: LinkTarget::Agent,
+            pane_id: Some("x".repeat(MAX_PANE_ID + 1)),
+        }
+        .bounded()
+    );
 }

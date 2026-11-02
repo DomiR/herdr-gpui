@@ -303,9 +303,11 @@ impl HerdrWindow {
                     return;
                 };
                 let endpoint = self.endpoints[self.selected_endpoint].id.clone();
-                let Some(made) =
-                    link_for(snapshot, NavigationTarget::Tab(target.tab.as_str()), Some(&endpoint))
-                else {
+                let Some(made) = link_for(
+                    snapshot,
+                    NavigationTarget::Tab(target.tab.as_str()),
+                    Some(&endpoint),
+                ) else {
                     self.show_flash(Flash::warning(fl!("tab-menu-copy-link-failed")), cx);
                     return;
                 };

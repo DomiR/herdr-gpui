@@ -5,8 +5,8 @@
 // i18n: migrated
 
 use super::{
-    focus::{self, What},
     Link,
+    focus::{self, What},
 };
 use crate::{
     HerdrWindow, NavigationTarget,
@@ -278,7 +278,11 @@ fn endpoint_snapshot(
     view: &HerdrWindow,
     endpoint: &str,
 ) -> Result<Arc<ClientShellSnapshot>, Refusal> {
-    if !view.endpoints.iter().any(|candidate| candidate.id == endpoint) {
+    if !view
+        .endpoints
+        .iter()
+        .any(|candidate| candidate.id == endpoint)
+    {
         return Err(Refusal::NoDevice(endpoint.to_owned()));
     }
     snapshot(view, endpoint).ok_or(Refusal::NotConnected)
@@ -286,7 +290,11 @@ fn endpoint_snapshot(
 
 fn focus_ready(view: &HerdrWindow, focus: &super::Focus) -> bool {
     let endpoint = focus.device.as_deref().unwrap_or(LOCAL);
-    if view.endpoints.iter().any(|candidate| candidate.id == endpoint) {
+    if view
+        .endpoints
+        .iter()
+        .any(|candidate| candidate.id == endpoint)
+    {
         snapshot(view, endpoint).is_some()
     } else {
         view.catalog.loaded()
@@ -354,7 +362,11 @@ impl HerdrWindow {
         let link = match Link::parse(url) {
             Ok(link) => link,
             Err(_) => {
-                complain(self, fl!("link-open-failed", reason = fl!("link-invalid")), cx);
+                complain(
+                    self,
+                    fl!("link-open-failed", reason = fl!("link-invalid")),
+                    cx,
+                );
                 return;
             }
         };

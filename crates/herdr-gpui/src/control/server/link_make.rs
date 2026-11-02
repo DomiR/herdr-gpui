@@ -1,7 +1,6 @@
 use super::{target, window_for};
 use crate::{
-    HerdrWindow,
-    NavigationTarget,
+    HerdrWindow, NavigationTarget,
     control::protocol::{
         Call, ErrorCode, Response,
         link::{LinkMakeOp, LinkTarget},
@@ -72,9 +71,11 @@ fn make(view: &HerdrWindow, caller: &crate::control::protocol::Caller, op: LinkM
         return Response::error(
             ErrorCode::NotFound,
             match op.target {
-                LinkTarget::Agent => "The pane has no named agent".into(),
-                LinkTarget::Tab => "The caller's Herdr tab is not linkable".into(),
-                LinkTarget::Workspace => "The caller's Herdr workspace is not linkable".into(),
+                LinkTarget::Agent => String::from("The pane has no named agent"),
+                LinkTarget::Tab => String::from("The caller's Herdr tab is not linkable"),
+                LinkTarget::Workspace => {
+                    String::from("The caller's Herdr workspace is not linkable")
+                }
             },
         );
     };
