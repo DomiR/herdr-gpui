@@ -6,6 +6,7 @@ mod app;
 mod browser;
 mod chat;
 mod cloud;
+mod doc;
 mod events;
 mod hosts;
 mod links;
@@ -31,9 +32,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-/// Requests parked at once, besides feedback waiters; the socket's own
-/// connection bound keeps the real number lower.
-const MAX_WATCHES: usize = 16;
+/// Every admitted connection can park at most one request, so a full list
+/// only refuses past the socket's own bounds.
+const MAX_WATCHES: usize = socket::MAX_CONNECTIONS;
 
 /// Looks for a parked request's answer; `None` keeps it waiting.
 type Check = Box<dyn FnMut(&mut App) -> Option<Response>>;
@@ -82,7 +83,8 @@ impl Watches {
 
     /// Whether another request can park. Checked before a request that may
     /// park acts at all, so a full list never refuses after a side effect.
-    fn full(&self) -> bool {
+    fn full(&mut self) -> bool {
+        self.0.retain(|watch| watch.incoming.is_live());
         self.0.len() >= MAX_WATCHES
     }
 
@@ -249,6 +251,7 @@ fn named_window(request: &Request) -> Option<u64> {
         Request::Cloud(call) => call.caller.window,
         Request::Remote(call) => call.caller.window,
         Request::Mod(call) => call.caller.window,
+        Request::Doc(call) => call.caller.window,
     }
 }
 
@@ -262,6 +265,7 @@ fn serve(incoming: socket::Incoming, state: &mut State, cx: &mut App) {
             | Request::Events(_)
             | Request::Cloud(_)
             | Request::Remote(_)
+            | Request::Doc(_)
     );
     if let Some(id) = named_window(&incoming.request)
         && !main_windows(cx)
@@ -298,6 +302,7 @@ fn serve(incoming: socket::Incoming, state: &mut State, cx: &mut App) {
         Request::Cloud(call) => cloud::serve(call, incoming, &mut state.watches, cx),
         Request::Remote(call) => remote::serve(call, incoming, &mut state.watches, cx),
         Request::Mod(call) => incoming.respond(mods::serve(call, cx)),
+        Request::Doc(call) => doc::serve(call, incoming, &mut state.watches, cx),
     }
 }
 

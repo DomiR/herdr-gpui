@@ -203,7 +203,45 @@ pub(super) fn code(
                 workspace,
                 &path,
                 cx,
-                |location| matches!(location, Location::Code { file } if file.path == path),
+                // Markdown opens as a document.
+                |location| match location {
+                    Location::Code { file } => file.path == path,
+                    Location::Doc { file } => file.path == path,
+                    _ => false,
+                },
+            )
+        },
+    );
+}
+
+/// Opens the Markdown file in a document tab of the caller's workspace.
+pub(in crate::control::server) fn doc(
+    caller: &Caller,
+    path: &str,
+    line: Option<u32>,
+    incoming: socket::Incoming,
+    watches: &mut Watches,
+    cx: &mut App,
+) {
+    let target = match editor_target(path, line) {
+        Ok(target) => target,
+        Err(response) => return incoming.respond(response),
+    };
+    let path = path.to_owned();
+    open_there(
+        caller,
+        incoming,
+        watches,
+        cx,
+        |_| true,
+        move |view, workspace, window, cx| {
+            view.open_doc_view(&target, window, cx);
+            opened(
+                view,
+                workspace,
+                &path,
+                cx,
+                |location| matches!(location, Location::Doc { file } if file.path == path),
             )
         },
     );

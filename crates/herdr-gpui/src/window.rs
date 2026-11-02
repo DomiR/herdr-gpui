@@ -185,10 +185,13 @@ pub(crate) struct HerdrWindow {
     pub(crate) device_themes: device_themes::DeviceThemes,
     /// The Devices overview's activity history and open tabs.
     pub(crate) devices_overview: crate::devices_overview::Overview,
-    /// A worktree or workspace being created on another host.
     pub(crate) dispatch_job: Option<crate::dispatch::Job>,
     /// Dispatched worktrees' setup scripts, waiting for their hosts in order.
     pub(crate) dispatch_setups: std::collections::VecDeque<crate::dispatch::Setup>,
+    /// A worktree or workspace being created on another host.
+    /// Document tabs' editors, by tab.
+    pub(crate) doc_views:
+        std::collections::HashMap<crate::browser::TabId, Entity<crate::doc_view::DocEditor>>,
     /// The editor pane being opened, if any.
     pub(crate) editor_open: Option<crate::editor::Job>,
     /// Editor panes whose Neovim later files open in.

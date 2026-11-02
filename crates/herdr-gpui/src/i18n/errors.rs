@@ -26,6 +26,7 @@ mod credentials;
 mod daemon;
 mod devices;
 mod dispatch;
+mod doc;
 mod editor;
 mod fan_out;
 mod file_drop;

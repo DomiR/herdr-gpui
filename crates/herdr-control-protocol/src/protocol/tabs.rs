@@ -110,6 +110,7 @@ impl TabKind {
             Self::Web => "web",
             Self::File => "file",
             Self::Code => "code",
+            Self::Doc => "doc",
             Self::Review => "review",
             Self::Orchestrator => "orchestrator",
             Self::Devices => "devices",
@@ -131,6 +132,8 @@ pub enum TabKind {
     Web,
     File,
     Code,
+    /// A Markdown document the app edits in place.
+    Doc,
     Review,
     Orchestrator,
     Devices,

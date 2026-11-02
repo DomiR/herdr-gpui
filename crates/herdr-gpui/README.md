@@ -2917,6 +2917,8 @@ next to the agent that is changing the code.
   or the definitions in them.
   Enter opens the result in your editor beside the focused pane;
   Cmd-Enter (Ctrl-Enter elsewhere) opens it in a code tab instead.
+- **Markdown files** open as [documents](#markdown-documents) instead,
+  edited in place.
 - **Code tabs** show a file read-only with syntax colouring and an outline of
   its definitions, beside the workspace's terminals like any other tab. Click
   an outline entry to jump to it, or a line to mark it. `j`/`k` and the arrows
@@ -3057,6 +3059,70 @@ tabs. Splitting opens nothing new and moves no tab.
 - A tab that opens grows into its strip, and one that closes or moves to
   another group shrinks out where it stood. The tabs a strip already has when
   the window first draws it appear at once.
+
+## Markdown Documents
+
+Any `.md` file opens as a document tab: Markdown edited in place and styled as
+you type, made for todo lists that you and several agents keep at the same
+time. Open one from Go to File (Cmd-Enter), a code link, or an agent's
+`herdr-gpui doc open FILE[:LINE]`. The file stays plain Markdown on disk and
+remains the source of truth, so Git, other editors, and agents' own file
+tools keep working on it.
+
+- **Styling.** Headings draw larger, `**bold**`, `*italic*`, `` `code` ``,
+  `~~struck~~` text, links, and quotes are styled. Lines away from the caret
+  hide their Markdown, as a preview would: heading and quote markers,
+  delimiters, and a link's address go, and bullets draw as dots; the
+  caret's lines show the text as written. Cmd-click (Ctrl-click elsewhere)
+  opens a link.
+- **Code, diagrams, and math.** Fenced code is coloured by its language. A
+  `mermaid` fence draws as a diagram and a `$$` block as a formula while
+  the caret is outside it; click one, or move the caret in, to edit its
+  source.
+- **File links.** A path written as inline code (`` `src/main.rs` ``, with
+  `:LINE` if you like) becomes a link when the file exists beside the
+  document or in its checkout; Cmd-click opens it.
+- **Comments.** Cmd-Shift-M comments on the selection or the caret's line.
+  The card stays under its line while others edit; **Send to Agent** (or
+  **Send N Comments** in the bar) gives them to the agent that last changed
+  the document through `herdr-gpui doc`, as page notes go, or copies them
+  when no agent did.
+- **Todos.** `- [ ]` and `- [x]` draw as checkboxes; click one, or press
+  Cmd-Enter (Ctrl-Enter) on the line, to check it. Cmd-Enter also turns a
+  list item or a line of text into a task. Enter continues a list (a task
+  continues as an unchecked task, a numbered item counts on), and Enter on
+  an empty item ends the list. Tab and Shift-Tab indent and outdent the
+  selected items with their sub-items, Alt-Up and Alt-Down move an item with
+  its sub-items past its sibling, and Backspace right after a marker removes
+  it. Each heading shows how many tasks under it are done.
+- **Folding.** A heading folds its section, a list item its sub-items, and a
+  code block its body: click the chevron beside it, or press Cmd-Alt-[ and
+  Cmd-Alt-] to fold and unfold at the caret, and Cmd-Alt-Shift-[ and ] for
+  every heading (Ctrl instead of Cmd elsewhere). A folded line shows how
+  many lines it hides. Folded sections are saved with the tab.
+  **Hide Done** (Cmd-Shift-H) hides checked tasks with their sub-items.
+- **Saving.** Typing is written to the file after a short pause, through a
+  temporary file and a rename; Cmd-S writes at once. Undo (Cmd-Z) and redo
+  (Cmd-Shift-Z) cover only your own edits, never an agent's.
+- **Other writers.** When an agent or another program changes the file, the
+  change is merged with what you are typing rather than replacing it, and
+  written back; text it added is highlighted for a few seconds. Changes an
+  agent makes through `herdr-gpui doc` name its pane. A file deleted or
+  moved on disk is not recreated behind your back: the tab says so, keeps
+  the text, and Cmd-S writes it again. Files over 2 MiB or not UTF-8 do not
+  open. A file keeps its own line breaks (`\r\n` stays `\r\n`) and
+  byte-order mark.
+
+Several tabs and windows showing the same file share one document. Each
+change, from anyone, takes the next version number, shown in the tab's bar.
+Agents change a document with `herdr-gpui doc` commands that name the version
+they read (see the [command line](../../docs/cli.md#markdown-documents)), so
+an agent that read an older text is told what changed instead of overwriting
+it, and two agents working on different sections (`--section`, a heading's
+anchor slug) never block each other. An agent can also watch a document
+(`herdr-gpui doc watch FILE --todos`) and react to each change as it
+happens. The design and its trade-offs are in
+[docs/markdown-docs-plan.md](../../docs/markdown-docs-plan.md).
 
 ## Browser Tabs
 

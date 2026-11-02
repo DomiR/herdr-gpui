@@ -4,6 +4,9 @@
 mod app;
 mod browser;
 mod chat;
+mod doc;
+#[cfg(test)]
+pub(crate) use doc::message as doc_message;
 mod events;
 mod help;
 mod hosts;
@@ -11,6 +14,7 @@ mod local;
 mod mods;
 mod open;
 mod remote;
+mod retry;
 mod settings;
 mod tabs;
 mod work;
@@ -45,6 +49,8 @@ pub(crate) mod exit {
     pub const TIMEOUT: u8 = 7;
     /// This platform or this version of the app cannot do it.
     pub const UNSUPPORTED: u8 = 8;
+    /// `doc watch`: the watched document was deleted or moved.
+    pub const GONE: u8 = 9;
 }
 
 /// What a command printed, and how it exits.
@@ -58,6 +64,9 @@ pub(crate) struct Output {
     /// Text for standard error besides, such as a remote command's, which
     /// `--json` carries in `json` instead.
     stderr: String,
+    /// Printed already, line by line, as `doc watch` does: only the status
+    /// is left.
+    streamed: bool,
 }
 
 impl Output {
@@ -70,6 +79,7 @@ impl Output {
             status: 0,
             bytes: None,
             stderr: String::new(),
+            streamed: false,
         }
     }
 
@@ -81,6 +91,7 @@ impl Output {
             status: 0,
             bytes: None,
             stderr: String::new(),
+            streamed: false,
         })
     }
 
@@ -92,6 +103,7 @@ impl Output {
             status: 0,
             bytes: Some(bytes),
             stderr: String::new(),
+            streamed: false,
         })
     }
 
@@ -346,6 +358,7 @@ fn for_terminal(text: &str, terminal: bool) -> std::borrow::Cow<'_, str> {
 /// app or the terminal is made safe before it reaches the caller's terminal.
 fn finish(result: crate::Result<Output>, json: bool) -> ExitCode {
     match result {
+        Ok(output) if output.streamed => ExitCode::from(output.status),
         Ok(output) if json => {
             println!("{}", output.json);
             ExitCode::from(output.status)
@@ -463,6 +476,7 @@ pub(crate) fn run(invocation: Invocation) -> ExitCode {
         ControlCommand::Automation(command) => hosts::automation(command, &context),
         ControlCommand::Remote(command) => remote::remote(command, &context),
         ControlCommand::Mod(command) => mods::run(command, &context),
+        ControlCommand::Doc(command) => doc::run(command, &context),
         ControlCommand::Search {
             files,
             query,

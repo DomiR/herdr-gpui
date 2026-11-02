@@ -221,6 +221,11 @@ impl HerdrWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // Markdown opens as a document, edited in place.
+        if crate::doc_view::is_markdown(&target.path) {
+            self.open_doc_view(target, window, cx);
+            return;
+        }
         let Some((scope, workspace)) = self.browser_key() else {
             self.show_flash(Flash::warning(fl!("code-view-no-workspace")), cx);
             return;
