@@ -9,6 +9,7 @@ mod chat;
 mod doc;
 mod exec;
 mod hosts;
+mod link;
 mod mods;
 mod remote;
 mod settings;
@@ -27,6 +28,8 @@ pub use exec::ExecCommand;
 pub use hosts::{
     AutomationCommand, CloudCommand, HostCommand, PortsCommand, PrCommand, SecurityCommand,
 };
+pub use crate::control::LinkTarget;
+pub use link::LinkCommand;
 pub use mods::ModCommand;
 pub use remote::RemoteCommand;
 pub use settings::{
@@ -64,6 +67,7 @@ pub enum ControlCommand {
     Window(WindowCommand),
     Ui(UiCommand),
     Tab(TabCommand),
+    Link(LinkCommand),
     Code(CodeCommand),
     Devices,
     Orchestrator(OrchestratorCommand),
@@ -162,6 +166,7 @@ pub const FAMILIES: &[(&str, &str)] = &[
     ),
     ("ui", "Sidebar, status bar, and terminal font size"),
     ("tab", "List, focus, or close the app's own tabs"),
+    ("link", "Make a Herdr workspace, tab, or agent link"),
     (
         "code",
         "Show a file in a code tab or open it in your editor",
@@ -340,6 +345,7 @@ fn command(family: &'static str, args: &mut Args) -> Result<ControlCommand, CliE
         "window" => ControlCommand::Window(app::window(args)?),
         "ui" => ControlCommand::Ui(app::ui(args)?),
         "tab" => ControlCommand::Tab(tabs::tab(args)?),
+        "link" => ControlCommand::Link(link::link(args)?),
         "code" => ControlCommand::Code(tabs::code(args)?),
         "devices" => {
             tabs::open_only(args)?;

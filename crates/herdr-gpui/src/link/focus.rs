@@ -5,6 +5,8 @@ use crate::navigation::OwnedNavigationTarget;
 use herdr_client::protocol::ClientShellSnapshot;
 use std::collections::HashSet;
 
+pub(crate) mod build;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum What {
     Agent,
@@ -47,7 +49,7 @@ pub(crate) fn resolve(
                 .map(|candidate| (candidate.pane_id.as_str(), candidate.pane_id.clone())),
             focus.id.as_deref(),
             What::Agent,
-            |id| OwnedNavigationTarget::Pane(id),
+            OwnedNavigationTarget::Pane,
         ),
         Some(Below::Tab(tab)) => choose(
             snapshot
@@ -60,7 +62,7 @@ pub(crate) fn resolve(
                 .map(|candidate| (candidate.tab_id.as_str(), candidate.tab_id.clone())),
             focus.id.as_deref(),
             What::Tab,
-            |id| OwnedNavigationTarget::Tab(id),
+            OwnedNavigationTarget::Tab,
         ),
         None => choose(
             workspaces
@@ -68,7 +70,7 @@ pub(crate) fn resolve(
                 .map(|workspace| (workspace.workspace_id.as_str(), workspace.workspace_id.clone())),
             focus.id.as_deref(),
             What::Workspace,
-            |id| OwnedNavigationTarget::Workspace(id),
+            OwnedNavigationTarget::Workspace,
         ),
     }
 }

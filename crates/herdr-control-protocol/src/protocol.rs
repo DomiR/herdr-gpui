@@ -8,6 +8,7 @@ pub mod cloud;
 pub mod doc;
 pub mod events;
 pub mod hosts;
+pub mod link;
 pub mod mods;
 pub mod remote;
 pub mod settings;
@@ -33,7 +34,8 @@ pub enum Placement {
 /// 8: `host` `automation_approve`. 9: `remote`. 10: `settings` `language`.
 /// 11: `mod`. 12: `doc`, and the `doc` tab kind. 13: `doc diff` `wait`.
 /// 14: `doc diff` `section`, `todos`, and `by`.
-pub const PROTOCOL_VERSION: u32 = 14;
+/// 15: `link.make`.
+pub const PROTOCOL_VERSION: u32 = 15;
 
 /// Older apps and clients know only tabs, so a tab is left off the wire.
 fn is_tab(placement: &Placement) -> bool {
@@ -79,6 +81,8 @@ pub enum Request {
     Events(Call<events::EventsOp>),
     #[serde(rename = "link")]
     Link(Call<LinkOp>),
+    #[serde(rename = "link.make")]
+    LinkMake(Call<link::LinkMakeOp>),
     #[serde(rename = "chat")]
     Chat(Call<chat::ChatOp>),
     #[serde(rename = "cloud")]
@@ -285,6 +289,9 @@ pub enum Response {
     },
     Doc {
         reply: doc::Reply,
+    },
+    Link {
+        reply: link::Reply,
     },
     Error {
         code: ErrorCode,

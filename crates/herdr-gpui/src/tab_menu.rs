@@ -4,10 +4,13 @@ use crate::{
     HerdrWindow,
     browser::GroupId,
     controls::Command,
+    link::focus::build::link_for,
     menu::Page,
+    navigation::NavigationTarget,
     notification_mutes::Scope,
     pane_move::{self, Choice, Destination},
     search_input::SearchInput,
+    window::Flash,
 };
 use gpui::{prelude::*, *};
 use herdr_client::{Method, protocol::ClientShellSnapshot};
@@ -106,6 +109,7 @@ enum Action {
     Unmute,
     /// The tab is silent because its workspace is muted: lift that.
     UnmuteWorkspace,
+    CopyLink,
     Close,
 }
 
@@ -118,16 +122,18 @@ impl Action {
             Self::Mute => fl!("tab-menu-mute"),
             Self::Unmute => fl!("tab-menu-unmute"),
             Self::UnmuteWorkspace => fl!("tab-menu-unmute-workspace"),
+            Self::CopyLink => fl!("tab-menu-copy-link"),
             Self::Close => fl!("tab-menu-close"),
         }
     }
 }
 
 /// Herdr's own tab menu, in its order.
-const ACTIONS: [Action; 4] = [
+const ACTIONS: &[Action] = &[
     Action::NewTab,
     Action::Rename,
     Action::MoveToWorkspace,
+    Action::CopyLink,
     Action::Close,
 ];
 
@@ -137,7 +143,8 @@ impl TabMenu {
     /// client's mute row comes before closing, which stays last.
     fn actions(&self) -> Vec<Action> {
         let mut actions: Vec<_> = ACTIONS
-            .into_iter()
+            .iter()
+            .copied()
             .filter(|action| match action {
                 Action::MoveToWorkspace => self.movable && !self.target.panes.is_empty(),
                 _ => true,
@@ -289,6 +296,22 @@ impl HerdrWindow {
                     self.expect_new_tab_in(group);
                 }
                 self.command(Command::Tab, window, cx);
+            }
+            Action::CopyLink => {
+                let Some(snapshot) = self.live.snapshot.as_ref() else {
+                    self.show_flash(Flash::warning(fl!("tab-menu-copy-link-failed")), cx);
+                    return;
+                };
+                let endpoint = self.endpoints[self.selected_endpoint].id.clone();
+                let Some(made) =
+                    link_for(snapshot, NavigationTarget::Tab(target.tab.as_str()), Some(&endpoint))
+                else {
+                    self.show_flash(Flash::warning(fl!("tab-menu-copy-link-failed")), cx);
+                    return;
+                };
+                cx.write_to_clipboard(ClipboardItem::new_string(made.markdown()));
+                self.show_flash(Flash::success(fl!("tab-menu-link-copied")), cx);
+                self.dismiss_menu(window, cx);
             }
             // As the tab's own close button: the close confirmation decides.
             Action::Close => self.open_tab_close(&target.tab, window, cx),

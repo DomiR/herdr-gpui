@@ -5,6 +5,8 @@ use herdr_client::protocol::{
     AgentStatus, ClientShellAgent, ClientShellPane, ClientShellSnapshot, ClientShellTab,
 };
 
+mod build;
+
 fn snapshot() -> ClientShellSnapshot {
     let mut snapshot = crate::sidebar::layout_tests::snapshot(2);
     snapshot.workspaces[0].label = "Notes".into();

@@ -28,6 +28,7 @@ pub(crate) use protocol::cloud as batch;
 pub use protocol::{
     app::{FontSize, Size, Switch},
     events::{Cursor, EventKind},
+    link::LinkTarget,
     settings::Sound,
     tabs::ZoomChange,
     work::Script,

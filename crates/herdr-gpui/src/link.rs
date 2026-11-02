@@ -315,6 +315,10 @@ fn local_path(text: &str) -> Result<PathBuf, Error> {
     Ok(path.to_owned())
 }
 
+pub(crate) fn validated_local_path(text: &str) -> Option<PathBuf> {
+    local_path(text).ok()
+}
+
 #[cfg(windows)]
 fn platform_path(text: &str) -> bool {
     let bytes = text.as_bytes();

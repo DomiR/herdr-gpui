@@ -96,6 +96,7 @@ Herdr UI** entry, which both Windows installers add, runs this command through
 | --- | --- |
 | `tab [list]` | Pages, code, reviews, and Devices tabs with IDs |
 | `tab focus\|close ID` | |
+| `link workspace\|tab\|agent [--pane ID]` | Print a Markdown focus link for the caller's Herdr workspace, tab, or named agent pane |
 | `browser open\|reload\|feedback` | See [browser tabs](../crates/herdr-gpui/README.md#browser-tabs) |
 | `browser list` | Page tabs only |
 | `browser navigate ID URL` | Load another address in a page tab |
@@ -412,19 +413,29 @@ this for jump list entries, notification clicks, and links in other apps.
 | --- | --- |
 | `herdr-gpui://open?path=PATH` | Focus the workspace showing the Git checkout or worktree at `PATH`, or ask in the window before opening one there |
 | `herdr-gpui://device?id=ID` | Show the device `host list` names `ID` |
-| `herdr-gpui://focus?path=PATH&tab=TAB` | Focus the tab named `TAB` in the workspace whose first pane directory is `PATH` |
-| `herdr-gpui://focus?workspace=WORKSPACE&agent=AGENT` | Focus the agent pane named `AGENT` in the workspace named `WORKSPACE` |
+| `herdr-gpui://focus?path=PATH&workspace=WORKSPACE&tab=TAB&agent=AGENT&id=ID&device=DEVICE` | Focus a workspace, tab, or agent pane. The parameters are `path`, `workspace`, `tab`, `agent`, `id`, and `device`; at least one of `path`, `workspace`, or `agent` is required, and `tab` and `agent` are exclusive |
 | `herdr-gpui://notification?tag=TAG` | Open the pane of a notification this app posted |
 
 A link is untrusted input, checked by the command and again by the app: only
 those shapes, each parameter once, bounded lengths, no control characters, and
 an absolute local path without `..` (on Windows a drive path, never a UNC or
 `\\?\` one). A link only ever shows something; it never runs a command. Focus
-link names are matched exactly. Its path is compared as text with the
-workspace's first pane directory as Herdr shows it. An `id` only breaks a tie.
-A gone focus target exits 5 and an ambiguous one exits 2. An unknown device or
-notification also exits 5, as for commands.
+link names are matched exactly. The `device` defaults to this computer's
+Herdr. Its `path` is compared as text with the workspace's first pane
+directory as Herdr shows it, so it can drift if that shell changes directory.
+A renamed tab with a custom label gives the most lasting link. An `id` only
+breaks a tie. A gone focus target exits 5 and an ambiguous one exits 1 as a
+refusal; an unknown device or notification also exits 5, as for commands.
+For example, a Markdown document can contain
+`[server](herdr-gpui://focus?path=%2Fabs%2Fcheckout&tab=server)`; documents
+follow it on cmd-click, or ctrl-click on Windows and Linux.
 The request is `{"method": "link", "caller", "op": {"url"}}`.
+
+`herdr-gpui link workspace|tab|agent [--pane ID]` prints the Markdown link
+for the caller's workspace, tab, or named agent pane. `--pane` overrides
+`HERDR_PANE_ID`; without either, it exits 2. With `--json`, the output is
+`{"url": "...", "label": "...", "markdown": "..."}`. The command uses the
+caller pane's Herdr endpoint and exits 5 when the pane or named agent is gone.
 
 ## The protocol
 
@@ -433,7 +444,7 @@ request is `{"method", "caller", "op"}`, where `caller` carries the pane,
 workspace, daemon socket, and window, and `op` is tagged with `"op"`. Browser
 requests keep their original flat form (`browser.open`, `browser.reload`,
 `browser.feedback`, `notes.send`). `status` reports the protocol version,
-currently 6. Requests and responses are bounded to 256 KiB, a request that
+currently 15. Requests and responses are bounded to 256 KiB, a request that
 waits says for how long (at most 600 seconds), and the app answers at most a
 few requests at a time.
 
