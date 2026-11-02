@@ -96,6 +96,7 @@ impl DocEditor {
             "enter" if shift => self.insert("\n", cx),
             "enter" => self.enter(cx),
             "tab" => self.indent(shift, cx),
+            "escape" if self.has_cursors() => self.clear_cursors(),
             "escape" if !self.selection.is_empty() => {
                 let head = self.selection.head;
                 self.select(Selection::caret(head), cx);
@@ -195,7 +196,7 @@ impl DocEditor {
         out
     }
 
-    fn previous_boundary(&self, cx: &Context<Self>) -> usize {
+    pub(super) fn previous_boundary(&self, cx: &Context<Self>) -> usize {
         let head = self.selection.head;
         let line = &self.prepared.lines[self.caret_line()];
         if head == line.range.start {
@@ -211,7 +212,7 @@ impl DocEditor {
             .unwrap_or(line.range.start)
     }
 
-    fn next_boundary(&self, cx: &Context<Self>) -> usize {
+    pub(super) fn next_boundary(&self, cx: &Context<Self>) -> usize {
         let head = self.selection.head;
         let line = &self.prepared.lines[self.caret_line()];
         if head >= line.range.end {
@@ -300,6 +301,10 @@ impl DocEditor {
     }
 
     fn delete(&mut self, backward: bool, cx: &mut Context<Self>) {
+        if self.has_cursors() {
+            self.delete_all(backward, cx);
+            return;
+        }
         if self.selection.is_empty() {
             let head = self.selection.head;
             let line = self.prepared.lines[self.caret_line()].clone();

@@ -10,6 +10,7 @@
 mod blocks;
 mod buffer;
 mod comments;
+mod cursors;
 mod editor;
 mod error;
 mod input;
@@ -19,6 +20,7 @@ mod links;
 mod render;
 
 pub(crate) use buffer::{DocBuffer, Docs, State};
+pub(crate) use cursors::key_bindings;
 pub(crate) use editor::{DocEditor, FoldsChanged};
 pub use error::Error;
 pub(crate) use layout::Look;

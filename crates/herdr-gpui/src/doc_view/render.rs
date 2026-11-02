@@ -4,6 +4,7 @@
 
 use super::{
     buffer::State,
+    cursors::{self, RowParts},
     editor::DocEditor,
     layout::{self, Row},
 };
@@ -24,6 +25,7 @@ struct Overlay {
     /// The selection runs on past this line's end.
     selects_break: bool,
     caret: Option<usize>,
+    extras: Vec<RowParts>,
     highlights: Vec<(Range<usize>, f32)>,
     checkbox: Option<(Range<usize>, bool)>,
     marked: Option<Range<usize>>,
@@ -89,6 +91,13 @@ fn paint_overlay(overlay: &Overlay, window: &mut Window) {
             window.paint_quad(fill(span, colors.selection));
         }
     }
+    for extra in &overlay.extras {
+        if let Some(range) = &extra.selection {
+            for span in spans(layout, range.clone(), extra.selects_break) {
+                window.paint_quad(fill(span, colors.selection));
+            }
+        }
+    }
     if let Some((range, done)) = &overlay.checkbox {
         let bounds = layout.bounds();
         let height = layout.line_height();
@@ -137,6 +146,19 @@ fn paint_overlay(overlay: &Overlay, window: &mut Window) {
         }
     }
     if let Some(caret) = overlay.caret {
+        let height = layout.line_height();
+        let origin = layout
+            .position_for_index(caret)
+            .unwrap_or(layout.bounds().origin);
+        window.paint_quad(fill(
+            Bounds::new(origin, size(px(1.5), height)),
+            colors.caret,
+        ));
+    }
+    for extra in &overlay.extras {
+        let Some(caret) = extra.caret else {
+            continue;
+        };
         let height = layout.line_height();
         let origin = layout
             .position_for_index(caret)
@@ -204,16 +226,14 @@ impl DocEditor {
                 || (start == end && range.start <= line.range.end && range.end > line.range.end))
                 .then(|| start - line.range.start..end - line.range.start)
         };
-        let selects_break = !self.selection.is_empty()
-            && selection.start <= line.range.end
-            && selection.end > line.range.end;
-        let selected = (!self.selection.is_empty())
-            .then(|| local(&selection))
-            .flatten()
-            .or_else(|| selects_break.then(|| line.range.len()..line.range.len()))
-            .map(&shown);
-        let caret = (focused && (line.range.start..=line.range.end).contains(&self.selection.head))
-            .then(|| map.to_display(self.selection.head - line.range.start));
+        let main_parts = cursors::row_parts(self.selection, line.range.clone(), &map, focused);
+        let extras: Vec<RowParts> = self
+            .cursors
+            .extra
+            .iter()
+            .copied()
+            .map(|selection| cursors::row_parts(selection, line.range.clone(), &map, focused))
+            .collect();
         let row_highlights: Vec<(Range<usize>, f32)> = highlights
             .iter()
             .filter_map(|(range, opacity, _)| local(range).map(|r| (shown(r), *opacity)))
@@ -235,9 +255,10 @@ impl DocEditor {
             .insert(line_ix, (text_layout.clone(), map.clone()));
         let overlay = Overlay {
             layout: text_layout.clone(),
-            selection: selected,
-            selects_break,
-            caret,
+            selection: main_parts.selection,
+            selects_break: main_parts.selects_break,
+            caret: main_parts.caret,
+            extras,
             highlights: row_highlights,
             checkbox: row.checkbox.clone(),
             marked: self.marked.as_ref().and_then(local).map(&shown),
@@ -460,6 +481,13 @@ impl DocEditor {
                 layout::Target::Url(_) => {}
             }
         }
+        if primary && event.click_count == 1 && !event.modifiers.shift {
+            self.add_cursor(super::editor::Selection::caret(offset), cx);
+            self.selecting = false;
+            cx.notify();
+            return;
+        }
+        self.clear_cursors();
         self.marked = None;
         let text = self.text(cx);
         let selection = match event.click_count {
@@ -637,6 +665,9 @@ impl Render for DocEditor {
             }))
             .on_action(cx.listener(|this, _: &actions::SelectAll, window, cx| {
                 this.key_down(&actions::edit_key("a"), window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &cursors::AddNextOccurrence, _, cx| {
+                this.add_next_occurrence(cx);
             }))
             .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
                 if !this.selecting || event.pressed_button != Some(MouseButton::Left) {

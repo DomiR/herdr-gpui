@@ -168,6 +168,8 @@ The user asked for these after the first three phases, from comet
    shared buffer's polling and writes, with headless GPUI tests.
 3. The `doc` command family, the agent highlights naming the pane, and the
    docs (`docs/cli.md`, the app README, the managed skill).
+4. Multi cursor editing with Cmd-D or Ctrl-D, primary modifier clicks,
+   shared typing and deletion, and CRDT anchored extra cursors.
 
 ## Not done yet
 
