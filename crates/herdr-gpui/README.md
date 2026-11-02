@@ -2946,7 +2946,10 @@ remains the source of truth, so Git, other editors, and agents' own file
 tools keep working on it.
 
 The optional PlainTasks document theme gives Markdown tabs a yellow notepad
-appearance with PlainTasks task markers.
+appearance with PlainTasks task markers. Choose it under
+Settings > Appearance > Document theme, set `[documents] theme = "plaintasks"`,
+or run
+`herdr-gpui config set documents.theme plaintasks`.
 
 - **Styling.** Headings draw larger, `**bold**`, `*italic*`, `` `code` ``,
   `~~struck~~` text, links, and quotes are styled. Lines away from the caret
