@@ -37,6 +37,8 @@ use std::path::Path;
 /// What an editor asks its window to do.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Request {
+    /// Focus a workspace, tab, or agent pane from a Herdr link.
+    Link(String),
     /// Open a file a link names: a document, or a code tab.
     Open(EditorTarget),
     /// Send notes to the agent in a pane, or copy them without one.
@@ -226,6 +228,7 @@ impl HerdrWindow {
             let requests = editor.update(cx, |editor, _| editor.take_requests());
             for request in requests {
                 match request {
+                    Request::Link(url) => self.follow_from_window(&url, window, cx),
                     Request::Open(target) => self.open_code_view(&target, window, cx),
                     Request::Notes { pane, text } => {
                         let target = pane.map(|pane_id| crate::browser::FeedbackKey {

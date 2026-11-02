@@ -4,7 +4,10 @@
 //! come from any web page and opening one starts a shell in that directory.
 // i18n: migrated
 
-use super::Link;
+use super::{
+    focus::{self, What},
+    Link,
+};
 use crate::{
     HerdrWindow, NavigationTarget,
     control::{ErrorCode, Response},
@@ -53,8 +56,10 @@ impl Global for Pending {}
 /// as all its output is; the window shows it in its own language.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Refusal {
+    Ambiguous(What),
     Closed,
     DialogOpen,
+    Gone(What),
     NoDevice(String),
     NotConnected,
     NotificationGone,
@@ -63,8 +68,10 @@ pub(crate) enum Refusal {
 impl Refusal {
     fn code(&self) -> ErrorCode {
         match self {
+            Self::Ambiguous(_) => ErrorCode::InvalidRequest,
             Self::Closed => ErrorCode::NoWindow,
             Self::DialogOpen => ErrorCode::WindowBusy,
+            Self::Gone(_) => ErrorCode::NotFound,
             Self::NoDevice(_) | Self::NotificationGone => ErrorCode::NotFound,
             Self::NotConnected => ErrorCode::Busy,
         }
@@ -73,8 +80,10 @@ impl Refusal {
     /// The message saying why, with its arguments.
     fn message(&self) -> (&'static str, Vec<(&'static str, FluentValue<'static>)>) {
         match self {
+            Self::Ambiguous(what) => (what.ambiguous_message(), Vec::new()),
             Self::Closed => ("link-refused-closed", Vec::new()),
             Self::DialogOpen => ("link-refused-dialog-open", Vec::new()),
+            Self::Gone(what) => (what.gone_message(), Vec::new()),
             Self::NoDevice(id) => (
                 "link-refused-no-device",
                 vec![("device", FluentValue::from(id.clone()))],
@@ -93,6 +102,24 @@ impl Refusal {
     pub(crate) fn shown(&self) -> String {
         let (id, args) = self.message();
         crate::i18n::message(id, &args)
+    }
+}
+
+impl What {
+    fn ambiguous_message(self) -> &'static str {
+        match self {
+            Self::Agent => "link-refused-ambiguous-agent",
+            Self::Tab => "link-refused-ambiguous-tab",
+            Self::Workspace => "link-refused-ambiguous-workspace",
+        }
+    }
+
+    fn gone_message(self) -> &'static str {
+        match self {
+            Self::Agent => "link-refused-gone-agent",
+            Self::Tab => "link-refused-gone-tab",
+            Self::Workspace => "link-refused-gone-workspace",
+        }
     }
 }
 
@@ -125,7 +152,8 @@ pub(crate) fn poll(view: &HerdrWindow, window: &Window, cx: &mut Context<HerdrWi
         Some(Link::Device { id }) => {
             view.catalog.loaded() || view.endpoints.iter().any(|endpoint| &endpoint.id == id)
         }
-        Some(Link::Open { .. }) => local_snapshot(view).is_some(),
+        Some(Link::Open { .. }) => snapshot(view, LOCAL).is_some(),
+        Some(Link::Focus(focus)) => focus_ready(view, focus),
     };
     let Some(handle) = window.window_handle().downcast::<HerdrWindow>() else {
         return;
@@ -183,7 +211,7 @@ fn follow_link(
             })
             .unwrap_or(Err(Refusal::Closed)),
         Link::Open { path } => {
-            let Ok(snapshot) = handle.read_with(cx, |view, _| local_snapshot(view)) else {
+            let Ok(snapshot) = handle.read_with(cx, |view, _| snapshot(view, LOCAL)) else {
                 return Err(Refusal::Closed);
             };
             let Some(snapshot) = snapshot else {
@@ -203,18 +231,38 @@ fn follow_link(
             .detach();
             Ok(Response::done(message))
         }
+        Link::Focus(focus) => handle
+            .update(cx, |view, window, cx| {
+                if view.menu.page.is_some() {
+                    return Err(Refusal::DialogOpen);
+                }
+                let endpoint = focus.device.as_deref().unwrap_or(LOCAL);
+                let snapshot = endpoint_snapshot(view, endpoint)?;
+                let target = focus::resolve(&focus, &snapshot).map_err(|miss| match miss {
+                    focus::Miss::Gone(what) => Refusal::Gone(what),
+                    focus::Miss::Ambiguous(what) => Refusal::Ambiguous(what),
+                })?;
+                if !view.navigate_endpoint(endpoint, target.as_deref(), cx) {
+                    return Err(Refusal::DialogOpen);
+                }
+                clear_complaint(view);
+                bring_forward(window, cx);
+                // i18n: data
+                Ok(Response::done("Showing the linked Herdr target"))
+            })
+            .unwrap_or(Err(Refusal::Closed)),
     }
 }
 
 /// Whether the window is connected to this computer's Herdr, so it can open
 /// a checkout.
 pub(crate) fn shows_local(view: &HerdrWindow) -> bool {
-    local_snapshot(view).is_some()
+    snapshot(view, LOCAL).is_some()
 }
 
 /// The snapshot of this computer's Herdr, when the window is connected to it.
-fn local_snapshot(view: &HerdrWindow) -> Option<Arc<ClientShellSnapshot>> {
-    let index = view.endpoints.iter().position(|e| e.id == LOCAL)?;
+fn snapshot(view: &HerdrWindow, endpoint: &str) -> Option<Arc<ClientShellSnapshot>> {
+    let index = view.endpoints.iter().position(|e| e.id == endpoint)?;
     let live = if index == view.selected_endpoint {
         &view.live
     } else {
@@ -224,6 +272,25 @@ fn local_snapshot(view: &HerdrWindow) -> Option<Arc<ClientShellSnapshot>> {
         .is_connected()
         .then(|| live.snapshot.clone())
         .flatten()
+}
+
+fn endpoint_snapshot(
+    view: &HerdrWindow,
+    endpoint: &str,
+) -> Result<Arc<ClientShellSnapshot>, Refusal> {
+    if !view.endpoints.iter().any(|candidate| candidate.id == endpoint) {
+        return Err(Refusal::NoDevice(endpoint.to_owned()));
+    }
+    snapshot(view, endpoint).ok_or(Refusal::NotConnected)
+}
+
+fn focus_ready(view: &HerdrWindow, focus: &super::Focus) -> bool {
+    let endpoint = focus.device.as_deref().unwrap_or(LOCAL);
+    if view.endpoints.iter().any(|candidate| candidate.id == endpoint) {
+        snapshot(view, endpoint).is_some()
+    } else {
+        view.catalog.loaded()
+    }
 }
 
 fn bring_forward(window: &mut Window, cx: &mut App) {
@@ -277,6 +344,42 @@ fn canonical(path: &Path) -> Result<PathBuf, Error> {
 }
 
 impl HerdrWindow {
+    /// Follows a link requested by a Markdown document in this window.
+    pub(crate) fn follow_from_window(
+        &mut self,
+        url: &str,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) {
+        let link = match Link::parse(url) {
+            Ok(link) => link,
+            Err(_) => {
+                complain(self, fl!("link-open-failed", reason = fl!("link-invalid")), cx);
+                return;
+            }
+        };
+        let Some(handle) = window.window_handle().downcast::<HerdrWindow>() else {
+            complain(
+                self,
+                fl!("link-open-failed", reason = fl!("link-refused-closed")),
+                cx,
+            );
+            return;
+        };
+        cx.defer(move |cx| {
+            let result = follow_link(link, handle, cx);
+            let _ = handle.update(cx, |view, _, cx| {
+                match result {
+                    Ok(_) => clear_complaint(view),
+                    Err(refusal) => {
+                        complain(view, fl!("link-open-failed", reason = refusal.shown()), cx)
+                    }
+                }
+                cx.notify();
+            });
+        });
+    }
+
     fn show_checkout(
         &mut self,
         found: Result<Checkout, Error>,
@@ -284,12 +387,7 @@ impl HerdrWindow {
         cx: &mut Context<Self>,
     ) {
         bring_forward(window, cx);
-        // An earlier link's complaint no longer applies.
-        if let Some(complaint) = self.link_complaint.take()
-            && self.local_error.as_ref() == Some(&complaint)
-        {
-            self.local_error = None;
-        }
+        clear_complaint(self);
         match found {
             Ok(Checkout {
                 workspace: Some(workspace),
@@ -308,6 +406,14 @@ impl HerdrWindow {
             }
         }
         cx.notify();
+    }
+}
+
+fn clear_complaint(view: &mut HerdrWindow) {
+    if let Some(complaint) = view.link_complaint.take()
+        && view.local_error.as_ref() == Some(&complaint)
+    {
+        view.local_error = None;
     }
 }
 

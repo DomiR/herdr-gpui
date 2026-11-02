@@ -412,13 +412,18 @@ this for jump list entries, notification clicks, and links in other apps.
 | --- | --- |
 | `herdr-gpui://open?path=PATH` | Focus the workspace showing the Git checkout or worktree at `PATH`, or ask in the window before opening one there |
 | `herdr-gpui://device?id=ID` | Show the device `host list` names `ID` |
+| `herdr-gpui://focus?path=PATH&tab=TAB` | Focus the tab named `TAB` in the workspace whose first pane directory is `PATH` |
+| `herdr-gpui://focus?workspace=WORKSPACE&agent=AGENT` | Focus the agent pane named `AGENT` in the workspace named `WORKSPACE` |
 | `herdr-gpui://notification?tag=TAG` | Open the pane of a notification this app posted |
 
 A link is untrusted input, checked by the command and again by the app: only
 those shapes, each parameter once, bounded lengths, no control characters, and
 an absolute local path without `..` (on Windows a drive path, never a UNC or
-`\\?\` one). A link only ever shows something; it never runs a command. A
-refused link exits 2, an unknown device or notification 5, as for commands.
+`\\?\` one). A link only ever shows something; it never runs a command. Focus
+link names are matched exactly. Its path is compared as text with the
+workspace's first pane directory as Herdr shows it. An `id` only breaks a tie.
+A gone focus target exits 5 and an ambiguous one exits 2. An unknown device or
+notification also exits 5, as for commands.
 The request is `{"method": "link", "caller", "op": {"url"}}`.
 
 ## The protocol

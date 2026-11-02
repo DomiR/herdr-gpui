@@ -440,6 +440,12 @@ impl DocEditor {
         {
             match target {
                 layout::Target::Url(url)
+                    if crate::link::is_link(std::ffi::OsStr::new(url)) =>
+                {
+                    self.request(super::Request::Link(url.clone()), cx);
+                    return;
+                }
+                layout::Target::Url(url)
                     if ["http://", "https://", "mailto:"]
                         .iter()
                         .any(|scheme| url.starts_with(scheme)) =>
