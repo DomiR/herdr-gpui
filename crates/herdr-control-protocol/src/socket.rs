@@ -1,15 +1,15 @@
 //! The channel behind `herdr-gpui <command>`: a Unix socket, or a named
-//! pipe on Windows. A worker accepts connections and serves each on a
-//! thread of its own, up to a bound: it reads one bounded request, hands it
-//! to the UI through a bounded queue, and writes back the answer the UI
-//! gives it. A feedback request may wait minutes for the user, so
-//! connections cannot share one thread.
+//! pipe on Windows. A worker accepts connections and serves each on a thread
+//! of its own. The short bound covers every connection while it is read, and
+//! requests that wait on purpose move to a larger bound after decoding.
+mod admission;
 #[cfg(windows)]
 mod pipe;
 #[cfg(unix)]
 mod unix;
 
 use crate::protocol::{ErrorCode, FeedbackRequest, MAX_MESSAGE, Request, Response};
+use admission::{Permit, Pool};
 #[cfg(windows)]
 use pipe as transport;
 use std::{
@@ -17,7 +17,6 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
-        atomic::{AtomicUsize, Ordering},
         mpsc::{self, Receiver, SyncSender, TrySendError},
     },
     thread,
@@ -30,11 +29,15 @@ use unix as transport;
 const IO_TIMEOUT: Duration = Duration::from_secs(2);
 /// How long a caller waits for the UI, which may be busy or have no window.
 const ANSWER_TIMEOUT: Duration = Duration::from_secs(10);
-/// Requests waiting for the UI. Each connection holds one, so this bounds
-/// how many callers are answered `busy` rather than queued.
-const QUEUE: usize = 4;
-/// Connections served at once, waiting ones included.
-const CONNECTIONS: usize = 8;
+/// Ordinary requests and every connection while its request is read.
+const SHORT_CONNECTIONS: usize = 8;
+/// Requests that wait on purpose, keeping short requests available.
+const WAIT_CONNECTIONS: usize = 32;
+/// Connections served at once: the most requests the UI can be asked to hold.
+pub const MAX_CONNECTIONS: usize = SHORT_CONNECTIONS + WAIT_CONNECTIONS;
+/// Each admitted connection holds at most one entry, so a full queue never
+/// refuses an admitted request.
+const QUEUE: usize = MAX_CONNECTIONS;
 
 /// Where this user's app listens, given its state directory.
 pub fn address(state: &Path) -> crate::Result<PathBuf> {
@@ -112,7 +115,8 @@ impl Server {
         thread::Builder::new()
             .name("control-socket".into())
             .spawn(move || {
-                let open = Arc::new(AtomicUsize::new(0));
+                let short = Pool::new(SHORT_CONNECTIONS);
+                let waits = Pool::new(WAIT_CONNECTIONS);
                 loop {
                     let mut stream = match listener.accept() {
                         Ok(stream) => stream,
@@ -128,21 +132,18 @@ impl Server {
                         tracing::debug!(%error, "Control connection setup failed");
                         continue;
                     }
-                    if open.fetch_add(1, Ordering::AcqRel) >= CONNECTIONS {
-                        open.fetch_sub(1, Ordering::AcqRel);
+                    let Some(permit) = short.try_acquire() else {
                         refuse(&stream);
                         continue;
-                    }
-                    let (queue, done) = (sender.clone(), open.clone());
+                    };
+                    let (queue, waits) = (sender.clone(), waits.clone());
                     let spawned = thread::Builder::new()
                         .name("control-connection".into())
                         .spawn(move || {
-                            serve(&stream, &queue);
-                            done.fetch_sub(1, Ordering::AcqRel);
+                            serve(&stream, &queue, permit, &waits);
                         });
                     if let Err(error) = spawned {
                         tracing::debug!(%error, "Control connection thread failed");
-                        open.fetch_sub(1, Ordering::AcqRel);
                     }
                 }
             })?;
@@ -241,20 +242,38 @@ fn refuse(stream: &Connection) {
 }
 
 /// Serves one request on a connection whose timeouts are already set.
-fn serve(stream: &Connection, queue: &SyncSender<Event>) {
+fn serve(stream: &Connection, queue: &SyncSender<Event>, permit: Permit, waits: &Pool) {
     let request = read_line(stream).and_then(|line| Ok(serde_json::from_slice::<Request>(&line)?));
-    let (request, response) = match request {
+    let (request, response, _permit) = match request {
         Ok(request) => {
             if let Err(error) = stream.watch(true) {
                 tracing::debug!(%error, "Control disconnect monitoring failed");
                 return;
             }
+            // Held until the answer is written. A long wait trades its short
+            // permit for a wait permit, taken before the short one is dropped.
+            let permit = if request.long_wait() {
+                let Some(wait) = waits.try_acquire() else {
+                    finish_response(
+                        stream,
+                        queue,
+                        Some(request),
+                        Response::error(ErrorCode::Busy, "Too many requests are waiting"),
+                    );
+                    return;
+                };
+                drop(permit);
+                wait
+            } else {
+                permit
+            };
             let response = answer(request.clone(), queue, stream);
-            (Some(request), response)
+            (Some(request), response, permit)
         }
         Err(error) => (
             None,
             Response::error(ErrorCode::InvalidRequest, error.to_string()),
+            permit,
         ),
     };
     finish_response(stream, queue, request, response);

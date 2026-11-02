@@ -43,6 +43,7 @@ pub(super) fn serve(
     let buffer = Docs::open(&path, cx);
     let display = op.path().to_owned();
     let mut stage = Stage::Loading;
+    let mut idle = None;
     let expired = match &op {
         // Waited for a change that did not come.
         DocOp::Diff { since, wait, .. } if *wait > 0 => Response::Doc {
@@ -63,7 +64,7 @@ pub(super) fn serve(
     watches.add(
         incoming,
         Duration::from_secs(op.wait_seconds()),
-        move |cx| step(&mut stage, &op, &buffer, &author, &display, cx),
+        move |cx| step(&mut stage, &op, &buffer, &author, &display, &mut idle, cx),
         expired,
         cx,
     );
@@ -86,6 +87,7 @@ fn step(
     buffer: &Entity<DocBuffer>,
     author: &Author,
     path: &str,
+    idle: &mut Option<(Version, u64)>,
     cx: &mut App,
 ) -> Option<Response> {
     match stage {
@@ -102,9 +104,25 @@ fn step(
             if matches!(op, DocOp::Diff { .. }) && buffer.read(cx).missing() {
                 return Some(gone(path));
             }
+            // Generation is in the stamp: compaction can forget history without
+            // moving the version, and a watch whose `since` was forgotten must
+            // then be answered.
+            let stamp = match op {
+                DocOp::Diff { wait, .. } if *wait > 0 => buffer
+                    .read(cx)
+                    .document()
+                    .map(|doc| (doc.version(), doc.generation())),
+                _ => None,
+            };
+            if stamp.is_some() && *idle == stamp {
+                return None;
+            }
             match apply(op, buffer, author, path, cx) {
                 Ok(Applied::Answer(response)) => Some(response),
-                Ok(Applied::Waiting) => None,
+                Ok(Applied::Waiting) => {
+                    *idle = stamp;
+                    None
+                }
                 Ok(Applied::Wrote { version, reply }) => {
                     *stage = Stage::Writing { version, reply };
                     None

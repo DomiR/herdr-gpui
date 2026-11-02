@@ -3,6 +3,7 @@ use super::*;
 use crate::protocol::{BrowserOpen, Caller, FeedbackRequest, MAX_WAIT_SECONDS, OpenedIn, Page};
 use test_support::{Address, address};
 
+mod admission;
 mod cancellation;
 mod framing;
 #[cfg(windows)]

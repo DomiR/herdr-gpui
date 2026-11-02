@@ -32,9 +32,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-/// Requests parked at once, besides feedback waiters; the socket's own
-/// connection bound keeps the real number lower.
-const MAX_WATCHES: usize = 16;
+/// Every admitted connection can park at most one request, so a full list
+/// only refuses past the socket's own bounds.
+const MAX_WATCHES: usize = socket::MAX_CONNECTIONS;
 
 /// Looks for a parked request's answer; `None` keeps it waiting.
 type Check = Box<dyn FnMut(&mut App) -> Option<Response>>;
@@ -83,7 +83,8 @@ impl Watches {
 
     /// Whether another request can park. Checked before a request that may
     /// park acts at all, so a full list never refuses after a side effect.
-    fn full(&self) -> bool {
+    fn full(&mut self) -> bool {
+        self.0.retain(|watch| watch.incoming.is_live());
         self.0.len() >= MAX_WATCHES
     }
 

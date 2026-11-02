@@ -12,9 +12,11 @@ fn feedback_request() -> Request {
 fn disconnected_receivers_cancel_without_waiting_for_the_deadline() {
     let (_address, server, client) = pair();
     let (sender, events) = mpsc::sync_channel(QUEUE);
+    let waits = Pool::new(WAIT_CONNECTIONS);
+    let permit = Pool::new(SHORT_CONNECTIONS).try_acquire().unwrap();
     let (finished, done) = mpsc::channel();
     let worker = thread::spawn(move || {
-        serve(&server, &sender);
+        serve(&server, &sender, permit, &waits);
         finished.send(()).unwrap();
     });
     write_line(&client, &feedback_request()).unwrap();

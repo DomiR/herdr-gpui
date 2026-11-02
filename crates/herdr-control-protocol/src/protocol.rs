@@ -124,6 +124,35 @@ impl Request {
         };
         wait.min(MAX_WAIT_SECONDS)
     }
+
+    /// Whether the caller chose to wait (for the user, an event, a change, a
+    /// cloud machine), so the socket serves it from its own bound.
+    pub fn long_wait(&self) -> bool {
+        match self {
+            Self::Feedback(request) => request.wait_seconds > 0,
+            Self::Events(call) => call.op.wait_seconds() > 0,
+            Self::Doc(call) => {
+                matches!(&call.op, doc::DocOp::Diff { wait, .. } if *wait > 0)
+            }
+            Self::Cloud(call) => call.op.wait_seconds() > 0,
+            Self::Open(_)
+            | Self::Reload(_)
+            | Self::Notes(_)
+            | Self::Status(_)
+            | Self::App(_)
+            | Self::Window(_)
+            | Self::Ui(_)
+            | Self::Command(_)
+            | Self::Tab(_)
+            | Self::Work(_)
+            | Self::Host(_)
+            | Self::Settings(_)
+            | Self::Link(_)
+            | Self::Chat(_)
+            | Self::Remote(_)
+            | Self::Mod(_) => false,
+        }
+    }
 }
 
 /// What a tab shows: a web address, or a local file by absolute path, which
