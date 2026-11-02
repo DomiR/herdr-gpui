@@ -329,8 +329,42 @@ fn finish_response(
 pub fn call(path: &Path, request: &Request) -> crate::Result<Response> {
     // The server waits this long for the UI before answering.
     let stream = transport::connect(path, IO_TIMEOUT, answer_timeout(request) + IO_TIMEOUT)?;
-    write_line(&stream, request)?;
-    let line = read_line(&stream)?;
+    exchange(&stream, &stream, request)
+}
+
+fn exchange(
+    mut writer: impl Write,
+    reader: impl Read,
+    request: &Request,
+) -> crate::Result<Response> {
+    if let Err(error) = write_line(&mut writer, request) {
+        let recoverable = match &error {
+            crate::Error::Io(error) => matches!(
+                error.kind(),
+                std::io::ErrorKind::BrokenPipe
+                    | std::io::ErrorKind::ConnectionReset
+                    | std::io::ErrorKind::ConnectionAborted
+            ),
+            _ => false,
+        };
+        if !recoverable {
+            return Err(error);
+        }
+        // The server answers before reading only to refuse, and the peer's
+        // buffered line stays readable after it closes.
+        if let Ok(line) = read_line(reader)
+            && let Ok(
+                response @ Response::Error {
+                    code: ErrorCode::Busy,
+                    ..
+                },
+            ) = serde_json::from_slice::<Response>(&line)
+        {
+            return Ok(response);
+        }
+        return Err(error);
+    }
+    let line = read_line(reader)?;
     if line.is_empty() {
         return Err(crate::Error::NoResponse);
     }

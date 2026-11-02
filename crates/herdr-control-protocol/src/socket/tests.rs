@@ -8,6 +8,7 @@ mod cancellation;
 mod framing;
 #[cfg(windows)]
 mod pipe;
+mod refusal;
 #[cfg(unix)]
 mod unix;
 

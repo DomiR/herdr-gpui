@@ -28,3 +28,36 @@ fn a_stale_socket_is_replaced() {
     }
     Server::bind(&address.path).unwrap();
 }
+
+#[test]
+fn a_refused_caller_reads_busy_rather_than_a_broken_pipe() {
+    let address = address();
+    let server = Server::bind(&address.path).unwrap();
+    let mut callers = Vec::new();
+    let mut held = Vec::new();
+
+    for _ in 0..SHORT_CONNECTIONS {
+        let path = address.path.clone();
+        callers.push(thread::spawn(move || {
+            call(&path, &Request::Status(Caller::default()))
+        }));
+        held.push(server.next().expect("the status request reaches the UI"));
+    }
+
+    for _ in 0..20 {
+        assert!(matches!(
+            call(&address.path, &Request::Status(Caller::default())),
+            Ok(Response::Error {
+                code: ErrorCode::Busy,
+                ..
+            })
+        ));
+    }
+
+    for incoming in held {
+        incoming.respond(Response::Reloaded { tabs: 0 });
+    }
+    for caller in callers {
+        caller.join().unwrap().unwrap();
+    }
+}
