@@ -293,7 +293,7 @@ impl HerdrWindow {
     ) {
         let local = super::view::store(cx)
             .and_then(|store| store.get(id))
-            .is_some_and(|tab| matches!(tab.location, Some(super::Location::Local { .. })));
+            .is_some_and(|tab| matches!(tab.location, Some(Location::Local { .. })));
         if !local || from != PostedFrom::Preview {
             tracing::debug!("Ignored a result from a page that is not local");
             return;
