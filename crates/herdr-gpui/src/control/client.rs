@@ -14,6 +14,7 @@ mod local;
 mod mods;
 mod open;
 mod remote;
+mod retry;
 mod settings;
 mod tabs;
 mod work;

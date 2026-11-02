@@ -3,6 +3,8 @@ use super::*;
 use crate::control::protocol::doc::TodoChangeKind;
 use std::{cell::RefCell, collections::VecDeque, path::PathBuf};
 
+mod busy;
+
 /// A fake app: answers each request with the next scripted answer, and
 /// remembers what was asked. When the script runs out, the document goes.
 struct App {

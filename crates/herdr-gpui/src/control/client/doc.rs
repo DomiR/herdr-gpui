@@ -1,19 +1,20 @@
 //! `doc`: read and change Markdown documents through the app. Replies are
 //! one message an agent can act on: what happened, the version now, and
 //! what changed since the version it named.
+use super::retry::{Backoff, is_busy};
 use super::{Context, Output, unexpected};
 use crate::{
     cli::control::{Change, DocCommand, FileAt, Text},
     control::{
         ErrorCode,
         protocol::{
-            Request, Response,
+            MAX_WAIT_SECONDS, Request, Response,
             doc::{DocOp, MAX_TEXT, Reply},
             tabs::Reply as TabReply,
         },
     },
 };
-use std::{io::Read as _, path::Path};
+use std::{io::Read as _, path::Path, time::Duration};
 
 pub(super) fn run(command: DocCommand, context: &Context) -> crate::Result<Output> {
     let op = match command {
@@ -114,7 +115,32 @@ pub(super) fn run(command: DocCommand, context: &Context) -> crate::Result<Outpu
             done,
         },
     };
-    match context.call(Request::Doc, op)? {
+    let response = match op {
+        DocOp::Diff {
+            path,
+            since,
+            wait,
+            section,
+            todos,
+        } => diff_waiting(
+            wait,
+            &mut |wait| {
+                context.call(
+                    Request::Doc,
+                    DocOp::Diff {
+                        path: path.clone(),
+                        since,
+                        wait,
+                        section: section.clone(),
+                        todos,
+                    },
+                )
+            },
+            &mut std::thread::sleep,
+        )?,
+        op => context.call(Request::Doc, op)?,
+    };
+    match response {
         Response::Doc { reply } => {
             let (text, failed) = message(&reply);
             let unchanged =
@@ -130,6 +156,31 @@ pub(super) fn run(command: DocCommand, context: &Context) -> crate::Result<Outpu
             })
         }
         response => Err(unexpected(response)),
+    }
+}
+
+/// `doc diff --wait`: asks again while Herdr UI is busy, out of the same
+/// wait, and never with less than a second of it left.
+fn diff_waiting(
+    wait: u64,
+    ask: &mut dyn FnMut(u64) -> crate::Result<Response>,
+    pause: &mut dyn FnMut(Duration),
+) -> crate::Result<Response> {
+    let mut left = Duration::from_secs(wait.min(MAX_WAIT_SECONDS));
+    let mut backoff = Backoff::new();
+    loop {
+        match ask(left.as_secs()) {
+            Ok(response) => return Ok(response),
+            Err(error) if is_busy(&error) => {
+                let delay = backoff.next().min(left);
+                if left - delay < Duration::from_secs(1) {
+                    return Err(error);
+                }
+                pause(delay);
+                left -= delay;
+            }
+            Err(error) => return Err(error),
+        }
     }
 }
 

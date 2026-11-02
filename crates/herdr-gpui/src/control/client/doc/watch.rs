@@ -1,9 +1,11 @@
 //! `doc watch`: every change to a document as it happens, until
 //! interrupted or the document is gone. A loop over the bounded `doc diff
 //! --wait` request, so nothing over the control socket is left open beyond
-//! one bounded wait; a change that lands while another prints is not lost,
-//! since each request asks for everything after the last version printed.
+//! one bounded wait. Busy replies and transient transport failures are
+//! retried from the last version printed, so a change that lands while
+//! another request is retried is not lost.
 
+use super::super::retry::{Backoff, is_busy, rejected};
 use super::super::{Output, exit};
 use crate::control::{
     ErrorCode,
@@ -73,7 +75,7 @@ pub(crate) enum Body {
 }
 
 /// Runs the watch: `ask` sends one request, `out` takes the lines, `pause`
-/// waits between tries while the app is away. The exit status.
+/// waits between tries after busy or transport errors. The exit status.
 pub(crate) fn run(
     watch: &Watch,
     ask: &mut dyn FnMut(DocOp) -> crate::Result<Response>,
@@ -104,6 +106,8 @@ pub(crate) fn run(
             version
         }
     };
+    let mut backoff = Backoff::new();
+    let mut away = Duration::ZERO;
     loop {
         let response = ask(DocOp::Diff {
             path: watch.path.clone(),
@@ -123,6 +127,8 @@ pub(crate) fn run(
                         ..
                     },
             }) => {
+                backoff.reset();
+                away = Duration::ZERO;
                 if diff.as_deref() == Some("") {
                     continue;
                 }
@@ -150,9 +156,22 @@ pub(crate) fn run(
                 )?;
                 since = version;
             }
-            Ok(response) => return Err(super::super::unexpected(response)),
+            Ok(response) => {
+                return Err(super::super::unexpected(response));
+            }
             Err(error) if is_gone(&error) => {
                 return gone(watch, out, &mut print);
+            }
+            Err(error) if is_busy(&error) => {
+                pause(backoff.next());
+            }
+            Err(error @ crate::Error::Control(crate::control::Error::Io(_))) => {
+                if away >= GIVE_UP {
+                    return Err(error);
+                }
+                let delay = backoff.next();
+                pause(delay);
+                away += delay;
             }
             Err(error) if is_away(&error) => {
                 let Some(version) = current(watch, ask, out, pause, &mut print)? else {
@@ -167,6 +186,8 @@ pub(crate) fn run(
                     serde_json::json!({ "event": "reconnected", "version": version }),
                 )?;
                 since = version;
+                backoff.reset();
+                away = Duration::ZERO;
             }
             Err(error) if is_timeout(&error) => {}
             Err(error) => return Err(error),
@@ -186,6 +207,7 @@ fn current(
     print: &mut Print<'_>,
 ) -> crate::Result<Option<u64>> {
     let mut away = Duration::ZERO;
+    let mut backoff = Backoff::new();
     loop {
         match ask(DocOp::Sections {
             path: watch.path.clone(),
@@ -198,7 +220,12 @@ fn current(
                 gone(watch, out, print)?;
                 return Ok(None);
             }
-            Err(error) if (is_away(&error) || is_timeout(&error)) && away < GIVE_UP => {
+            Err(error) if is_busy(&error) => {
+                pause(backoff.next());
+            }
+            Err(error)
+                if (is_away(&error) || is_io(&error) || is_timeout(&error)) && away < GIVE_UP =>
+            {
                 pause(RETRY);
                 away += RETRY;
             }
@@ -216,13 +243,6 @@ fn gone(watch: &Watch, out: &mut dyn Write, print: &mut Print<'_>) -> crate::Res
     Ok(exit::GONE)
 }
 
-fn rejected(error: &crate::Error) -> Option<ErrorCode> {
-    match error {
-        crate::Error::Control(crate::control::Error::Rejected { code, .. }) => Some(*code),
-        _ => None,
-    }
-}
-
 fn is_gone(error: &crate::Error) -> bool {
     rejected(error) == Some(ErrorCode::NotFound)
 }
@@ -231,14 +251,16 @@ fn is_timeout(error: &crate::Error) -> bool {
     rejected(error) == Some(ErrorCode::Timeout)
 }
 
-/// The app is not running, or went away mid-request, as when it restarts.
+fn is_io(error: &crate::Error) -> bool {
+    matches!(error, crate::Error::Control(crate::control::Error::Io(_)))
+}
+
+/// The app is not running or closed the socket without answering.
 fn is_away(error: &crate::Error) -> bool {
     matches!(
         error,
         crate::Error::Control(
-            crate::control::Error::Unavailable { .. }
-                | crate::control::Error::NoResponse
-                | crate::control::Error::Io(_)
+            crate::control::Error::Unavailable { .. } | crate::control::Error::NoResponse
         )
     )
 }

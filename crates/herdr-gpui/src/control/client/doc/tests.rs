@@ -2,6 +2,8 @@
 use super::*;
 use crate::control::protocol::doc::{Others, TodoInfo};
 
+mod wait_retry;
+
 #[test]
 fn replies_read_as_one_actionable_message() {
     let updated = Reply::Updated {

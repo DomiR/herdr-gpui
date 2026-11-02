@@ -7,8 +7,9 @@ acting in that window (IDs come from `window list`). By default a command
 acts in the window showing the caller's workspace (HERDR_WORKSPACE_ID), and
 exits 5 when no window shows it; outside Herdr, in the frontmost window.
 Exit status: 0 done, 1 refused, 2 invalid arguments, 3 Herdr UI not running,
-4 nothing yet (no notes, no event), 5 not found, 6 busy (a dialog is open),
-7 timed out, 8 unsupported on this platform or by this app version.";
+4 nothing yet (no notes, no event), 5 not found, 6 busy (a dialog is
+open, or Herdr UI is handling other requests), 7 timed out, 8 unsupported
+on this platform or by this app version.";
 
 const DOC: &str = "\
 herdr-gpui doc open FILE[:LINE]
@@ -18,7 +19,8 @@ herdr-gpui doc read FILE [--section ID]
     document, by anyone, takes the next number.
 herdr-gpui doc diff FILE --since N [--wait SECONDS]
     A unified diff of what changed since version N. With --wait (at most
-    600), wait for a change first; exits 4 when none came.
+    600), wait for a change first; while Herdr UI is busy, ask again within
+    the same wait, then exit 6 if it stays busy; exits 4 when none came.
 herdr-gpui doc watch FILE [--since N] [--section ID] [--todos]
     Print every change from version N (or from now) as it happens, until
     interrupted or the document is gone (exit 9): a line `Version N by WHO`
@@ -27,7 +29,8 @@ herdr-gpui doc watch FILE [--since N] [--section ID] [--todos]
     prints only changes to that section; --todos prints task changes, one
     line each (`checked 3. Ship`, `added`, `removed`, `unchecked`,
     `edited`), instead of the diff. --json prints one JSON object per line.
-    Restarts of Herdr UI are followed, with one line saying so.
+    Busy or cut-off requests wait and ask again from the same version. App
+    restarts are followed, with one line saying so.
 herdr-gpui doc sections FILE
     The sections: each #, ##, and ### heading starts one, named by the
     heading's slug (its GitHub anchor ID).
