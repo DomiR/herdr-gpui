@@ -3,7 +3,7 @@
 // i18n: migrated
 use super::{SettingsWindow, on_value, ui};
 use crate::{
-    config::{TabLayoutMode, preferences::Preference},
+    config::{TabCloseConfirm, TabLayoutMode, preferences::Preference},
     herdr_settings::{Edit, TabBarPosition},
     i18n::fl,
     settings_window::remote_history::HostState,
@@ -21,6 +21,10 @@ impl SettingsWindow {
         let layouts: Vec<_> = TabLayoutMode::ALL
             .iter()
             .map(|&mode| (mode, mode.label()))
+            .collect();
+        let tab_confirms: Vec<_> = TabCloseConfirm::ALL
+            .iter()
+            .map(|&choice| (choice, choice.label()))
             .collect();
         let open = !self.quitting && self.closing.is_none();
         let mut page = div()
@@ -103,14 +107,18 @@ impl SettingsWindow {
                 None,
             ))
             .child(
-                ui::row(theme, "tabs-confirm-tab", fl!("settings-tabs-confirm-tab")).switch(
-                    self.preference_toggle(
-                        "tabs-confirm-tab-toggle",
-                        self.config.confirm_close_tab,
-                        Preference::ConfirmCloseTab(!self.config.confirm_close_tab),
-                        cx,
-                    ),
-                ),
+                ui::row(theme, "tabs-confirm-tab", fl!("settings-tabs-confirm-tab"))
+                    .description(fl!("settings-tabs-confirm-tab-description"))
+                    .control(ui::segmented(
+                        theme,
+                        "tabs-confirm-tab-control",
+                        &tab_confirms,
+                        Some(self.config.confirm_close_tab),
+                        open,
+                        on_value(cx, |this, choice, _, cx| {
+                            this.save_preference(Preference::ConfirmCloseTab(choice), cx)
+                        }),
+                    )),
             )
             .child(
                 ui::row(

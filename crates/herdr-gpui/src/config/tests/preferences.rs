@@ -74,18 +74,18 @@ fn appearance_and_close_options_preserve_defaults() -> anyhow::Result<()> {
         Config::parse("")?,
         Config::parse(DEFAULT_CONFIG)?,
     ] {
-        assert!(config.confirm_close_tab);
+        assert_eq!(config.confirm_close_tab, TabCloseConfirm::Busy);
         assert!(config.confirm_close_pane);
         assert!(config.confirm_close_workspace);
         assert!(config.show_agents);
         assert!(config.smooth_scroll);
     }
     let config = Config::parse("confirm_close_tab = false\nshow_agents = false")?;
-    assert!(!config.confirm_close_tab);
+    assert_eq!(config.confirm_close_tab, TabCloseConfirm::Never);
     assert!(config.confirm_close_pane);
     assert!(!config.show_agents);
     let config = Config::parse("confirm_close_pane = false")?;
-    assert!(config.confirm_close_tab);
+    assert_eq!(config.confirm_close_tab, TabCloseConfirm::Busy);
     assert!(!config.confirm_close_pane);
     assert!(config.confirm_close_workspace);
     assert!(!Config::parse("confirm_close_workspace = false")?.confirm_close_workspace);

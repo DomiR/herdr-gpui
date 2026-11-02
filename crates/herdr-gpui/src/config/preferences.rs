@@ -13,7 +13,8 @@ pub(crate) enum Preference {
     ChatLayout(ChatLayoutMode),
     /// `[chat] max_width`: the reading column, or zero for full width.
     ChatMaxWidth(u16),
-    ConfirmCloseTab(bool),
+    /// `confirm_close_tab`: when closing a tab asks first.
+    ConfirmCloseTab(TabCloseConfirm),
     /// `language`: `system` or the BCP 47 tag the windows show.
     Language(herdr_i18n::Language),
     ConfirmClosePane(bool),
@@ -133,8 +134,8 @@ impl Config {
                     chat::check_max_width(width)?;
                     (Some("chat"), "max_width", Some(i64::from(width).into()))
                 }
-                Preference::ConfirmCloseTab(value) => {
-                    (None, "confirm_close_tab", Some(value.into()))
+                Preference::ConfirmCloseTab(choice) => {
+                    (None, "confirm_close_tab", Some(choice.to_toml()))
                 }
                 Preference::Language(language) => {
                     (None, "language", Some(language.to_string().into()))

@@ -2,7 +2,7 @@
 use crate::i18n::fl;
 use crate::{
     Error, HerdrWindow, Result,
-    config::preferences::Preference,
+    config::{TabCloseConfirm, preferences::Preference},
     controls::{self, Command},
     menu::Page,
 };
@@ -132,7 +132,8 @@ impl CloseConfirmation {
     /// Whether closing this target could interrupt an agent mid-task: one
     /// working, or blocked on a prompt. Idle, done, and unknown agents, and
     /// tabs without any, have nothing in flight to lose. Pane closes ask
-    /// unless `confirm_close_pane` is off, so this only matters for tabs.
+    /// unless `confirm_close_pane` is off, so this only matters for tabs
+    /// under `confirm_close_tab = true`.
     fn interrupts_agent(&self, snapshot: &ClientShellSnapshot) -> bool {
         let busy = |status| matches!(status, AgentStatus::Working | AgentStatus::Blocked);
         // The tab's aggregate status may rank a finished agent above a
@@ -215,9 +216,10 @@ impl HerdrWindow {
 
     /// Shows the confirmation in a menu the caller has already opened and
     /// fenced, or closes straight away when confirmation is turned off for the
-    /// target kind or a tab has no agent mid-task. The immediate close still
-    /// goes through `confirm_close`, so its connection and target checks hold
-    /// and a refusal stays visible in the dialog.
+    /// target kind, or a tab that asks only while busy has no agent mid-task.
+    /// The immediate close still goes through `confirm_close`, so its
+    /// connection and target checks hold and a refusal stays visible in the
+    /// dialog.
     pub(super) fn present_close(
         &mut self,
         close: CloseConfirmation,
@@ -227,12 +229,15 @@ impl HerdrWindow {
         let immediate = if close.pane.is_some() {
             !self.config.confirm_close_pane
         } else {
-            !self.config.confirm_close_tab
-                || !self
+            match self.config.confirm_close_tab {
+                TabCloseConfirm::Never => true,
+                TabCloseConfirm::Busy => !self
                     .live
                     .snapshot
                     .as_ref()
-                    .is_some_and(|snapshot| close.interrupts_agent(snapshot))
+                    .is_some_and(|snapshot| close.interrupts_agent(snapshot)),
+                TabCloseConfirm::Always => false,
+            }
         };
         self.menu.close = Some(close);
         self.menu.page = Some(Page::ConfirmClose);

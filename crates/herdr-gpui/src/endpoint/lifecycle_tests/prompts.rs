@@ -146,7 +146,7 @@ fn unconfirmed_tab_close_rejects_invalid_targets_and_unready_input(cx: &mut gpui
             view.selected_endpoint = 1;
             view.reset_selected(cx);
             view.activation_deadline = None;
-            view.config.confirm_close_tab = false;
+            view.config.confirm_close_tab = crate::config::TabCloseConfirm::Never;
             assert!(view.input_ready());
             let ready = view.live.clone();
             let tab = ready

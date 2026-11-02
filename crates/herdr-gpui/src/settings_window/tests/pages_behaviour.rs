@@ -54,8 +54,8 @@ fn behaviour_pages_route_every_row_to_its_preference(cx: &mut TestAppContext) {
         ),
         (
             Section::Tabs,
-            "tabs-confirm-tab-toggle",
-            Preference::ConfirmCloseTab(false),
+            "tabs-confirm-tab-control-0",
+            Preference::ConfirmCloseTab(crate::config::TabCloseConfirm::Never),
         ),
         (
             Section::Tabs,
@@ -131,7 +131,10 @@ fn a_failed_preference_write_reports_and_reloads(cx: &mut TestAppContext) {
     });
     cx.simulate_resize(size(px(960.), px(2000.)));
     show(&view, Section::Tabs, cx);
-    let toggle = cx.debug_bounds("tabs-confirm-tab-toggle").unwrap().center();
+    let toggle = cx
+        .debug_bounds("tabs-confirm-tab-control-0")
+        .unwrap()
+        .center();
     cx.simulate_click(toggle, Default::default());
     cx.run_until_parked();
     view.read_with(cx, |view, _| {

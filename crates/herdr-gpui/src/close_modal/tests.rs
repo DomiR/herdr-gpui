@@ -3,6 +3,7 @@ use super::*;
 use core::prelude::v1::test;
 use std::sync::Arc;
 
+mod always_confirm;
 mod en_xa;
 mod interrupts;
 mod pane_option;
@@ -11,7 +12,7 @@ mod pane_option;
 fn skipping_tab_confirmation_keeps_connection_checks_and_pane_prompt(cx: &mut TestAppContext) {
     let (view, cx) = cx.add_window_view(|window, cx| {
         let mut view = crate::sidebar::layout_tests::fixture_window(window, cx);
-        view.config.confirm_close_tab = false;
+        view.config.confirm_close_tab = TabCloseConfirm::Never;
         view.live.snapshot = Some(Arc::new(
             serde_json::from_str(include_str!(
                 "../../../herdr-protocol/tests/fixtures/endpoint-snapshot-v1.json"
@@ -34,7 +35,7 @@ fn skipping_tab_confirmation_keeps_connection_checks_and_pane_prompt(cx: &mut Te
             view.open_close_confirmation(Command::ClosePane, window, cx);
             assert!(view.menu.close.as_ref().unwrap().error.is_none());
             view.dismiss_menu(window, cx);
-            view.config.confirm_close_tab = true;
+            view.config.confirm_close_tab = TabCloseConfirm::Busy;
             view.open_tab_close(&id, window, cx);
             assert!(view.menu.close.as_ref().unwrap().error.is_none());
         })
@@ -192,7 +193,7 @@ fn idle_tab_closes_without_asking_but_panes_still_ask(cx: &mut TestAppContext) {
     });
     cx.update(|window, cx| {
         view.update(cx, |view, cx| {
-            assert!(view.config.confirm_close_tab);
+            assert_eq!(view.config.confirm_close_tab, TabCloseConfirm::Busy);
             view.open_tab_close("w1:t1", window, cx);
             // The disconnected fixture attempts the close at once and refuses it.
             assert!(view.menu.close.as_ref().unwrap().error.is_some());
