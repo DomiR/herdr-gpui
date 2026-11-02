@@ -82,8 +82,8 @@ fn make(view: &HerdrWindow, caller: &crate::control::protocol::Caller, op: LinkM
     Response::Link {
         reply: crate::control::protocol::link::Reply {
             url: made.url(),
-            label: made.label,
             markdown: made.markdown(),
+            label: made.label,
         },
     }
 }

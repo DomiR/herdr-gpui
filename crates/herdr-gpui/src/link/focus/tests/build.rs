@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
-    link::{Below, Focus, Link},
     link::focus::build::{Made, link_for},
+    link::{Below, Focus, Link},
     navigation::{NavigationTarget, OwnedNavigationTarget},
 };
 use herdr_doc::markdown::{Style, inline, lines, link_url};
@@ -33,7 +33,8 @@ fn workspace_uses_its_first_pane_path() {
 fn custom_label_workspace_keeps_its_label() {
     let mut snapshot = snapshot();
     snapshot.workspaces[0].custom_label = true;
-    let focus = focus_link(&made(&snapshot, NavigationTarget::Workspace("w0")));
+    let made = made(&snapshot, NavigationTarget::Workspace("w0"));
+    let focus = focus_link(&made);
     assert_eq!(focus.workspace.as_deref(), Some("Notes"));
     assert!(focus.path.is_some());
 }
@@ -41,7 +42,8 @@ fn custom_label_workspace_keeps_its_label() {
 #[test]
 fn custom_tab_uses_the_tab_label() {
     let snapshot = snapshot();
-    let focus = focus_link(&made(&snapshot, NavigationTarget::Tab("w0:t1")));
+    let made = made(&snapshot, NavigationTarget::Tab("w0:t1"));
+    let focus = focus_link(&made);
     assert_eq!(focus.tab_or_agent, Some(Below::Tab("build".into())));
     assert_eq!(focus.id.as_deref(), Some("w0:t1"));
 }
@@ -77,7 +79,8 @@ fn two_named_agents_keep_the_tab_link() {
         tokens: Vec::new(),
         focused: false,
     });
-    let focus = focus_link(&made(&snapshot, NavigationTarget::Tab("w0:t1")));
+    let made = made(&snapshot, NavigationTarget::Tab("w0:t1"));
+    let focus = focus_link(&made);
     assert_eq!(focus.tab_or_agent, Some(Below::Tab("build".into())));
 }
 
