@@ -237,6 +237,11 @@ impl DocEditor {
     pub(crate) fn set_look(&mut self, look: Look, cx: &mut Context<Self>) {
         if self.look != look {
             self.look = look;
+            if let Some(draft) = &self.draft {
+                draft.input.update(cx, |input, cx| {
+                    input.set_appearance(self.look.ui.clone(), self.look.theme.clone(), cx);
+                });
+            }
             self.list.remeasure();
             cx.notify();
         }

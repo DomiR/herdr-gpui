@@ -2945,6 +2945,9 @@ time. Open one from Go to File (Cmd-Enter), a code link, or an agent's
 remains the source of truth, so Git, other editors, and agents' own file
 tools keep working on it.
 
+The optional PlainTasks document theme gives Markdown tabs a yellow notepad
+appearance with PlainTasks task markers.
+
 - **Styling.** Headings draw larger, `**bold**`, `*italic*`, `` `code` ``,
   `~~struck~~` text, links, and quotes are styled. Lines away from the caret
   hide their Markdown, as a preview would: heading and quote markers,

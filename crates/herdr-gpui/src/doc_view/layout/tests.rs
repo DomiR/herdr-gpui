@@ -2,9 +2,12 @@
 use super::*;
 use crate::config::Config;
 
+mod document_theme;
+
 fn look() -> Look {
     Look {
         theme: Theme::default(),
+        inks: None,
         ui: Config::default().ui,
         code: Config::default().terminal,
     }

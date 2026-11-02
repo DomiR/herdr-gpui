@@ -16,7 +16,9 @@ mod input;
 mod keys;
 mod layout;
 mod links;
+mod markers;
 mod render;
+mod theme;
 
 pub(crate) use buffer::{DocBuffer, Docs, State};
 pub(crate) use editor::{DocEditor, FoldsChanged};
@@ -187,8 +189,10 @@ impl HerdrWindow {
     }
 
     fn doc_look(&self) -> Look {
+        let (theme, inks) = theme::resolve(self.config.documents.theme, &self.theme);
         Look {
-            theme: self.theme.clone(),
+            theme,
+            inks,
             ui: self.config.ui.clone(),
             code: self.config.terminal.clone(),
         }

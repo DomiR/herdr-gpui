@@ -193,6 +193,10 @@ tab_layout = "classic"
 # Also under Settings > Tabs.
 herdr_2_terminals = false
 
+# Document theme for Markdown tabs: "app" or "plaintasks".
+[documents]
+theme = "app"
+
 [palette]
 # Two short Shift taps open the unified palette in the focused GUI window.
 # Cmd-Shift-P opens All; Cmd-P starts on Navigation. Ordinary Shift typing and

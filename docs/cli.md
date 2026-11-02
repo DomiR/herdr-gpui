@@ -208,6 +208,7 @@ same as fields (`kind`, `version`, `others`, `diff`).
 | `config get\|set\|unset KEY [VALUE]` | Read or change `config-gpui.local.toml`, keeping its comments. A value that would not load, or an unknown key, is refused and nothing is written; the app applies the rest at once (no app needed) |
 | `config check` | Report invalid settings, exit 1 if any |
 | `config reload` | Reread Herdr's config and this app's |
+| `documents.theme` | The Markdown document theme for all document tabs in this client. Values are `app` and `plaintasks`; the default is `app`. Set it with `config set documents.theme VALUE`. |
 | `theme [list]`, `theme set NAME` | The app theme. A device's terminal theme is `config set devices.ID.theme NAME`, with the ID from `host list` minus its `ssh:` prefix |
 | `font [list]`, `font set NAME`, `font reset` | |
 | `language [status]`, `language list`, `language set system\|TAG` | The language set and the locale Herdr UI shows, the languages there are, each with its name in itself as Settings > General lists it, or save the `language` setting (a BCP 47 tag; `en-XA` and `en-XB` are pseudo-locales). Only `status` asks the app, and without it reports what it would show |

@@ -14,6 +14,7 @@ use std::ops::Range;
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Look {
     pub(crate) theme: Theme,
+    pub(super) inks: Option<super::theme::Inks>,
     pub(crate) ui: FontConfig,
     pub(crate) code: FontConfig,
 }
@@ -118,6 +119,11 @@ struct Paint {
     block: bool,
     /// A code token's colour, inside a coloured code block.
     token: Option<crate::review::highlight::Token>,
+    /// Notebook-only roles, left unset for the App run boundaries.
+    heading: bool,
+    pending: bool,
+    done: bool,
+    delimiter: bool,
 }
 
 /// `line` of `text`, styled; `decorate` hides its markers, as for a line
@@ -167,6 +173,20 @@ pub(super) fn row(
     if line.kind == Kind::Fence {
         mark(whole.clone(), &|p| p.muted = true);
     }
+    if look.inks.is_some() {
+        match line.kind {
+            Kind::Heading { .. } => mark(whole.clone(), &|p| p.heading = true),
+            Kind::Fence | Kind::Rule => mark(whole.clone(), &|p| p.delimiter = true),
+            _ => {}
+        }
+        if let Some(done) = line.task() {
+            mark(local(&line.content()), &|p| {
+                p.pending = !done;
+                p.done = done;
+            });
+        }
+        mark(local(&line.marker), &|p| p.delimiter = true);
+    }
     for span in code {
         let range = span.start.min(source.len())..span.end.min(source.len());
         let token = span.token;
@@ -202,7 +222,10 @@ pub(super) fn row(
                 mark(range, &|p| p.code = true);
             }
             Style::Strike => mark(range, &|p| p.strike = true),
-            Style::Marker => mark(range, &|p| p.muted = true),
+            Style::Marker => mark(range, &|p| {
+                p.muted = true;
+                p.delimiter = look.inks.is_some();
+            }),
             Style::Link { .. } => {
                 if let Some(url) = markdown::link_url(text, &span) {
                     links.push((range.clone(), Target::Url(url.to_owned())));
@@ -286,10 +309,28 @@ fn run(len: usize, paint: Paint, look: &Look) -> TextRun {
     if paint.bold {
         font.weight = FontWeight::BOLD;
     }
-    if paint.italic {
+    if paint.italic || (look.inks.is_some() && paint.done) {
         font.style = FontStyle::Italic;
     }
-    let color: Hsla = if paint.hidden {
+    let color: Hsla = if let Some(inks) = look.inks {
+        if paint.hidden {
+            Hsla::transparent_black()
+        } else if let Some(token) = paint.token {
+            rgb(token.colour(theme, crate::review::highlight::Contrast::On(theme.surface))).into()
+        } else if paint.delimiter {
+            inks.delimiter
+        } else if paint.link {
+            inks.link
+        } else if paint.done {
+            inks.done
+        } else if paint.heading {
+            inks.heading
+        } else if paint.pending || paint.code {
+            inks.pending
+        } else {
+            inks.prose
+        }
+    } else if paint.hidden {
         Hsla::transparent_black()
     } else if let Some(token) = paint.token {
         rgb(token.colour(theme, crate::review::highlight::Contrast::On(theme.surface))).into()
@@ -304,8 +345,15 @@ fn run(len: usize, paint: Paint, look: &Look) -> TextRun {
         len,
         font,
         color,
-        background_color: (paint.code && !paint.block && !paint.hidden)
-            .then(|| rgb(theme.surface).into()),
+        background_color: if let Some(inks) = look.inks
+            && paint.heading
+            && !paint.hidden
+            && !paint.delimiter
+        {
+            Some(inks.heading_background)
+        } else {
+            (paint.code && !paint.block && !paint.hidden).then(|| rgb(theme.surface).into())
+        },
         underline: paint.link.then(|| UnderlineStyle {
             color: Some(color),
             thickness: px(1.),
@@ -313,7 +361,13 @@ fn run(len: usize, paint: Paint, look: &Look) -> TextRun {
         }),
         strikethrough: (paint.strike && !paint.hidden).then(|| StrikethroughStyle {
             thickness: px(1.),
-            color: Some(color),
+            color: Some(if let Some(inks) = look.inks
+                && paint.done
+            {
+                inks.done
+            } else {
+                color
+            }),
         }),
     }
 }

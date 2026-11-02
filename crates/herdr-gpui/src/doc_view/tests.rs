@@ -7,6 +7,7 @@ use gpui::{Entity, TestAppContext, VisualTestContext};
 use std::{path::PathBuf, time::Duration};
 
 mod disk_sync;
+mod document_theme;
 mod folding;
 mod saved_tab;
 mod todo_keys;
@@ -29,6 +30,7 @@ pub(super) fn open<'a>(text: &str, cx: &'a mut TestAppContext) -> Fixture<'a> {
         let buffer = Docs::open(&opened, cx);
         let look = Look {
             theme: Theme::default(),
+            inks: None,
             ui: Config::default().ui,
             code: Config::default().terminal,
         };

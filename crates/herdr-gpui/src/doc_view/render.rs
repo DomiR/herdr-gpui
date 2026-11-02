@@ -6,6 +6,7 @@ use super::{
     buffer::State,
     editor::DocEditor,
     layout::{self, Row},
+    markers::{self, MarkerColors, MarkerStyle},
 };
 use crate::{actions, i18n::fl, input::ViewInputHandler, words};
 use gpui::{prelude::*, *};
@@ -35,9 +36,9 @@ struct Colors {
     selection: Hsla,
     caret: Hsla,
     highlight: Hsla,
-    box_border: Hsla,
-    box_fill: Hsla,
-    check: Hsla,
+    caret_row: Option<Hsla>,
+    marker_style: MarkerStyle,
+    markers: MarkerColors,
     underline: Hsla,
 }
 
@@ -76,9 +77,21 @@ fn spans(layout: &TextLayout, range: Range<usize>, past_end: bool) -> Vec<Bounds
     out
 }
 
-fn paint_overlay(overlay: &Overlay, window: &mut Window) {
+fn paint_overlay(overlay: &Overlay, bounds: Bounds<Pixels>, window: &mut Window) {
     let layout = &overlay.layout;
     let colors = overlay.colors;
+    if let Some(color) = colors.caret_row
+        && let Some(caret) = overlay.caret
+        && let Some(origin) = layout.position_for_index(caret)
+    {
+        window.paint_quad(fill(
+            Bounds::from_corners(
+                point(bounds.left(), origin.y),
+                point(bounds.right(), origin.y + layout.line_height()),
+            ),
+            color,
+        ));
+    }
     for (range, opacity) in &overlay.highlights {
         for span in spans(layout, range.clone(), false) {
             window.paint_quad(fill(span, colors.highlight.opacity(*opacity)));
@@ -90,39 +103,14 @@ fn paint_overlay(overlay: &Overlay, window: &mut Window) {
         }
     }
     if let Some((range, done)) = &overlay.checkbox {
-        let bounds = layout.bounds();
-        let height = layout.line_height();
-        let start = layout
-            .position_for_index(range.start)
-            .unwrap_or(bounds.origin);
-        let end = layout.position_for_index(range.end).unwrap_or(start);
-        let side = (height * 0.62).min((end.x - start.x).max(px(10.)));
-        let center = point((start.x + end.x) / 2., start.y + height / 2.);
-        let square = Bounds::centered_at(center, size(side, side));
-        let fill_color = if *done {
-            colors.box_fill
-        } else {
-            transparent_black()
-        };
-        window.paint_quad(quad(
-            square,
-            px(3.),
-            fill_color,
-            px(1.5),
-            colors.box_border,
-            BorderStyle::Solid,
-        ));
-        if *done {
-            let mut path = PathBuilder::stroke(px(1.8));
-            let s = f32::from(side);
-            let o = square.origin;
-            path.move_to(point(o.x + px(s * 0.24), o.y + px(s * 0.52)));
-            path.line_to(point(o.x + px(s * 0.43), o.y + px(s * 0.72)));
-            path.line_to(point(o.x + px(s * 0.78), o.y + px(s * 0.3)));
-            if let Ok(path) = path.build() {
-                window.paint_path(path, colors.check);
-            }
-        }
+        markers::paint(
+            layout,
+            range,
+            *done,
+            colors.marker_style,
+            colors.markers,
+            window,
+        );
     }
     if let Some(range) = &overlay.marked {
         let height = layout.line_height();
@@ -151,13 +139,32 @@ fn paint_overlay(overlay: &Overlay, window: &mut Window) {
 impl DocEditor {
     fn colors(&self) -> Colors {
         let theme = &self.look.theme;
+        if let Some(inks) = self.look.inks {
+            return Colors {
+                selection: inks.selection,
+                caret: inks.caret,
+                highlight: rgb(theme.primary_wash()).into(),
+                caret_row: Some(inks.caret_row),
+                marker_style: MarkerStyle::PlainTasks,
+                markers: MarkerColors {
+                    border: inks.open_marker,
+                    check: inks.done_marker,
+                    fill: transparent_black(),
+                },
+                underline: inks.caret,
+            };
+        }
         Colors {
             selection: rgb(theme.active).into(),
             caret: rgb(theme.cursor).into(),
             highlight: rgb(theme.primary_wash()).into(),
-            box_border: rgb(theme.muted).into(),
-            box_fill: rgb(theme.primary()).into(),
-            check: rgb(theme.text_on(theme.primary())).into(),
+            caret_row: None,
+            marker_style: MarkerStyle::Checkbox,
+            markers: MarkerColors {
+                border: rgb(theme.muted).into(),
+                check: rgb(theme.text_on(theme.primary())).into(),
+                fill: rgb(theme.primary()).into(),
+            },
             underline: rgb(theme.foreground).into(),
         }
     }
@@ -302,14 +309,18 @@ impl DocEditor {
                     .min_w_0()
                     .when(code, |body| body.bg(rgb(theme.surface)).px(px(6.)))
                     .when(row.kind == Kind::Quote, |body| {
-                        body.border_l_2().border_color(rgb(theme.muted)).pl(px(8.))
+                        let color = self.look.inks.map_or_else(
+                            || rgb(theme.muted).into(),
+                            |inks| inks.separator,
+                        );
+                        body.border_l_2().border_color(color).pl(px(8.))
                     })
                     .text_size(px(row.size))
                     .line_height(px(row.line_height))
                     .child(
                         canvas(
                             |_, _, _| {},
-                            move |_, _, window, _| paint_overlay(&overlay, window),
+                            move |bounds, _, window, _| paint_overlay(&overlay, bounds, window),
                         )
                         .absolute()
                         .inset_0(),
@@ -544,7 +555,10 @@ impl DocEditor {
                     .px(px(PAD))
                     .py(px(6.))
                     .border_b_1()
-                    .border_color(rgb(theme.surface))
+                    .border_color(self.look.inks.map_or_else(
+                        || rgb(theme.surface).into(),
+                        |inks| inks.separator,
+                    ))
                     .text_size(px(self.look.ui.size * 0.9))
                     .child(div().text_color(rgb(theme.foreground)).child(name))
                     .when_some(version, |bar, version| {
