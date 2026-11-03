@@ -81,10 +81,7 @@ fn a_note_under_a_task_is_prose() {
     let text = "- [ ] task\n  a note under it";
     let lines = markdown::lines(text);
     let row = row(text, &lines[1], &look(), false, &[], &|_| None);
-    assert_eq!(
-        row.runs.last().unwrap().color,
-        color(look().theme.prose())
-    );
+    assert_eq!(row.runs.last().unwrap().color, color(look().theme.prose()));
 }
 
 #[test]
