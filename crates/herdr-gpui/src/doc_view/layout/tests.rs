@@ -111,3 +111,5 @@ fn code_lines_take_their_token_colours() {
     assert_ne!(plain.runs[0].color, coloured.runs[0].color);
     assert_eq!(coloured.runs[0].len, 2);
 }
+
+mod prose;
