@@ -14,7 +14,7 @@ fn indents_under_task_text() {
     assert_eq!(caret, "- [ ] text\n      ".len());
 
     let text = "- [ ] ab";
-    let (edit, _) = line_break(text, 6);
+    let (edit, _) = line_break(text, 7);
     assert_eq!(apply(text, edit), "- [ ] a\n      b");
 
     let text = "  1. x";
