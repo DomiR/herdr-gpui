@@ -15,7 +15,10 @@ fn find_again(doc: &mut Fixture<'_>, back: bool) {
 }
 
 fn status(doc: &mut Fixture<'_>) -> String {
-    doc.cx.update(|_, cx| doc.editor.read(cx).find_status())
+    // Without the isolation marks Fluent puts around each placeable.
+    doc.cx
+        .update(|_, cx| doc.editor.read(cx).find_status())
+        .replace(['\u{2068}', '\u{2069}'], "")
 }
 
 #[gpui::test]
