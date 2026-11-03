@@ -195,11 +195,9 @@ pub(super) fn row(
     if !line.marker.is_empty() {
         mark(local(&line.marker), &|p| p.muted = true);
     }
-    let checkbox = line.task().and_then(|state| {
-        line.checkbox
-            .as_ref()
-            .map(|range| (local(range), state))
-    });
+    let checkbox = line
+        .task()
+        .and_then(|state| line.checkbox.as_ref().map(|range| (local(range), state)));
     if let Some((range, state)) = &checkbox {
         mark(range.clone(), &|p| p.hidden = true);
         if state.is_resolved() {
@@ -265,7 +263,10 @@ pub(super) fn row(
     drawn_paints.extend_from_slice(&paints[at..]);
     let map = DisplayMap { pieces };
     let checkbox = checkbox.map(|(range, state)| {
-        (map.to_display(range.start)..map.to_display(range.end), state)
+        (
+            map.to_display(range.start)..map.to_display(range.end),
+            state,
+        )
     });
     let runs = runs(&drawn, &drawn_paints, look);
     Row {

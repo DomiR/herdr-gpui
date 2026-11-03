@@ -304,7 +304,9 @@ fn apply(
                 section.as_ref(),
                 Box::new(move |doc: &str| {
                     let found = todo::find_in(doc, &query, id.as_deref())?;
-                    Ok(todo::set_state(doc, found.line, state).into_iter().collect())
+                    Ok(todo::set_state(doc, found.line, state)
+                        .into_iter()
+                        .collect())
                 }),
             )
         }

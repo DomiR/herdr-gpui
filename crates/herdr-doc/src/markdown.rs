@@ -220,7 +220,7 @@ fn parse(text: &str, range: Range<usize>, fence: &mut Option<(char, usize)>) -> 
     let after = &rest[len..];
     let task = after
         .get(..3)
-        .filter(|box_| after.len() == 3 || after[3..].starts_with([' ', '\t']))
+        .filter(|_| after.len() == 3 || after[3..].starts_with([' ', '\t']))
         .and_then(parse_task);
     match task {
         Some(task) => {

@@ -1,7 +1,7 @@
 use super::*;
 
-use control::{Change, ControlCommand, DocCommand};
 use crate::control::protocol::doc::TaskState;
+use control::{Change, ControlCommand, DocCommand};
 
 fn doc(args: &[&str]) -> Result<DocCommand, CliError> {
     let options = LaunchOptions::parse(args.iter().copied())?;
@@ -52,8 +52,17 @@ fn cancel_and_uncancel_parse_like_check_and_uncheck() {
         }
     );
     assert_eq!(
-        doc(&["doc", "todo", "cancel", "a.md", "--version", "2", "--undo", "4"])
-            .unwrap(),
+        doc(&[
+            "doc",
+            "todo",
+            "cancel",
+            "a.md",
+            "--version",
+            "2",
+            "--undo",
+            "4"
+        ])
+        .unwrap(),
         DocCommand::TodoState {
             path: "a.md".into(),
             change: Change {

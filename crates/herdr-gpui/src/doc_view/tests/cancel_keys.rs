@@ -26,7 +26,13 @@ fn primary_alt_enter_cancels_each_task_in_a_selection(cx: &mut TestAppContext) {
     let end = doc.text().find("two").unwrap() + "two".len();
     doc.cx.update(|_, cx| {
         doc.editor.update(cx, |editor, cx| {
-            editor.select(Selection { anchor: 0, head: end }, cx);
+            editor.select(
+                Selection {
+                    anchor: 0,
+                    head: end,
+                },
+                cx,
+            );
         });
     });
     doc.keys(&primary("alt-enter"));

@@ -104,5 +104,12 @@ fn cancelling_a_stale_version_is_refused(cx: &mut TestAppContext) {
         },
         cx,
     ));
-    assert!(matches!(stale, Reply::Mismatch { expected: 1, version: 2, .. }));
+    assert!(matches!(
+        stale,
+        Reply::Mismatch {
+            expected: 1,
+            version: 2,
+            ..
+        }
+    ));
 }

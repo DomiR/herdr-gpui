@@ -27,10 +27,10 @@ fn lists_todos_with_their_sections() {
     assert_eq!(
         summary,
         vec![
-            (1, false, "write", 0, Some("Work")),
-            (2, true, "outline", 2, Some("Work")),
-            (3, true, "read", 0, Some("Work")),
-            (4, false, "ship", 0, Some("Later")),
+            (1, TaskState::Open, "write", 0, Some("Work")),
+            (2, TaskState::Done, "outline", 2, Some("Work")),
+            (3, TaskState::Done, "read", 0, Some("Work")),
+            (4, TaskState::Open, "ship", 0, Some("Later")),
         ]
     );
 }
