@@ -23,7 +23,7 @@ use crate::{
     search_input::{self, SearchInput},
 };
 use gpui::{
-    App, Context, Entity, EventEmitter, FocusHandle, ListAlignment, ListState, Pixels,
+    App, AppContext, Context, Entity, EventEmitter, FocusHandle, ListAlignment, ListState, Pixels,
     Subscription, TextLayout, px,
 };
 use herdr_doc::{
@@ -151,7 +151,7 @@ pub(crate) struct DocEditor {
     pub(super) hide_done: bool,
     pub(super) list: ListState,
     pub(super) prepared: Prepared,
-    stale: bool,
+    pub(super) stale: bool,
     /// Each drawn line's text layout and how it maps to the source line,
     /// by line, as last painted.
     pub(super) layouts: Layouts,
@@ -198,10 +198,9 @@ impl DocEditor {
             this.restore(cx);
             cx.notify();
         });
-        let find_changed = cx.subscribe(
-            &input,
-            |this, input, _: &search_input::Changed, cx| this.find_changed(input, cx),
-        );
+        let find_changed = cx.subscribe(&input, |this, input, _: &search_input::Changed, cx| {
+            this.find_changed(input, cx)
+        });
         let mut editor = Self {
             focus: cx.focus_handle(),
             find: super::find::Find::new(input),
@@ -380,16 +379,12 @@ impl DocEditor {
             blocks,
             open_picture,
         };
-        let current_offset = self
-            .find
-            .current_anchor
-            .as_ref()
-            .and_then(|anchor| {
-                self.buffer
-                    .read(cx)
-                    .document()
-                    .and_then(|doc| doc.resolve(anchor))
-            });
+        let current_offset = self.find.current_anchor.as_ref().and_then(|anchor| {
+            self.buffer
+                .read(cx)
+                .document()
+                .and_then(|doc| doc.resolve(anchor))
+        });
         self.find
             .recompute(text, &self.prepared.lines, self.hide_done, current_offset);
         self.keep_caret_shown(cx);

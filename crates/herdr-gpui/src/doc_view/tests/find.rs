@@ -81,9 +81,9 @@ fn escape_closes_and_keeps_the_current_selection(cx: &mut TestAppContext) {
     doc.keys("enter");
     let current = doc.selection();
     doc.keys("escape");
-    let focused = doc.cx.update(|window, cx| {
-        doc.editor.read(cx).focus.is_focused(window)
-    });
+    let focused = doc
+        .cx
+        .update(|window, cx| doc.editor.read(cx).focus.is_focused(window));
     assert!(focused);
     assert_eq!(doc.selection(), current);
 }

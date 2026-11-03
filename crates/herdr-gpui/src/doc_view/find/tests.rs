@@ -1,4 +1,4 @@
-use super::*;
+use super::{MAX_MATCHES, MAX_QUERY, find_all};
 
 #[test]
 fn finds_ascii_case_insensitively_by_default() {
@@ -25,7 +25,10 @@ fn matches_do_not_overlap() {
 
 #[test]
 fn an_empty_query_has_no_matches() {
-    assert_eq!(find_all("anything", "", false, MAX_MATCHES), (Vec::new(), false));
+    assert_eq!(
+        find_all("anything", "", false, MAX_MATCHES),
+        (Vec::new(), false)
+    );
 }
 
 #[test]

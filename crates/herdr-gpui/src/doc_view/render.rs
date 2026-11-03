@@ -229,12 +229,8 @@ impl DocEditor {
                 .enumerate()
                 .take_while(|(_, range)| range.start < line.range.end)
                 .filter_map(|(offset, range)| {
-                    local(range).map(|range| {
-                        (
-                            shown(range),
-                            self.find.current == Some(start + offset),
-                        )
-                    })
+                    local(range)
+                        .map(|range| (shown(range), self.find.current == Some(start + offset)))
                 })
                 .collect()
         } else {

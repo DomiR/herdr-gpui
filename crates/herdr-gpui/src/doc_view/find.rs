@@ -3,12 +3,7 @@
 // i18n: migrated
 
 use super::editor::{DocEditor, Selection};
-use crate::{
-    config::corners,
-    i18n::fl,
-    motion,
-    search_input::SearchInput,
-};
+use crate::{config::corners, i18n::fl, motion, search_input::SearchInput};
 use gpui::{prelude::*, *};
 use herdr_doc::{Anchor, markdown, markdown::Line, todo};
 use std::ops::Range;
@@ -189,12 +184,7 @@ impl DocEditor {
         cx.notify();
     }
 
-    pub(crate) fn find_again(
-        &mut self,
-        back: bool,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    pub(crate) fn find_again(&mut self, back: bool, window: &mut Window, cx: &mut Context<Self>) {
         if !self.find.shown.is_open() {
             self.open_find(window, cx);
             return;
@@ -297,12 +287,7 @@ impl DocEditor {
             .and_then(|doc| doc.anchor(range.start, false));
     }
 
-    fn find_key_down(
-        &mut self,
-        event: &KeyDownEvent,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    fn find_key_down(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         if self.find.input.read(cx).is_composing() {
             return;
         }
@@ -414,14 +399,11 @@ impl DocEditor {
                         .child(input),
                 )
                 .child(
-                    button(
-                        "doc-find-match-case",
-                        fl!("doc-view-find-match-case"),
-                        None,
-                    )
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.toggle_find_match_case(window, cx);
-                    })),
+                    button("doc-find-match-case", fl!("doc-view-find-match-case"), None).on_click(
+                        cx.listener(|this, _, window, cx| {
+                            this.toggle_find_match_case(window, cx);
+                        }),
+                    ),
                 )
                 .child(
                     button(
