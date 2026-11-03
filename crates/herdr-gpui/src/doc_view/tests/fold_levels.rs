@@ -115,10 +115,12 @@ fn primary_digit_folds_in_a_document_despite_the_tab_shortcut(cx: &mut TestAppCo
 }
 
 #[gpui::test]
-fn alt_digits_no_longer_fold(cx: &mut TestAppContext) {
+fn alt_digits_fold_like_the_plain_digits(cx: &mut TestAppContext) {
     let mut doc = open_bound(DOC, cx);
     doc.keys(&primary("alt-1"));
-    assert_eq!(doc.rows(), (0..=9).collect::<Vec<_>>());
+    assert_eq!(doc.rows(), vec![0, 1, 2, 6, 8, 9]);
+    doc.keys(&primary("alt-0"));
+    assert_eq!(doc.rows(), vec![0, 8]);
 }
 
 /// Proves the precedence test can fail, and why bind_keys binds the fold keys
