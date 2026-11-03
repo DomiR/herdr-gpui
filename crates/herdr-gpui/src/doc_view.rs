@@ -12,6 +12,7 @@ mod buffer;
 mod comments;
 mod editor;
 mod error;
+mod find;
 mod input;
 mod keys;
 mod layout;
@@ -242,12 +243,18 @@ impl HerdrWindow {
         }
     }
 
+    /// The document editor containing the focused control, if any.
+    pub(crate) fn focused_doc(&self, window: &Window, cx: &App) -> Option<Entity<DocEditor>> {
+        self.doc_views
+            .values()
+            .find(|editor| editor.read(cx).focus.contains_focused(window, cx))
+            .cloned()
+    }
+
     /// Whether a document editor holds the keyboard; the window then leaves
     /// keys to it.
     pub(crate) fn doc_focused(&self, window: &Window, cx: &App) -> bool {
-        self.doc_views
-            .values()
-            .any(|editor| editor.read(cx).focus.contains_focused(window, cx))
+        self.focused_doc(window, cx).is_some()
     }
 
     pub(crate) fn render_doc_tab(

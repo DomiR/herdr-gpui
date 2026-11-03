@@ -246,7 +246,7 @@ impl SearchInput {
         self.did_edit(changed, cx);
     }
 
-    pub(super) fn set_text_selected(&mut self, text: &str, cx: &mut Context<Self>) {
+    pub(crate) fn set_text_selected(&mut self, text: &str, cx: &mut Context<Self>) {
         let text = single_line(text);
         let changed = self.edit.text != text;
         self.edit = Editing {

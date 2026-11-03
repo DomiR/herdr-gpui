@@ -75,6 +75,9 @@ building it without the user watching, so a reviewer can check each one.
     stay visible on a folded heading. The caret never rests inside a fold:
     moving into one skips it, and an edit an agent makes inside it leaves
     it folded.
+    Find opens document search with Cmd-F, or Ctrl-F on Linux and Windows;
+    Cmd-G and Cmd-Shift-G, or Ctrl-G and Ctrl-Shift-G on Linux and Windows,
+    step through matches.
 16. **Version numbers for agents' commands** (asked for mid-run): every
     change to a document, from any writer, takes the next version number,
     starting at 1 when it opens. `doc read` reports it. Every changing

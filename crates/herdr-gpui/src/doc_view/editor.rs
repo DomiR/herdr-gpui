@@ -17,7 +17,11 @@ use super::{
     layout::{DisplayMap, Look},
 };
 use crate::chat::visual::Visuals;
-use crate::{browser::TabId, motion};
+use crate::{
+    browser::TabId,
+    motion,
+    search_input::{self, SearchInput},
+};
 use gpui::{
     App, Context, Entity, EventEmitter, FocusHandle, ListAlignment, ListState, Pixels,
     Subscription, TextLayout, px,
@@ -131,6 +135,7 @@ pub(crate) struct FoldsChanged(pub(crate) Vec<String>);
 
 pub(crate) struct DocEditor {
     pub(crate) focus: FocusHandle,
+    pub(super) find: super::find::Find,
     pub(super) buffer: Entity<DocBuffer>,
     pub(super) tab: TabId,
     pub(super) look: Look,
@@ -179,6 +184,12 @@ impl DocEditor {
         line: Option<u32>,
         cx: &mut Context<Self>,
     ) -> Self {
+        let input = cx.new(SearchInput::new);
+        input.update(cx, |input, cx| {
+            input.set_frameless(cx);
+            input.set_placeholder_with(|| crate::i18n::fl!("doc-view-find-placeholder"), cx);
+            input.set_appearance(look.ui.clone(), look.theme.clone(), cx);
+        });
         let changed = cx.subscribe(&buffer, |this, _, event: &Changed, cx| {
             this.changed(event, cx);
         });
@@ -187,8 +198,13 @@ impl DocEditor {
             this.restore(cx);
             cx.notify();
         });
+        let find_changed = cx.subscribe(
+            &input,
+            |this, input, _: &search_input::Changed, cx| this.find_changed(input, cx),
+        );
         let mut editor = Self {
             focus: cx.focus_handle(),
+            find: super::find::Find::new(input),
             buffer,
             tab,
             look,
@@ -211,7 +227,7 @@ impl DocEditor {
             highlights: Vec::new(),
             selecting: false,
             restore: Some((folded, line)),
-            _subscriptions: vec![changed, observed],
+            _subscriptions: vec![changed, find_changed, observed],
         };
         editor.restore(cx);
         editor
@@ -236,6 +252,10 @@ impl DocEditor {
 
     pub(crate) fn set_look(&mut self, look: Look, cx: &mut Context<Self>) {
         if self.look != look {
+            let input = self.find.input.clone();
+            let ui = look.ui.clone();
+            let theme = look.theme.clone();
+            input.update(cx, |input, cx| input.set_appearance(ui, theme, cx));
             self.look = look;
             self.list.remeasure();
             cx.notify();
@@ -360,6 +380,18 @@ impl DocEditor {
             blocks,
             open_picture,
         };
+        let current_offset = self
+            .find
+            .current_anchor
+            .as_ref()
+            .and_then(|anchor| {
+                self.buffer
+                    .read(cx)
+                    .document()
+                    .and_then(|doc| doc.resolve(anchor))
+            });
+        self.find
+            .recompute(text, &self.prepared.lines, self.hide_done, current_offset);
         self.keep_caret_shown(cx);
     }
 
@@ -464,6 +496,11 @@ impl DocEditor {
     fn rebase(&mut self, generation: u64, cx: &mut Context<Self>) {
         self.generation = generation;
         self.highlights.clear();
+        let current_start = self
+            .find
+            .current
+            .and_then(|current| self.find.matches.get(current))
+            .map(|range| range.start);
         self.remember(cx);
         let starts: Vec<usize> = self
             .prepared
@@ -476,6 +513,12 @@ impl DocEditor {
             .into_iter()
             .filter_map(|start| doc?.anchor(start, false))
             .collect();
+        self.find.current_anchor = current_start.and_then(|start| {
+            self.buffer
+                .read(cx)
+                .document()
+                .and_then(|doc| doc.anchor(start, false))
+        });
         self.reanchor_comments(cx);
         self.stale = true;
         cx.notify();
@@ -588,7 +631,7 @@ impl DocEditor {
     }
 
     /// Unfolds every fold hiding `line`.
-    fn unfold_around(&mut self, line: usize, cx: &mut Context<Self>) {
+    pub(super) fn unfold_around(&mut self, line: usize, cx: &mut Context<Self>) {
         let hiding: Vec<usize> = self
             .prepared
             .folds
@@ -663,6 +706,9 @@ impl DocEditor {
         self.hide_done = !self.hide_done;
         self.stale = true;
         self.prepare(cx);
+        if self.find.shown.is_open() {
+            self.select_current_find(cx);
+        }
         cx.notify();
     }
 

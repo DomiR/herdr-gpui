@@ -7,7 +7,7 @@ use super::{
     editor::DocEditor,
     layout::{self, Row},
 };
-use crate::{actions, i18n::fl, input::ViewInputHandler, words};
+use crate::{actions, i18n::fl, input::ViewInputHandler, motion, words};
 use gpui::{prelude::*, *};
 use herdr_doc::markdown::Kind;
 use std::ops::Range;
@@ -24,6 +24,7 @@ struct Overlay {
     /// The selection runs on past this line's end.
     selects_break: bool,
     caret: Option<usize>,
+    find_matches: Vec<(Range<usize>, bool)>,
     highlights: Vec<(Range<usize>, f32)>,
     checkbox: Option<(Range<usize>, bool)>,
     marked: Option<Range<usize>>,
@@ -34,6 +35,8 @@ struct Overlay {
 struct Colors {
     selection: Hsla,
     caret: Hsla,
+    find: Hsla,
+    find_current: Hsla,
     highlight: Hsla,
     box_border: Hsla,
     box_fill: Hsla,
@@ -79,6 +82,16 @@ fn spans(layout: &TextLayout, range: Range<usize>, past_end: bool) -> Vec<Bounds
 fn paint_overlay(overlay: &Overlay, window: &mut Window) {
     let layout = &overlay.layout;
     let colors = overlay.colors;
+    for (range, current) in &overlay.find_matches {
+        let color = if *current {
+            colors.find_current
+        } else {
+            colors.find
+        };
+        for span in spans(layout, range.clone(), false) {
+            window.paint_quad(fill(span, color));
+        }
+    }
     for (range, opacity) in &overlay.highlights {
         for span in spans(layout, range.clone(), false) {
             window.paint_quad(fill(span, colors.highlight.opacity(*opacity)));
@@ -154,6 +167,8 @@ impl DocEditor {
         Colors {
             selection: rgb(theme.active).into(),
             caret: rgb(theme.cursor).into(),
+            find: rgba((theme.palette[3] << 8) | 0x38).into(),
+            find_current: rgba((theme.palette[3] << 8) | 0x98).into(),
             highlight: rgb(theme.primary_wash()).into(),
             box_border: rgb(theme.muted).into(),
             box_fill: rgb(theme.primary()).into(),
@@ -204,6 +219,27 @@ impl DocEditor {
                 || (start == end && range.start <= line.range.end && range.end > line.range.end))
                 .then(|| start - line.range.start..end - line.range.start)
         };
+        let find_matches = if self.find.shown.is_open() {
+            let start = self
+                .find
+                .matches
+                .partition_point(|range| range.end <= line.range.start);
+            self.find.matches[start..]
+                .iter()
+                .enumerate()
+                .take_while(|(_, range)| range.start < line.range.end)
+                .filter_map(|(offset, range)| {
+                    local(range).map(|range| {
+                        (
+                            shown(range),
+                            self.find.current == Some(start + offset),
+                        )
+                    })
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
         let selects_break = !self.selection.is_empty()
             && selection.start <= line.range.end
             && selection.end > line.range.end;
@@ -238,6 +274,7 @@ impl DocEditor {
             selection: selected,
             selects_break,
             caret,
+            find_matches,
             highlights: row_highlights,
             checkbox: row.checkbox.clone(),
             marked: self.marked.as_ref().and_then(local).map(&shown),
@@ -615,6 +652,10 @@ impl Render for DocEditor {
         let input = entity.clone();
         let focus = self.focus.clone();
         let header = self.header(cx);
+        let find_bar = self.render_find_bar(cx);
+        if self.find.shown.moving(motion::now()) {
+            window.request_animation_frame();
+        }
         div()
             .id("doc-editor")
             .key_context("DocEditor")
@@ -689,7 +730,8 @@ impl Render for DocEditor {
                         )
                         .absolute()
                         .inset_0(),
-                    ),
+                    )
+                    .when_some(find_bar, |body, find_bar| body.child(find_bar)),
             )
     }
 }
