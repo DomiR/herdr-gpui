@@ -21,6 +21,7 @@ const SELECTION: u32 = 0x00000029;
 const CARET_ROW: u32 = 0xf7dc8688;
 const OPEN_MARKER: u32 = 0x00000066;
 const DONE_MARKER: u32 = 0x00723eff;
+const CANCELLED_MARKER: u32 = 0xbc644aff;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct Inks {
@@ -37,6 +38,7 @@ pub(super) struct Inks {
     pub(super) caret_row: Hsla,
     pub(super) open_marker: Hsla,
     pub(super) done_marker: Hsla,
+    pub(super) cancelled_marker: Hsla,
 }
 
 /// Alpha roles stay translucent; only Theme's opaque fields are composited.
@@ -67,6 +69,7 @@ pub(super) fn resolve(choice: DocumentTheme, app: &Theme) -> (Theme, Option<Inks
         caret_row: rgba(CARET_ROW).into(),
         open_marker: rgba(OPEN_MARKER).into(),
         done_marker: rgba(DONE_MARKER).into(),
+        cancelled_marker: rgba(CANCELLED_MARKER).into(),
     };
     (theme, Some(inks))
 }

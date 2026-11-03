@@ -25,8 +25,9 @@ herdr-gpui doc watch FILE [--since N] [--section ID] [--todos]
     (the user, an agent's name and pane, or file), then the diff. Versions
     that land together print as one change, `Versions A-N`. --section
     prints only changes to that section; --todos prints task changes, one
-    line each (`checked 3. Ship`, `added`, `removed`, `unchecked`,
-    `edited`), instead of the diff. --json prints one JSON object per line.
+    line each (`checked 3. Ship`, `cancelled 3. Ship`, `uncancelled 3. Ship`,
+    `added`, `removed`, `unchecked`, `edited`), instead of the diff. --json
+    prints one JSON object per line.
     Restarts of Herdr UI are followed, with one line saying so.
 herdr-gpui doc sections FILE
     The sections: each #, ##, and ### heading starts one, named by the
@@ -36,16 +37,18 @@ herdr-gpui doc todo list FILE [--section ID]
 herdr-gpui doc append FILE --version N [--section ID] TEXT...|-- TEXT|-
 herdr-gpui doc edit FILE --version N [--section ID] --old TEXT --new TEXT
 herdr-gpui doc todo add FILE --version N [--section ID] TEXT...|-- TEXT|-
-herdr-gpui doc todo check|uncheck FILE --version N [--section ID] NUMBER|TEXT
+herdr-gpui doc todo check|uncheck|cancel|uncancel FILE --version N [--section ID] NUMBER|TEXT
     Change the document: append a block (at the end, or of the section),
-    replace the one place --old occurs, add a task, or check one off by its
-    number or text. -- passes text starting with -, and - reads standard
-    input. --version is the number you last read. When the document has
-    changed since, nothing is applied and the reply is the latest version
-    and a diff since yours (exit 1): read it and send a new change. With
-    --section, a stale version still applies if that section is unchanged,
-    and the reply carries the diff of the other sections. Changes merge
-    with the user's typing and are written to the file before the reply.
+    replace the one place --old occurs, add a task, check one off, or cancel
+    one by its number or text. Cancel strikes a task out as `- [-]`.
+    Uncheck or uncancel reopens it. -- passes text starting with -, and -
+    reads standard input. --version is the number you last read. When the
+    document has changed since, nothing is applied and the reply is the
+    latest version and a diff since yours (exit 1): read it and send a new
+    change. With --section, a stale version still applies if that section
+    is unchanged, and the reply carries the diff of the other sections.
+    Changes merge with the user's typing and are written to the file
+    before the reply.
 FILE is a .md path, relative to the current directory.";
 
 const BROWSER: &str = "\

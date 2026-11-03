@@ -102,7 +102,8 @@ SOFTWARE.
 
 The PlainTasks document theme in crates/herdr-gpui/src/doc_view/theme.rs
 adapts the Notebook colors of tasks.hidden-tmTheme and the classic task symbols
-(open_tasks_bullet, done_tasks_bullet) of PlainTasks.sublime-settings from
+(open_tasks_bullet, done_tasks_bullet, cancelled_tasks_bullet) of
+PlainTasks.sublime-settings from
 https://github.com/SublimeText/PlainTasks (revisions
 0b299a78b82a070ed8ef6e09c4e9c0e7b6403d68 and
 138f0bebd1de0e956396be27b0f549e190425518). The symbols are drawn as vector

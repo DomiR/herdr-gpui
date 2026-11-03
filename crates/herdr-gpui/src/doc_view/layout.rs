@@ -7,7 +7,7 @@ use crate::config::{FontConfig, Theme};
 use gpui::{
     FontStyle, FontWeight, Hsla, SharedString, StrikethroughStyle, TextRun, UnderlineStyle, px, rgb,
 };
-use herdr_doc::markdown::{self, Kind, Line, Style};
+use herdr_doc::markdown::{self, Kind, Line, Style, TaskState};
 use std::ops::Range;
 
 /// What the editor draws with.
@@ -88,8 +88,8 @@ pub(super) struct Row {
     pub(super) runs: Vec<TextRun>,
     pub(super) size: f32,
     pub(super) line_height: f32,
-    /// A task's `[ ]`, in the drawn text's offsets, and whether it is done.
-    pub(super) checkbox: Option<(Range<usize>, bool)>,
+    /// A task's checkbox, in the drawn text's offsets, and its state.
+    pub(super) checkbox: Option<(Range<usize>, TaskState)>,
     /// Links, in the source line's offsets, and where they point.
     pub(super) links: Vec<(Range<usize>, Target)>,
     pub(super) kind: Kind,
@@ -179,10 +179,10 @@ pub(super) fn row(
             Kind::Fence | Kind::Rule => mark(whole.clone(), &|p| p.delimiter = true),
             _ => {}
         }
-        if let Some(done) = line.task() {
+        if let Some(state) = line.task() {
             mark(local(&line.content()), &|p| {
-                p.pending = !done;
-                p.done = done;
+                p.pending = !state.is_resolved();
+                p.done = state.is_resolved();
             });
         }
         mark(local(&line.marker), &|p| p.delimiter = true);
@@ -195,13 +195,14 @@ pub(super) fn row(
     if !line.marker.is_empty() {
         mark(local(&line.marker), &|p| p.muted = true);
     }
-    let checkbox = line
-        .checkbox
-        .as_ref()
-        .map(|range| (local(range), line.task() == Some(true)));
-    if let Some((range, done)) = &checkbox {
+    let checkbox = line.task().and_then(|state| {
+        line.checkbox
+            .as_ref()
+            .map(|range| (local(range), state))
+    });
+    if let Some((range, state)) = &checkbox {
         mark(range.clone(), &|p| p.hidden = true);
-        if *done {
+        if state.is_resolved() {
             mark(local(&line.content()), &|p| {
                 p.strike = true;
                 p.muted = true;
@@ -263,8 +264,9 @@ pub(super) fn row(
     drawn.push_str(&source[at..]);
     drawn_paints.extend_from_slice(&paints[at..]);
     let map = DisplayMap { pieces };
-    let checkbox = checkbox
-        .map(|(range, done)| (map.to_display(range.start)..map.to_display(range.end), done));
+    let checkbox = checkbox.map(|(range, state)| {
+        (map.to_display(range.start)..map.to_display(range.end), state)
+    });
     let runs = runs(&drawn, &drawn_paints, look);
     Row {
         text: drawn.into(),

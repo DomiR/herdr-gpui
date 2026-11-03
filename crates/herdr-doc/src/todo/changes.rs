@@ -1,9 +1,10 @@
 //! Which tasks changed between two texts, as one line each: what `doc
 //! watch --todos` prints. Tasks are matched by their text in order, so a
-//! task whose box flipped reads as checked or unchecked, one whose text
-//! changed in place as edited, and the rest as added or removed.
+//! task whose box flipped reads as checked, unchecked, cancelled, or
+//! uncancelled, one whose text changed in place as edited, and the rest as
+//! added or removed.
 
-use super::{Todo, todos};
+use super::{TaskState, Todo, todos};
 use similar::{Algorithm, DiffOp, capture_diff_slices};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -13,6 +14,8 @@ pub enum ChangeKind {
     Checked,
     Unchecked,
     Edited,
+    Cancelled,
+    Uncancelled,
 }
 
 impl ChangeKind {
@@ -23,6 +26,8 @@ impl ChangeKind {
             Self::Removed => "removed",
             Self::Checked => "checked",
             Self::Unchecked => "unchecked",
+            Self::Cancelled => "cancelled",
+            Self::Uncancelled => "uncancelled",
             Self::Edited => "edited",
         }
     }
@@ -50,6 +55,21 @@ fn change(kind: ChangeKind, now: &Todo, before: &Todo) -> TodoChange {
     }
 }
 
+fn state_change(before: TaskState, now: TaskState) -> Option<ChangeKind> {
+    if before == now {
+        return None;
+    }
+    match now {
+        TaskState::Done => Some(ChangeKind::Checked),
+        TaskState::Cancelled => Some(ChangeKind::Cancelled),
+        TaskState::Open => match before {
+            TaskState::Done => Some(ChangeKind::Unchecked),
+            TaskState::Cancelled => Some(ChangeKind::Uncancelled),
+            TaskState::Open => None,
+        },
+    }
+}
+
 /// How alike two task texts must be for one to read as the other edited.
 const SIMILAR: f32 = 0.5;
 
@@ -74,12 +94,7 @@ pub fn changes(old: &str, new: &str) -> Vec<TodoChange> {
             } => {
                 for k in 0..len {
                     let (was, now) = (&before[old_index + k], &after[new_index + k]);
-                    if was.done != now.done {
-                        let kind = if now.done {
-                            ChangeKind::Checked
-                        } else {
-                            ChangeKind::Unchecked
-                        };
+                    if let Some(kind) = state_change(was.state, now.state) {
                         out.push(change(kind, now, was));
                     }
                 }

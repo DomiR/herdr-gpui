@@ -12,6 +12,53 @@ mod folds;
 pub use decorate::{Decoration, decorations};
 pub use folds::{Fold, FoldKind, folds};
 
+/// The state of a Markdown task checkbox.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TaskState {
+    #[default]
+    Open,
+    Done,
+    Cancelled,
+}
+
+impl TaskState {
+    /// Whether this task is done, excluding cancelled tasks.
+    pub fn is_done(self) -> bool {
+        self == Self::Done
+    }
+
+    /// Whether this task is done or cancelled.
+    pub fn is_resolved(self) -> bool {
+        matches!(self, Self::Done | Self::Cancelled)
+    }
+
+    /// The canonical checkbox text for this state.
+    pub fn checkbox(self) -> &'static str {
+        match self {
+            Self::Open => "[ ]",
+            Self::Done => "[x]",
+            Self::Cancelled => "[-]",
+        }
+    }
+
+    /// Toggle open to done and any resolved state to open.
+    pub fn toggled(self) -> Self {
+        match self {
+            Self::Open => Self::Done,
+            Self::Done | Self::Cancelled => Self::Open,
+        }
+    }
+
+    /// Toggle cancellation, reopening cancelled tasks and cancelling others.
+    pub fn cancel_toggled(self) -> Self {
+        if self == Self::Cancelled {
+            Self::Open
+        } else {
+            Self::Cancelled
+        }
+    }
+}
+
 /// What a list item's marker is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum List {
@@ -28,10 +75,10 @@ pub enum Kind {
     Heading {
         level: u8,
     },
-    /// A list item; `task` is `Some(done)` for `- [ ]` and `- [x]`.
+    /// A list item; `task` is `Some` for a recognized task checkbox.
     Item {
         list: List,
-        task: Option<bool>,
+        task: Option<TaskState>,
     },
     Quote,
     /// A ```` ``` ```` or `~~~` line opening or closing a code block.
@@ -54,7 +101,7 @@ pub struct Line {
     /// The block marker with the space after it, such as `- [ ] `; empty
     /// for a paragraph or code.
     pub marker: Range<usize>,
-    /// A task's `[ ]` or `[x]`.
+    /// A task's `[ ]`, `[x]`, or `[-]`.
     pub checkbox: Option<Range<usize>>,
     pub kind: Kind,
 }
@@ -76,7 +123,8 @@ impl Line {
         }
     }
 
-    pub fn task(&self) -> Option<bool> {
+    /// The recognized task state on this line, if it is a list item task.
+    pub fn task(&self) -> Option<TaskState> {
         match self.kind {
             Kind::Item { task, .. } => task,
             _ => None,
@@ -170,14 +218,12 @@ fn parse(text: &str, range: Range<usize>, fence: &mut Option<(char, usize)>) -> 
         return plain(Kind::Paragraph);
     };
     let after = &rest[len..];
-    let task = ["[ ]", "[x]", "[X]"]
-        .iter()
-        .find(|box_| {
-            after.starts_with(*box_) && (after.len() == 3 || after[3..].starts_with([' ', '\t']))
-        })
-        .map(|box_| *box_ != "[ ]");
+    let task = after
+        .get(..3)
+        .filter(|box_| after.len() == 3 || after[3..].starts_with([' ', '\t']))
+        .and_then(parse_task);
     match task {
-        Some(done) => {
+        Some(task) => {
             let checkbox = at + len..at + len + 3;
             let marker_len = len + 3 + usize::from(after.len() > 3);
             Line {
@@ -186,12 +232,21 @@ fn parse(text: &str, range: Range<usize>, fence: &mut Option<(char, usize)>) -> 
                     marker_len,
                     Kind::Item {
                         list,
-                        task: Some(done),
+                        task: Some(task),
                     },
                 )
             }
         }
         None => marked(len, Kind::Item { list, task: None }),
+    }
+}
+
+fn parse_task(bracket: &str) -> Option<TaskState> {
+    match bracket {
+        "[ ]" => Some(TaskState::Open),
+        "[x]" | "[X]" => Some(TaskState::Done),
+        "[-]" => Some(TaskState::Cancelled),
+        _ => None,
     }
 }
 

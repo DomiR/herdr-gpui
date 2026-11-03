@@ -41,6 +41,7 @@ fn notebook_has_the_pinned_paper_and_alpha_inks() {
     assert_eq!(inks.caret_row, rgba(0xf7dc8688).into());
     assert_eq!(inks.open_marker, rgba(0x00000066).into());
     assert_eq!(inks.done_marker, rgba(0x00723eff).into());
+    assert_eq!(inks.cancelled_marker, rgba(0xbc644aff).into());
 }
 
 #[test]

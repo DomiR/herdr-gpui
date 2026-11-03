@@ -8,7 +8,7 @@ use crate::{
         ErrorCode,
         protocol::{
             Request, Response,
-            doc::{DocOp, MAX_TEXT, Reply},
+            doc::{DocOp, MAX_TEXT, Reply, TaskState},
             tabs::Reply as TabReply,
         },
     },
@@ -113,6 +113,18 @@ pub(super) fn run(command: DocCommand, context: &Context) -> crate::Result<Outpu
             todo,
             done,
         },
+        DocCommand::TodoState {
+            path,
+            change,
+            todo,
+            state,
+        } => DocOp::TodoState {
+            path: absolute(&path)?,
+            version: change.version,
+            section: change.section,
+            todo,
+            state,
+        },
     };
     match context.call(Request::Doc, op)? {
         Response::Doc { reply } => {
@@ -176,7 +188,11 @@ pub(crate) fn message(reply: &Reply) -> (String, bool) {
             let mut text = format!("Version: {version}");
             for todo in todos {
                 let indent = " ".repeat(todo.depth);
-                let mark = if todo.done { "x" } else { " " };
+                let mark = match todo.state {
+                    TaskState::Open => " ",
+                    TaskState::Done => "x",
+                    TaskState::Cancelled => "-",
+                };
                 text.push_str(&format!(
                     "\n{indent}{}. [{mark}] {}",
                     todo.number, todo.text

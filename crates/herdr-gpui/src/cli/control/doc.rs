@@ -1,5 +1,6 @@
 //! `doc`: Markdown documents agents read and change through the app.
 use super::{Args, CliError, tabs::FileAt, unknown};
+use crate::control::protocol::doc::TaskState;
 use std::{ffi::OsString, path::PathBuf};
 
 /// Text a change carries: given inline, or `-` to read standard input.
@@ -65,6 +66,12 @@ pub enum DocCommand {
         todo: String,
         done: bool,
     },
+    TodoState {
+        path: PathBuf,
+        change: Change,
+        todo: String,
+        state: TaskState,
+    },
 }
 
 pub(super) fn command(args: &mut Args) -> Result<DocCommand, CliError> {
@@ -117,7 +124,7 @@ pub(super) fn command(args: &mut Args) -> Result<DocCommand, CliError> {
 fn todo(args: &mut Args) -> Result<DocCommand, CliError> {
     let verb = args.verb().ok_or(CliError::MissingArgument {
         command: "doc",
-        what: "todo list|add|check",
+        what: "todo list|add|check|uncheck|cancel|uncancel",
     })?;
     Ok(match verb.to_str() {
         Some("list") => DocCommand::TodoList {
@@ -145,6 +152,26 @@ fn todo(args: &mut Args) -> Result<DocCommand, CliError> {
                 change,
                 todo,
                 done,
+            }
+        }
+        Some("cancel" | "uncancel") => {
+            let undo = args.flag("--undo");
+            let cancelled = (verb == "cancel" && !undo) || (verb == "uncancel" && undo);
+            let change = change(args)?;
+            let path = path(args)?;
+            let todo = match text(args)? {
+                Text::Inline(todo) => todo,
+                Text::Stdin => return Err(CliError::InvalidValue("NUMBER|TEXT")),
+            };
+            DocCommand::TodoState {
+                path,
+                change,
+                todo,
+                state: if cancelled {
+                    TaskState::Cancelled
+                } else {
+                    TaskState::Open
+                },
             }
         }
         _ => return Err(unknown("doc todo", verb)),

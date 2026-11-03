@@ -7,7 +7,9 @@ use super::{Watches, socket, tabs::arrive};
 use crate::{
     control::protocol::{
         Call, Caller, ErrorCode, Response,
-        doc::{DocOp, Others, Reply, SectionInfo, TodoChangeInfo, TodoChangeKind, TodoInfo},
+        doc::{
+            DocOp, Others, Reply, SectionInfo, TaskState, TodoChangeInfo, TodoChangeKind, TodoInfo,
+        },
     },
     doc_view::{self, DocBuffer, Docs, State},
 };
@@ -212,7 +214,8 @@ fn apply(
                 .map(|t| TodoInfo {
                     number: t.number,
                     line: t.line + 1,
-                    done: t.done,
+                    done: t.state.is_done(),
+                    state: protocol_state(t.state),
                     text: t.text,
                     depth: t.depth,
                     section: t.section,
@@ -285,6 +288,23 @@ fn apply(
                 Box::new(move |doc: &str| {
                     let found = todo::find_in(doc, &query, id.as_deref())?;
                     Ok(todo::set_done(doc, found.line, done).into_iter().collect())
+                }),
+            )
+        }
+        DocOp::TodoState {
+            version,
+            section,
+            todo: query,
+            state,
+            ..
+        } => {
+            let (query, id, state) = (query.clone(), section.clone(), doc_state(*state));
+            (
+                *version,
+                section.as_ref(),
+                Box::new(move |doc: &str| {
+                    let found = todo::find_in(doc, &query, id.as_deref())?;
+                    Ok(todo::set_state(doc, found.line, state).into_iter().collect())
                 }),
             )
         }
@@ -386,7 +406,25 @@ fn kind(kind: todo::ChangeKind) -> TodoChangeKind {
         todo::ChangeKind::Removed => TodoChangeKind::Removed,
         todo::ChangeKind::Checked => TodoChangeKind::Checked,
         todo::ChangeKind::Unchecked => TodoChangeKind::Unchecked,
+        todo::ChangeKind::Cancelled => TodoChangeKind::Cancelled,
+        todo::ChangeKind::Uncancelled => TodoChangeKind::Uncancelled,
         todo::ChangeKind::Edited => TodoChangeKind::Edited,
+    }
+}
+
+fn protocol_state(state: todo::TaskState) -> TaskState {
+    match state {
+        todo::TaskState::Open => TaskState::Open,
+        todo::TaskState::Done => TaskState::Done,
+        todo::TaskState::Cancelled => TaskState::Cancelled,
+    }
+}
+
+fn doc_state(state: TaskState) -> todo::TaskState {
+    match state {
+        TaskState::Open => todo::TaskState::Open,
+        TaskState::Done => todo::TaskState::Done,
+        TaskState::Cancelled => todo::TaskState::Cancelled,
     }
 }
 

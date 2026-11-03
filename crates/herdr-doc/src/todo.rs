@@ -13,6 +13,7 @@ use std::ops::Range;
 mod changes;
 
 pub use changes::{ChangeKind, TodoChange, changes};
+pub use crate::markdown::TaskState;
 
 /// The most characters a todo added by command may have.
 pub const MAX_ITEM: usize = 4096;
@@ -24,7 +25,8 @@ pub struct Todo {
     pub number: usize,
     /// 0-based line.
     pub line: usize,
-    pub done: bool,
+    /// The task's checkbox state.
+    pub state: TaskState,
     pub text: String,
     /// Leading whitespace in columns: 0 for a top-level item.
     pub depth: usize,
@@ -41,13 +43,13 @@ pub fn todos(text: &str) -> Vec<Todo> {
         if line.is_heading() {
             section = Some(text[line.content()].trim().to_owned());
         }
-        let Some(done) = line.task() else {
+        let Some(state) = line.task() else {
             continue;
         };
         todos.push(Todo {
             number: todos.len() + 1,
             line: index,
-            done,
+            state,
             text: text[line.content()].trim().to_owned(),
             depth: line.depth,
             section: section.clone(),
@@ -110,19 +112,40 @@ pub fn find_in(text: &str, query: &str, section: Option<&str>) -> Result<Todo> {
     }
 }
 
-/// Checks or unchecks the task on `line`; `None` when it is not a task or
-/// already so.
-pub fn set_done(text: &str, line: usize, done: bool) -> Option<Edit> {
+/// Writes `state` to the task on `line`; `None` when it is not a task or
+/// already in that state.
+pub fn set_state(text: &str, line: usize, state: TaskState) -> Option<Edit> {
     let lines = markdown::lines(text);
     let line = lines.get(line)?;
     let checkbox = line.checkbox.clone()?;
-    (line.task()? != done).then(|| Edit::new(checkbox, if done { "[x]" } else { "[ ]" }))
+    (line.task()? != state).then(|| Edit::new(checkbox, state.checkbox()))
+}
+
+/// Checks or unchecks the task on `line`; `None` when it is not a task or
+/// already so.
+pub fn set_done(text: &str, line: usize, done: bool) -> Option<Edit> {
+    set_state(
+        text,
+        line,
+        if done {
+            TaskState::Done
+        } else {
+            TaskState::Open
+        },
+    )
 }
 
 /// Flips the task on `line`.
 pub fn toggle(text: &str, line: usize) -> Option<Edit> {
-    let done = markdown::lines(text).get(line)?.task()?;
-    set_done(text, line, !done)
+    let state = markdown::lines(text).get(line)?.task()?;
+    set_state(text, line, state.toggled())
+}
+
+/// Toggles cancellation on `line`, reopening a cancelled task and cancelling
+/// every other task state.
+pub fn toggle_cancel(text: &str, line: usize) -> Option<Edit> {
+    let state = markdown::lines(text).get(line)?.task()?;
+    set_state(text, line, state.cancel_toggled())
 }
 
 /// Adds the task `item`: after the last task under the heading `under`
@@ -381,8 +404,8 @@ pub fn move_item(text: &str, line: usize, up: bool) -> Option<(Vec<Edit>, usize)
     Some((edits, moved_to))
 }
 
-/// Done and total tasks under each heading, nested sections included, by
-/// the heading's line.
+/// Done and total tasks under each heading, nested sections included and
+/// cancelled tasks left out, by the heading's line.
 pub fn section_counts(lines: &[Line]) -> Vec<(usize, usize, usize)> {
     let mut counts = Vec::new();
     for (index, line) in lines.iter().enumerate() {
@@ -394,9 +417,11 @@ pub fn section_counts(lines: &[Line]) -> Vec<(usize, usize, usize)> {
             if other.level().is_some_and(|other| other <= level) {
                 break;
             }
-            if let Some(checked) = other.task() {
+            if let Some(state) = other.task()
+                && state != TaskState::Cancelled
+            {
                 total += 1;
-                done += usize::from(checked);
+                done += usize::from(state.is_done());
             }
         }
         if total > 0 {
@@ -406,12 +431,12 @@ pub fn section_counts(lines: &[Line]) -> Vec<(usize, usize, usize)> {
     counts
 }
 
-/// Which lines "hide done" hides: each done task with its sub-items.
-pub fn done_lines(lines: &[Line]) -> Vec<bool> {
+/// Which lines "hide done" hides: each resolved task with its sub-items.
+pub fn resolved_lines(lines: &[Line]) -> Vec<bool> {
     let mut hidden = vec![false; lines.len()];
     let mut index = 0;
     while index < lines.len() {
-        if lines[index].task() == Some(true) {
+        if lines[index].task().is_some_and(TaskState::is_resolved) {
             let end = block_end(lines, index);
             for flag in &mut hidden[index..end] {
                 *flag = true;

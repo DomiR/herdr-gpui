@@ -1,6 +1,8 @@
 #![allow(clippy::unwrap_used)]
 use super::*;
 
+mod cancelled;
+
 const DOC: &str = "# Work\n- [ ] write\n  - [x] outline\n- [x] read\n\n## Later\n- [ ] ship\n";
 
 fn apply(text: &str, edit: Edit) -> String {
@@ -10,12 +12,12 @@ fn apply(text: &str, edit: Edit) -> String {
 #[test]
 fn lists_todos_with_their_sections() {
     let all = todos(DOC);
-    let summary: Vec<(usize, bool, &str, usize, Option<&str>)> = all
+    let summary: Vec<(usize, TaskState, &str, usize, Option<&str>)> = all
         .iter()
         .map(|t| {
             (
                 t.number,
-                t.done,
+                t.state,
                 t.text.as_str(),
                 t.depth,
                 t.section.as_deref(),
@@ -150,10 +152,10 @@ fn moves_items_with_their_children() {
 }
 
 #[test]
-fn counts_per_heading_and_done_lines() {
+fn counts_per_heading_and_resolved_lines() {
     let lines = markdown::lines(DOC);
     assert_eq!(section_counts(&lines), vec![(0, 2, 4), (5, 0, 1)]);
-    let hidden = done_lines(&lines);
+    let hidden = resolved_lines(&lines);
     assert_eq!(
         hidden
             .iter()

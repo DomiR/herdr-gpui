@@ -1,6 +1,8 @@
 #![allow(clippy::unwrap_used)]
 use super::*;
-use crate::control::protocol::doc::{Others, TodoInfo};
+use crate::control::protocol::doc::{Others, TaskState, TodoInfo};
+
+mod cancelled;
 
 #[test]
 fn replies_read_as_one_actionable_message() {
@@ -60,6 +62,7 @@ fn todos_and_reads_start_with_the_version() {
             number: 1,
             line: 2,
             done: true,
+            state: TaskState::Done,
             text: "ship".into(),
             depth: 2,
             section: None,

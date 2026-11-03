@@ -2969,20 +2969,25 @@ Follow app theme under Settings > Appearance > Document theme, set
   **Send N Comments** in the bar) gives them to the agent that last changed
   the document through `herdr-gpui doc`, as page notes go, or copies them
   when no agent did.
-- **Todos.** `- [ ]` and `- [x]` draw as checkboxes; click one, or press
-  Cmd-Enter (Ctrl-Enter) on the line, to check it. Cmd-Enter also turns a
-  list item or a line of text into a task. Enter continues a list (a task
-  continues as an unchecked task, a numbered item counts on), and Enter on
-  an empty item ends the list. Tab and Shift-Tab indent and outdent the
-  selected items with their sub-items, Alt-Up and Alt-Down move an item with
-  its sub-items past its sibling, and Backspace right after a marker removes
-  it. Each heading shows how many tasks under it are done.
+- **Todos.** `- [ ]` and `- [x]` draw as checkboxes, and `- [-]` marks a
+  cancelled task. Cancelled text is struck through; its marker is a `✘` in
+  the PlainTasks theme. Click a box, or press Cmd-Enter (Ctrl-Enter) on the
+  line, to check it. Alt-click (Option-click) on the box, or press
+  Cmd-Alt-Enter (Ctrl-Alt-Enter elsewhere), cancels or reopens the task.
+  Cmd-Enter also turns a list item or a line of text into a task. Enter
+  continues a list (a task continues as an unchecked task, a numbered item
+  counts on), and Enter on an empty item ends the list. Tab and Shift-Tab
+  indent and outdent the selected items with their sub-items, Alt-Up and
+  Alt-Down move an item with its sub-items past its sibling, and Backspace
+  right after a marker removes it. Each heading shows how many tasks under
+  it are done, leaving cancelled tasks out of the count.
 - **Folding.** A heading folds its section, a list item its sub-items, and a
   code block its body: click the chevron beside it, or press Cmd-Alt-[ and
   Cmd-Alt-] to fold and unfold at the caret, and Cmd-Alt-Shift-[ and ] for
   every heading (Ctrl instead of Cmd elsewhere). A folded line shows how
   many lines it hides. Folded sections are saved with the tab.
-  **Hide Done** (Cmd-Shift-H) hides checked tasks with their sub-items.
+  **Hide Done** (Cmd-Shift-H) hides checked and cancelled tasks with their
+  sub-items.
 - **Saving.** Typing is written to the file after a short pause, through a
   temporary file and a rename; Cmd-S writes at once. Undo (Cmd-Z) and redo
   (Cmd-Shift-Z) cover only your own edits, never an agent's.

@@ -82,7 +82,7 @@ pub(super) struct Prepared {
     pub(super) version: Option<Version>,
     pub(super) lines: Vec<Line>,
     pub(super) folds: Vec<Fold>,
-    /// Done and total tasks under each heading, by its line.
+    /// Done and total tasks under each heading, cancelled ones left out, by its line.
     pub(super) counts: HashMap<usize, (usize, usize)>,
     /// The lines drawn, in order.
     pub(super) rows: Vec<usize>,
@@ -324,7 +324,7 @@ impl DocEditor {
         };
         let mut hidden = vec![false; lines.len()];
         if self.hide_done {
-            hidden = todo::done_lines(&lines);
+            hidden = todo::resolved_lines(&lines);
         }
         self.probe_links(links::candidates(text, &lines), cx);
         let found = blocks::blocks(text, &lines);
@@ -675,6 +675,16 @@ impl DocEditor {
     pub(super) fn toggle_task(&mut self, line: usize, cx: &mut Context<Self>) {
         let text = self.text(cx);
         let Some(edit) = todo::toggle(text, line) else {
+            return;
+        };
+        let selection = self.selection;
+        self.apply_selecting(vec![edit], selection, cx);
+    }
+
+    /// Toggles cancellation on the task at `line`, keeping the selection.
+    pub(super) fn toggle_cancel_task(&mut self, line: usize, cx: &mut Context<Self>) {
+        let text = self.text(cx);
+        let Some(edit) = todo::toggle_cancel(text, line) else {
             return;
         };
         let selection = self.selection;

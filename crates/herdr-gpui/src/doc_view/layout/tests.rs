@@ -1,8 +1,10 @@
 #![allow(clippy::unwrap_used)]
 use super::*;
 use crate::config::Config;
+use herdr_doc::markdown::TaskState;
 
 mod document_theme;
+mod cancelled;
 
 fn look() -> Look {
     Look {
@@ -43,7 +45,7 @@ fn runs_cover_the_line_without_splitting_characters() {
 #[test]
 fn a_task_box_is_drawn_not_its_brackets() {
     let row = styled("- [x] done");
-    assert_eq!(row.checkbox, Some((2..5, true)));
+    assert_eq!(row.checkbox, Some((2..5, TaskState::Done)));
     let first = &row.runs[0];
     assert_eq!(first.len, 2);
     let hidden = &row.runs[1];
@@ -96,7 +98,7 @@ fn bullets_draw_as_dots_and_a_task_box_keeps_its_place() {
     assert_eq!(bullet.map.to_source("• ".len()), 2);
     let task = row(text, &lines[1], &look(), true, &[], &|_| None);
     assert_eq!(task.text.as_ref(), "[x] b");
-    assert_eq!(task.checkbox, Some((0..3, true)));
+    assert_eq!(task.checkbox, Some((0..3, TaskState::Done)));
 }
 
 #[test]

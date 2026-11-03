@@ -5,6 +5,7 @@ use gpui::{
     BorderStyle, Bounds, Hsla, PathBuilder, Pixels, Point, TextLayout, Window, point, px, quad,
     size, transparent_black,
 };
+use herdr_doc::markdown::TaskState;
 use std::ops::Range;
 
 #[derive(Clone, Copy)]
@@ -19,6 +20,7 @@ pub(super) enum MarkerStyle {
 pub(super) struct MarkerColors {
     pub(super) border: Hsla,
     pub(super) check: Hsla,
+    pub(super) cancel: Hsla,
     pub(super) fill: Hsla,
 }
 
@@ -38,7 +40,7 @@ fn slot(start: Point<Pixels>, end: Point<Pixels>, height: Pixels) -> Bounds<Pixe
 pub(super) fn paint(
     layout: &TextLayout,
     range: &Range<usize>,
-    done: bool,
+    state: TaskState,
     style: MarkerStyle,
     colors: MarkerColors,
     window: &mut Window,
@@ -53,7 +55,7 @@ pub(super) fn paint(
     let side = square.size.width;
     match style {
         MarkerStyle::Checkbox => {
-            let fill_color = if done {
+            let fill_color = if state.is_done() {
                 colors.fill
             } else {
                 transparent_black()
@@ -66,7 +68,7 @@ pub(super) fn paint(
                 colors.border,
                 BorderStyle::Solid,
             ));
-            if done {
+            if state.is_done() {
                 let mut path = PathBuilder::stroke(px(1.8));
                 let s = f32::from(side);
                 let o = square.origin;
@@ -76,9 +78,20 @@ pub(super) fn paint(
                 if let Ok(path) = path.build() {
                     window.paint_path(path, colors.check);
                 }
+            } else if state == TaskState::Cancelled {
+                let mut path = PathBuilder::stroke(px(1.5));
+                let s = f32::from(side);
+                let o = square.origin;
+                path.move_to(point(o.x + px(s * 0.28), o.y + px(s * 0.28)));
+                path.line_to(point(o.x + px(s * 0.72), o.y + px(s * 0.72)));
+                path.move_to(point(o.x + px(s * 0.72), o.y + px(s * 0.28)));
+                path.line_to(point(o.x + px(s * 0.28), o.y + px(s * 0.72)));
+                if let Ok(path) = path.build() {
+                    window.paint_path(path, colors.border);
+                }
             }
         }
-        MarkerStyle::PlainTasks if !done => {
+        MarkerStyle::PlainTasks if state == TaskState::Open => {
             window.paint_quad(quad(
                 square,
                 px(0.),
@@ -87,6 +100,18 @@ pub(super) fn paint(
                 colors.border,
                 BorderStyle::Solid,
             ));
+        }
+        MarkerStyle::PlainTasks if state == TaskState::Cancelled => {
+            let mut path = PathBuilder::stroke(px(2.4));
+            let s = f32::from(side);
+            let o = square.origin;
+            path.move_to(point(o.x + px(s * 0.15), o.y + px(s * 0.15)));
+            path.line_to(point(o.x + px(s * 0.85), o.y + px(s * 0.85)));
+            path.move_to(point(o.x + px(s * 0.85), o.y + px(s * 0.15)));
+            path.line_to(point(o.x + px(s * 0.15), o.y + px(s * 0.85)));
+            if let Ok(path) = path.build() {
+                window.paint_path(path, colors.cancel);
+            }
         }
         MarkerStyle::PlainTasks => {
             // Classic standalone heavy check, with no surrounding box.

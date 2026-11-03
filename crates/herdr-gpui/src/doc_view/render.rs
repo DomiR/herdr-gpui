@@ -10,7 +10,7 @@ use super::{
 };
 use crate::{actions, i18n::fl, input::ViewInputHandler, words};
 use gpui::{prelude::*, *};
-use herdr_doc::markdown::Kind;
+use herdr_doc::markdown::{Kind, TaskState};
 use std::ops::Range;
 
 /// The fold chevrons' column.
@@ -26,7 +26,7 @@ struct Overlay {
     selects_break: bool,
     caret: Option<usize>,
     highlights: Vec<(Range<usize>, f32)>,
-    checkbox: Option<(Range<usize>, bool)>,
+    checkbox: Option<(Range<usize>, TaskState)>,
     marked: Option<Range<usize>>,
     colors: Colors,
 }
@@ -102,11 +102,11 @@ fn paint_overlay(overlay: &Overlay, bounds: Bounds<Pixels>, window: &mut Window)
             window.paint_quad(fill(span, colors.selection));
         }
     }
-    if let Some((range, done)) = &overlay.checkbox {
+    if let Some((range, state)) = &overlay.checkbox {
         markers::paint(
             layout,
             range,
-            *done,
+            *state,
             colors.marker_style,
             colors.markers,
             window,
@@ -149,6 +149,7 @@ impl DocEditor {
                 markers: MarkerColors {
                     border: inks.open_marker,
                     check: inks.done_marker,
+                    cancel: inks.cancelled_marker,
                     fill: transparent_black(),
                 },
                 underline: inks.caret,
@@ -163,6 +164,7 @@ impl DocEditor {
             markers: MarkerColors {
                 border: rgb(theme.muted).into(),
                 check: rgb(theme.text_on(theme.primary())).into(),
+                cancel: rgb(theme.muted).into(),
                 fill: rgb(theme.primary()).into(),
             },
             underline: rgb(theme.foreground).into(),
@@ -429,7 +431,7 @@ impl DocEditor {
         index: usize,
         source: usize,
         event: &MouseDownEvent,
-        checkbox: Option<&(Range<usize>, bool)>,
+        checkbox: Option<&(Range<usize>, TaskState)>,
         links: &[(Range<usize>, layout::Target)],
         cx: &mut Context<Self>,
     ) {
@@ -438,7 +440,11 @@ impl DocEditor {
             && index <= range.end
             && !event.modifiers.shift
         {
-            self.toggle_task(line, cx);
+            if event.modifiers.alt {
+                self.toggle_cancel_task(line, cx);
+            } else {
+                self.toggle_task(line, cx);
+            }
             return;
         }
         let primary = if crate::controls::CTRL_SHORTCUTS {

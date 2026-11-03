@@ -1,6 +1,6 @@
 use super::*;
 use crate::{config::DocumentTheme, doc_view::theme};
-use gpui::{Modifiers, Pixels, Point, point};
+use gpui::Modifiers;
 
 impl Fixture<'_> {
     fn set_theme(&mut self, choice: DocumentTheme) {
@@ -16,25 +16,6 @@ impl Fixture<'_> {
             });
             window.draw(cx).clear(cx);
         });
-    }
-
-    fn marker_position(&mut self, line: usize) -> Point<Pixels> {
-        self.cx.update(|window, cx| {
-            window.draw(cx).clear(cx);
-            let editor = self.editor.read(cx);
-            let source = &editor.prepared.lines[line];
-            let marker = source.checkbox.as_ref().expect("task marker");
-            let layouts = editor.layouts.borrow();
-            let (layout, map) = layouts.get(&line).expect("visible task layout");
-            let start = layout
-                .position_for_index(map.to_display(marker.start - source.range.start))
-                .expect("marker start");
-            let end = layout
-                .position_for_index(map.to_display(marker.end - source.range.start))
-                .expect("marker end");
-            assert_eq!(start.y, end.y);
-            point((start.x + end.x) / 2., start.y + layout.line_height() / 2.)
-        })
     }
 }
 
