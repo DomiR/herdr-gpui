@@ -361,20 +361,40 @@ impl DocEditor {
         self.apply_selecting(edits, selection, cx);
     }
 
-    /// Alt-Up and Alt-Down: moves the caret's item with its sub-items past
-    /// its sibling, the caret going along.
+    /// Alt-Up and Alt-Down: moves the caret's plain line or list item with
+    /// its sub-items past a neighboring paragraph or section heading, the
+    /// caret going along.
     fn move_item(&mut self, up: bool, cx: &mut Context<Self>) {
+        self.prepare(cx);
         let line = self.caret_line();
+        let was_folded = self.prepared.folded.contains_key(&line);
+        if was_folded {
+            self.toggle_fold(line, cx);
+        }
         let text = self.text(cx);
+        let column = self.selection.head - self.prepared.lines[line].range.start;
         let Some((edits, moved_to)) = todo::move_item(text, line, up) else {
+            if was_folded {
+                self.toggle_fold(line, cx);
+            }
             return;
         };
-        let column = self.selection.head - self.prepared.lines[line].range.start;
         let after = Edit::apply_all(text, &edits);
         let start = markdown::lines(&after)
             .get(moved_to)
             .map_or(0, |l| l.range.start);
         self.apply(edits, start + column, cx);
+        if self.text(cx) != after.as_str() {
+            if was_folded {
+                self.toggle_fold(line, cx);
+            }
+            return;
+        }
+        self.prepare(cx);
+        self.unfold_around(moved_to, cx);
+        if was_folded {
+            self.toggle_fold(moved_to, cx);
+        }
     }
 
     /// Cmd-Enter on each selected line: a task is checked or unchecked, a
