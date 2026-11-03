@@ -24,7 +24,7 @@ fn opening_and_typing_selects_the_first_match_after_the_caret(cx: &mut TestAppCo
     doc.caret_at("foo two", 0);
     open_find(&mut doc);
     doc.type_text("foo");
-    assert_eq!(status(&mut doc), "1 of 1");
+    assert_eq!(status(&mut doc), "2 of 2");
     assert_eq!(doc.selection().range(), 15..18);
 }
 
@@ -122,8 +122,10 @@ fn an_external_change_keeps_the_same_match_current(cx: &mut TestAppContext) {
     assert_eq!(doc.selection().range(), 9..12);
     std::fs::write(&doc.path, format!("intro\n{original}")).unwrap();
     doc.wait(600);
+    doc.rows();
     let expected = doc.text().rfind("foo").unwrap();
     assert_eq!(doc.selection().range(), expected..expected + 3);
+    assert_eq!(status(&mut doc), "2 of 2");
 }
 
 #[gpui::test]
