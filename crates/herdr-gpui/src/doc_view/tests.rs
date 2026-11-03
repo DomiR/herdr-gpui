@@ -9,6 +9,7 @@ use std::{path::PathBuf, time::Duration};
 mod disk_sync;
 mod folding;
 mod saved_tab;
+mod shift_enter;
 mod todo_keys;
 mod typing;
 
