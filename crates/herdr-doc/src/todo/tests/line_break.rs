@@ -48,7 +48,7 @@ fn keeps_a_note_in_the_task_block() {
     let (edit, caret) = line_break(text, text.len());
     let split = apply(text, edit);
     let with_note = format!("{split}note");
-    let lines = crate::markdown::lines(&with_note);
+    let lines = markdown::lines(&with_note);
     assert!(lines[1].depth > lines[0].depth);
     assert!(block_end(&lines, 0) >= 2);
     assert_eq!(caret, split.len());
