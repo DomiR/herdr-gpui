@@ -13,10 +13,10 @@ pub struct DocumentsConfig {
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum DocumentTheme {
-    /// Use the app theme and the existing document colors.
-    #[default]
+    /// Use the app theme and the earlier document colors.
     App,
-    /// Use the PlainTasks yellow notepad appearance.
+    /// Use the PlainTasks yellow notepad appearance. This is the default.
+    #[default]
     PlainTasks,
 }
 

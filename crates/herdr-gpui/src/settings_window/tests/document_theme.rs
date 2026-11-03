@@ -10,8 +10,8 @@ fn document_theme_labels_are_fluent_and_searchable() {
     assert_eq!(
         crate::i18n::fl!("settings-documents-theme-description"),
         concat!(
-            "Markdown document tabs follow the app theme or use the ",
-            "PlainTasks yellow notepad colors and task markers."
+            "Markdown document tabs use the PlainTasks yellow notepad colors and task ",
+            "markers, or follow the app theme."
         )
     );
     assert_eq!(
@@ -39,7 +39,7 @@ fn document_theme_row_uses_the_loaded_config_choice(cx: &mut TestAppContext) {
     let (view, cx) = cx.add_window_view(skill_fixture);
     view.update(cx, |view, _| {
         view.section = Section::Theme;
-        view.config.documents.theme = crate::config::DocumentTheme::PlainTasks;
+        view.config.documents.theme = crate::config::DocumentTheme::App;
     });
     cx.simulate_resize(size(px(960.), px(1200.)));
     cx.update(|window, cx| crate::sidebar::layout_tests::full_draw(window, cx).clear(cx));
