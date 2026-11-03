@@ -308,6 +308,7 @@ impl DocEditor {
         window.prevent_default();
     }
 
+    #[cfg(test)]
     pub(super) fn find_status(&self) -> String {
         self.find.status()
     }
@@ -348,9 +349,7 @@ impl DocEditor {
                     Some(icon) => svg()
                         .path(icon)
                         .size(px(14.))
-                        .text_color(rgb(if has_matches {
-                            theme.foreground
-                        } else if id == "doc-find-close" {
+                        .text_color(rgb(if has_matches || id == "doc-find-close" {
                             theme.foreground
                         } else {
                             theme.muted
