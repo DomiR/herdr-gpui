@@ -26,16 +26,20 @@ fn open_task_text_stays_foreground() {
         row.runs.last().unwrap().color,
         color(look().theme.foreground)
     );
-    assert!(!row
-        .runs
-        .iter()
-        .any(|run| run.color == color(look().theme.prose())));
+    assert!(
+        !row.runs
+            .iter()
+            .any(|run| run.color == color(look().theme.prose()))
+    );
 }
 
 #[test]
 fn heading_text_stays_foreground() {
     let row = styled("# Title");
-    assert_eq!(row.runs.last().unwrap().color, color(look().theme.foreground));
+    assert_eq!(
+        row.runs.last().unwrap().color,
+        color(look().theme.foreground)
+    );
 }
 
 #[test]
@@ -65,7 +69,11 @@ fn inline_emphasis_and_code_stay_foreground_inside_prose() {
 fn links_keep_the_primary_color() {
     let row = styled("see [docs](https://example.com)");
     let theme = look().theme;
-    assert!(row.runs.iter().any(|run| run.color == color(theme.primary())));
+    assert!(
+        row.runs
+            .iter()
+            .any(|run| run.color == color(theme.primary()))
+    );
 }
 
 #[test]
@@ -73,7 +81,10 @@ fn a_note_under_a_task_is_prose() {
     let text = "- [ ] task\n  a note under it";
     let lines = markdown::lines(text);
     let row = row(text, &lines[1], &look(), false, &[], &|_| None);
-    assert_eq!(row.runs[0].color, color(look().theme.prose()));
+    assert_eq!(
+        row.runs.last().unwrap().color,
+        color(look().theme.prose())
+    );
 }
 
 #[test]

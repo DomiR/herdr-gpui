@@ -479,7 +479,11 @@ impl Theme {
     /// such as its tasks: halfway between [`Self::subtext`] and [`Self::muted`],
     /// lifted like a label for the contrast setting.
     pub fn prose(&self) -> u32 {
-        self.ink(mix(self.muted, mix(self.background, self.foreground, 78), 50))
+        self.ink(mix(
+            self.muted,
+            mix(self.background, self.foreground, 78),
+            50,
+        ))
     }
 
     /// A configured `dim = true` token: the color faded toward the panel.
