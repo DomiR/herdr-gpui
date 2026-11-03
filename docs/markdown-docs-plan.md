@@ -74,7 +74,7 @@ building it without the user watching, so a reviewer can check each one.
     agent's edits above keep the same sections folded. Done/total counts
     stay visible on a folded heading. The caret never rests inside a fold:
     moving into one skips it, and an edit an agent makes inside it leaves
-    it folded. Cmd-Alt-0 folds to the `#` headings, Cmd-Alt-1 through 9 show
+    it folded. Cmd-0 folds to the `#` headings, Cmd-1 through 9 show
     that many levels, list items with sub-items count as a level below their
     heading, and code blocks keep their fold.
 16. **Version numbers for agents' commands** (asked for mid-run): every

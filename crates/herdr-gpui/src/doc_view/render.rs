@@ -635,6 +635,9 @@ impl Render for DocEditor {
             .on_action(cx.listener(|this, _: &actions::Paste, window, cx| {
                 this.key_down(&actions::edit_key("v"), window, cx);
             }))
+            .on_action(cx.listener(|this, action: &super::fold_keys::FoldToLevel, _, cx| {
+                this.fold_to_level(action.level, cx);
+            }))
             .on_action(cx.listener(|this, _: &actions::SelectAll, window, cx| {
                 this.key_down(&actions::edit_key("a"), window, cx);
             }))

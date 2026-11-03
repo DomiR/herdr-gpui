@@ -2974,11 +2974,13 @@ tools keep working on it.
 - **Folding.** A heading folds its section, a list item its sub-items, and a
   code block its body: click the chevron beside it, or press Cmd-Alt-[ and
   Cmd-Alt-] to fold and unfold at the caret, and Cmd-Alt-Shift-[ and ] for
-  every heading (Ctrl instead of Cmd elsewhere). Cmd-Alt-0 folds the
-  document to its `#` headings, and Cmd-Alt-1 through 9 show that many
-  levels with everything deeper folded; a list item with sub-items counts
-  as a level below its heading, and code blocks keep their fold. A folded
-  line shows how many lines it hides. Folded sections are saved with the tab.
+  every heading (Ctrl instead of Cmd elsewhere). Cmd-0 folds the document
+  to its `#` headings, and Cmd-1 through 9 show that many levels with
+  everything deeper folded; a list item with sub-items counts as a level
+  below its heading, and code blocks keep their fold. While a document has
+  focus, these keys fold instead of switching tabs or resetting the font
+  size. A folded line shows how many lines it hides. Folded sections are
+  saved with the tab.
   **Hide Done** (Cmd-Shift-H) hides checked tasks with their sub-items.
 - **Saving.** Typing is written to the file after a short pause, through a
   temporary file and a rename; Cmd-S writes at once. Undo (Cmd-Z) and redo

@@ -12,6 +12,7 @@ mod buffer;
 mod comments;
 mod editor;
 mod error;
+mod fold_keys;
 mod input;
 mod keys;
 mod layout;
@@ -21,6 +22,7 @@ mod render;
 pub(crate) use buffer::{DocBuffer, Docs, State};
 pub(crate) use editor::{DocEditor, FoldsChanged};
 pub use error::Error;
+pub(crate) use fold_keys::fold_key_bindings;
 pub(crate) use layout::Look;
 
 use crate::{
