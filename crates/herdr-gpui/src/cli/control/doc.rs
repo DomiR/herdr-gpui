@@ -1,6 +1,6 @@
 //! `doc`: Markdown documents agents read and change through the app.
 use super::{Args, CliError, tabs::FileAt, unknown};
-use crate::control::protocol::doc::TaskState;
+use herdr_control_protocol::protocol::doc::TaskState;
 use std::{ffi::OsString, path::PathBuf};
 
 /// Text a change carries: given inline, or `-` to read standard input.

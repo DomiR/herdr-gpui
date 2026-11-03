@@ -1,6 +1,6 @@
 use super::*;
 
-use crate::control::protocol::doc::TaskState;
+use herdr_control_protocol::protocol::doc::TaskState;
 use control::{Change, ControlCommand, DocCommand};
 
 fn doc(args: &[&str]) -> Result<DocCommand, CliError> {
