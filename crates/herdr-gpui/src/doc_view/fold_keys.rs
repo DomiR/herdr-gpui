@@ -5,8 +5,8 @@ use gpui::KeyBinding;
 
 #[derive(Clone, PartialEq, serde::Deserialize, gpui::Action)]
 #[action(namespace = doc_view, no_json)]
-pub(crate) struct FoldToLevel {
-    pub(crate) level: usize,
+pub(super) struct FoldToLevel {
+    pub(super) level: usize,
 }
 
 /// These win over the app keymap's Tab N and Reset Font Size keys only while

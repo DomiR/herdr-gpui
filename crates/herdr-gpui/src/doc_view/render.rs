@@ -5,6 +5,7 @@
 use super::{
     buffer::State,
     editor::DocEditor,
+    fold_keys::FoldToLevel,
     layout::{self, Row},
 };
 use crate::{actions, i18n::fl, input::ViewInputHandler, words};
@@ -635,7 +636,7 @@ impl Render for DocEditor {
             .on_action(cx.listener(|this, _: &actions::Paste, window, cx| {
                 this.key_down(&actions::edit_key("v"), window, cx);
             }))
-            .on_action(cx.listener(|this, action: &super::fold_keys::FoldToLevel, _, cx| {
+            .on_action(cx.listener(|this, action: &FoldToLevel, _, cx| {
                 this.fold_to_level(action.level, cx);
             }))
             .on_action(cx.listener(|this, _: &actions::SelectAll, window, cx| {
