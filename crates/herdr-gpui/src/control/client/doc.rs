@@ -188,7 +188,12 @@ pub(crate) fn message(reply: &Reply) -> (String, bool) {
             let mut text = format!("Version: {version}");
             for todo in todos {
                 let indent = " ".repeat(todo.depth);
-                let mark = match todo.state {
+                let state = if todo.done {
+                    TaskState::Done
+                } else {
+                    todo.state
+                };
+                let mark = match state {
                     TaskState::Open => " ",
                     TaskState::Done => "x",
                     TaskState::Cancelled => "-",

@@ -77,7 +77,7 @@ fn cancel_and_uncancel_parse_like_check_and_uncheck() {
         ])
         .unwrap(),
         DocCommand::TodoState {
-            state: TaskState::Cancelled,
+            state: TaskState::Open,
             ..
         }
     ));

@@ -6,9 +6,9 @@ use crate::config::{Config, Theme};
 use gpui::{Entity, Pixels, Point, TestAppContext, VisualTestContext, point};
 use std::{path::PathBuf, time::Duration};
 
+mod cancel_keys;
 mod disk_sync;
 mod document_theme;
-mod cancel_keys;
 mod folding;
 mod saved_tab;
 mod todo_keys;

@@ -1,8 +1,8 @@
 #![allow(clippy::unwrap_used)]
 use super::*;
 
-mod fold_regions;
 mod cancelled;
+mod fold_regions;
 
 fn kinds(text: &str) -> Vec<Kind> {
     lines(text).into_iter().map(|line| line.kind).collect()

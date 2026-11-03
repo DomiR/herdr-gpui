@@ -3,8 +3,8 @@ use super::*;
 use crate::config::Config;
 use herdr_doc::markdown::TaskState;
 
-mod document_theme;
 mod cancelled;
+mod document_theme;
 
 fn look() -> Look {
     Look {

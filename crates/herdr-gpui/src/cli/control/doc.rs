@@ -155,8 +155,7 @@ fn todo(args: &mut Args) -> Result<DocCommand, CliError> {
             }
         }
         Some("cancel" | "uncancel") => {
-            let undo = args.flag("--undo");
-            let cancelled = (verb == "cancel" && !undo) || (verb == "uncancel" && undo);
+            let cancelled = verb != "uncancel" && !args.flag("--undo");
             let change = change(args)?;
             let path = path(args)?;
             let todo = match text(args)? {

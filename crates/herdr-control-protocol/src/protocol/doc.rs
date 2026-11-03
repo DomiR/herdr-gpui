@@ -11,9 +11,10 @@ pub const MAX_TEXT: usize = 64 * 1024;
 pub const WAIT_SECONDS: u64 = 15;
 
 /// The state of a Markdown task checkbox.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskState {
+    #[default]
     Open,
     Done,
     Cancelled,
@@ -159,6 +160,9 @@ pub struct TodoInfo {
     pub line: usize,
     pub done: bool,
     /// The full task state; `done` is true only for [`TaskState::Done`].
+    /// An app older than the cancelled state sends no `state`, which reads
+    /// as open: read `done` first.
+    #[serde(default)]
     pub state: TaskState,
     pub text: String,
     pub depth: usize,
@@ -381,6 +385,12 @@ mod tests {
                 r#"depth":0,"section":null}"#
             )
         );
+        let older: TodoInfo = serde_json::from_str(
+            r#"{"number":1,"line":2,"done":true,"text":"ship","depth":0,"section":null}"#,
+        )
+        .unwrap();
+        assert!(older.done);
+        assert_eq!(older.state, TaskState::Open);
         assert_eq!(TodoChangeKind::Cancelled.name(), "cancelled");
         assert_eq!(TodoChangeKind::Uncancelled.name(), "uncancelled");
     }
