@@ -78,6 +78,9 @@ building it without the user watching, so a reviewer can check each one.
     many levels, and Cmd-Alt-0 through 9 do the same. List items with
     sub-items count as a level below their heading, and code blocks keep
     their fold.
+    Find opens document search with Cmd-F, or Ctrl-F on Linux and Windows;
+    Cmd-G and Cmd-Shift-G, or Ctrl-G and Ctrl-Shift-G on Linux and Windows,
+    step through matches.
 16. **Version numbers for agents' commands** (asked for mid-run): every
     change to a document, from any writer, takes the next version number,
     starting at 1 when it opens. `doc read` reports it. Every changing

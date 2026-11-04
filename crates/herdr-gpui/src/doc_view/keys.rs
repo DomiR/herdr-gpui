@@ -28,6 +28,9 @@ impl DocEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.find.input.read(cx).focus.is_focused(window) {
+            return;
+        }
         // The input method owns keys while it composes.
         if self.marked.is_some() {
             return;

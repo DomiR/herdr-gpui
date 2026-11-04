@@ -11,6 +11,7 @@ mod disk_sync;
 mod fold_task_keys;
 mod fold_levels;
 mod document_theme;
+mod find;
 mod folding;
 mod multi_cursor;
 mod move_keys;

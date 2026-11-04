@@ -16,6 +16,15 @@ doc-view-hide-done = Hide Done
 doc-view-show-done = Show Done
 doc-view-fold-all = Fold All
 doc-view-unfold-all = Unfold All
+# The document find bar's placeholder, count, empty state, cap, and controls.
+doc-view-find-placeholder = Find
+doc-view-find-match = { $current } of { $total }
+doc-view-find-none = No results
+doc-view-find-capped = { $total }+ found
+doc-view-find-match-case = Match Case
+doc-view-find-previous = Previous match
+doc-view-find-next = Next match
+doc-view-find-close = Close find
 # A folded section's or item's badge: how many lines it hides.
 doc-view-folded-lines = { $count ->
     [one] 1 line

@@ -531,10 +531,14 @@ impl HerdrWindow {
                 return;
             }
             Command::Find => {
-                // In a review, Find searches its changes.
-                match self.focused_review(window, cx) {
-                    Some(id) => self.open_review_search(id, window, cx),
-                    None => self.open_find(window, cx),
+                if let Some(editor) = self.focused_doc(window, cx) {
+                    editor.update(cx, |editor, cx| editor.open_find(window, cx));
+                } else {
+                    // In a review, Find searches its changes.
+                    match self.focused_review(window, cx) {
+                        Some(id) => self.open_review_search(id, window, cx),
+                        None => self.open_find(window, cx),
+                    }
                 }
                 return;
             }
@@ -542,7 +546,9 @@ impl HerdrWindow {
             // bar, opening the bar when nothing is being searched yet.
             Command::FindNext | Command::FindPrevious => {
                 let back = command == Command::FindPrevious;
-                if let Some(id) = self.focused_review(window, cx) {
+                if let Some(editor) = self.focused_doc(window, cx) {
+                    editor.update(cx, |editor, cx| editor.find_again(back, window, cx));
+                } else if let Some(id) = self.focused_review(window, cx) {
                     self.review_find_again(id, back, window, cx);
                 } else if self.find.is_some() {
                     // The bar's next match is the next older one, as Enter.
