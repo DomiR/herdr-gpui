@@ -338,20 +338,19 @@ fn exchange(
     request: &Request,
 ) -> crate::Result<Response> {
     if let Err(error) = write_line(&mut writer, request) {
-        let recoverable = match &error {
-            crate::Error::Io(error) => matches!(
-                error.kind(),
-                std::io::ErrorKind::BrokenPipe
-                    | std::io::ErrorKind::ConnectionReset
-                    | std::io::ErrorKind::ConnectionAborted
-            ),
-            _ => false,
+        let crate::Error::Io(io_error) = &error else {
+            return Err(error);
         };
-        if !recoverable {
+        if matches!(
+            io_error.kind(),
+            std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+        ) {
             return Err(error);
         }
-        // The server answers before reading only to refuse, and the peer's
-        // buffered line stays readable after it closes.
+        // Try the refusal line for every other write error: Darwin reports a
+        // close as EPIPE, ENOTCONN, or EPROTOTYPE, and a dead peer makes the
+        // read return EOF at once, so trying costs nothing. `write_all`
+        // already retries Interrupted.
         if let Ok(line) = read_line(reader)
             && let Ok(
                 response @ Response::Error {
