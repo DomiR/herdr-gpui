@@ -1,7 +1,7 @@
 use super::*;
 
-use herdr_control_protocol::protocol::doc::TaskState;
 use control::{Change, ControlCommand, DocCommand};
+use herdr_control_protocol::protocol::doc::TaskState;
 
 fn doc(args: &[&str]) -> Result<DocCommand, CliError> {
     let options = LaunchOptions::parse(args.iter().copied())?;

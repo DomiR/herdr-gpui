@@ -299,7 +299,7 @@ mod tests {
             text,
             concat!(
                 r#"{"op":"todo_state","path":"/a.md","version":4,"section":"goals","todo":"2","#,
-                r#"state":"cancelled"}"#
+                r#""state":"cancelled"}"#
             )
         );
         assert_eq!(serde_json::from_str::<DocOp>(&text).unwrap(), state);
@@ -382,7 +382,7 @@ mod tests {
             serde_json::to_string(&info).unwrap(),
             concat!(
                 r#"{"number":2,"line":4,"done":false,"state":"cancelled","text":"ship","#,
-                r#"depth":0,"section":null}"#
+                r#""depth":0,"section":null}"#
             )
         );
         let older: TodoInfo = serde_json::from_str(
