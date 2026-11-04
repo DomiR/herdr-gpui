@@ -10,6 +10,7 @@ mod cloud_images;
 mod cloud_setup;
 mod control_commands;
 mod doc;
+mod doc_cancel;
 mod language;
 mod links;
 mod mods;

@@ -251,7 +251,7 @@ for what only Herdr UI shows or keeps.
 | Render existing Linux Codex/Claude conversations in their current panes | `herdr-gpui config set chat.render_existing true` (also enable `features.acp_chats`); `chat status --json` reports the session and input mode |
 | List or focus the app's windows and its own tabs | `herdr-gpui window`, `herdr-gpui tab`, `herdr-gpui tab focus ID` |
 | Block until something happens in the app | `herdr-gpui wait tab-closed ID --timeout 600`, `herdr-gpui events --follow` |
-| Read or change a Herdr UI setting | `herdr-gpui config get KEY`, `herdr-gpui config set KEY VALUE` |
+| Read or change a Herdr UI setting | `herdr-gpui config get KEY`, `herdr-gpui config set KEY VALUE`, `herdr-gpui config set documents.theme app` |
 | Install agents or rerun the setup script on a saved cloud machine | `herdr-gpui config set cloud.agents '["claude"]'`, `herdr-gpui cloud setup ID` |
 | Get cloud machines of your own (the user confirms once), and wait until they are ready | `herdr-gpui cloud create coder --count 3 --json`, `herdr-gpui cloud wait BATCH --timeout 600 --json` |
 | Run a command on a saved cloud machine (clone, build, commit, push) | `herdr-gpui cloud exec ID --cwd ~/code/app -- git status` |

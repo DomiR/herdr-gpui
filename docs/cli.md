@@ -130,13 +130,13 @@ the next version number; a change names the version it was made against.
 | --- | --- |
 | `doc read FILE [--section ID]` | The text (or one section's) after a `Version: N` line |
 | `doc diff FILE --since N [--wait S]` | A unified diff of what changed since version N. With `--wait`, it waits up to S seconds, at most 600, for a change first. While Herdr UI is busy, it asks again within the same S seconds, then exits 6. It exits 4 when none came |
-| `doc watch FILE [--since N] [--section ID] [--todos]` | Every change from version N (default: now) as it happens: `Version N by WHO` (`the user`, an agent's name and pane, or `file`) and the diff, or with `--todos` one line per task (`checked 3. Ship`, `added …`, `removed …`, `unchecked …`, `edited …`). Versions landing together print once as `Versions A-N`. `--section` keeps to one section; `--json` prints one object per line. Runs until interrupted or the document is gone (exit 9). While Herdr UI is busy, or a request is cut off, it waits and asks again from the same version. App restarts still print one line. Run it in the background and act on each line |
+| `doc watch FILE [--since N] [--section ID] [--todos]` | Every change from version N (default: now) as it happens: `Version N by WHO` (`the user`, an agent's name and pane, or `file`) and the diff, or with `--todos` one line per task (`checked 3. Ship`, `cancelled 3. Ship`, `uncancelled 3. Ship`, `added …`, `removed …`, `unchecked …`, `edited …`). Versions landing together print once as `Versions A-N`. `--section` keeps to one section; `--json` prints one object per line. Runs until interrupted or the document is gone (exit 9). While Herdr UI is busy, or a request is cut off, it waits and asks again from the same version. App restarts still print one line. Run it in the background and act on each line |
 | `doc sections FILE` | The sections: each `#`, `##`, and `###` heading starts one, named by its slug (the heading's GitHub anchor ID; repeats get `-1`, `-2`) |
 | `doc todo list FILE [--section ID]` | The tasks, numbered |
 | `doc append FILE --version N [--section ID] TEXT` | Add a block at the end of the document or of the section |
 | `doc edit FILE --version N [--section ID] --old TEXT --new TEXT` | Replace the one place `--old` occurs |
 | `doc todo add FILE --version N [--section ID] TEXT` | Add a task after the last one (of the section) |
-| `doc todo check\|uncheck FILE --version N [--section ID] NUMBER\|TEXT` | Check off a task by its number or its text |
+| `doc todo check\|uncheck\|cancel\|uncancel FILE --version N [--section ID] NUMBER\|TEXT` | Check, reopen, cancel, or uncancel a task by its number or its text. Cancel writes `- [-]`; uncheck and uncancel write `- [ ]` |
 
 `FILE` is a `.md` path, relative to the current directory. Text after `--`
 may start with `-`, as list items do (`doc append todo.md --version 4 -- "- [ ] ship"`),
@@ -208,6 +208,7 @@ same as fields (`kind`, `version`, `others`, `diff`).
 | `config get\|set\|unset KEY [VALUE]` | Read or change `config-gpui.local.toml`, keeping its comments. A value that would not load, or an unknown key, is refused and nothing is written; the app applies the rest at once (no app needed) |
 | `config check` | Report invalid settings, exit 1 if any |
 | `config reload` | Reread Herdr's config and this app's |
+| `documents.theme` | The Markdown document theme for all document tabs in this client. Values are `plaintasks` and `app`; the default is `plaintasks`, a yellow notepad with PlainTasks task markers. `app` follows the app theme. Set it with `config set documents.theme VALUE`. |
 | `theme [list]`, `theme set NAME` | The app theme. A device's terminal theme is `config set devices.ID.theme NAME`, with the ID from `host list` minus its `ssh:` prefix |
 | `font [list]`, `font set NAME`, `font reset` | |
 | `language [status]`, `language list`, `language set system\|TAG` | The language set and the locale Herdr UI shows, the languages there are, each with its name in itself as Settings > General lists it, or save the `language` setting (a BCP 47 tag; `en-XA` and `en-XB` are pseudo-locales). Only `status` asks the app, and without it reports what it would show |

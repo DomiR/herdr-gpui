@@ -4,6 +4,7 @@ use super::*;
 mod fold_tasks;
 mod moves;
 mod line_break;
+mod cancelled;
 
 const DOC: &str = "# Work\n- [ ] write\n  - [x] outline\n- [x] read\n\n## Later\n- [ ] ship\n";
 
@@ -14,12 +15,12 @@ fn apply(text: &str, edit: Edit) -> String {
 #[test]
 fn lists_todos_with_their_sections() {
     let all = todos(DOC);
-    let summary: Vec<(usize, bool, &str, usize, Option<&str>)> = all
+    let summary: Vec<(usize, TaskState, &str, usize, Option<&str>)> = all
         .iter()
         .map(|t| {
             (
                 t.number,
-                t.done,
+                t.state,
                 t.text.as_str(),
                 t.depth,
                 t.section.as_deref(),
@@ -29,10 +30,10 @@ fn lists_todos_with_their_sections() {
     assert_eq!(
         summary,
         vec![
-            (1, false, "write", 0, Some("Work")),
-            (2, true, "outline", 2, Some("Work")),
-            (3, true, "read", 0, Some("Work")),
-            (4, false, "ship", 0, Some("Later")),
+            (1, TaskState::Open, "write", 0, Some("Work")),
+            (2, TaskState::Done, "outline", 2, Some("Work")),
+            (3, TaskState::Done, "read", 0, Some("Work")),
+            (4, TaskState::Open, "ship", 0, Some("Later")),
         ]
     );
 }
@@ -128,10 +129,10 @@ fn indents_items_with_their_children() {
 }
 
 #[test]
-fn counts_per_heading_and_done_lines() {
+fn counts_per_heading_and_resolved_lines() {
     let lines = markdown::lines(DOC);
     assert_eq!(section_counts(&lines), vec![(0, 2, 4), (5, 0, 1)]);
-    let hidden = done_lines(&lines);
+    let hidden = resolved_lines(&lines);
     assert_eq!(
         hidden
             .iter()

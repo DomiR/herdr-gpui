@@ -10,6 +10,16 @@ pub const MAX_TEXT: usize = 64 * 1024;
 /// The longest a change waits for the document to load and be written.
 pub const WAIT_SECONDS: u64 = 15;
 
+/// The state of a Markdown task checkbox.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskState {
+    #[default]
+    Open,
+    Done,
+    Cancelled,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub enum DocOp {
@@ -78,6 +88,15 @@ pub enum DocOp {
         todo: String,
         done: bool,
     },
+    /// Writes the target state to the task `todo` names.
+    TodoState {
+        path: String,
+        version: u64,
+        #[serde(default)]
+        section: Option<String>,
+        todo: String,
+        state: TaskState,
+    },
 }
 
 fn is_zero(value: &u64) -> bool {
@@ -95,7 +114,8 @@ impl DocOp {
             | Self::Append { path, .. }
             | Self::Edit { path, .. }
             | Self::TodoAdd { path, .. }
-            | Self::TodoCheck { path, .. } => path,
+            | Self::TodoCheck { path, .. }
+            | Self::TodoState { path, .. } => path,
         }
     }
 
@@ -115,6 +135,7 @@ impl DocOp {
             Self::Append { text, .. } | Self::TodoAdd { text, .. } => &[text],
             Self::Edit { old, new, .. } => &[old, new],
             Self::TodoCheck { todo, .. } => &[todo],
+            Self::TodoState { todo, .. } => &[todo],
             _ => &[],
         };
         texts.iter().all(|text| text.len() <= MAX_TEXT) && self.path().len() <= 4096
@@ -138,6 +159,11 @@ pub struct TodoInfo {
     /// 1-based.
     pub line: usize,
     pub done: bool,
+    /// The full task state; `done` is true only for [`TaskState::Done`].
+    /// An app older than the cancelled state sends no `state`, which reads
+    /// as open: read `done` first.
+    #[serde(default)]
+    pub state: TaskState,
     pub text: String,
     pub depth: usize,
     pub section: Option<String>,
@@ -152,6 +178,8 @@ pub enum TodoChangeKind {
     Checked,
     Unchecked,
     Edited,
+    Cancelled,
+    Uncancelled,
 }
 
 impl TodoChangeKind {
@@ -162,6 +190,8 @@ impl TodoChangeKind {
             Self::Removed => "removed",
             Self::Checked => "checked",
             Self::Unchecked => "unchecked",
+            Self::Cancelled => "cancelled",
+            Self::Uncancelled => "uncancelled",
             Self::Edited => "edited",
         }
     }
@@ -257,6 +287,22 @@ mod tests {
             r#"{"op":"todo_check","path":"/a.md","version":4,"section":"goals","todo":"2","done":true}"#
         );
         assert_eq!(serde_json::from_str::<DocOp>(&text).unwrap(), op);
+        let state = DocOp::TodoState {
+            path: "/a.md".into(),
+            version: 4,
+            section: Some("goals".into()),
+            todo: "2".into(),
+            state: TaskState::Cancelled,
+        };
+        let text = serde_json::to_string(&state).unwrap();
+        assert_eq!(
+            text,
+            concat!(
+                r#"{"op":"todo_state","path":"/a.md","version":4,"section":"goals","todo":"2","#,
+                r#""state":"cancelled"}"#
+            )
+        );
+        assert_eq!(serde_json::from_str::<DocOp>(&text).unwrap(), state);
         let read: DocOp = serde_json::from_str(r#"{"op":"read","path":"/a.md"}"#).unwrap();
         assert_eq!(
             read,
@@ -319,5 +365,33 @@ mod tests {
             let text = serde_json::to_string(&reply).unwrap();
             assert_eq!(serde_json::from_str::<Reply>(&text).unwrap(), reply);
         }
+    }
+
+    #[test]
+    fn todo_state_and_change_kinds_have_stable_names() {
+        let info = TodoInfo {
+            number: 2,
+            line: 4,
+            done: false,
+            state: TaskState::Cancelled,
+            text: "ship".into(),
+            depth: 0,
+            section: None,
+        };
+        assert_eq!(
+            serde_json::to_string(&info).unwrap(),
+            concat!(
+                r#"{"number":2,"line":4,"done":false,"state":"cancelled","text":"ship","#,
+                r#""depth":0,"section":null}"#
+            )
+        );
+        let older: TodoInfo = serde_json::from_str(
+            r#"{"number":1,"line":2,"done":true,"text":"ship","depth":0,"section":null}"#,
+        )
+        .unwrap();
+        assert!(older.done);
+        assert_eq!(older.state, TaskState::Open);
+        assert_eq!(TodoChangeKind::Cancelled.name(), "cancelled");
+        assert_eq!(TodoChangeKind::Uncancelled.name(), "uncancelled");
     }
 }

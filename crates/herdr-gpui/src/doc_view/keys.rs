@@ -127,6 +127,7 @@ impl DocEditor {
             ("v", false) => self.paste(cx),
             ("s", false) => self.buffer.update(cx, |buffer, cx| buffer.save(cx)),
             ("enter", false) => self.cycle_task(cx),
+            ("enter", true) => self.cancel_task(cx),
             ("left", false) | ("right", false) => {
                 let line = &self.prepared.lines[self.caret_line()];
                 let at = if key == "left" {
@@ -495,10 +496,10 @@ impl DocEditor {
         for line in &lines[first..=last] {
             match line.kind {
                 Kind::Item {
-                    task: Some(done), ..
+                    task: Some(state), ..
                 } => {
                     if let Some(checkbox) = line.checkbox.clone() {
-                        edits.push(Edit::new(checkbox, if done { "[ ]" } else { "[x]" }));
+                        edits.push(Edit::new(checkbox, state.toggled().checkbox()));
                     }
                 }
                 Kind::Item { task: None, .. } => {
@@ -511,6 +512,32 @@ impl DocEditor {
                     edits.push(Edit::insert(line.range.start, "- [ ] "));
                 }
                 _ => {}
+            }
+        }
+        let map = |at: usize| Edit::map_offset(at, &edits);
+        let selection = Selection {
+            anchor: map(self.selection.anchor),
+            head: map(self.selection.head),
+        };
+        self.apply_selecting(edits, selection, cx);
+    }
+
+    /// Cancels or reopens every task in the selected lines.
+    fn cancel_task(&mut self, cx: &mut Context<Self>) {
+        let range = self.selection.range();
+        let lines = &self.prepared.lines;
+        let first = markdown::line_at(lines, range.start);
+        let last = markdown::line_at(lines, range.end);
+        let mut edits = Vec::new();
+        for line in &lines[first..=last] {
+            let Kind::Item {
+                task: Some(state), ..
+            } = line.kind
+            else {
+                continue;
+            };
+            if let Some(checkbox) = line.checkbox.clone() {
+                edits.push(Edit::new(checkbox, state.cancel_toggled().checkbox()));
             }
         }
         let map = |at: usize| Edit::map_offset(at, &edits);

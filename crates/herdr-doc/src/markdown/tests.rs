@@ -2,6 +2,7 @@
 use super::*;
 
 mod fold_levels;
+mod cancelled;
 mod fold_regions;
 mod task_bullet;
 
@@ -19,11 +20,11 @@ fn block_kinds_and_markers() {
             Kind::Blank,
             Kind::Item {
                 list: List::Bullet('-'),
-                task: Some(false)
+                task: Some(TaskState::Open)
             },
             Kind::Item {
                 list: List::Bullet('-'),
-                task: Some(true)
+                task: Some(TaskState::Done)
             },
             Kind::Item {
                 list: List::Ordered {

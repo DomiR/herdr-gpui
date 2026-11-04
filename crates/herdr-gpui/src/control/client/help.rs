@@ -27,10 +27,11 @@ herdr-gpui doc watch FILE [--since N] [--section ID] [--todos]
     (the user, an agent's name and pane, or file), then the diff. Versions
     that land together print as one change, `Versions A-N`. --section
     prints only changes to that section; --todos prints task changes, one
-    line each (`checked 3. Ship`, `added`, `removed`, `unchecked`,
-    `edited`), instead of the diff. --json prints one JSON object per line.
-    Busy or cut-off requests wait and ask again from the same version. App
-    restarts are followed, with one line saying so.
+    line each (`checked 3. Ship`, `cancelled 3. Ship`, `uncancelled 3. Ship`,
+    `added`, `removed`, `unchecked`, `edited`), instead of the diff. --json
+    prints one JSON object per line. Busy or cut-off requests wait and ask
+    again from the same version. App restarts are followed, with one line
+    saying so.
 herdr-gpui doc sections FILE
     The sections: each #, ##, and ### heading starts one, named by the
     heading's slug (its GitHub anchor ID).
@@ -39,16 +40,18 @@ herdr-gpui doc todo list FILE [--section ID]
 herdr-gpui doc append FILE --version N [--section ID] TEXT...|-- TEXT|-
 herdr-gpui doc edit FILE --version N [--section ID] --old TEXT --new TEXT
 herdr-gpui doc todo add FILE --version N [--section ID] TEXT...|-- TEXT|-
-herdr-gpui doc todo check|uncheck FILE --version N [--section ID] NUMBER|TEXT
+herdr-gpui doc todo check|uncheck|cancel|uncancel FILE --version N [--section ID] NUMBER|TEXT
     Change the document: append a block (at the end, or of the section),
-    replace the one place --old occurs, add a task, or check one off by its
-    number or text. -- passes text starting with -, and - reads standard
-    input. --version is the number you last read. When the document has
-    changed since, nothing is applied and the reply is the latest version
-    and a diff since yours (exit 1): read it and send a new change. With
-    --section, a stale version still applies if that section is unchanged,
-    and the reply carries the diff of the other sections. Changes merge
-    with the user's typing and are written to the file before the reply.
+    replace the one place --old occurs, add a task, check one off, or cancel
+    one by its number or text. Cancel strikes a task out as `- [-]`.
+    Uncheck or uncancel reopens it. -- passes text starting with -, and -
+    reads standard input. --version is the number you last read. When the
+    document has changed since, nothing is applied and the reply is the
+    latest version and a diff since yours (exit 1): read it and send a new
+    change. With --section, a stale version still applies if that section
+    is unchanged, and the reply carries the diff of the other sections.
+    Changes merge with the user's typing and are written to the file
+    before the reply.
 FILE is a .md path, relative to the current directory.";
 
 const BROWSER: &str = "\
@@ -181,7 +184,7 @@ fn family(name: &str) -> &'static str {
             "herdr-gpui search symbol|file QUERY... [--limit N]\n    Go to Symbol or Go to File over the current directory's checkout,\n    printing paths relative to its root. Runs here; Herdr UI need not run."
         }
         "config" => {
-            "herdr-gpui config [path]\n    The settings files.\nherdr-gpui config get KEY\n    The setting's value, as TOML: your override, else the default.\nherdr-gpui config set KEY VALUE\nherdr-gpui config unset KEY\n    Change a setting in config-gpui.local.toml. VALUE is read as TOML\n    (14, true, [\"a\"], { show = true }), else as text. A value or key\n    Herdr UI would not load is refused and the file left as it was.\n    A running Herdr UI applies the change at once. KEY is dotted, such\n    as terminal.size. Unsetting a key that is not set exits 4.\nherdr-gpui config check\n    Report settings that do not load and unknown keys, and, when Herdr UI\n    runs, fonts that are not installed; exits 1 when there are any.\nherdr-gpui config reload\n    Reread Herdr's config and this app's.\nOnly reload needs Herdr UI running."
+            "herdr-gpui config [path]\n    The settings files.\nherdr-gpui config get KEY\n    The setting's value, as TOML: your override, else the default.\nherdr-gpui config set KEY VALUE\nherdr-gpui config unset KEY\n    Change a setting in config-gpui.local.toml. VALUE is read as TOML\n    (14, true, [\"a\"], { show = true }), else as text. A value or key\n    Herdr UI would not load is refused and the file left as it was.\n    A running Herdr UI applies the change at once. KEY is dotted, such\n    as terminal.size. Unsetting a key that is not set exits 4.\n    Example: herdr-gpui config set documents.theme app\nherdr-gpui config check\n    Report settings that do not load and unknown keys, and, when Herdr UI\n    runs, fonts that are not installed; exits 1 when there are any.\nherdr-gpui config reload\n    Reread Herdr's config and this app's.\nOnly reload needs Herdr UI running."
         }
         "theme" => {
             "herdr-gpui theme [list]\n    The themes there are; * marks the selected one.\nherdr-gpui theme set NAME...\n    Choose and save a theme, or light:NAME,dark:NAME to follow the\n    system appearance. Saved even when Herdr UI is not running."

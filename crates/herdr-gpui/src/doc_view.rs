@@ -18,7 +18,9 @@ mod input;
 mod keys;
 mod layout;
 mod links;
+mod markers;
 mod render;
+mod theme;
 
 pub(crate) use buffer::{DocBuffer, Docs, State};
 pub(crate) use cursors::key_bindings;
@@ -194,13 +196,15 @@ impl HerdrWindow {
     }
 
     fn doc_look(&self, zoom: Zoom) -> Look {
+        let (theme, inks) = theme::resolve(self.config.documents.theme, &self.theme);
         let factor = zoom.factor() as f32;
         let mut ui = self.config.ui.clone();
         ui.size *= factor;
         let mut code = self.config.terminal.clone();
         code.size *= factor;
         Look {
-            theme: self.theme.clone(),
+            theme,
+            inks,
             ui,
             code,
         }
