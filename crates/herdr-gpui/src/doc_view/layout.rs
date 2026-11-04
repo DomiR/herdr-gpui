@@ -7,7 +7,7 @@ use crate::config::{FontConfig, Theme};
 use gpui::{
     FontStyle, FontWeight, Hsla, SharedString, StrikethroughStyle, TextRun, UnderlineStyle, px, rgb,
 };
-use herdr_doc::markdown::{self, Kind, Line, Style, TaskState};
+use herdr_doc::markdown::{self, Kind, Line, Style, TagKind, TaskState};
 use std::ops::Range;
 
 /// What the editor draws with.
@@ -120,10 +120,14 @@ struct Paint {
     /// A code token's colour, inside a coloured code block.
     token: Option<crate::review::highlight::Token>,
     /// Notebook-only roles, left unset for the App run boundaries.
-    heading: bool,
     pending: bool,
     done: bool,
     delimiter: bool,
+    cancelled: bool,
+    tag: Option<TagKind>,
+    tag_meta: bool,
+    notes: bool,
+    separator: bool,
 }
 
 /// `line` of `text`, styled; `decorate` hides its markers, as for a line
@@ -144,10 +148,11 @@ pub(super) fn row(
     };
     let ui_size = look.ui.size.max(8.);
     let (size, line_height) = match line.kind {
-        Kind::Heading { level } => {
+        Kind::Heading { level } if look.inks.is_none() => {
             let size = ui_size * heading_scale(level);
             (size, size * 1.45)
         }
+        Kind::Heading { .. } => (ui_size, ui_size * 1.6),
         Kind::Code | Kind::Fence => (look.code.size.max(8.), look.code.line_height()),
         _ => (ui_size, ui_size * 1.6),
     };
@@ -159,7 +164,7 @@ pub(super) fn row(
     };
     let whole = 0..source.len();
     match line.kind {
-        Kind::Heading { .. } => mark(whole.clone(), &|p| p.bold = true),
+        Kind::Heading { .. } if look.inks.is_none() => mark(whole.clone(), &|p| p.bold = true),
         Kind::Code | Kind::Fence => mark(whole.clone(), &|p| {
             p.code = true;
             p.block = true;
@@ -175,17 +180,31 @@ pub(super) fn row(
     }
     if look.inks.is_some() {
         match line.kind {
-            Kind::Heading { .. } => mark(whole.clone(), &|p| p.heading = true),
-            Kind::Fence | Kind::Rule => mark(whole.clone(), &|p| p.delimiter = true),
+            Kind::Fence | Kind::Rule => mark(whole.clone(), &|p| p.separator = true),
+            Kind::Quote | Kind::Item { task: Some(_), .. } => {
+                mark(local(&line.marker), &|p| p.separator = true)
+            }
+            Kind::Item { task: None, .. } => mark(whole.clone(), &|p| p.notes = true),
             _ => {}
         }
         if let Some(state) = line.task() {
             mark(local(&line.content()), &|p| {
-                p.pending = !state.is_resolved();
-                p.done = state.is_resolved();
+                p.pending = state == TaskState::Open;
+                p.done = state == TaskState::Done;
+                p.cancelled = state == TaskState::Cancelled;
             });
         }
-        mark(local(&line.marker), &|p| p.delimiter = true);
+        for tag in markdown::tags(text, line) {
+            let tag_range = local(&tag.range);
+            let tag_meta = line.task().is_some_and(TaskState::is_resolved);
+            mark(tag_range, &|p| {
+                p.tag = Some(tag.kind);
+                p.tag_meta = tag_meta;
+                p.bold = !tag_meta;
+                p.italic = false;
+                p.strike = false;
+            });
+        }
     }
     for span in code {
         let range = span.start.min(source.len())..span.end.min(source.len());
@@ -200,7 +219,11 @@ pub(super) fn row(
         .and_then(|state| line.checkbox.as_ref().map(|range| (local(range), state)));
     if let Some((range, state)) = &checkbox {
         mark(range.clone(), &|p| p.hidden = true);
-        if state.is_resolved() {
+        if look.inks.is_some() {
+            if state.is_done() {
+                mark(local(&line.content()), &|p| p.strike = true);
+            }
+        } else if state.is_resolved() {
             mark(local(&line.content()), &|p| {
                 p.strike = true;
                 p.muted = true;
@@ -234,7 +257,15 @@ pub(super) fn row(
         }
     }
     let decorations = if decorate {
-        markdown::decorations(text, line)
+        let decorations = markdown::decorations(text, line);
+        if look.inks.is_some() && line.is_heading() {
+            decorations
+                .into_iter()
+                .filter(|decoration| decoration.range != line.marker)
+                .collect()
+        } else {
+            decorations
+        }
     } else {
         Vec::new()
     };
@@ -309,29 +340,53 @@ fn run(len: usize, paint: Paint, look: &Look) -> TextRun {
     } else {
         look.ui.font()
     };
-    if paint.bold {
+    if paint.bold && !paint.tag_meta {
         font.weight = FontWeight::BOLD;
     }
-    if paint.italic || (look.inks.is_some() && paint.done) {
+    let plain_tasks_body = paint.pending || paint.done || paint.cancelled;
+    if paint.italic
+        || (look.inks.is_some()
+            && plain_tasks_body
+            && paint.tag.is_none()
+            && !paint.link
+            && !paint.tag_meta)
+    {
         font.style = FontStyle::Italic;
+    }
+    if look.inks.is_some() && paint.link && !paint.tag_meta {
+        font.weight = FontWeight::BOLD;
     }
     let color: Hsla = if let Some(inks) = look.inks {
         if paint.hidden {
             Hsla::transparent_black()
         } else if let Some(token) = paint.token {
             rgb(token.colour(theme, crate::review::highlight::Contrast::On(theme.surface))).into()
+        } else if paint.tag_meta {
+            inks.tag_meta
+        } else if let Some(tag) = paint.tag {
+            match tag {
+                TagKind::Critical => inks.critical.0,
+                TagKind::Generic => inks.tag,
+                TagKind::High => inks.high.0,
+                TagKind::Low => inks.low.0,
+                TagKind::Today => inks.today.0,
+            }
+        } else if paint.separator {
+            inks.separator
         } else if paint.delimiter {
             inks.delimiter
         } else if paint.link {
-            inks.link
+            inks.url
         } else if paint.done {
             inks.done
-        } else if paint.heading {
-            inks.heading
-        } else if paint.pending || paint.code {
+        } else if paint.cancelled {
+            inks.cancelled
+        } else if paint.pending {
             inks.pending
+        } else if paint.notes {
+            inks.notes
         } else {
-            inks.prose
+            inks.plain
         }
     } else if paint.hidden {
         Hsla::transparent_black()
@@ -344,19 +399,28 @@ fn run(len: usize, paint: Paint, look: &Look) -> TextRun {
     } else {
         rgb(theme.foreground).into()
     };
+    let tag_background = if let Some(inks) = look.inks
+        && let Some(tag) = paint.tag
+        && !paint.tag_meta
+        && !paint.hidden
+    {
+        match tag {
+            TagKind::Today => Some(inks.today.1),
+            TagKind::High => Some(inks.high.1),
+            TagKind::Critical => Some(inks.critical.1),
+            TagKind::Low => Some(inks.low.1),
+            TagKind::Generic => None,
+        }
+    } else {
+        None
+    };
     TextRun {
         len,
         font,
         color,
-        background_color: if let Some(inks) = look.inks
-            && paint.heading
-            && !paint.hidden
-            && !paint.delimiter
-        {
-            Some(inks.heading_background)
-        } else {
+        background_color: tag_background.or_else(|| {
             (paint.code && !paint.block && !paint.hidden).then(|| rgb(theme.surface).into())
-        },
+        }),
         underline: paint.link.then(|| UnderlineStyle {
             color: Some(color),
             thickness: px(1.),

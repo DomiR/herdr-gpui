@@ -36,7 +36,6 @@ struct Colors {
     selection: Hsla,
     caret: Hsla,
     highlight: Hsla,
-    caret_row: Option<Hsla>,
     marker_style: MarkerStyle,
     markers: MarkerColors,
     underline: Hsla,
@@ -77,21 +76,9 @@ fn spans(layout: &TextLayout, range: Range<usize>, past_end: bool) -> Vec<Bounds
     out
 }
 
-fn paint_overlay(overlay: &Overlay, bounds: Bounds<Pixels>, window: &mut Window) {
+fn paint_overlay(overlay: &Overlay, _bounds: Bounds<Pixels>, window: &mut Window) {
     let layout = &overlay.layout;
     let colors = overlay.colors;
-    if let Some(color) = colors.caret_row
-        && let Some(caret) = overlay.caret
-        && let Some(origin) = layout.position_for_index(caret)
-    {
-        window.paint_quad(fill(
-            Bounds::from_corners(
-                point(bounds.left(), origin.y),
-                point(bounds.right(), origin.y + layout.line_height()),
-            ),
-            color,
-        ));
-    }
     for (range, opacity) in &overlay.highlights {
         for span in spans(layout, range.clone(), false) {
             window.paint_quad(fill(span, colors.highlight.opacity(*opacity)));
@@ -144,7 +131,6 @@ impl DocEditor {
                 selection: inks.selection,
                 caret: inks.caret,
                 highlight: rgb(theme.primary_wash()).into(),
-                caret_row: Some(inks.caret_row),
                 marker_style: MarkerStyle::PlainTasks,
                 markers: MarkerColors {
                     border: inks.open_marker,
@@ -159,7 +145,6 @@ impl DocEditor {
             selection: rgb(theme.active).into(),
             caret: rgb(theme.cursor).into(),
             highlight: rgb(theme.primary_wash()).into(),
-            caret_row: None,
             marker_style: MarkerStyle::Checkbox,
             markers: MarkerColors {
                 border: rgb(theme.muted).into(),
@@ -259,6 +244,7 @@ impl DocEditor {
         let code = matches!(row.kind, Kind::Code | Kind::Fence);
         let checkbox = row.checkbox.clone();
         let links = row.links.clone();
+        let caret_row = caret.and(self.look.inks.map(|inks| inks.caret_row));
         let start = line.range.start;
         let cards = self.comment_cards(line_ix, cx);
         let mouse_layout = text_layout.clone();
@@ -270,9 +256,10 @@ impl DocEditor {
             .flex_row()
             .items_start()
             .pr(px(PAD))
-            .when(matches!(row.kind, Kind::Heading { .. }), |row| {
-                row.pt(px(6.))
-            })
+            .when(
+                matches!(row.kind, Kind::Heading { .. }) && self.look.inks.is_none(),
+                |row| row.pt(px(6.)),
+            )
             .child(
                 div()
                     .id(("doc-fold", line_ix))
@@ -282,6 +269,7 @@ impl DocEditor {
                     .flex()
                     .items_center()
                     .justify_center()
+                    .when_some(caret_row, |gutter, color| gutter.bg(color))
                     .when(fold, |gutter| {
                         gutter
                             .cursor_pointer()

@@ -72,12 +72,18 @@ fn notebook_runs_use_roles_without_changing_source_mapping() {
         for line in &lines {
             let before = row(SAMPLE, line, &app, decorate, &[], &|_| None);
             let after = row(SAMPLE, line, &notebook, decorate, &[], &|_| None);
-            assert_eq!(after.text, before.text);
-            assert_eq!(after.map, before.map);
+            if decorate && line.is_heading() {
+                assert_eq!(after.text, &SAMPLE[line.range.clone()]);
+            } else {
+                assert_eq!(after.text, before.text);
+                assert_eq!(after.map, before.map);
+            }
             assert_eq!(after.checkbox, before.checkbox);
             assert_eq!(after.links, before.links);
-            assert_eq!(after.size, before.size);
-            assert_eq!(after.line_height, before.line_height);
+            if !line.is_heading() {
+                assert_eq!(after.size, before.size);
+                assert_eq!(after.line_height, before.line_height);
+            }
             let mut end = 0;
             for run in &after.runs {
                 end += run.len;
@@ -86,31 +92,31 @@ fn notebook_runs_use_roles_without_changing_source_mapping() {
             assert_eq!(end, after.text.len());
         }
         let heading = row(SAMPLE, &lines[0], &notebook, decorate, &[], &|_| None);
-        assert_eq!(run_at(&heading, "Plan").color, inks.heading);
-        assert_eq!(
-            run_at(&heading, "Plan").background_color,
-            Some(inks.heading_background)
-        );
+        assert_eq!(heading.size, notebook.ui.size);
+        assert_eq!(heading.line_height, notebook.ui.size * 1.6);
+        assert_eq!(run_at(&heading, "#").color, inks.plain);
+        assert_eq!(run_at(&heading, "Plan").color, inks.plain);
+        assert_eq!(run_at(&heading, "Plan").font.weight, FontWeight::NORMAL);
+        assert_eq!(run_at(&heading, "Plan").background_color, None);
         let done = row(SAMPLE, &lines[1], &notebook, decorate, &[], &|_| None);
-        for needle in ["done", "code", "bold", "docs"] {
+        for needle in ["done", "code", "bold"] {
             let run = run_at(&done, needle);
             assert_eq!(run.font.style, FontStyle::Italic);
             assert_eq!(run.strikethrough.unwrap().color, Some(inks.done));
-            assert_eq!(
-                run.color,
-                if needle == "docs" {
-                    inks.link
-                } else {
-                    inks.done
-                }
-            );
+            assert_eq!(run.color, inks.done);
         }
+        let link = run_at(&done, "docs");
+        assert_eq!(link.color, inks.url);
+        assert_eq!(link.font.weight, FontWeight::BOLD);
+        assert_eq!(link.font.style, FontStyle::Normal);
+        assert_eq!(link.underline.unwrap().color, Some(inks.url));
+        assert_eq!(link.strikethrough.unwrap().color, Some(inks.done));
         let open = row(SAMPLE, &lines[2], &notebook, decorate, &[], &|_| None);
         assert_eq!(run_at(&open, "next").color, inks.pending);
         let prose = row(SAMPLE, &lines[3], &notebook, decorate, &[], &|_| None);
-        assert_eq!(run_at(&prose, "ordinary").color, inks.prose);
+        assert_eq!(run_at(&prose, "ordinary").color, inks.plain);
     }
-    for (index, needle) in [(0, "#"), (1, "**"), (4, ">"), (5, "---"), (6, "```")] {
+    for (index, needle) in [(1, "**"), (4, ">"), (5, "---"), (6, "```")] {
         let row = row(SAMPLE, &lines[index], &notebook, false, &[], &|_| None);
         assert_eq!(run_at(&row, needle).color, rgba(0x00000044).into());
     }

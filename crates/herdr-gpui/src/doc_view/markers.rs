@@ -26,13 +26,13 @@ pub(super) struct MarkerColors {
 
 /// Preserve the legacy square for an unwrapped marker. A wrapped end is
 /// on another row, so reserve a minimum-width slot on the start row instead.
-fn slot(start: Point<Pixels>, end: Point<Pixels>, height: Pixels) -> Bounds<Pixels> {
+fn slot(start: Point<Pixels>, end: Point<Pixels>, height: Pixels, scale: f32) -> Bounds<Pixels> {
     let end = if start.y == end.y {
         end
     } else {
         point(start.x + px(10.), start.y)
     };
-    let side = (height * 0.62).min((end.x - start.x).max(px(10.)));
+    let side = (height * scale).min((end.x - start.x).max(px(10.)));
     let center = point((start.x + end.x) / 2., start.y + height / 2.);
     Bounds::centered_at(center, size(side, side))
 }
@@ -51,7 +51,11 @@ pub(super) fn paint(
         .position_for_index(range.start)
         .unwrap_or(bounds.origin);
     let end = layout.position_for_index(range.end).unwrap_or(start);
-    let square = slot(start, end, height);
+    let scale = match style {
+        MarkerStyle::Checkbox => 0.62,
+        MarkerStyle::PlainTasks => 0.36,
+    };
+    let square = slot(start, end, height, scale);
     let side = square.size.width;
     match style {
         MarkerStyle::Checkbox => {
@@ -96,13 +100,13 @@ pub(super) fn paint(
                 square,
                 px(0.),
                 transparent_black(),
-                px(1.2),
+                px(1.),
                 colors.border,
                 BorderStyle::Solid,
             ));
         }
         MarkerStyle::PlainTasks if state == TaskState::Cancelled => {
-            let mut path = PathBuilder::stroke(px(2.4));
+            let mut path = PathBuilder::stroke(px(1.6));
             let s = f32::from(side);
             let o = square.origin;
             path.move_to(point(o.x + px(s * 0.15), o.y + px(s * 0.15)));

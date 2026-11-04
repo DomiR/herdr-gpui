@@ -3,6 +3,7 @@ use super::*;
 
 mod cancelled;
 mod fold_regions;
+mod tags;
 
 fn kinds(text: &str) -> Vec<Kind> {
     lines(text).into_iter().map(|line| line.kind).collect()

@@ -1,5 +1,7 @@
 use super::*;
 
+mod notebook_inks;
+
 #[test]
 fn app_preserves_the_complete_theme_without_inks() {
     for name in ["Default", "Catppuccin Latte", "Catppuccin Mocha"] {
@@ -12,36 +14,6 @@ fn app_preserves_the_complete_theme_without_inks() {
         assert_eq!(resolved, app);
         assert_eq!(inks, None);
     }
-}
-
-#[test]
-fn notebook_has_the_pinned_paper_and_alpha_inks() {
-    let (theme, inks) = resolve(DocumentTheme::PlainTasks, &Theme::default());
-    let Some(inks) = inks else {
-        panic!("Notebook inks");
-    };
-    assert_eq!(theme.background, 0xefe9b7);
-    assert_eq!(theme.foreground, 0x000000);
-    assert_eq!(theme.cursor, 0x000000);
-    assert_eq!(theme.muted, 0x858266);
-    assert_eq!(theme.surface, 0xe0daac);
-    assert_eq!(theme.active, 0xc9c49a);
-    assert_eq!(theme.primary(), 0x688890);
-    assert_eq!(theme.system_accent, None);
-    assert_eq!(inks.prose, rgba(0x858266ff).into());
-    assert_eq!(inks.pending, rgba(0x000000ff).into());
-    assert_eq!(inks.done, rgba(0x00000090).into());
-    assert_eq!(inks.heading, rgba(0xbc644aff).into());
-    assert_eq!(inks.heading_background, rgba(0x00000010).into());
-    assert_eq!(inks.delimiter, rgba(0x00000044).into());
-    assert_eq!(inks.link, rgba(0x003e7290).into());
-    assert_eq!(inks.separator, rgba(0x00000044).into());
-    assert_eq!(inks.selection, rgba(0x00000029).into());
-    assert_eq!(inks.caret, rgba(0x000000ff).into());
-    assert_eq!(inks.caret_row, rgba(0xf7dc8688).into());
-    assert_eq!(inks.open_marker, rgba(0x00000066).into());
-    assert_eq!(inks.done_marker, rgba(0x00723eff).into());
-    assert_eq!(inks.cancelled_marker, rgba(0xbc644aff).into());
 }
 
 #[test]
