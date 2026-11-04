@@ -2,6 +2,8 @@
 
 use super::*;
 
+mod focus;
+
 #[cfg(windows)]
 const CHECKOUT: &str = r"C:\Users\me\src\herdr-gpui";
 #[cfg(not(windows))]

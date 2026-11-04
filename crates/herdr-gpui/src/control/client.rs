@@ -10,6 +10,7 @@ pub(crate) use doc::message as doc_message;
 mod events;
 mod help;
 mod hosts;
+mod link;
 mod local;
 mod mods;
 mod open;
@@ -79,6 +80,18 @@ impl Output {
             status: 0,
             bytes: None,
             stderr: String::new(),
+            streamed: false,
+        }
+    }
+
+    pub(crate) fn usage(text: impl Into<String>) -> Self {
+        let text = text.into();
+        Self {
+            json: serde_json::json!({ "error": { "code": "usage", "message": text.clone() } }),
+            text: String::new(),
+            status: exit::USAGE,
+            bytes: None,
+            stderr: text,
             streamed: false,
         }
     }
@@ -451,6 +464,7 @@ pub(crate) fn run(invocation: Invocation) -> ExitCode {
         ControlCommand::Run { name } => app::run_command(&name, &context),
         ControlCommand::Commands => local::commands(),
         ControlCommand::Tab(command) => tabs::tab(command, &context),
+        ControlCommand::Link(command) => link::link(command, &context),
         ControlCommand::Code(command) => tabs::code(command, &context),
         ControlCommand::Devices => tabs::devices(&context),
         ControlCommand::Orchestrator(command) => tabs::orchestrator(command, &context),

@@ -112,6 +112,9 @@ fn family(name: &str) -> &'static str {
         "tab" => {
             "herdr-gpui tab [list]\n    The app's own tabs: pages, code, reviews, Devices.\n    Terminal tabs belong to Herdr: use `herdr tab`.\nherdr-gpui tab focus|close ID\n    Show a tab, switching to its workspace, or close it."
         }
+        "link" => {
+            "herdr-gpui link workspace|tab|agent [--pane ID]\n    Print a Markdown focus link for the caller's workspace, tab, or named\n    agent pane. The pane defaults to HERDR_PANE_ID. Pass --json for url,\n    label, and markdown fields. A pane is required."
+        }
         "code" => {
             "herdr-gpui code open FILE[:LINE]\n    Show a local file read-only in a code tab, at LINE.\nherdr-gpui code edit FILE[:LINE]\n    Open it in your terminal editor ($VISUAL, $EDITOR) in a new pane."
         }

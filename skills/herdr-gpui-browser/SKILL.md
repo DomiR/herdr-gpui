@@ -250,6 +250,7 @@ for what only Herdr UI shows or keeps.
 | Start a chat with another agent in a new tab, shown as a native chat view | `herdr-gpui chat new claude`, then `herdr-gpui chat` for its status |
 | Render existing Linux Codex/Claude conversations in their current panes | `herdr-gpui config set chat.render_existing true` (also enable `features.acp_chats`); `chat status --json` reports the session and input mode |
 | List or focus the app's windows and its own tabs | `herdr-gpui window`, `herdr-gpui tab`, `herdr-gpui tab focus ID` |
+| Link your own Herdr workspace, tab, or agent pane in a plan or todo document | `herdr-gpui link tab` for the current tab, or `herdr-gpui link agent --pane ID` for a named agent pane |
 | Block until something happens in the app | `herdr-gpui wait tab-closed ID --timeout 600`, `herdr-gpui events --follow` |
 | Read or change a Herdr UI setting | `herdr-gpui config get KEY`, `herdr-gpui config set KEY VALUE`, `herdr-gpui config set documents.theme app` |
 | Install agents or rerun the setup script on a saved cloud machine | `herdr-gpui config set cloud.agents '["claude"]'`, `herdr-gpui cloud setup ID` |

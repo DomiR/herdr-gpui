@@ -12,6 +12,7 @@ mod control_commands;
 mod doc;
 mod doc_cancel;
 mod language;
+mod link_command;
 mod links;
 mod mods;
 mod open_command;

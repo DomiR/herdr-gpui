@@ -81,9 +81,11 @@ fn a_device_link_waits_until_the_saved_devices_are_read(cx: &mut gpui::TestAppCo
     });
 }
 
-const REFUSALS: [Refusal; 5] = [
+const REFUSALS: &[Refusal] = &[
+    Refusal::Ambiguous(What::Agent),
     Refusal::Closed,
     Refusal::DialogOpen,
+    Refusal::Gone(What::Workspace),
     Refusal::NoDevice(String::new()),
     Refusal::NotConnected,
     Refusal::NotificationGone,
@@ -100,10 +102,12 @@ fn a_refused_link_answers_the_command_line_in_english() {
     crate::i18n::leak_tests::under_en_xa("link refusals in English", |_, _| {
         assert_eq!(message(Refusal::NoDevice("nas".into())), "No device nas");
         assert_eq!(
-            REFUSALS.map(message),
-            [
+            REFUSALS.iter().cloned().map(message).collect::<Vec<_>>(),
+            vec![
+                "Several agents match this link; give it a more exact name",
                 "The window closed",
                 "A dialog is open in the window; close it first",
+                "No workspace matches this link",
                 "No device ",
                 "Herdr UI is not connected to this computer's Herdr",
                 "That notification is no longer known",

@@ -7,12 +7,14 @@
 //!
 //! - `herdr-gpui://open?path=PATH`: a local checkout or worktree to show;
 //! - `herdr-gpui://device?id=ID`: a device (host) to switch to;
+//! - `herdr-gpui://focus?...`: a workspace, tab, or agent pane to focus;
 //! - `herdr-gpui://notification?tag=TAG`: the notification that was clicked.
 //!
 //! Nothing else: no other parts, no unknown or repeated parameters, bounded
 //! lengths, and no control characters. A link names something to show; it
 //! never carries a command, and the app never runs one because of it.
 
+pub(crate) mod focus;
 pub(crate) mod follow;
 #[cfg(test)]
 mod tests;
@@ -26,11 +28,28 @@ const MAX_LINK: usize = 4096;
 const MAX_PATH: usize = 1024;
 const MAX_DEVICE: usize = 256;
 const MAX_TAG: usize = 512;
+const MAX_FOCUS_TEXT: usize = 256;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Focus {
+    pub(crate) path: Option<PathBuf>,
+    pub(crate) workspace: Option<String>,
+    pub(crate) tab_or_agent: Option<Below>,
+    pub(crate) id: Option<String>,
+    pub(crate) device: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Below {
+    Agent(String),
+    Tab(String),
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Link {
     Open { path: PathBuf },
     Device { id: String },
+    Focus(Focus),
     Notification { tag: String },
 }
 
@@ -58,6 +77,16 @@ pub(crate) enum Error {
     Device,
     #[error("the link's notification is not one this app posts")]
     Tag,
+    #[error("the focus link needs a path, workspace, or agent")]
+    FocusTargetMissing,
+    #[error("the focus link cannot name both a tab and an agent")]
+    FocusTabAndAgent,
+    #[error("the focus link's {0} is empty, too long, or contains a control character")]
+    FocusText(&'static str),
+    #[error("the focus link's ID is invalid")]
+    FocusId,
+    #[error("the focus link's device is not a device ID")]
+    FocusDevice,
 }
 
 /// Whether a command-line argument is a link rather than an option, so a
@@ -86,7 +115,7 @@ impl Link {
             return Err(Error::UnexpectedPart);
         }
         let action = url.host_str().unwrap_or_default();
-        if !matches!(action, "open" | "device" | "notification") {
+        if !matches!(action, "open" | "device" | "focus" | "notification") {
             return Err(Error::UnknownAction(crate::notifications::safe_text(
                 action, 64,
             )));
@@ -105,10 +134,47 @@ impl Link {
             "device" => {
                 parameters.only(&["id"])?;
                 let id = parameters.take("id")?;
-                if id.len() > MAX_DEVICE || !id.chars().all(|c| c.is_ascii_graphic()) {
-                    return Err(Error::Device);
+                Ok(Self::Device { id: device_id(id)? })
+            }
+            "focus" => {
+                parameters.only(&["agent", "device", "id", "path", "tab", "workspace"])?;
+                let path = parameters
+                    .take_optional("path")?
+                    .map(|path| local_path(&path))
+                    .transpose()?;
+                let workspace = parameters
+                    .take_optional("workspace")?
+                    .map(|workspace| focus_text("workspace", workspace))
+                    .transpose()?;
+                let tab = parameters
+                    .take_optional("tab")?
+                    .map(|tab| focus_text("tab", tab))
+                    .transpose()?;
+                let agent = parameters
+                    .take_optional("agent")?
+                    .map(|agent| focus_text("agent", agent))
+                    .transpose()?;
+                if tab.is_some() && agent.is_some() {
+                    return Err(Error::FocusTabAndAgent);
                 }
-                Ok(Self::Device { id })
+                let id = parameters
+                    .take_optional("id")?
+                    .map(validate_focus_id)
+                    .transpose()?;
+                let device = parameters
+                    .take_optional("device")?
+                    .map(|device| device_id(device).map_err(|_| Error::FocusDevice))
+                    .transpose()?;
+                if path.is_none() && workspace.is_none() && agent.is_none() {
+                    return Err(Error::FocusTargetMissing);
+                }
+                Ok(Self::Focus(Focus {
+                    path,
+                    workspace,
+                    tab_or_agent: tab.map(Below::Tab).or_else(|| agent.map(Below::Agent)),
+                    id,
+                    device,
+                }))
             }
             "notification" => {
                 parameters.only(&["tag"])?;
@@ -134,6 +200,7 @@ impl Link {
             Self::Open { path } => ("open", "path", path.to_string_lossy()),
             Self::Device { id } => ("device", "id", id.as_str().into()),
             Self::Notification { tag } => ("notification", "tag", tag.as_str().into()),
+            Self::Focus(focus) => return focus_url(focus),
         };
         let query: String = url::form_urlencoded::Serializer::new(String::new())
             .append_pair(key, &value)
@@ -142,15 +209,38 @@ impl Link {
     }
 }
 
+fn focus_url(focus: &Focus) -> String {
+    let mut query = url::form_urlencoded::Serializer::new(String::new());
+    if let Some(path) = &focus.path {
+        query.append_pair("path", &path.to_string_lossy());
+    }
+    if let Some(workspace) = &focus.workspace {
+        query.append_pair("workspace", workspace);
+    }
+    if let Some(below) = &focus.tab_or_agent {
+        match below {
+            Below::Tab(tab) => query.append_pair("tab", tab),
+            Below::Agent(agent) => query.append_pair("agent", agent),
+        };
+    }
+    if let Some(id) = &focus.id {
+        query.append_pair("id", id);
+    }
+    if let Some(device) = &focus.device {
+        query.append_pair("device", device);
+    }
+    format!("{SCHEME}://focus?{}", query.finish())
+}
+
 /// The query, each key at most once.
 #[derive(Default)]
 struct Parameters(Vec<(&'static str, String)>);
 
-const KEYS: [&str; 3] = ["id", "path", "tag"];
+const KEYS: &[&str] = &["agent", "device", "id", "path", "tab", "tag", "workspace"];
 
 impl Parameters {
     fn add(&mut self, key: &str, value: String) -> Result<(), Error> {
-        let Some(key) = KEYS.into_iter().find(|known| *known == key) else {
+        let Some(key) = KEYS.iter().copied().find(|known| *known == key) else {
             return Err(Error::UnknownParameter(crate::notifications::safe_text(
                 key, 64,
             )));
@@ -171,13 +261,31 @@ impl Parameters {
     }
 
     fn take(&mut self, key: &'static str) -> Result<String, Error> {
-        let at = self
-            .0
-            .iter()
-            .position(|(seen, _)| *seen == key)
-            .ok_or(Error::MissingParameter(key))?;
-        Ok(self.0.swap_remove(at).1)
+        self.take_optional(key)?.ok_or(Error::MissingParameter(key))
     }
+
+    fn take_optional(&mut self, key: &'static str) -> Result<Option<String>, Error> {
+        let at = self.0.iter().position(|(seen, _)| *seen == key);
+        Ok(at.map(|at| self.0.swap_remove(at).1))
+    }
+}
+
+fn device_id(id: String) -> Result<String, Error> {
+    if id.len() > MAX_DEVICE || !id.chars().all(|c| c.is_ascii_graphic()) {
+        return Err(Error::Device);
+    }
+    Ok(id)
+}
+
+fn focus_text(kind: &'static str, text: String) -> Result<String, Error> {
+    if text.is_empty() || text.len() > MAX_FOCUS_TEXT || text.chars().any(char::is_control) {
+        return Err(Error::FocusText(kind));
+    }
+    Ok(text)
+}
+
+fn validate_focus_id(id: String) -> Result<String, Error> {
+    focus_text("id", id).map_err(|_| Error::FocusId)
 }
 
 /// An absolute path on this machine, refusing anything that would reach
@@ -200,6 +308,10 @@ fn local_path(text: &str) -> Result<PathBuf, Error> {
         return Err(Error::Path);
     }
     Ok(path.to_owned())
+}
+
+pub(crate) fn validated_local_path(text: &str) -> Option<PathBuf> {
+    local_path(text).ok()
 }
 
 #[cfg(windows)]

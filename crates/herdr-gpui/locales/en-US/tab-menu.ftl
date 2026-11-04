@@ -10,7 +10,10 @@ tab-menu-mute = Mute Notifications
 tab-menu-unmute = Unmute Notifications
 # The tab's whole workspace is muted; the row unmutes the workspace.
 tab-menu-unmute-workspace = Unmute Workspace
+tab-menu-copy-link = Copy Link
 tab-menu-close = Close Tab
+tab-menu-link-copied = Link copied
+tab-menu-copy-link-failed = Could not make a link for this tab
 
 tab-menu-rename-placeholder = Tab name
 tab-menu-rename-title = Rename tab

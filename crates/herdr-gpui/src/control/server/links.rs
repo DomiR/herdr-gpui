@@ -1,7 +1,8 @@
 //! `link`: a `herdr-gpui://` link the shell started a second copy of the app
 //! with, from a jump list entry, a notification, or another application.
 //! It is parsed again here, since any local process can send one, and it
-//! only ever shows something: a checkout, a device, or a notification's pane.
+//! only ever shows something: a checkout, a device, a focus target, or a
+//! notification's pane.
 
 use super::{main_windows, not_found, window_for};
 use crate::{
@@ -25,9 +26,8 @@ pub(super) fn serve(call: Call<LinkOp>, cx: &mut App) -> Response {
             not_found("That notification is no longer known")
         };
     }
-    // A checkout is opened through this computer's Herdr, so any window
-    // connected to it will do, frontmost first; one that is detached or
-    // showing another device only cannot. `--window` still names exactly one.
+    // Only a checkout needs a local-connected window chosen across windows.
+    // Device and focus links use the caller's window, like `--window` does.
     let connected = (matches!(link, Link::Open { .. }) && call.caller.window.is_none())
         .then(|| {
             main_windows(cx).into_iter().find(|handle| {

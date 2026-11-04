@@ -4,6 +4,7 @@ use core::prelude::v1::test;
 use gpui::VisualTestContext;
 use std::sync::Arc;
 
+mod copy_link;
 mod en_xa;
 // Moves run POSIX host scripts and are never offered on other clients.
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -203,7 +204,7 @@ fn inactive_tab_menu_rename_composition_cancel_and_fences(cx: &mut TestAppContex
                     view.selection_epoch += 1;
                 }
                 assert!(!view.menu_target_current());
-                for action in ACTIONS {
+                for action in ACTIONS.iter().copied() {
                     view.activate_tab_menu(action, window, cx);
                     assert!(view.menu.page == Some(Page::Tab));
                     assert!(view.menu.tab.as_ref().unwrap().error.is_some());
