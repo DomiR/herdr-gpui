@@ -38,7 +38,8 @@ impl Localize for AgentCommandError {
                     "error-doc-link-agent-command-too-many-bytes",
                     limit = *limit
                 )
-            } // keep-sorted end
+            }
+            // keep-sorted end
         }
     }
 }
