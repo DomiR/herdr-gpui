@@ -40,14 +40,9 @@ fn cancelled_text_is_italic_without_strike_and_done_text_keeps_strike() {
     let inks = look.inks.unwrap();
     let cancelled_text = "- [-] cancelled";
     let cancelled_line = markdown::lines(cancelled_text).remove(0);
-    let cancelled = row(
-        cancelled_text,
-        &cancelled_line,
-        &look,
-        false,
-        &[],
-        &|_| None,
-    );
+    let cancelled = row(cancelled_text, &cancelled_line, &look, false, &[], &|_| {
+        None
+    });
     let cancelled_run = run_at(&cancelled, "cancelled");
     assert_eq!(cancelled_run.color, inks.cancelled);
     assert_eq!(cancelled_run.font.style, FontStyle::Italic);
@@ -77,7 +72,14 @@ fn delimiters_links_paragraphs_and_quotes_use_plain_tasks_roles() {
     assert_eq!(link.font.weight, FontWeight::BOLD);
     assert!(link.underline.is_some());
 
-    let paragraph = row("paragraph", &markdown::lines("paragraph").remove(0), &look, false, &[], &|_| None);
+    let paragraph = row(
+        "paragraph",
+        &markdown::lines("paragraph").remove(0),
+        &look,
+        false,
+        &[],
+        &|_| None,
+    );
     assert_eq!(paragraph.runs[0].color, inks.plain);
     let quote_text = "> quote";
     let quote = row(

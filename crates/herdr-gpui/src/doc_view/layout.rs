@@ -187,22 +187,14 @@ pub(super) fn row(
             Kind::Item { task: None, .. } => mark(whole.clone(), &|p| p.notes = true),
             _ => {}
         }
+        if line.kind == Kind::Quote {
+            mark(local(&line.content()), &|p| p.notes = true);
+        }
         if let Some(state) = line.task() {
             mark(local(&line.content()), &|p| {
                 p.pending = state == TaskState::Open;
                 p.done = state == TaskState::Done;
                 p.cancelled = state == TaskState::Cancelled;
-            });
-        }
-        for tag in markdown::tags(text, line) {
-            let tag_range = local(&tag.range);
-            let tag_meta = line.task().is_some_and(TaskState::is_resolved);
-            mark(tag_range, &|p| {
-                p.tag = Some(tag.kind);
-                p.tag_meta = tag_meta;
-                p.bold = !tag_meta;
-                p.italic = false;
-                p.strike = false;
             });
         }
     }
@@ -254,6 +246,20 @@ pub(super) fn row(
                 }
                 mark(range, &|p| p.link = true);
             }
+        }
+    }
+    // Last, so a tag stays unstruck and upright inside a done task or an
+    // emphasis span, as PlainTasks draws it.
+    if look.inks.is_some() {
+        let tag_meta = line.task().is_some_and(TaskState::is_resolved);
+        for tag in markdown::tags(text, line) {
+            mark(local(&tag.range), &|p| {
+                p.tag = Some(tag.kind);
+                p.tag_meta = tag_meta;
+                p.bold = !tag_meta;
+                p.italic = false;
+                p.strike = false;
+            });
         }
     }
     let decorations = if decorate {

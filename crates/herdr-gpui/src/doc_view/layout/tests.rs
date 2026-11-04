@@ -5,6 +5,8 @@ use herdr_doc::markdown::TaskState;
 
 mod cancelled;
 mod document_theme;
+mod plaintasks_tags;
+mod plaintasks_text;
 
 fn look() -> Look {
     Look {
