@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds this checkout's Herdr UI, signs it with your Apple Development
+# Builds this checkout's Sheprd, signs it with your Apple Development
 # certificate, and installs it as the one copy at /Applications/Herdr.app,
 # replacing the running app (Herdr and its terminals keep running).
 #
@@ -32,31 +32,32 @@ identity=${HERDR_SIGN_IDENTITY:-$(security find-identity -v -p codesigning \
 dest="${HERDR_INSTALL_DIR:-/Applications}/Herdr.app"
 
 just bundle release
-app="$root/target/release/Herdr.app"
+app="$root/target/release/Sheprd.app"
 
 # Every helper beside the executable first, whatever upstream adds, then the
 # bundle, whose entitlements allow the microphone a recording needs.
 for helper in "$app"/Contents/MacOS/*; do
-    [ "$(basename "$helper")" = Herdr ] && continue
+    [ "$(basename "$helper")" = sheprd ] && continue
     codesign --force --sign "$identity" "$helper"
 done
 codesign --force --sign "$identity" \
-    --entitlements assets/macos/Herdr.entitlements "$app"
+    --entitlements assets/macos/Sheprd.entitlements "$app"
 codesign --verify --strict "$app"
 
-# Any running Herdr UI quits through its control socket, which the new
+# Any running Sheprd quits through its control socket, which the new
 # binary speaks as well as the old one. `ps` rather than `pgrep`, which
 # does not list the app from every shell (a sandboxed one sees nothing).
 # Only the window counts: the same binary also runs agents' commands, such
 # as a long `doc watch`, which take arguments and never quit.
-running() { ps -axo args= | grep -qx "$dest/Contents/MacOS/Herdr"; }
+# Before the rename the executable was `Herdr`; the bundle keeps its path.
+running() { ps -axo args= | grep -qxE "$dest/Contents/MacOS/(Herdr|sheprd)"; }
 if running; then
-    "$app/Contents/MacOS/Herdr" app quit || true
+    "$app/Contents/MacOS/sheprd" app quit || true
     for _ in $(seq 1 40); do
         running || break
         sleep 0.5
     done
-    ! running || fail "Herdr UI did not quit; quit it and run this again"
+    ! running || fail "Sheprd did not quit; quit it and run this again"
 fi
 
 # Copied beside the old one first, so a failed copy leaves it in place.

@@ -1,0 +1,22 @@
+//! The orchestrator as the window shows it: the Pull requests and Issues
+//! sections, an item's pages, and the window's handle on each repository's
+//! worker. `herdr-orchestrator` owns the records, the database, the readers,
+//! and the worker; `docs/orchestrator.md` has the details.
+// i18n: migrated
+
+mod host;
+mod linear_link;
+mod section;
+mod view;
+
+pub(crate) use host::{LiveCache, Orchestrator, ViewId};
+pub(crate) use linear_link::open_link as open_linear_link;
+pub(crate) use sheprd_orchestrator::*;
+pub(crate) use view::{
+    Event, GitLabRead, IssueLayout, IssueSource, List, LiveAgent, Look, OrchestratorView, RepoSpec,
+    key_label, pane, without_html,
+};
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests;

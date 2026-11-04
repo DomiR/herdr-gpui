@@ -9,10 +9,10 @@ building it without the user watching, so a reviewer can check each one.
 
 | Layer | Where | What |
 | --- | --- | --- |
-| Document | `crates/herdr-doc` | The Loro CRDT text, disk merge, Markdown lines and inline styles, todo operations; no GPUI, all tested headless |
-| Buffer | `crates/herdr-gpui/src/doc_view/buffer.rs` | One per open file for the whole app (a GPUI global keeps them), shared by every tab and window; owns the file's polling and writes |
-| Editor | `crates/herdr-gpui/src/doc_view/` | The tab view: editing, IME, selection, undo, styling, todo interactions, agent highlights |
-| Commands | `herdr-control-protocol` `doc` family, `control/server/doc.rs`, `control/client/doc.rs` | `doc open`, `doc read`, `doc append`, `doc todo add|check|list` |
+| Document | `crates/sheprd-doc` | The Loro CRDT text, disk merge, Markdown lines and inline styles, todo operations; no GPUI, all tested headless |
+| Buffer | `crates/sheprd-gpui/src/doc_view/buffer.rs` | One per open file for the whole app (a GPUI global keeps them), shared by every tab and window; owns the file's polling and writes |
+| Editor | `crates/sheprd-gpui/src/doc_view/` | The tab view: editing, IME, selection, undo, styling, todo interactions, agent highlights |
+| Commands | `sheprd-control-protocol` `doc` family, `control/server/doc.rs`, `control/client/doc.rs` | `doc open`, `doc read`, `doc append`, `doc todo add|check|list` |
 
 ## Decisions
 
@@ -54,7 +54,7 @@ building it without the user watching, so a reviewer can check each one.
     the app cannot know which pane wrote the file.
 11. **Which files open as documents**: every `.md` and `.markdown` file the
     app would open in a code tab (code search, file links, `tab code`) opens
-    as a document instead, and `herdr-gpui doc open PATH[:LINE]` opens one
+    as a document instead, and `sheprd doc open PATH[:LINE]` opens one
     directly.
 12. **Styling keeps the source.** Markdown markers stay in the text and are
     drawn muted (or transparent where a checkbox replaces them), so every
@@ -121,7 +121,7 @@ building it without the user watching, so a reviewer can check each one.
     `Updated. Version: 7`; `Updated section "goals". Version: 7. Other
     sections changed since 5:` and the diff; `Version mismatch, nothing
     changed. Latest version: 7. Changes since 5:` and the diff, or, without
-    one, `Run herdr-gpui doc read PATH for the current text.` `--json`
+    one, `Run sheprd doc read PATH for the current text.` `--json`
     carries the same as fields.
 20. **An agent always knows the document's state** (the goal the user
     named): `doc read` gives the text and its version; a successful change
@@ -138,7 +138,7 @@ building it without the user watching, so a reviewer can check each one.
 ## Copied from comet afterwards
 
 The user asked for these after the first three phases, from comet
-(`/Users/domir/Developer/comet`), each adapted rather than copied whole:
+([zeronsh/comet](https://github.com/zeronsh/comet)), each adapted rather than copied whole:
 
 22. **Preview away from the caret** (comet's composer decorations): lines
     without the caret hide their markers and draw bullets as dots; a
@@ -167,7 +167,7 @@ The user asked for these after the first three phases, from comet
 
 ## What shipped, by phase
 
-1. `herdr-doc`: the document, disk merge, versions, sections, folds, and
+1. `sheprd-doc`: the document, disk merge, versions, sections, folds, and
    todo operations, with headless tests of concurrent edits.
 2. The editor (`doc_view`): editing, IME, selection, undo, styling, todo
    keys, folding, hide done, highlights of other writers' changes, and the
