@@ -158,9 +158,37 @@ impl DocEditor {
     fn word_key(&mut self, key: &str, shift: bool, cx: &mut Context<Self>) {
         let text = self.text(cx);
         let head = self.selection.head;
+        let task_marker = self
+            .bulleted_task_line(head)
+            .map(|line| line.marker.clone());
         let at = match key {
-            "left" | "backspace" => words::previous_start(text, head),
-            _ => words::next_end(text, head),
+            "left" | "backspace" => {
+                if let Some(marker) = task_marker.as_ref() {
+                    if head == marker.end {
+                        if key == "backspace" {
+                            self.delete(true, cx);
+                            return;
+                        }
+                        words::previous_start(text, marker.start)
+                    } else {
+                        let at = words::previous_start(text, head);
+                        if head > marker.end && marker.contains(&at) {
+                            marker.end
+                        } else {
+                            at
+                        }
+                    }
+                } else {
+                    words::previous_start(text, head)
+                }
+            }
+            _ => {
+                let at = words::next_end(text, head);
+                self.bulleted_task_line(at)
+                    .map(|line| line.marker.clone())
+                    .filter(|marker| marker.contains(&at))
+                    .map_or(at, |marker| words::next_end(text, marker.end))
+            }
         };
         match key {
             "left" | "right" => self.move_to(at, shift, cx),
@@ -173,8 +201,29 @@ impl DocEditor {
         }
     }
 
+    fn bulleted_task_line(&self, at: usize) -> Option<&markdown::Line> {
+        let line = markdown::line_at(&self.prepared.lines, at);
+        self.prepared
+            .lines
+            .get(line)
+            .filter(|line| line.is_bulleted_task())
+    }
+
+    /// Keeps the caret out of the source offsets hidden by a task bullet.
+    pub(super) fn caret_snap(&self, at: usize) -> usize {
+        let Some(line) = self.bulleted_task_line(at) else {
+            return at;
+        };
+        if line.marker.start <= at && at < line.marker.end {
+            line.marker.end
+        } else {
+            at
+        }
+    }
+
     /// Moves the caret to `at`, extending the selection with Shift.
     pub(super) fn move_to(&mut self, at: usize, extend: bool, cx: &mut Context<Self>) {
+        let at = self.caret_snap(at);
         let anchor = if extend { self.selection.anchor } else { at };
         self.goal_x = None;
         self.select(Selection { anchor, head: at }, cx);
@@ -192,6 +241,9 @@ impl DocEditor {
             .map(|(at, _)| start + at)
             .collect();
         out.push(line.range.end);
+        if line.is_bulleted_task() {
+            out.retain(|at| !line.marker.contains(at));
+        }
         out
     }
 
@@ -204,11 +256,14 @@ impl DocEditor {
                 .shown_neighbour(false)
                 .map_or(head, |l| self.prepared.lines[l].range.end);
         }
-        self.boundaries(cx)
-            .into_iter()
-            .rev()
-            .find(|at| *at < head)
-            .unwrap_or(line.range.start)
+        let previous = self.boundaries(cx).into_iter().rev().find(|at| *at < head);
+        match previous {
+            Some(at) => at,
+            None if line.is_bulleted_task() => self
+                .shown_neighbour(false)
+                .map_or(head, |l| self.prepared.lines[l].range.end),
+            None => line.range.start,
+        }
     }
 
     fn next_boundary(&self, cx: &Context<Self>) -> usize {
@@ -273,6 +328,7 @@ impl DocEditor {
             Some(found) => (found.0, Some(found.1)),
             None => (self.by_column(down, cx), self.goal_x),
         };
+        let at = self.caret_snap(at);
         let anchor = if extend { self.selection.anchor } else { at };
         self.select(Selection { anchor, head: at }, cx);
         self.goal_x = x;

@@ -24,15 +24,16 @@ fn runs_cover_the_line_without_splitting_characters() {
         "```",
     ] {
         let row = styled(text);
+        let drawn = row.text.as_ref();
         assert_eq!(
             row.runs.iter().map(|run| run.len).sum::<usize>(),
-            text.len(),
+            drawn.len(),
             "{text}"
         );
         let mut at = 0;
         for run in &row.runs {
             at += run.len;
-            assert!(text.is_char_boundary(at), "{text}");
+            assert!(drawn.is_char_boundary(at), "{text}");
         }
     }
 }
@@ -40,14 +41,30 @@ fn runs_cover_the_line_without_splitting_characters() {
 #[test]
 fn a_task_box_is_drawn_not_its_brackets() {
     let row = styled("- [x] done");
-    assert_eq!(row.checkbox, Some((2..5, true)));
+    assert_eq!(row.text.as_ref(), "[x] done");
+    assert_eq!(row.checkbox, Some((0..3, true)));
     let first = &row.runs[0];
-    assert_eq!(first.len, 2);
-    let hidden = &row.runs[1];
-    assert_eq!(hidden.len, 3);
-    assert_eq!(hidden.color.a, 0.);
+    assert_eq!(first.len, 3);
+    assert_eq!(first.color.a, 0.);
     // The done item's text is struck through.
     assert!(row.runs.last().unwrap().strikethrough.is_some());
+}
+
+#[test]
+fn editing_rows_hide_only_a_bulleted_task_prefix() {
+    let text = "- [ ] a";
+    let lines = markdown::lines(text);
+    let task = row(text, &lines[0], &look(), false, &[], &|_| None);
+    assert_eq!(task.text.as_ref(), "[ ] a");
+    assert_eq!(task.checkbox, Some((0..3, false)));
+    assert_eq!(task.map.to_display(2), 0);
+    assert_eq!(task.map.to_source(0), 2);
+
+    for text in ["- a", "## h"] {
+        let lines = markdown::lines(text);
+        let raw = row(text, &lines[0], &look(), false, &[], &|_| None);
+        assert_eq!(raw.text.as_ref(), text);
+    }
 }
 
 #[test]

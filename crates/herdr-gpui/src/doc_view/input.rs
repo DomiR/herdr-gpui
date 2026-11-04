@@ -68,7 +68,7 @@ impl DocEditor {
                 .unwrap_or_else(|index| index),
         );
         let line = self.prepared.lines.get(*line)?;
-        Some((line.range.start + index).min(line.range.end))
+        Some(self.caret_snap((line.range.start + index).min(line.range.end)))
     }
 }
 

@@ -80,7 +80,7 @@ pub(super) enum Target {
 /// A line, ready to draw.
 #[derive(Clone, Debug)]
 pub(super) struct Row {
-    /// What is drawn: the source line, decorated away from the caret.
+    /// What is drawn: the source line, with only a task bullet hidden at the caret.
     pub(super) text: SharedString,
     /// How the drawn text maps to the source line.
     pub(super) map: std::rc::Rc<DisplayMap>,
@@ -121,7 +121,8 @@ struct Paint {
 }
 
 /// `line` of `text`, styled; `decorate` hides its markers, as for a line
-/// away from the caret. `code` colours a code block line.
+/// away from the caret. An editing row hides only a bulleted task's `- `.
+/// `code` colours a code block line.
 pub(super) fn row(
     text: &str,
     line: &Line,
@@ -214,7 +215,7 @@ pub(super) fn row(
     let decorations = if decorate {
         markdown::decorations(text, line)
     } else {
-        Vec::new()
+        markdown::editing_decorations(line)
     };
     let mut drawn = String::with_capacity(source.len());
     let mut drawn_paints = Vec::with_capacity(source.len());

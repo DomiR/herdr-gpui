@@ -2,6 +2,7 @@
 use super::*;
 
 mod fold_regions;
+mod task_bullet;
 
 fn kinds(text: &str) -> Vec<Kind> {
     lines(text).into_iter().map(|line| line.kind).collect()

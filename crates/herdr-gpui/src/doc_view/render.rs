@@ -430,6 +430,7 @@ impl DocEditor {
             self.toggle_task(line, cx);
             return;
         }
+        let offset = self.caret_snap(offset);
         let primary = if crate::controls::CTRL_SHORTCUTS {
             event.modifiers.control
         } else {

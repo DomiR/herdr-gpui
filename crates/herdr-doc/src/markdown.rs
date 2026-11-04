@@ -9,7 +9,7 @@ use std::ops::Range;
 mod decorate;
 mod folds;
 
-pub use decorate::{Decoration, decorations};
+pub use decorate::{Decoration, decorations, editing_decorations};
 pub use folds::{Fold, FoldKind, folds};
 
 /// What a list item's marker is.
@@ -81,6 +81,16 @@ impl Line {
             Kind::Item { task, .. } => task,
             _ => None,
         }
+    }
+
+    pub fn is_bulleted_task(&self) -> bool {
+        matches!(
+            self.kind,
+            Kind::Item {
+                list: List::Bullet(_),
+                task: Some(_),
+            }
+        )
     }
 
     pub fn is_item(&self) -> bool {
