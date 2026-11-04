@@ -3,17 +3,24 @@ use crate::{config::DocAgentConfig, doc_link};
 use std::time::Duration;
 
 #[test]
-fn defaults_are_claude_with_a_25_second_debounce() {
+fn defaults_are_claude_with_a_25_second_debounce() -> anyhow::Result<()> {
     let config = DocAgentConfig::default();
     assert_eq!(config.agent_command, ["claude"]);
     assert_eq!(config.debounce(), Duration::from_secs(25));
     assert!(config.args().is_empty());
     assert_eq!(config.kind(), crate::teleport::AgentKind::Claude);
-    assert_eq!(config.clone().checked().unwrap(), config);
+    assert_eq!(
+        config
+            .clone()
+            .checked()
+            .context("default document agent configuration should be valid")?,
+        config
+    );
+    Ok(())
 }
 
 #[test]
-fn the_doc_agent_table_parses_through_the_full_config() {
+fn the_doc_agent_table_parses_through_the_full_config() -> anyhow::Result<()> {
     let config = Config::parse(
         r#"
 [doc_agent]
@@ -21,7 +28,7 @@ agent_command = ["codex", "--profile", "work"]
 debounce_seconds = 42
 "#,
     )
-    .unwrap();
+    .context("document agent table should parse")?;
     assert_eq!(
         config.doc_agent.agent_command,
         ["codex", "--profile", "work"]
@@ -29,6 +36,7 @@ debounce_seconds = 42
     assert_eq!(config.doc_agent.debounce(), Duration::from_secs(42));
     assert_eq!(config.doc_agent.args(), ["--profile", "work"]);
     assert_eq!(config.doc_agent.kind(), crate::teleport::AgentKind::Codex);
+    Ok(())
 }
 
 #[test]

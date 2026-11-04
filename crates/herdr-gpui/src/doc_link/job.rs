@@ -183,9 +183,11 @@ pub(super) fn launch_core(
                         };
                         retry_busy(
                             &mut exec,
-                            &start_args,
-                            &pane_id,
-                            terminal_id,
+                            BusyRetry {
+                                pane_id: &pane_id,
+                                start_args: &start_args,
+                                terminal_id,
+                            },
                             source,
                             &mut pause,
                             &mut elapsed,
@@ -309,11 +311,15 @@ pub(super) enum PromptRefusal {
     NotReady,
 }
 
+struct BusyRetry<'a> {
+    pane_id: &'a str,
+    start_args: &'a [&'a str],
+    terminal_id: &'a str,
+}
+
 fn retry_busy(
     exec: &mut impl FnMut(&[&str], Duration) -> herdr_client::Result<Vec<u8>>,
-    start_args: &[&str],
-    pane_id: &str,
-    terminal_id: &str,
+    retry: BusyRetry<'_>,
     mut error: herdr_client::Error,
     pause: &mut impl FnMut(Duration),
     elapsed: &mut impl FnMut() -> Duration,
@@ -337,7 +343,7 @@ fn retry_busy(
                 source: error,
             });
         }
-        let pane_args = ["pane", "get", pane_id];
+        let pane_args = ["pane", "get", retry.pane_id];
         let output = exec(&pane_args, remaining).map_err(|source| Error::Script {
             step: JobStep::PaneQuery,
             source,
@@ -347,8 +353,8 @@ fn retry_busy(
                 step: JobStep::PaneQuery,
                 source,
             })?;
-        if current.result.pane.pane_id != pane_id
-            || current.result.pane.terminal_id.as_deref() != Some(terminal_id)
+        if current.result.pane.pane_id != retry.pane_id
+            || current.result.pane.terminal_id.as_deref() != Some(retry.terminal_id)
         {
             // Match actions::start::retry_busy: a missing or changed terminal never authorizes a retry.
             return Err(Error::Script {
@@ -357,7 +363,7 @@ fn retry_busy(
             });
         }
         check_cancelled(cancelled)?;
-        match exec(start_args, AGENT_START_IDLE) {
+        match exec(retry.start_args, AGENT_START_IDLE) {
             Ok(_) => return Ok(()),
             Err(source) if is_name_taken(&source) => return Err(Error::NameTaken { source }),
             Err(source) if is_busy(&source) => error = source,

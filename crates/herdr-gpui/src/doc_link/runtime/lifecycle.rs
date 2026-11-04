@@ -322,10 +322,10 @@ impl Links {
                 };
                 let link = &mut this.entries[index];
                 if link.generation != generation
-                    || !link
+                    || link
                         .timer
                         .as_ref()
-                        .is_some_and(|timer| timer.deadline == deadline)
+                        .is_none_or(|timer| timer.deadline != deadline)
                 {
                     return;
                 }
