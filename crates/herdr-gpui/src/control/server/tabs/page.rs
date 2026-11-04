@@ -1,6 +1,7 @@
 //! What `browser` does to a page tab beyond opening it: load another
-//! address, go back or forward, zoom it, read its text, and picture it. Only
-//! builds that show pages have any; the rest answer that they cannot.
+//! address, go back or forward, zoom it, read its text, and picture it. The
+//! zoom also applies to document tabs; only builds that show pages have the
+//! other operations.
 use super::{find, kind};
 #[cfg(not(target_os = "macos"))]
 use crate::control::server::{Watches, socket};
@@ -91,16 +92,26 @@ pub(super) fn navigate(caller: &Caller, id: u64, url: &str, cx: &mut App) -> Res
     Response::done(format!("Loading {url} in tab {id}"))
 }
 
-/// Zooms a page tab. The zoom is the tab's, so every window's page for it
-/// follows, and a window that makes the page later makes it at that zoom.
+/// Zooms a page or document tab. The zoom is the tab's, so every window's
+/// page or document editor for it follows, and a window that makes it later
+/// makes it at that zoom.
 pub(super) fn zoom(caller: &Caller, id: u64, change: ZoomChange, cx: &mut App) -> Response {
-    if !crate::browser::EMBEDDED {
-        return no_pages();
-    }
-    let tab = match page_tab(id, cx) {
+    let tab = match find(id, cx) {
         Ok(tab) => tab,
         Err(response) => return response,
     };
+    let is_document = matches!(&tab.location, Some(Location::Doc { .. }));
+    if !is_document {
+        if !crate::browser::EMBEDDED {
+            return no_pages();
+        }
+        if !kind(&tab).is_page() {
+            return Response::error(
+                ErrorCode::InvalidRequest,
+                format!("Tab {id} is not a page or document; `browser list` lists them"),
+            );
+        }
+    }
     if let Some(window) = caller.window
         && super::showing(caller, &tab, cx).is_none()
     {
@@ -112,7 +123,11 @@ pub(super) fn zoom(caller: &Caller, id: u64, change: ZoomChange, cx: &mut App) -
     };
     Store::update(cx, |store| store.set_zoom(tab.id, zoom));
     for handle in crate::control::main_windows(cx) {
-        let _ = handle.update(cx, |view, _, _| view.apply_page_zoom(tab.id, zoom));
+        let _ = if is_document {
+            handle.update(cx, |_, _, cx| cx.notify())
+        } else {
+            handle.update(cx, |view, _, _| view.apply_page_zoom(tab.id, zoom))
+        };
     }
     Response::Tab {
         reply: Reply::Zoom {

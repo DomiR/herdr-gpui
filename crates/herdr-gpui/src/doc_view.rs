@@ -25,7 +25,7 @@ pub(crate) use layout::Look;
 
 use crate::{
     HerdrWindow,
-    browser::{Location, Slot, Store, Tab, TabId},
+    browser::{Location, Slot, Store, Tab, TabId, Zoom},
     editor::EditorTarget,
     i18n::fl,
     window::Flash,
@@ -168,15 +168,18 @@ impl HerdrWindow {
         if self.doc_views.contains_key(&id) {
             return;
         }
-        let Some(Location::Doc { file }) = cx
+        let Some((file, zoom)) = cx
             .try_global::<Store>()
             .and_then(|store| store.get(id))
-            .and_then(|tab| tab.location.clone())
+            .and_then(|tab| match tab.location.clone() {
+                Some(Location::Doc { file }) => Some((file, tab.zoom)),
+                _ => None,
+            })
         else {
             return;
         };
         let buffer = Docs::open(Path::new(&file.path), cx);
-        let look = self.doc_look();
+        let look = self.doc_look(zoom);
         let editor = cx.new(|cx| DocEditor::new(id, buffer, look, file.folded, file.line, cx));
         cx.subscribe(&editor, |_, editor, event: &FoldsChanged, cx| {
             let id = editor.read(cx).tab();
@@ -186,11 +189,16 @@ impl HerdrWindow {
         self.doc_views.insert(id, editor);
     }
 
-    fn doc_look(&self) -> Look {
+    fn doc_look(&self, zoom: Zoom) -> Look {
+        let factor = zoom.factor() as f32;
+        let mut ui = self.config.ui.clone();
+        ui.size *= factor;
+        let mut code = self.config.terminal.clone();
+        code.size *= factor;
         Look {
             theme: self.theme.clone(),
-            ui: self.config.ui.clone(),
-            code: self.config.terminal.clone(),
+            ui,
+            code,
         }
     }
 
@@ -262,7 +270,7 @@ impl HerdrWindow {
                 .size_full()
                 .into_any_element();
         };
-        let look = self.doc_look();
+        let look = self.doc_look(tab.zoom);
         editor.update(cx, |editor, cx| editor.set_look(look, cx));
         div()
             .id(SharedString::from(slot.selector("doc-tab")))

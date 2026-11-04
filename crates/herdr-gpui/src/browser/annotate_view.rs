@@ -3,7 +3,7 @@
 //! notes are written in the app, never in the page, and nothing reaches an
 //! agent until the user presses Send.
 use super::{
-    PostedFrom, TabId,
+    Location, PostedFrom, TabId,
     annotate::{self, Anchor, MAX_NOTES, Note, Rect, Report},
 };
 use crate::{
@@ -243,7 +243,10 @@ impl HerdrWindow {
     /// Starts or stops annotating the page the zoom keys reach, once it has
     /// loaded something, for the `toggle_annotate` binding.
     pub(crate) fn toggle_shown_annotating(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        match self.zoomed_tab(cx).filter(|tab| tab.location.is_some()) {
+        match self
+            .zoomed_tab(window, cx)
+            .filter(|tab| tab.location.as_ref().is_some_and(Location::is_page))
+        {
             Some(tab) => self.toggle_annotating(tab.id, window, cx),
             None => self.show_flash(Flash::warning(fl!("browser-notes-no-page")), cx),
         }
@@ -351,7 +354,7 @@ impl HerdrWindow {
     ) {
         let local = super::view::store(cx)
             .and_then(|store| store.get(id))
-            .is_some_and(|tab| matches!(tab.location, Some(super::Location::Local { .. })));
+            .is_some_and(|tab| matches!(tab.location, Some(Location::Local { .. })));
         if !local || from != PostedFrom::Preview {
             tracing::debug!("Ignored a result from a page that is not local");
             return;

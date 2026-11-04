@@ -615,10 +615,10 @@ impl HerdrWindow {
                 self.show_flash(Flash::warning(fl!("core-terminals-mirror-needs-pane")), cx);
                 return;
             }
-            // A focused page zooms instead of the terminal font, and keeps
-            // the keyboard if it held it.
+            // A focused page or document zooms instead of the terminal font,
+            // and keeps the keyboard if it held it.
             Command::IncreaseFontSize | Command::DecreaseFontSize | Command::ResetFontSize
-                if self.zoom_focused_page(command, cx) =>
+                if self.zoom_focused_page(command, window, cx) =>
             {
                 return;
             }
