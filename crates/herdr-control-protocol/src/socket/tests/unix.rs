@@ -1,4 +1,5 @@
 use super::*;
+use std::io::Write;
 use std::os::unix::{
     fs::PermissionsExt as _,
     net::{UnixListener, UnixStream},
@@ -30,6 +31,27 @@ fn a_stale_socket_is_replaced() {
 }
 
 #[test]
+fn a_caller_whose_server_already_closed_reads_its_refusal() {
+    let busy = Response::error(ErrorCode::Busy, "busy");
+    let (caller, mut server) = UnixStream::pair().unwrap();
+    let mut line = serde_json::to_vec(&busy).unwrap();
+    line.push(b'\n');
+    server.write_all(&line).unwrap();
+    drop(server);
+
+    let connection = transport::Connection::client(caller, IO_TIMEOUT, IO_TIMEOUT).unwrap();
+    let result = exchange(
+        &connection,
+        &connection,
+        &Request::Status(Caller::default()),
+    );
+    assert!(
+        matches!(&result, Ok(response) if response == &busy),
+        "{result:?}"
+    );
+}
+
+#[test]
 fn a_refused_caller_reads_busy_rather_than_a_broken_pipe() {
     let address = address();
     let server = Server::bind(&address.path).unwrap();
@@ -44,14 +66,18 @@ fn a_refused_caller_reads_busy_rather_than_a_broken_pipe() {
         held.push(server.next().expect("the status request reaches the UI"));
     }
 
-    for _ in 0..20 {
-        assert!(matches!(
-            call(&address.path, &Request::Status(Caller::default())),
-            Ok(Response::Error {
-                code: ErrorCode::Busy,
-                ..
-            })
-        ));
+    for attempt in 0..20 {
+        let result = call(&address.path, &Request::Status(Caller::default()));
+        assert!(
+            matches!(
+                &result,
+                Ok(Response::Error {
+                    code: ErrorCode::Busy,
+                    ..
+                })
+            ),
+            "refusal {attempt}: {result:?}"
+        );
     }
 
     for incoming in held {

@@ -54,6 +54,25 @@ pub(super) fn release(path: &Path) {
 pub(super) struct Connection(UnixStream);
 
 impl Connection {
+    /// The caller's side of a connection; `io_timeout` bounds sending.
+    pub(super) fn client(
+        stream: UnixStream,
+        io_timeout: Duration,
+        read_timeout: Duration,
+    ) -> io::Result<Self> {
+        // Darwin refuses socket options once the peer has closed both ways.
+        // Nothing on the socket can block then, and the refusal line the
+        // server left stays readable for `exchange` to recover. Std only
+        // rejects a zero duration, and both callers pass bounds.
+        let set = stream
+            .set_write_timeout(Some(io_timeout))
+            .and_then(|()| stream.set_read_timeout(Some(read_timeout)));
+        match set {
+            Err(error) if error.kind() != io::ErrorKind::InvalidInput => Err(error),
+            _ => Ok(Self(stream)),
+        }
+    }
+
     pub(super) fn prepare(&mut self, timeout: Duration) -> io::Result<()> {
         self.0.set_read_timeout(Some(timeout))?;
         self.0.set_write_timeout(Some(timeout))
@@ -98,7 +117,5 @@ pub(super) fn connect(
         path: path.to_owned(),
         source,
     })?;
-    stream.set_write_timeout(Some(io_timeout))?;
-    stream.set_read_timeout(Some(read_timeout))?;
-    Ok(Connection(stream))
+    Ok(Connection::client(stream, io_timeout, read_timeout)?)
 }
