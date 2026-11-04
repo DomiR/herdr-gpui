@@ -475,6 +475,17 @@ impl Theme {
         self.ink(mix(self.background, self.foreground, 78))
     }
 
+    /// Plain prose that should recede behind a document's main content,
+    /// such as its tasks: halfway between [`Self::subtext`] and [`Self::muted`],
+    /// lifted like a label for the contrast setting.
+    pub fn prose(&self) -> u32 {
+        self.ink(mix(
+            self.muted,
+            mix(self.background, self.foreground, 78),
+            50,
+        ))
+    }
+
     /// A configured `dim = true` token: the color faded toward the panel.
     pub fn dimmed(&self, color: u32) -> u32 {
         mix(self.surface, color, 55)

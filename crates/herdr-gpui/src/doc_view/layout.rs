@@ -114,6 +114,8 @@ struct Paint {
     strike: bool,
     link: bool,
     muted: bool,
+    /// Plain document prose, dimmed below subtext.
+    prose: bool,
     hidden: bool,
     /// Inside a code block, whose row draws the background.
     block: bool,
@@ -188,11 +190,17 @@ pub(super) fn row(
         }
         mark(local(&line.marker), &|p| p.delimiter = true);
     }
-    for span in code {
-        let range = span.start.min(source.len())..span.end.min(source.len());
-        let token = span.token;
-        mark(range, &|p| p.token = Some(token));
+    match line.kind {
+        Kind::Paragraph | Kind::Item { task: None, .. } => {
+            mark(local(&line.content()), &|p| p.prose = true)
+        }
+        _ => {}
     }
+    for span in code {
+    let range = span.start.min(source.len())..span.end.min(source.len());
+    let token = span.token;
+    mark(range, &|p| p.token = Some(token));
+}
     if !line.marker.is_empty() {
         mark(local(&line.marker), &|p| p.muted = true);
     }
@@ -212,14 +220,26 @@ pub(super) fn row(
     for span in markdown::inline(text, line) {
         let range = local(&span.range);
         match &span.style {
-            Style::Strong => mark(range, &|p| p.bold = true),
-            Style::Emphasis => mark(range, &|p| p.italic = true),
+            Style::Strong => mark(range, &|p| {
+                p.bold = true;
+                p.prose = false;
+            }),
+            Style::Emphasis => mark(range, &|p| {
+                p.italic = true;
+                p.prose = false;
+            }),
             Style::Code => {
                 if let Some(file) = text.get(span.range.clone()).and_then(files) {
                     links.push((range.clone(), Target::File(file)));
-                    mark(range.clone(), &|p| p.link = true);
+                    mark(range.clone(), &|p| {
+                        p.link = true;
+                        p.prose = false;
+                    });
                 }
-                mark(range, &|p| p.code = true);
+                mark(range, &|p| {
+                    p.code = true;
+                    p.prose = false;
+                });
             }
             Style::Strike => mark(range, &|p| p.strike = true),
             Style::Marker => mark(range, &|p| {
@@ -230,7 +250,10 @@ pub(super) fn row(
                 if let Some(url) = markdown::link_url(text, &span) {
                     links.push((range.clone(), Target::Url(url.to_owned())));
                 }
-                mark(range, &|p| p.link = true);
+                mark(range, &|p| {
+                    p.link = true;
+                    p.prose = false;
+                });
             }
         }
     }
@@ -342,6 +365,8 @@ fn run(len: usize, paint: Paint, look: &Look) -> TextRun {
         rgb(theme.primary()).into()
     } else if paint.muted {
         rgb(theme.muted).into()
+    } else if paint.prose {
+        rgb(theme.prose()).into()
     } else {
         rgb(theme.foreground).into()
     };
