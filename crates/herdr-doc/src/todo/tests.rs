@@ -3,6 +3,7 @@ use super::*;
 
 mod fold_tasks;
 mod moves;
+mod line_break;
 
 const DOC: &str = "# Work\n- [ ] write\n  - [x] outline\n- [x] read\n\n## Later\n- [ ] ship\n";
 

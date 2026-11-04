@@ -317,6 +317,31 @@ pub fn enter(text: &str, caret: usize) -> Option<(Edit, usize)> {
     Some((Edit::insert(caret, insert), caret_after))
 }
 
+/// What Shift-Enter does at byte `caret`: a line break without a new list
+/// marker. On a list item with text after its marker, the new line is indented
+/// under that text; elsewhere it keeps the line's own leading whitespace up
+/// to the caret.
+pub fn line_break(text: &str, caret: usize) -> (Edit, usize) {
+    let lines = markdown::lines(text);
+    let line = &lines[markdown::line_at(&lines, caret)];
+    let indent = if matches!(line.kind, Kind::Item { .. })
+        && caret >= line.marker.end
+        && !text[line.content()].trim().is_empty()
+    {
+        let leading = &text[line.range.start..line.range.start + line.indent];
+        let marker = text[line.marker.clone()]
+            .bytes()
+            .map(|byte| if byte == b'\t' { '\t' } else { ' ' })
+            .collect::<String>();
+        format!("{leading}{marker}")
+    } else {
+        text[line.range.start..caret.min(line.range.start + line.indent)].to_owned()
+    };
+    let insert = format!("\n{indent}");
+    let caret_after = caret + insert.len();
+    (Edit::insert(caret, insert), caret_after)
+}
+
 /// Indents (or outdents) every list item whose line meets `lines_range`,
 /// with its sub-items, by two spaces. Lines that are not items are left
 /// alone; outdenting stops at the margin.

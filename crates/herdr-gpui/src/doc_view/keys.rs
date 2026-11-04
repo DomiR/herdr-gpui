@@ -93,7 +93,7 @@ impl DocEditor {
                 }
             }
             "backspace" | "delete" => self.delete(key == "backspace", cx),
-            "enter" if shift => self.insert("\n", cx),
+            "enter" if shift => self.line_break(cx),
             "enter" => self.enter(cx),
             "tab" => self.indent(shift, cx),
             "escape" if self.has_cursors() => self.clear_cursors(),
@@ -397,6 +397,17 @@ impl DocEditor {
                 self.apply(vec![edit], caret, cx);
                 return;
             }
+        }
+        self.insert("\n", cx);
+    }
+
+    /// Shift-Enter: a line break that keeps the note under a list item's text,
+    /// or the line's own indentation elsewhere.
+    fn line_break(&mut self, cx: &mut Context<Self>) {
+        if self.selection.is_empty() {
+            let (edit, caret) = todo::line_break(self.text(cx), self.selection.head);
+            self.apply(vec![edit], caret, cx);
+            return;
         }
         self.insert("\n", cx);
     }

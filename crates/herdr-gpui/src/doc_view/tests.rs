@@ -14,6 +14,7 @@ mod multi_cursor;
 mod move_keys;
 mod saved_tab;
 mod task_marker;
+mod shift_enter;
 mod todo_keys;
 mod typing;
 
