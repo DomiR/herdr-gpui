@@ -8,7 +8,7 @@ fn plaintasks() -> Look {
     Look { theme, inks, ..app }
 }
 
-fn run_at<'a>(row: &'a Row, needle: &str) -> &'a gpui::TextRun {
+fn run_at<'a>(row: &'a Row, needle: &str) -> &'a TextRun {
     let at = row.text.find(needle).unwrap();
     let mut end = 0;
     row.runs
@@ -26,12 +26,12 @@ fn headings_keep_body_size_and_their_marker_visible() {
     let inks = look.inks.unwrap();
     let text = "# Plan";
     let line = markdown::lines(text).remove(0);
-    let row = row(text, &line, &look, true, &[], &|_| None);
-    assert_eq!(row.text.as_ref(), text);
-    assert_eq!(row.size, look.ui.size);
-    assert_eq!(row.line_height, look.ui.size * 1.6);
-    assert_eq!(run_at(&row, "#").color, inks.plain);
-    assert_eq!(run_at(&row, "Plan").font.weight, FontWeight::NORMAL);
+    let styled = row(text, &line, &look, true, &[], &|_| None);
+    assert_eq!(styled.text.as_ref(), text);
+    assert_eq!(styled.size, look.ui.size);
+    assert_eq!(styled.line_height, look.ui.size * 1.6);
+    assert_eq!(run_at(&styled, "#").color, inks.plain);
+    assert_eq!(run_at(&styled, "Plan").font.weight, FontWeight::NORMAL);
 }
 
 #[test]
@@ -63,11 +63,11 @@ fn delimiters_links_paragraphs_and_quotes_use_plain_tasks_roles() {
     let inks = look.inks.unwrap();
     let text = "**bold** *italic* `code` [link](https://example.test)";
     let line = markdown::lines(text).remove(0);
-    let row = row(text, &line, &look, false, &[], &|_| None);
-    assert_eq!(run_at(&row, "**").color, inks.delimiter);
-    assert_eq!(run_at(&row, "*").color, inks.delimiter);
-    assert_eq!(run_at(&row, "`").color, inks.delimiter);
-    let link = run_at(&row, "link");
+    let styled = row(text, &line, &look, false, &[], &|_| None);
+    assert_eq!(run_at(&styled, "**").color, inks.delimiter);
+    assert_eq!(run_at(&styled, "*").color, inks.delimiter);
+    assert_eq!(run_at(&styled, "`").color, inks.delimiter);
+    let link = run_at(&styled, "link");
     assert_eq!(link.color, inks.url);
     assert_eq!(link.font.weight, FontWeight::BOLD);
     assert!(link.underline.is_some());

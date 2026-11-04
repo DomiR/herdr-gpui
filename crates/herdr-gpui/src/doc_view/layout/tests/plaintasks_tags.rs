@@ -8,7 +8,7 @@ fn themed(choice: DocumentTheme) -> Look {
     Look { theme, inks, ..app }
 }
 
-fn run_at<'a>(row: &'a Row, needle: &str) -> &'a gpui::TextRun {
+fn run_at<'a>(row: &'a Row, needle: &str) -> &'a TextRun {
     let at = row.text.find(needle).unwrap();
     let mut end = 0;
     row.runs
@@ -26,14 +26,14 @@ fn tags_are_bold_and_use_their_tag_ink_and_background() {
     let inks = look.inks.unwrap();
     let text = "- [ ] ship @today @other";
     let line = markdown::lines(text).remove(0);
-    let row = row(text, &line, &look, false, &[], &|_| None);
-    let today = run_at(&row, "@today");
+    let styled = row(text, &line, &look, false, &[], &|_| None);
+    let today = run_at(&styled, "@today");
     assert_eq!(today.color, inks.today.0);
     assert_eq!(today.font.weight, FontWeight::BOLD);
     assert_eq!(today.font.style, FontStyle::Normal);
     assert_eq!(today.background_color, Some(inks.today.1));
-    assert_eq!(run_at(&row, "@other").color, inks.tag);
-    assert_eq!(run_at(&row, "@other").background_color, None);
+    assert_eq!(run_at(&styled, "@other").color, inks.tag);
+    assert_eq!(run_at(&styled, "@other").background_color, None);
 }
 
 #[test]
@@ -42,8 +42,8 @@ fn resolved_task_tags_are_meta_ink_without_bold_or_strike() {
     let inks = look.inks.unwrap();
     for text in ["- [x] shipped @today", "- [-] cancelled @today"] {
         let line = markdown::lines(text).remove(0);
-        let row = row(text, &line, &look, false, &[], &|_| None);
-        let tag = run_at(&row, "@today");
+        let styled = row(text, &line, &look, false, &[], &|_| None);
+        let tag = run_at(&styled, "@today");
         assert_eq!(tag.color, inks.tag_meta);
         assert_eq!(tag.font.weight, FontWeight::NORMAL);
         assert_eq!(tag.font.style, FontStyle::Normal);
