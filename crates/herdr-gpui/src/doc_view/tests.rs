@@ -10,6 +10,7 @@ mod disk_sync;
 mod fold_task_keys;
 mod fold_levels;
 mod folding;
+mod multi_cursor;
 mod saved_tab;
 mod task_marker;
 mod todo_keys;

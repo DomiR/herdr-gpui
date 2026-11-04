@@ -125,6 +125,7 @@ pub(crate) fn bind_keys(cx: &mut App) {
         }
     }));
     cx.bind_keys(crate::log_window::key_bindings());
+    cx.bind_keys(crate::doc_view::key_bindings());
     cx.bind_keys(crate::settings_window::key_bindings());
     // After the keymap, so a focused document's fold keys outrank Tab N and Reset Font Size.
     cx.bind_keys(crate::doc_view::fold_key_bindings());

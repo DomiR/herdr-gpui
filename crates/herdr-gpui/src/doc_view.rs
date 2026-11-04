@@ -10,6 +10,7 @@
 mod blocks;
 mod buffer;
 mod comments;
+mod cursors;
 mod editor;
 mod error;
 mod fold_keys;
@@ -20,6 +21,7 @@ mod links;
 mod render;
 
 pub(crate) use buffer::{DocBuffer, Docs, State};
+pub(crate) use cursors::key_bindings;
 pub(crate) use editor::{DocEditor, FoldsChanged};
 pub use error::Error;
 pub(crate) use fold_keys::fold_key_bindings;

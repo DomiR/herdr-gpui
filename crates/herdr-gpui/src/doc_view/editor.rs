@@ -9,6 +9,7 @@
 use super::{
     Request,
     comments::{Comment, Draft},
+    cursors::Cursors,
     links::{self, FileLinks},
 };
 use super::{
@@ -135,6 +136,7 @@ pub(crate) struct DocEditor {
     pub(super) tab: TabId,
     pub(super) look: Look,
     pub(super) selection: Selection,
+    pub(super) cursors: Cursors,
     /// The selection as anchors, as of the last change this view saw.
     anchors: Option<(Anchor, Anchor)>,
     /// Where vertical moves aim, kept across them.
@@ -193,6 +195,7 @@ impl DocEditor {
             tab,
             look,
             selection: Selection::default(),
+            cursors: Cursors::default(),
             anchors: None,
             goal_x: None,
             marked: None,
@@ -377,6 +380,7 @@ impl DocEditor {
 
     /// A caret inside hidden lines goes to the end of the line hiding them.
     fn keep_caret_shown(&mut self, cx: &mut Context<Self>) {
+        self.drop_hidden_cursors();
         let line = self.caret_line();
         let row = self.prepared.row_of(line);
         let Some(&shown) = self.prepared.rows.get(row) else {
@@ -410,6 +414,7 @@ impl DocEditor {
             anchor: selection.anchor.min(len),
             head: selection.head.min(len),
         };
+        self.normalize_cursors(len, cx);
         self.remember(cx);
         cx.notify();
     }
@@ -425,12 +430,13 @@ impl DocEditor {
             self.rebase(generation, cx);
             return;
         }
-        let doc = self.buffer.read(cx).document();
-        if let (Some(doc), Some((anchor, head))) = (doc, &self.anchors)
+        if let (Some(doc), Some((anchor, head))) = (self.buffer.read(cx).document(), &self.anchors)
             && let (Some(anchor), Some(head)) = (doc.resolve(anchor), doc.resolve(head))
         {
             self.selection = Selection { anchor, head };
         }
+        self.cursors_changed(cx);
+        let doc = self.buffer.read(cx).document();
         if event.by != Origin::User {
             // A composition's place is bytes, which another writer's text
             // just moved; it ends rather than replacing the wrong text.
@@ -477,6 +483,7 @@ impl DocEditor {
         self.generation = generation;
         self.highlights.clear();
         self.remember(cx);
+        self.cursors_rebase(cx);
         let starts: Vec<usize> = self
             .prepared
             .folded
@@ -534,20 +541,22 @@ impl DocEditor {
         edits: Vec<Edit>,
         selection: Selection,
         cx: &mut Context<Self>,
-    ) {
+    ) -> bool {
         if edits.is_empty() {
-            return;
+            return false;
         }
         let result = self.buffer.update(cx, |buffer, cx| buffer.edit(&edits, cx));
         if let Err(error) = result {
             tracing::warn!(%error, "A document edit was refused");
-            return;
+            return false;
         }
+        self.map_cursors(&edits);
         self.goal_x = None;
         self.stale = true;
         self.select(selection, cx);
         self.prepare(cx);
         self.reveal(cx);
+        true
     }
 
     /// Scrolls the caret's row into view.
@@ -710,6 +719,7 @@ impl DocEditor {
     }
 
     pub(super) fn undo(&mut self, redo: bool, cx: &mut Context<Self>) {
+        self.clear_cursors();
         let changed = self
             .buffer
             .update(cx, |buffer, cx| buffer.history(redo, cx));

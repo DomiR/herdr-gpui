@@ -114,15 +114,20 @@ impl EntityInputHandler for DocEditor {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let text = text.replace("\r\n", "\n");
+        if range.is_none() && self.marked.is_none() && self.has_cursors() {
+            self.insert_all(&text, cx);
+            return;
+        }
         if let Some(range) = range {
             let range = bytes(self.text(cx), range);
+            self.clear_cursors();
             self.marked = None;
             self.selection = Selection {
                 anchor: range.start,
                 head: range.end,
             };
         }
-        let text = text.replace("\r\n", "\n");
         self.insert(&text, cx);
     }
 
@@ -134,6 +139,7 @@ impl EntityInputHandler for DocEditor {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.clear_cursors();
         let range = match range {
             Some(range) => bytes(self.text(cx), range),
             None => self
