@@ -5,6 +5,9 @@
 
 use serde::{Deserialize, Serialize};
 
+mod link;
+pub use link::{LinkMode, LinkPending, LinkStatus};
+
 /// The longest text one change may carry, in bytes.
 pub const MAX_TEXT: usize = 64 * 1024;
 /// The longest a change waits for the document to load and be written.
@@ -78,6 +81,12 @@ pub enum DocOp {
         todo: String,
         done: bool,
     },
+    /// Reports or disables the document's connected agent.
+    Link {
+        path: String,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        off: bool,
+    },
 }
 
 fn is_zero(value: &u64) -> bool {
@@ -95,14 +104,15 @@ impl DocOp {
             | Self::Append { path, .. }
             | Self::Edit { path, .. }
             | Self::TodoAdd { path, .. }
-            | Self::TodoCheck { path, .. } => path,
+            | Self::TodoCheck { path, .. }
+            | Self::Link { path, .. } => path,
         }
     }
 
     /// How long the app may take: loading the file, and writing a change.
     pub fn wait_seconds(&self) -> u64 {
         match self {
-            Self::Open { .. } => 0,
+            Self::Link { .. } | Self::Open { .. } => 0,
             // The wait is for a change; the file loads well within it.
             Self::Diff { wait, .. } if *wait > 0 => (*wait).min(super::MAX_WAIT_SECONDS),
             _ => WAIT_SECONDS,
@@ -234,6 +244,10 @@ pub enum Reply {
         /// A unified diff from the version named; `None` when too old or
         /// too large.
         diff: Option<String>,
+    },
+    Link {
+        path: String,
+        status: LinkStatus,
     },
 }
 

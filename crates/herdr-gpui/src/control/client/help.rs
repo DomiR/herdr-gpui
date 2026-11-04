@@ -31,6 +31,10 @@ herdr-gpui doc watch FILE [--since N] [--section ID] [--todos]
     `edited`), instead of the diff. --json prints one JSON object per line.
     Busy or cut-off requests wait and ask again from the same version. App
     restarts are followed, with one line saying so.
+herdr-gpui doc link FILE [--off]
+    Whether Herdr UI pushes FILE's changes to an agent (the document's
+    Connect agent button), and to which; --off stops the pushes and leaves
+    the agent running.
 herdr-gpui doc sections FILE
     The sections: each #, ##, and ### heading starts one, named by the
     heading's slug (its GitHub anchor ID).

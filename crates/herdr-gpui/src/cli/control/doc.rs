@@ -39,6 +39,10 @@ pub enum DocCommand {
         section: Option<String>,
         todos: bool,
     },
+    Link {
+        off: bool,
+        path: PathBuf,
+    },
     Append {
         path: PathBuf,
         change: Change,
@@ -70,7 +74,7 @@ pub enum DocCommand {
 pub(super) fn command(args: &mut Args) -> Result<DocCommand, CliError> {
     let verb = args.verb().ok_or(CliError::MissingArgument {
         command: "doc",
-        what: "open|read|diff|watch|sections|append|edit|todo",
+        what: "open|read|diff|watch|link|sections|append|edit|todo",
     })?;
     Ok(match verb.to_str() {
         Some("open") => DocCommand::Open(args.required("FILE[:LINE]")?.into()),
@@ -90,6 +94,10 @@ pub(super) fn command(args: &mut Args) -> Result<DocCommand, CliError> {
             since: args.number("--since", 0..=u64::MAX)?,
             section: args.text_option("--section")?,
             todos: args.flag("--todos"),
+            path: path(args)?,
+        },
+        Some("link") => DocCommand::Link {
+            off: args.flag("--off"),
             path: path(args)?,
         },
         Some("append") => {

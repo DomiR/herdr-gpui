@@ -5,6 +5,8 @@ use super::*;
 use crate::control::protocol::{Request, doc::TodoChangeKind};
 use gpui::TestAppContext;
 
+mod link;
+
 struct Doc {
     _dir: tempfile::TempDir,
     path: String,

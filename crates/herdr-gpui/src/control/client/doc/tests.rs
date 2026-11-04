@@ -2,6 +2,7 @@
 use super::*;
 use crate::control::protocol::doc::{Others, TodoInfo};
 
+mod link;
 mod wait_retry;
 
 #[test]
