@@ -41,15 +41,11 @@ impl Localize for AgentCommandError {
 impl Localize for RecordError {
     fn localize(&self) -> String {
         match self {
-            Self::ControlCharacter { field } => fl!(
-                "error-doc-link-record-control-character",
-                field = *field
-            ),
+            Self::ControlCharacter { field } => {
+                fl!("error-doc-link-record-control-character", field = *field)
+            }
             Self::DuplicatePath => fl!("error-doc-link-record-duplicate-path"),
-            Self::EmptyField { field } => fl!(
-                "error-doc-link-record-empty-field",
-                field = *field
-            ),
+            Self::EmptyField { field } => fl!("error-doc-link-record-empty-field", field = *field),
             Self::FieldTooLong { field, limit } => fl!(
                 "error-doc-link-record-field-too-long",
                 field = *field,
@@ -57,10 +53,9 @@ impl Localize for RecordError {
             ),
             Self::InvalidAgentName => fl!("error-doc-link-record-invalid-agent-name"),
             Self::Malformed(_) => fl!("error-doc-link-record-malformed"),
-            Self::PathTooLong { limit } => fl!(
-                "error-doc-link-record-path-too-long",
-                limit = *limit
-            ),
+            Self::PathTooLong { limit } => {
+                fl!("error-doc-link-record-path-too-long", limit = *limit)
+            }
             Self::RelativePath => fl!("error-doc-link-record-relative-path"),
         }
     }
@@ -76,18 +71,14 @@ impl Localize for Error {
             Self::Debounce { seconds } => fl!("error-doc-link-debounce", seconds = *seconds),
             Self::Decode(_) => fl!("error-doc-link-decode"),
             Self::Document(error) => error.localize(),
-            Self::DocumentUnavailable { path: file } => fl!(
-                "error-doc-link-document-unavailable",
-                path = path(file)
-            ),
+            Self::DocumentUnavailable { path: file } => {
+                fl!("error-doc-link-document-unavailable", path = path(file))
+            }
             Self::InvalidAgentName => fl!("error-doc-link-invalid-agent-name"),
             Self::InvalidRecord { .. } => fl!("error-doc-link-invalid-record"),
             Self::NameTaken { .. } => fl!("error-doc-link-name-taken"),
             Self::NotReady { .. } => fl!("error-doc-link-not-ready"),
-            Self::Output { step: failed, .. } => fl!(
-                "error-doc-link-output",
-                step = step(*failed)
-            ),
+            Self::Output { step: failed, .. } => fl!("error-doc-link-output", step = step(*failed)),
             Self::Schema { version } => fl!("error-doc-link-schema", version = *version),
             Self::Script {
                 step: failed,
@@ -97,10 +88,7 @@ impl Localize for Error {
                 step = step(*failed),
                 error = source.localize()
             ),
-            Self::Storage { path: file, .. } => fl!(
-                "error-doc-link-storage",
-                path = path(file)
-            ),
+            Self::Storage { path: file, .. } => fl!("error-doc-link-storage", path = path(file)),
             Self::TooMany { limit } => fl!("error-doc-link-too-many", limit = *limit),
             Self::Unavailable => fl!("error-doc-link-unavailable"),
             Self::Unsupported { .. } => fl!("error-doc-link-unsupported"),
