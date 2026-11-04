@@ -609,7 +609,7 @@ impl DocEditor {
     }
 
     /// Unfolds every fold hiding `line`.
-    fn unfold_around(&mut self, line: usize, cx: &mut Context<Self>) {
+    pub(super) fn unfold_around(&mut self, line: usize, cx: &mut Context<Self>) {
         let hiding: Vec<usize> = self
             .prepared
             .folds

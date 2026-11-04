@@ -11,6 +11,7 @@ mod fold_task_keys;
 mod fold_levels;
 mod folding;
 mod multi_cursor;
+mod move_keys;
 mod saved_tab;
 mod task_marker;
 mod todo_keys;
