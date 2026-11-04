@@ -17,7 +17,8 @@ fn cancelled_tasks_are_struck_muted_and_keep_their_state() {
     );
     let done_run = done.runs.last().unwrap();
     let cancelled_run = cancelled.runs.last().unwrap();
-    assert_eq!(cancelled.checkbox, Some((2..5, TaskState::Cancelled)));
+    // Rows hide a bulleted task's "- ", so the box starts the row.
+    assert_eq!(cancelled.checkbox, Some((0..3, TaskState::Cancelled)));
     assert_eq!(cancelled_run.color, done_run.color);
     assert_eq!(cancelled_run.strikethrough, done_run.strikethrough);
 }
