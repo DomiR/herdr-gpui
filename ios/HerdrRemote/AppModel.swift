@@ -73,6 +73,9 @@ final class AppModel {
     private let spotlight = SpotlightChats()
     /// Nearby computers the person closed the card for, this launch.
     var dismissedNearby: Set<String> = []
+    /// Connection notices the person closed, until each computer is online
+    /// again (`LinkNotice`).
+    var dismissedNotices: Set<LinkNotice.Key> = []
     private let paths = NWPathMonitor()
 
     init() {
@@ -170,6 +173,13 @@ final class AppModel {
         }
         let title = fleet.chatItems.first { $0.computer.device == computer.device && $0.chat.pane == link.pane }?.chat.title
         pendingRoute = .chat(PaneKey(device: computer.device, pane: link.pane), title: title ?? "Chat")
+    }
+
+    /// The computers nearby whose pairing dialog is open now. A dismissed
+    /// offer stays dismissed only while it is here: one that closes and
+    /// opens its dialog again offers again.
+    var offeredNearby: Set<String> {
+        Set((nearby.computers + bluetooth.computers).filter(\.pairing).map(\.id))
     }
 
     /// A computer nearby with its pairing dialog open that this phone has

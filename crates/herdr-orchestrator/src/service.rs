@@ -4,7 +4,8 @@
 //! mailbox on its tick; it never waits on this thread.
 
 use super::{
-    Access, Error, HerdrSession, Item, Provider, Result, Run, SourceKey, Store,
+    Access, CheckState, Error, HerdrSession, Item, PrStatus, Provider, Result, Run, SourceKey,
+    Store,
     actions::{Action, Site},
     beads, database_path, github, gitlab,
     location::{database_path_in, legacy_path, legacy_path_in},
@@ -31,8 +32,10 @@ use std::{
     time::{Duration, Instant},
 };
 
+mod github_source;
 mod gitlab_source;
 mod retry;
+mod schedule;
 mod snapshot;
 mod sources;
 mod sync;
@@ -128,6 +131,7 @@ pub struct Service {
     mailbox: Arc<Mutex<Option<Snapshot>>>,
     notices: Arc<Mutex<VecDeque<Notice>>>,
     cancelled: Arc<AtomicBool>,
+    visible: Arc<AtomicBool>,
 }
 
 impl Service {
@@ -153,6 +157,7 @@ impl Service {
             notices: worker.notices.clone(),
             cancelled: worker.cancelled.clone(),
             commands,
+            visible: worker.visible.clone(),
         };
         (service, worker, receiver)
     }
@@ -169,6 +174,7 @@ impl Service {
             mailbox: Arc::default(),
             notices: Arc::default(),
             cancelled: Arc::default(),
+            visible: Arc::default(),
         }
     }
 
@@ -196,6 +202,14 @@ impl Service {
         match self.commands.try_send(Command::Refresh(token)) {
             Ok(()) | Err(TrySendError::Full(_) | TrySendError::Disconnected(_)) => {}
         }
+    }
+
+    /// Whether the view is on screen. Hidden, sources sync every
+    /// [`schedule::HIDDEN_SYNC`]; shown again, a sync older than the visible
+    /// period runs at the worker's next tick. A flag rather than a command,
+    /// so a full queue never drops it.
+    pub fn set_visible(&self, visible: bool) {
+        self.visible.store(visible, Ordering::Relaxed);
     }
 
     /// The newest snapshot since the last call, if any.
@@ -253,6 +267,12 @@ struct Worker {
     linear_states: Option<super::linear::States>,
     /// Sends a Linear query; tests answer without a network.
     linear_fetch: fn(&SecretString, &str, Value) -> Result<Value>,
+    /// Whether the view is on screen, as the UI last said.
+    visible: Arc<AtomicBool>,
+    /// When each GitHub source's checks were last read, and what was open.
+    checks: HashMap<SourceKey, schedule::ChecksRead>,
+    /// The checkpoint of each GitHub listing in `uncached`.
+    remembered: HashMap<SourceKey, github_source::Remembered>,
 }
 
 impl Worker {
@@ -281,6 +301,11 @@ impl Worker {
             linear_synced: None,
             linear_states: None,
             linear_fetch: super::linear::post,
+            // Shown until the view says otherwise, so a view opened on screen
+            // never waits out the hidden period.
+            visible: Arc::new(AtomicBool::new(true)),
+            checks: HashMap::new(),
+            remembered: HashMap::new(),
         }
     }
 
@@ -297,18 +322,18 @@ impl Worker {
             self.sync(token.as_ref(), Linear::Due);
         }
         let Timing { reload, sync, .. } = self.request.timing;
-        let mut next_sync = Instant::now() + sync;
+        let mut last_sync = Instant::now();
         while !self.cancelled() {
+            let visible = self.visible.load(Ordering::Relaxed);
+            let next_sync = last_sync + schedule::period(sync, visible);
             let wait = reload.min(next_sync.saturating_duration_since(Instant::now()));
             match commands.recv_timeout(wait) {
                 Ok(Command::Refresh(token)) => {
-                    self.request.token = token;
-                    self.gitlab_token = None;
-                    self.retry.clear();
+                    self.refreshed(token);
                     self.read_linear_key();
                     let token = self.request.token.clone();
                     self.sync(token.as_ref(), Linear::Now);
-                    next_sync = Instant::now() + sync;
+                    last_sync = Instant::now();
                 }
                 Ok(Command::Act(action)) => self.act(action),
                 Ok(Command::SyncLinear) => self.sync_linear_now(),
@@ -356,12 +381,22 @@ impl Worker {
                 Err(RecvTimeoutError::Timeout) if Instant::now() >= next_sync => {
                     let token = self.request.token.clone();
                     self.sync(token.as_ref(), Linear::Due);
-                    next_sync = Instant::now() + sync;
+                    last_sync = Instant::now();
                 }
                 Err(RecvTimeoutError::Timeout) => self.reload_if_changed(),
                 Err(RecvTimeoutError::Disconnected) => return,
             }
         }
+    }
+
+    /// Forgets what spaced out the next sync, so Refresh (or a new account)
+    /// reads everything again: the token looked up, the sources' waits, and
+    /// when their checks were last read, which a re-run check may not move.
+    fn refreshed(&mut self, token: Option<Tokens>) {
+        self.request.token = token;
+        self.gitlab_token = None;
+        self.retry.clear();
+        self.checks.clear();
     }
 
     /// Starts `action` on a thread of its own, at most [`MAX_ACTIONS`] at once.

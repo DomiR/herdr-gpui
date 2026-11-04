@@ -38,6 +38,14 @@ fn pr_toggles_explain_why_loaded_pull_requests_are_hidden(cx: &mut gpui::TestApp
             assert!(view.keys().is_empty());
             assert_eq!(view.empty(), Empty::Filtered);
 
+            view.filters.mine = false;
+            view.filters.review_requested = true;
+            view.refresh_rows();
+            assert!(view.keys().is_empty());
+            assert_eq!(view.empty(), Empty::Filtered);
+            view.filters.review_requested = false;
+            view.filters.mine = true;
+
             // Mine is one filter for both tabs: on Issues it keeps only a
             // tracker's issues assigned to you, so nothing listed is filtered.
             view.tab = Tab::Issues;

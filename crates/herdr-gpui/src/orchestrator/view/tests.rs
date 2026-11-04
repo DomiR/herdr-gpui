@@ -43,6 +43,7 @@ mod pr_creators;
 mod pr_empty;
 mod refresh;
 mod repo_name;
+mod review_requested;
 mod row_start;
 mod rows;
 mod section_banners;

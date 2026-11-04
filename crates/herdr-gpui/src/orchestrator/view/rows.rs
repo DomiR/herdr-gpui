@@ -82,6 +82,8 @@ pub(crate) struct Filters {
     pub(crate) mine: bool,
     /// Issues in their team's active cycle.
     pub(crate) cycle: bool,
+    /// Pull requests the signed-in GitHub login is asked to review.
+    pub(crate) review_requested: bool,
 }
 
 /// `filters` with Mine and Current cycle on once `items` has an item a
@@ -112,6 +114,7 @@ impl Default for Filters {
             open_only: true,
             mine: false,
             cycle: false,
+            review_requested: false,
         }
     }
 }
@@ -444,24 +447,57 @@ pub(crate) fn issue_rows(
     rows
 }
 
+/// Which pull requests of the signed-in account the tab narrows to. With
+/// both on, a pull request of either kind is listed.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct Yours {
+    /// Opened by the account.
+    authored: bool,
+    /// The account is asked to review it.
+    review_requested: bool,
+}
+
+impl Yours {
+    fn any(self) -> bool {
+        self.authored || self.review_requested
+    }
+
+    fn keeps(self, item: &Item, status: Option<&PrStatus>, login: Option<&str>) -> bool {
+        if !self.any() {
+            return true;
+        }
+        let Some(login) = login else {
+            return false;
+        };
+        let authored = item
+            .author
+            .as_deref()
+            .is_some_and(|author| author.eq_ignore_ascii_case(login));
+        (self.authored && authored)
+            || (self.review_requested && status.is_some_and(|status| status.requests(login)))
+    }
+}
+
 /// The Pull requests tab: open and draft ones unless `open_only` is off.
 pub(crate) fn pull_request_rows(
     items: &[Item],
     runs: &Runs<'_>,
     query: &str,
     filters: Filters,
-    login: Option<&str>,
+    (login, statuses): (Option<&str>, &HashMap<(String, u64), PrStatus>),
     sort: Sort,
 ) -> Vec<ItemRow> {
+    let yours = Yours {
+        authored: filters.mine,
+        review_requested: filters.review_requested,
+    };
     let latest = runs.latest();
     let mut rows: Vec<ItemRow> = items
         .iter()
         .enumerate()
         .filter(|(_, item)| item.pull_request.is_some())
         .filter(|(_, item)| !filters.open_only || matches!(item.state.as_str(), "open" | "draft"))
-        .filter(|(_, item)| {
-            !filters.mine || login.is_some_and(|login| item.author.as_deref() == Some(login))
-        })
+        .filter(|(_, item)| yours.keeps(item, status_of(item, statuses), login))
         .filter(|(_, item)| matches(item, query))
         .map(|(index, item)| ItemRow {
             repo: 0,

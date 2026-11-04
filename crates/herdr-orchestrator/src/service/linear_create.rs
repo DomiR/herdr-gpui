@@ -56,6 +56,7 @@ impl Service {
             mailbox: Arc::default(),
             notices: Arc::default(),
             cancelled: Arc::default(),
+            visible: Arc::default(),
         };
         (service, Recorder(receiver))
     }

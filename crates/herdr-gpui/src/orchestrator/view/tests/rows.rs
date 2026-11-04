@@ -211,13 +211,14 @@ fn pull_requests_hide_merged_and_closed_until_asked_for() {
         })
         .collect();
     let runs = Runs::new(&[], &[], &[]);
+    let statuses = std::collections::HashMap::new();
     let listed = |filters: Filters, mine: bool| {
         pull_request_rows(
             &items,
             &runs,
             "",
             Filters { mine, ..filters },
-            Some("penso"),
+            (Some("penso"), &statuses),
             Sort::Updated,
         )
         .iter()

@@ -660,6 +660,14 @@ impl OrchestratorView {
                                     this.filters.mine = !this.filters.mine;
                                 },
                             ))
+                            .child(toggle(
+                                "orchestrator-review-requested",
+                                fl!("orchestrator-filter-review-requested"),
+                                filters.review_requested,
+                                |this| {
+                                    this.filters.review_requested = !this.filters.review_requested;
+                                },
+                            ))
                         },
                     )
                     .child(toggle(

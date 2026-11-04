@@ -3,14 +3,14 @@
 //! on an interval of its own.
 
 use super::{
-    Access, Error, Provider, Result, SourceKey, SyncState, Worker, beads, github, gitlab, naming,
+    Access, Error, Provider, Result, SourceKey, SyncState, Worker, beads, gitlab, naming,
     sources::sources, ssh_slots,
 };
 use chrono::Utc;
 use herdr_github::Tokens;
 use herdr_remote::teleport::Host;
 use std::{
-    sync::{Arc, atomic::Ordering},
+    sync::Arc,
     time::Instant,
 };
 
@@ -181,108 +181,10 @@ impl Worker {
                     count,
                 })
             }
-            Provider::Github => {
-                let Some(tokens) = token else {
-                    return Ok(SyncState::SignIn);
-                };
-                let owner = key
-                    .repository
-                    .split_once('/')
-                    .map_or(key.repository.as_str(), |(owner, _)| owner);
-                let token = tokens.for_owner(owner);
-                let previous = store.checkpoint(key)?;
-                // What the last complete sync stored, for reading only the
-                // changes since; a read-only store keeps none.
-                let cached = match (&previous, writable) {
-                    (Some(_), true) => Some(
-                        store
-                            .items()?
-                            .into_iter()
-                            .filter(|item| item.key.source == *key)
-                            .collect(),
-                    ),
-                    _ => None,
-                };
-                // Only while the stored checkpoint is still the one this
-                // worker wrote: agent-launcher shares the database and may
-                // have stored an older listing since.
-                let resume = self.resume.get(key).copied().filter(|resume| {
-                    previous
-                        .as_ref()
-                        .and_then(|checkpoint| checkpoint.updated_at)
-                        == Some(resume.oldest())
-                });
-                let cancelled = &self.cancelled;
-                let listing = github::sync(
-                    key,
-                    token,
-                    previous.as_ref(),
-                    (cached, resume),
-                    &|| cancelled.load(Ordering::Relaxed),
-                    &mut self.cooldown,
-                )?;
-                let count = listing.items.len();
-                // Reviews and checks change with every CI run, so they are
-                // read again each sync. Failing to read them keeps the last
-                // ones rather than failing the listing.
-                let statuses = crate::review::fetch(&key.repository, |query, variables| {
-                    herdr_github::graphql(
-                        "orchestrator",
-                        token,
-                        query,
-                        variables,
-                        crate::review::timeout(),
-                        || cancelled.load(Ordering::Relaxed),
-                        &mut self.cooldown,
-                    )
-                    .map_err(|error| match error {
-                        herdr_github::Error::PullRequest(
-                            herdr_github::pull_request::Error::Cancelled,
-                        ) => Error::Cancelled,
-                        error => Error::Github(Box::new(error)),
-                    })
-                });
-                match statuses {
-                    Ok(statuses) => {
-                        if writable
-                            && let Err(error) =
-                                store.replace_pr_statuses(&key.repository, &statuses)
-                        {
-                            tracing::warn!(%error, "Cannot keep pull request checks");
-                        }
-                        let mut all = (*self.snapshot.pr_status).clone();
-                        all.retain(|(repository, _), _| *repository != key.repository);
-                        all.extend(
-                            statuses
-                                .into_iter()
-                                .map(|(number, status)| ((key.repository.clone(), number), status)),
-                        );
-                        self.snapshot.pr_status = Arc::new(all);
-                    }
-                    Err(Error::Cancelled) => return Err(Error::Cancelled),
-                    Err(error) => tracing::warn!(%error, "Cannot read pull request checks"),
-                }
-                // A listing that is not stored is no place to resume from.
-                self.resume.remove(key);
-                if !listing.complete || !writable {
-                    self.uncached.insert(key.clone(), listing.items);
-                    return Ok(if listing.complete {
-                        SyncState::Synced {
-                            at: Utc::now(),
-                            count,
-                        }
-                    } else {
-                        SyncState::Capped { count }
-                    });
-                }
-                store.replace_items(key, &listing.items, &listing.checkpoint)?;
-                self.resume.insert(key.clone(), listing.resume);
-                self.uncached.remove(key);
-                Ok(SyncState::Synced {
-                    at: Utc::now(),
-                    count,
-                })
-            }
+            Provider::Github => match token {
+                Some(tokens) => self.github_listing(key, tokens),
+                None => Ok(SyncState::SignIn),
+            },
             Provider::Gitlab => {
                 let previous = store.checkpoint(key)?;
                 let listing = self.gitlab_listing(key, previous.as_ref())?;

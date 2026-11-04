@@ -217,7 +217,10 @@ impl OrchestratorView {
             || match self.tab {
                 Tab::Issues => self.active_filters() > 0 || self.hiding(),
                 Tab::PullRequests => {
-                    self.filters.mine || self.filters.has_run || !self.authors.is_empty()
+                    self.filters.mine
+                        || self.filters.review_requested
+                        || self.filters.has_run
+                        || !self.authors.is_empty()
                 }
             };
         if self.repos.is_empty() {

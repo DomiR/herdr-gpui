@@ -109,7 +109,11 @@ impl Retry {
     ) -> Option<Duration> {
         let failures = self.failures.entry(key.clone()).or_default();
         *failures = failures.saturating_add(1);
-        let wait = retry_wait(error, cooldown, *failures);
+        // A network failure's wait already grows with each one in a row.
+        let wait = retry_wait(error, cooldown, *failures).map(|wait| match unreachable(error) {
+            true => wait,
+            false => super::schedule::backoff(wait, *failures),
+        });
         let until = wait.map(|wait| Instant::now().checked_add(wait));
         // A wait too long for the clock to hold lasts until the user acts.
         self.waiting.push((key.clone(), until.flatten()));

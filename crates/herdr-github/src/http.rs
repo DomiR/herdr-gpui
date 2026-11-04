@@ -88,7 +88,7 @@ pub fn graphql(
         return Err(crate::pull_request::Error::Cancelled.into());
     }
     let repository = requested_repository(&variables);
-    let (result, exchange) = post(token, query, variables, deadline, cooldown)?;
+    let (result, exchange) = post(context, token, query, variables, deadline, cooldown)?;
     if cancelled() {
         return Err(crate::pull_request::Error::Cancelled.into());
     }
@@ -99,7 +99,7 @@ pub fn graphql(
             errors.iter().any(|error| {
                 matches!(
                     error["type"].as_str(),
-                    Some("RATE_LIMITED" | "FORBIDDEN" | "UNAUTHORIZED")
+                    Some("RATE_LIMIT" | "RATE_LIMITED" | "FORBIDDEN" | "UNAUTHORIZED")
                 )
             })
         }) {
@@ -128,7 +128,7 @@ pub fn graphql_aliases(
     if cancelled() {
         return Err(crate::pull_request::Error::Cancelled.into());
     }
-    let (result, exchange) = post(token, query, variables, deadline, cooldown)?;
+    let (result, exchange) = post("pull_request", token, query, variables, deadline, cooldown)?;
     if cancelled() {
         return Err(crate::pull_request::Error::Cancelled.into());
     }
@@ -161,7 +161,7 @@ pub(super) fn split_aliases(
                 .is_some_and(|kind| types.contains(&kind))
         })
     };
-    if typed(&["RATE_LIMITED", "FORBIDDEN", "UNAUTHORIZED"]) {
+    if typed(&["RATE_LIMIT", "RATE_LIMITED", "FORBIDDEN", "UNAUTHORIZED"]) {
         *cooldown = Some(pause_until(reset, now));
     }
     let claimed = |error: &Value| {
@@ -169,7 +169,7 @@ pub(super) fn split_aliases(
             .as_str()
             .is_some_and(|alias| aliases.iter().any(|(known, _)| known == alias))
     };
-    if typed(&["RATE_LIMITED"]) || !listed.iter().all(claimed) {
+    if typed(&["RATE_LIMIT", "RATE_LIMITED"]) || !listed.iter().all(claimed) {
         return Err(query_error(&errors, None, token_kind, reset));
     }
     Ok(aliases
@@ -213,7 +213,14 @@ pub fn mutation(
 ) -> Result<Value> {
     // No account-wide cooldown: nothing retries a mutation to honour one.
     let repository = requested_repository(&variables);
-    let (result, exchange) = post(token, query, variables, Instant::now() + timeout, &mut None)?;
+    let (result, exchange) = post(
+        context,
+        token,
+        query,
+        variables,
+        Instant::now() + timeout,
+        &mut None,
+    )?;
     if let Some(errors) = result.get("errors") {
         let kind = log::token_kind(token);
         log::graphql(context, kind, &exchange, errors);
@@ -284,7 +291,7 @@ pub(super) fn query_error(
     let listed = errors.as_array().map(Vec::as_slice).unwrap_or_default();
     if listed
         .iter()
-        .any(|error| error["type"].as_str() == Some("RATE_LIMITED"))
+        .any(|error| matches!(error["type"].as_str(), Some("RATE_LIMIT" | "RATE_LIMITED")))
     {
         return Error::RateLimit { reset };
     }
@@ -332,8 +339,10 @@ fn graphql_url(token: &SecretString) -> String {
 }
 
 /// One GraphQL POST, its bounded JSON body, and the headers that explain a
-/// failure GraphQL reports with a 200.
+/// failure GraphQL reports with a 200. `context` names the caller in the log,
+/// so each feature's share of the account's quota can be read from it.
 fn post(
+    context: &'static str,
     token: &SecretString,
     query: &str,
     variables: Value,
@@ -344,6 +353,7 @@ fn post(
     let timeout = deadline
         .checked_duration_since(Instant::now())
         .ok_or(crate::pull_request::Error::Timeout)?;
+    let started = Instant::now();
     let reply = agent(timeout)
         .post(graphql_url(token))
         .header("User-Agent", "Herdr-GPUI")
@@ -351,7 +361,13 @@ fn post(
         .header("Content-Type", "application/json")
         .header("Authorization", authorization(token)?)
         .send(body.as_bytes())
-        .map_err(log::network("graphql"))?;
+        .map_err(log::network(context))?;
+    log::usage(
+        context,
+        reply.status().as_u16(),
+        started.elapsed(),
+        reply.headers(),
+    );
     *cooldown = pr_cooldown(
         reply.status().as_u16(),
         reply.headers(),
@@ -359,8 +375,9 @@ fn post(
     );
     // GraphQL reports failures with a 200, so the headers that explain them are
     // captured before the body consumes the response.
+    crate::quota::record(token, reply.headers());
     let exchange = log::Exchange::new(reply.headers());
-    let result: Value = response("graphql", reply)?;
+    let result: Value = response(context, reply)?;
     Ok((result, exchange))
 }
 

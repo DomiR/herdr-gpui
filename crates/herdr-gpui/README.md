@@ -8,6 +8,9 @@ development targets remain attach-only. On Unix, GUI launches resolve the login-
 environment once on the connection worker so daemon plugins can find tools such as
 `node`. Terminal launches skip the shell probe. Failed probes fall back to standard
 per-user and Homebrew bin directories; the probe has a five-second timeout.
+When neither the launch nor the login shell sets `LC_ALL`, `LC_CTYPE`, or `LANG`,
+the daemon and other children get `LANG=en_US.UTF-8` on macOS and `C.UTF-8` on other
+Unix, so panes do not run in the C locale.
 It does not link or install Herdr, stop
 daemons, or spawn a local PTY. It emulates terminals only for
 [Herdr 2](#herdr-2-terminals), whose daemon streams raw output. Herdr's remote bridge may start
@@ -4225,6 +4228,14 @@ Ctrl+Shift+U is left unbound for
    retain successful data. Ordinary failures back off five minutes; auth/rate-limit
    errors pause the account for an hour by default, honoring numeric retry/reset
    hints within five minutes to 24 hours. Auth/endpoint generations fence late results.
+   A rate-limited account puts an orange dot on the title bar's GitHub icon;
+   its account dialog shows how many minutes remain before retrying. When GitHub
+   supplies quota headers, the dialog also shows the last reported GraphQL points
+   used, allowed, and remaining. These are account-wide points, shared with other
+   apps, rather than a count of this app's requests.
+   Quota details stay visible while the shared transport cache is busy, but
+   never carry across credentials. The retry countdown keeps updating while
+   the selected host is disconnected, without resuming its suspended lookups.
    Discovery uses the daemon repository key and exact branch to resolve a unique
    Git worktree, followed by common-directory/current-branch checks and an explicit
    GitHub repository/head query. It never occupies the deletion dialog response slot.
