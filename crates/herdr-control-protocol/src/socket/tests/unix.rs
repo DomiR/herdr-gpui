@@ -39,7 +39,7 @@ fn a_caller_whose_server_already_closed_reads_its_refusal() {
     server.write_all(&line).unwrap();
     drop(server);
 
-    let connection = transport::Connection::client(caller, IO_TIMEOUT, IO_TIMEOUT).unwrap();
+    let connection = Connection::client(caller, IO_TIMEOUT, IO_TIMEOUT).unwrap();
     let result = exchange(
         &connection,
         &connection,

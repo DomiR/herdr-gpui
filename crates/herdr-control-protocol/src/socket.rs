@@ -343,8 +343,7 @@ fn exchange(
         };
         if matches!(
             io_error.kind(),
-            std::io::ErrorKind::TimedOut
-                | std::io::ErrorKind::WouldBlock
+            std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
         ) {
             return Err(error);
         }
