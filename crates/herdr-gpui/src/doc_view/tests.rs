@@ -7,6 +7,7 @@ use gpui::{Entity, TestAppContext, VisualTestContext};
 use std::{path::PathBuf, time::Duration};
 
 mod disk_sync;
+mod fold_task_keys;
 mod folding;
 mod saved_tab;
 mod task_marker;

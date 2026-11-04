@@ -433,9 +433,22 @@ impl DocEditor {
         self.apply(edits, start + column, cx);
     }
 
-    /// Cmd-Enter on each selected line: a task is checked or unchecked, a
-    /// list item becomes a task, and other text becomes a task item.
+    /// Cmd-Enter on each selected line: a folded task gets a new task after
+    /// its folded block; otherwise a task is checked or unchecked, a list
+    /// item becomes a task, and other text becomes a task item.
     fn cycle_task(&mut self, cx: &mut Context<Self>) {
+        let line = self.caret_line();
+        if self.selection.is_empty()
+            && matches!(
+                self.prepared.lines[line].kind,
+                Kind::Item { task: Some(_), .. }
+            )
+            && let Some(&hidden) = self.prepared.folded.get(&line)
+            && let Some((edit, caret)) = todo::task_after(self.text(cx), line, line + 1 + hidden)
+        {
+            self.apply(vec![edit], caret, cx);
+            return;
+        }
         let range = self.selection.range();
         let lines = &self.prepared.lines;
         let first = markdown::line_at(lines, range.start);
