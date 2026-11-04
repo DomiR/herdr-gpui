@@ -60,7 +60,7 @@ impl Find {
         }
         let (mut matches, capped) = find_all(text, &self.query, self.match_case, MAX_MATCHES);
         if hide_done {
-            let done = todo::done_lines(lines);
+            let done = todo::resolved_lines(lines);
             matches.retain(|range| {
                 let line = markdown::line_at(lines, range.start);
                 !done.get(line).copied().unwrap_or(false)

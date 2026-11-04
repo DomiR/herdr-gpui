@@ -61,7 +61,7 @@ fn editing_rows_hide_only_a_bulleted_task_prefix() {
     let lines = markdown::lines(text);
     let task = row(text, &lines[0], &look(), false, &[], &|_| None);
     assert_eq!(task.text.as_ref(), "[ ] a");
-    assert_eq!(task.checkbox, Some((0..3, false)));
+    assert_eq!(task.checkbox, Some((0..3, TaskState::Open)));
     assert_eq!(task.map.to_display(2), 0);
     assert_eq!(task.map.to_source(0), 2);
 

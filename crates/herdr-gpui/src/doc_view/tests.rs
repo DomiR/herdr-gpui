@@ -8,17 +8,17 @@ use std::{path::PathBuf, time::Duration};
 
 mod cancel_keys;
 mod disk_sync;
-mod fold_task_keys;
-mod fold_levels;
 mod document_theme;
-mod find;
 mod en_xa;
+mod find;
+mod fold_levels;
+mod fold_task_keys;
 mod folding;
-mod multi_cursor;
 mod move_keys;
+mod multi_cursor;
 mod saved_tab;
-mod task_marker;
 mod shift_enter;
+mod task_marker;
 mod todo_keys;
 mod typing;
 

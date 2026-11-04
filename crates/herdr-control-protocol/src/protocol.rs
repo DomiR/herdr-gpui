@@ -153,6 +153,7 @@ impl Request {
             | Self::Host(_)
             | Self::Settings(_)
             | Self::Link(_)
+            | Self::LinkMake(_)
             | Self::Chat(_)
             | Self::Remote(_)
             | Self::Mod(_) => false,

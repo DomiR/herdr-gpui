@@ -1,10 +1,10 @@
 #![allow(clippy::unwrap_used)]
 use super::*;
 
-mod fold_tasks;
-mod moves;
-mod line_break;
 mod cancelled;
+mod fold_tasks;
+mod line_break;
+mod moves;
 
 const DOC: &str = "# Work\n- [ ] write\n  - [x] outline\n- [x] read\n\n## Later\n- [ ] ship\n";
 

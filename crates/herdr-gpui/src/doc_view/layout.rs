@@ -197,10 +197,10 @@ pub(super) fn row(
         _ => {}
     }
     for span in code {
-    let range = span.start.min(source.len())..span.end.min(source.len());
-    let token = span.token;
-    mark(range, &|p| p.token = Some(token));
-}
+        let range = span.start.min(source.len())..span.end.min(source.len());
+        let token = span.token;
+        mark(range, &|p| p.token = Some(token));
+    }
     if !line.marker.is_empty() {
         mark(local(&line.marker), &|p| p.muted = true);
     }

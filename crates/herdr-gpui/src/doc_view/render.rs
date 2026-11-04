@@ -108,10 +108,10 @@ fn paint_overlay(overlay: &Overlay, bounds: Bounds<Pixels>, window: &mut Window)
         }
     }
     for (range, opacity) in &overlay.highlights {
-    for span in spans(layout, range.clone(), false) {
-        window.paint_quad(fill(span, colors.highlight.opacity(*opacity)));
+        for span in spans(layout, range.clone(), false) {
+            window.paint_quad(fill(span, colors.highlight.opacity(*opacity)));
+        }
     }
-}
     if let Some(range) = &overlay.selection {
         for span in spans(layout, range.clone(), overlay.selects_break) {
             window.paint_quad(fill(span, colors.selection));
@@ -178,6 +178,8 @@ impl DocEditor {
             return Colors {
                 selection: inks.selection,
                 caret: inks.caret,
+                find: rgba((theme.palette[3] << 8) | 0x38).into(),
+                find_current: rgba((theme.palette[3] << 8) | 0x98).into(),
                 highlight: rgb(theme.primary_wash()).into(),
                 caret_row: Some(inks.caret_row),
                 marker_style: MarkerStyle::PlainTasks,
