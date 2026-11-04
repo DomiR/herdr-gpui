@@ -83,11 +83,7 @@ fn cancel_and_uncancel_parse_like_check_and_uncheck() {
             "2",
             "--undo",
             "4",
-        ])
-        .unwrap(),
-        DocCommand::TodoState {
-            state: TaskState::Open,
-            ..
-        }
+        ]),
+        Err(CliError::Unexpected { .. })
     ));
 }
