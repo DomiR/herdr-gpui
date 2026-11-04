@@ -638,19 +638,40 @@ impl DocEditor {
 
     /// Folds or unfolds every heading.
     pub(super) fn fold_all(&mut self, fold: bool, cx: &mut Context<Self>) {
+        self.refold(
+            |candidate, _| fold && candidate.kind == markdown::FoldKind::Section,
+            cx,
+        );
+    }
+
+    /// Folds sections and items deeper than `level`, preserving code folds.
+    pub(super) fn fold_to_level(&mut self, level: usize, cx: &mut Context<Self>) {
+        self.refold(
+            |fold, currently_folded| match fold.kind {
+                markdown::FoldKind::Code => currently_folded,
+                _ => fold.depth > level,
+            },
+            cx,
+        );
+    }
+
+    fn refold(&mut self, keep: impl Fn(&Fold, bool) -> bool, cx: &mut Context<Self>) {
         self.prepare(cx);
-        self.folded.clear();
-        if fold {
-            let text = self.text(cx).to_owned();
-            let headings: Vec<usize> = self
-                .prepared
-                .folds
+        let folds = self.prepared.folds.clone();
+        let folded_lines: HashSet<usize> = {
+            let doc = self.buffer.read(cx).document();
+            self.folded
                 .iter()
-                .filter(|f| self.prepared.lines[f.line].is_heading())
-                .map(|f| f.line)
-                .collect();
-            for line in headings {
-                self.fold_line(line, &text, cx);
+                .filter_map(|anchor| doc?.resolve(anchor))
+                .map(|offset| markdown::line_at(&self.prepared.lines, offset))
+                .collect()
+        };
+        self.folded.clear();
+        let text = self.text(cx).to_owned();
+        for fold in folds {
+            let currently_folded = folded_lines.contains(&fold.line);
+            if keep(&fold, currently_folded) {
+                self.fold_line(fold.line, &text, cx);
             }
         }
         self.stale = true;

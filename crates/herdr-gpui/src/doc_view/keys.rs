@@ -53,7 +53,7 @@ impl DocEditor {
         let m = event.keystroke.modifiers;
         let shift = m.shift;
         if primary(m) {
-            return self.primary_key(key, m, cx);
+            return self.primary_key(event, cx);
         }
         if actions::word_modifiers(m) && matches!(key, "left" | "right" | "backspace" | "delete") {
             self.word_key(key, shift, cx);
@@ -105,7 +105,9 @@ impl DocEditor {
         true
     }
 
-    fn primary_key(&mut self, key: &str, m: Modifiers, cx: &mut Context<Self>) -> bool {
+    fn primary_key(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) -> bool {
+        let key = event.keystroke.key.as_str();
+        let m = event.keystroke.modifiers;
         let shift = m.shift;
         match (key, m.alt) {
             ("z", false) => self.undo(shift, cx),

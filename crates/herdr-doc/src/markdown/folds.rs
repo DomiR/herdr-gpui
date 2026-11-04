@@ -18,6 +18,10 @@ pub struct Fold {
     pub line: usize,
     pub hidden: Range<usize>,
     pub kind: FoldKind,
+    /// Sections use absolute heading levels. Items use one more than the
+    /// nearest heading level plus each enclosing item fold. Code folds use
+    /// the same enclosing depth plus one and are excluded from level folding.
+    pub depth: usize,
 }
 
 /// Every fold of `lines`, by the line that holds it, ascending. Trailing
@@ -27,10 +31,18 @@ pub fn folds(lines: &[Line]) -> Vec<Fold> {
     let mut folds = Vec::new();
     // Fence lines alternate: an opening one, then its closing one.
     let mut in_code = false;
+    let mut heading_level = 0;
+    let mut item_ends = Vec::new();
     for (index, line) in lines.iter().enumerate() {
+        while item_ends.last().is_some_and(|end| *end <= index) {
+            item_ends.pop();
+        }
         let opens = line.kind == Kind::Fence && !in_code;
         if line.kind == Kind::Fence {
             in_code = !in_code;
+        }
+        if let Kind::Heading { level } = line.kind {
+            heading_level = level as usize;
         }
         let end = match line.kind {
             Kind::Heading { level } => {
@@ -60,15 +72,24 @@ pub fn folds(lines: &[Line]) -> Vec<Fold> {
         // A code block's closing fence alone is not worth folding.
         let least = if line.kind == Kind::Fence { 2 } else { 1 };
         if end > index + least {
+            let kind = match line.kind {
+                Kind::Heading { .. } => FoldKind::Section,
+                Kind::Item { .. } => FoldKind::Item,
+                _ => FoldKind::Code,
+            };
+            let depth = match kind {
+                FoldKind::Section => heading_level,
+                FoldKind::Item | FoldKind::Code => heading_level + 1 + item_ends.len(),
+            };
             folds.push(Fold {
                 line: index,
                 hidden: index + 1..end,
-                kind: match line.kind {
-                    Kind::Heading { .. } => FoldKind::Section,
-                    Kind::Item { .. } => FoldKind::Item,
-                    _ => FoldKind::Code,
-                },
+                kind,
+                depth,
             });
+            if kind == FoldKind::Item {
+                item_ends.push(end);
+            }
         }
     }
     folds

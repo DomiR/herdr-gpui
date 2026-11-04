@@ -8,6 +8,7 @@ use std::{path::PathBuf, time::Duration};
 
 mod disk_sync;
 mod fold_task_keys;
+mod fold_levels;
 mod folding;
 mod saved_tab;
 mod task_marker;
