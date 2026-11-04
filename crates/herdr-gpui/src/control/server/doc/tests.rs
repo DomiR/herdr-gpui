@@ -7,6 +7,8 @@ use crate::control::protocol::{Request, doc::TodoChangeKind};
 mod cancel;
 use gpui::TestAppContext;
 
+mod link;
+
 struct Doc {
     _dir: tempfile::TempDir,
     path: String,

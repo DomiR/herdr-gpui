@@ -25,6 +25,7 @@ mod daemon;
 mod daytona;
 mod devices;
 mod documents;
+mod doc_agent;
 mod edit;
 mod error;
 pub(crate) mod favorite_themes;
@@ -80,6 +81,7 @@ use daemon::{Daemon, daemon_settings};
 use devices::MAX_DEVICES;
 pub(crate) use devices::{DeviceSettings, KeybindingSource};
 pub use documents::{DocumentTheme, DocumentsConfig};
+pub use doc_agent::DocAgentConfig;
 pub(crate) use edit::{Layer, parse_value};
 pub(crate) use error::{Error, ThemeParseError};
 pub use features::{Feature, Features};
@@ -205,6 +207,7 @@ pub struct Config {
     pub daytona: DaytonaConfig,
     /// Per saved device, by catalog profile ID.
     pub(crate) devices: BTreeMap<String, DeviceSettings>,
+    pub doc_agent: DocAgentConfig,
     /// The appearance preset for Markdown document tabs.
     pub documents: DocumentsConfig,
     /// A bar on the leading edge of each working, blocked, or done row,
@@ -435,6 +438,7 @@ impl Default for Config {
             daytona: DaytonaConfig::default(),
             devices: BTreeMap::new(),
             documents: DocumentsConfig::default(),
+            doc_agent: DocAgentConfig::default(),
             edge_rail: false,
             editor_command: None,
             favorite_themes: Vec::new(),
@@ -527,6 +531,7 @@ struct Settings {
     daytona: DaytonaConfig,
     devices: BTreeMap<String, DeviceSettings>,
     documents: DocumentsConfig,
+    doc_agent: DocAgentConfig,
     edge_rail: Option<bool>,
     editor_command: Option<crate::editor::EditorCommand>,
     favorite_themes: Vec<String>,
@@ -883,6 +888,7 @@ impl Config {
         config.clipboard_overrides = settings.clipboard_toast;
         config.clipboard_toast = settings.clipboard_toast.resolve(base.clipboard_toast);
         config.bell = settings.bell;
+        config.doc_agent = settings.doc_agent.checked()?;
         config.sound = settings.sound;
         config.updates = settings.updates;
         config.sidebar_layout = base.sidebar_layout.clone();

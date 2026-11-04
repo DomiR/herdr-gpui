@@ -3143,6 +3143,14 @@ anchor slug) never block each other. An agent can also watch a document
 happens. The design and its trade-offs are in
 [docs/markdown-docs-plan.md](../../docs/markdown-docs-plan.md).
 
+The **Connect agent** button on a Markdown document opens a Herdr 1 terminal
+tab beside it named after the file, starts the agent from `[doc_agent]`
+`agent_command` (default `claude`) with `/herdrdocwatch FILE`, and then sends
+the agent the document's changes after typing pauses for `debounce_seconds`
+(default 25). The agent's own edits are skipped. Turning it off leaves the
+agent running; closing the agent turns it off. Links return after a restart
+while the agent runs. This is supported on local Herdr 1 sessions.
+
 ## Browser Tabs
 
 A browser tab shows a web page in place of the terminal, next to the

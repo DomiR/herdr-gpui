@@ -4,6 +4,7 @@ use crate::control::protocol::doc::{Others, TaskState, TodoInfo};
 
 mod cancelled;
 
+mod link;
 mod wait_retry;
 
 #[test]

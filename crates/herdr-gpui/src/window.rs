@@ -646,6 +646,7 @@ impl HerdrWindow {
         self.sync_host_theme();
         self.save_group_layouts(cx);
         self.poll_browser(window, cx);
+        crate::doc_link::window::poll(self, window, cx);
         self.poll_remote_browser(window, cx);
         self.poll_chats(window, cx);
         self.offer_browser_skill(window, cx);

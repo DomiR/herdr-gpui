@@ -167,3 +167,23 @@ fn doc_watch_parses() {
     );
     assert!(doc(&["doc", "watch"]).is_err());
 }
+
+#[test]
+fn doc_link_parses_and_rejects_bad_arguments() {
+    assert_eq!(
+        doc(&["doc", "link", "TODO.md"]).unwrap(),
+        DocCommand::Link {
+            off: false,
+            path: "TODO.md".into(),
+        }
+    );
+    assert_eq!(
+        doc(&["doc", "link", "TODO.md", "--off"]).unwrap(),
+        DocCommand::Link {
+            off: true,
+            path: "TODO.md".into(),
+        }
+    );
+    assert!(doc(&["doc", "link"]).is_err());
+    assert!(doc(&["doc", "link", "TODO.md", "--unknown"]).is_err());
+}

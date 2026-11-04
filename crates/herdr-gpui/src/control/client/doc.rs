@@ -16,6 +16,8 @@ use crate::{
 };
 use std::{io::Read as _, path::Path, time::Duration};
 
+mod link;
+
 pub(super) fn run(command: DocCommand, context: &Context) -> crate::Result<Output> {
     let op = match command {
         DocCommand::Open(FileAt { path, line }) => {
@@ -68,6 +70,10 @@ pub(super) fn run(command: DocCommand, context: &Context) -> crate::Result<Outpu
             )?;
             return Ok(watch::ended(status));
         }
+        DocCommand::Link { off, path } => DocOp::Link {
+            path: absolute(&path)?,
+            off,
+        },
         DocCommand::Sections { path } => DocOp::Sections {
             path: absolute(&path)?,
         },
@@ -298,6 +304,7 @@ pub(crate) fn message(reply: &Reply) -> (String, bool) {
                 true,
             )
         }
+        Reply::Link { status, .. } => (link::status_message(status), false),
     }
 }
 

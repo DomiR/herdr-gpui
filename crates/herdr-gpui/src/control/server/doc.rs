@@ -3,6 +3,8 @@
 //! names the version it was made against; the reply says what happened in
 //! words an agent can act on (`docs/markdown-docs-plan.md`).
 
+mod link;
+
 use super::{Watches, socket, tabs::arrive};
 use crate::{
     control::protocol::{
@@ -36,6 +38,13 @@ pub(super) fn serve(
     if let DocOp::Open { path, line } = &op {
         let path = path.clone();
         return arrive::doc(&caller, &path, *line, incoming, watches, cx);
+    }
+    if let DocOp::Link { path, off } = &op {
+        let resolved = match document_path(path) {
+            Ok(path) => path,
+            Err(response) => return incoming.respond(response),
+        };
+        return link::serve(&resolved, path.clone(), *off, incoming, cx);
     }
     let path = match document_path(op.path()) {
         Ok(path) => path,
@@ -183,6 +192,7 @@ fn apply(
     let answer = |reply| Ok(Applied::Answer(Response::Doc { reply }));
     let (expected, section, make): (u64, Option<&String>, Make) = match op {
         DocOp::Open { .. } => return Err(invalid("Open is not a change")),
+        DocOp::Link { .. } => return Err(invalid("Link is not a change")),
         DocOp::Read { section, .. } => {
             let text = match section {
                 Some(id) => {

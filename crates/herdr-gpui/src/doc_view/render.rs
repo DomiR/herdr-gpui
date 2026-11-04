@@ -3,7 +3,6 @@
 //! selection, caret, checkbox, and highlights painted around it.
 
 use super::{
-    buffer::State,
     cursors::{self, RowParts},
     editor::DocEditor,
     fold_keys::FoldToLevel,
@@ -573,112 +572,6 @@ impl DocEditor {
         self.goal_x = None;
         self.selecting = true;
         self.select(selection, cx);
-    }
-
-    fn header(&self, cx: &mut Context<Self>) -> AnyElement {
-        let theme = &self.look.theme;
-        let buffer = self.buffer.read(cx);
-        let name = buffer
-            .path()
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        let version = buffer.document().map(|doc| doc.version());
-        let dirty = buffer.document().is_some_and(herdr_doc::Document::dirty);
-        let banner = match buffer.state() {
-            State::Loading => Some(fl!("doc-view-loading")),
-            State::Failed(error) => Some(fl!(
-                "doc-view-failed",
-                error = crate::i18n::errors::Localize::localize(error)
-            )),
-            State::Ready if buffer.missing() => Some(fl!("doc-view-missing")),
-            State::Ready => buffer.write_error().map(|error| {
-                fl!(
-                    "doc-view-write-failed",
-                    error = crate::i18n::errors::Localize::localize(error)
-                )
-            }),
-        };
-        let button = |id: &'static str, label: String| {
-            div()
-                .id(id)
-                .px(px(8.))
-                .py(px(2.))
-                .rounded(px(4.))
-                .cursor_pointer()
-                .text_color(rgb(theme.muted))
-                .hover(|style| style.bg(rgb(theme.surface)))
-                .child(label)
-        };
-        let hide_label = if self.hide_done {
-            fl!("doc-view-show-done")
-        } else {
-            fl!("doc-view-hide-done")
-        };
-        div()
-            .flex_none()
-            .flex()
-            .flex_col()
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap(px(4.))
-                    .px(px(PAD))
-                    .py(px(6.))
-                    .border_b_1()
-                    .border_color(
-                        self.look
-                            .inks
-                            .map_or_else(|| rgb(theme.surface).into(), |inks| inks.separator),
-                    )
-                    .text_size(px(self.look.ui.size * 0.9))
-                    .child(div().text_color(rgb(theme.foreground)).child(name))
-                    .when_some(version, |bar, version| {
-                        bar.child(
-                            div()
-                                .text_color(rgb(theme.muted))
-                                .child(fl!("doc-view-version", version = version.0)),
-                        )
-                    })
-                    .when(dirty, |bar| {
-                        bar.child(div().size(px(6.)).rounded_full().bg(rgb(theme.muted)))
-                    })
-                    .child(div().flex_1())
-                    .when(self.comment_count() > 0, |bar| {
-                        bar.child(
-                            button(
-                                "doc-send-comments",
-                                fl!("doc-view-comments-send", count = self.comment_count()),
-                            )
-                            .on_click(cx.listener(|this, _, _, cx| this.send_comments(None, cx))),
-                        )
-                    })
-                    .child(
-                        button("doc-hide-done", hide_label)
-                            .on_click(cx.listener(|this, _, _, cx| this.toggle_hide_done(cx))),
-                    )
-                    .child(
-                        button("doc-fold-all", fl!("doc-view-fold-all"))
-                            .on_click(cx.listener(|this, _, _, cx| this.fold_all(true, cx))),
-                    )
-                    .child(
-                        button("doc-unfold-all", fl!("doc-view-unfold-all"))
-                            .on_click(cx.listener(|this, _, _, cx| this.fold_all(false, cx))),
-                    ),
-            )
-            .when_some(banner, |header, banner| {
-                header.child(
-                    div()
-                        .px(px(PAD))
-                        .py(px(6.))
-                        .bg(rgb(theme.surface))
-                        .text_color(rgb(theme.foreground))
-                        .child(banner),
-                )
-            })
-            .into_any_element()
     }
 }
 

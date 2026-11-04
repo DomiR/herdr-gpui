@@ -35,7 +35,8 @@ pub enum Placement {
 /// 11: `mod`. 12: `doc`, and the `doc` tab kind. 13: `doc diff` `wait`.
 /// 14: `doc diff` `section`, `todos`, and `by`.
 /// 15: `link.make`.
-pub const PROTOCOL_VERSION: u32 = 15;
+/// 16: `doc link`.
+pub const PROTOCOL_VERSION: u32 = 16;
 
 /// Older apps and clients know only tabs, so a tab is left off the wire.
 fn is_tab(placement: &Placement) -> bool {

@@ -59,6 +59,7 @@ impl Localize for Error {
             Self::Devices(error) => error.localize(),
             Self::Dispatch(error) => error.localize(),
             Self::Doc(error) => error.localize(),
+            Self::DocLink(error) => error.localize(),
             Self::Editor(error) => error.localize(),
             Self::EmptyTabName => fl!("error-empty-tab-name"),
             Self::EmptyWorkspaceLabel => fl!("error-empty-workspace-label"),

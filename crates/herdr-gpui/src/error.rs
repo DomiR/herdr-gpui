@@ -86,6 +86,8 @@ pub enum Error {
     #[error(transparent)]
     Doc(#[from] crate::doc_view::Error),
     #[error(transparent)]
+    DocLink(#[from] crate::doc_link::Error),
+    #[error(transparent)]
     Editor(#[from] crate::editor::Error),
     #[error("Enter a tab name.")]
     EmptyTabName,

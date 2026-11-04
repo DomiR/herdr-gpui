@@ -159,6 +159,7 @@ pub(crate) struct DocEditor {
     pub(super) layouts: Layouts,
     /// Code colours, diagrams, and formulas, drawn off the UI thread.
     pub(super) visuals: Visuals,
+    pub(super) link_supported: bool,
     /// Which code spans name files.
     pub(super) links: FileLinks,
     /// What this view asks of its window: files to open, notes to send.
@@ -203,40 +204,52 @@ impl DocEditor {
         let find_changed = cx.subscribe(&input, |this, input, _: &search_input::Changed, cx| {
             this.find_changed(input, cx)
         });
+        let mut subscriptions = vec![changed, find_changed, observed];
+        if let Some(links) = crate::doc_link::links(cx) {
+            subscriptions.push(cx.observe(&links, |_, _, cx| cx.notify()));
+        }
         let mut editor = Self {
-            focus: cx.focus_handle(),
-            find: super::find::Find::new(input),
-            buffer,
-            tab,
-            look,
-            selection: Selection::default(),
-            cursors: Cursors::default(),
-            anchors: None,
-            goal_x: None,
-            marked: None,
-            folded: Vec::new(),
-            hide_done: false,
-            list: ListState::new(0, ListAlignment::Top, px(OVERDRAW)),
-            prepared: Prepared::default(),
-            stale: true,
-            layouts: Rc::default(),
-            visuals: Visuals::default(),
-            links: FileLinks::default(),
-            requests: Vec::new(),
-            comments: Vec::new(),
-            draft: None,
-            generation: 0,
-            highlights: Vec::new(),
-            selecting: false,
-            restore: Some((folded, line)),
-            _subscriptions: vec![changed, find_changed, observed],
-        };
+        focus: cx.focus_handle(),
+        find: super::find::Find::new(input),
+        buffer,
+        tab,
+        look,
+        selection: Selection::default(),
+        cursors: Cursors::default(),
+        anchors: None,
+        goal_x: None,
+        marked: None,
+        folded: Vec::new(),
+        hide_done: false,
+        list: ListState::new(0, ListAlignment::Top, px(OVERDRAW)),
+        prepared: Prepared::default(),
+        stale: true,
+        layouts: Rc::default(),
+        visuals: Visuals::default(),
+        link_supported: false,
+        links: FileLinks::default(),
+        requests: Vec::new(),
+        comments: Vec::new(),
+        draft: None,
+        generation: 0,
+        highlights: Vec::new(),
+        selecting: false,
+        restore: Some((folded, line)),
+        _subscriptions: subscriptions,
+    };
         editor.restore(cx);
         editor
     }
 
     pub(crate) fn tab(&self) -> TabId {
         self.tab
+    }
+
+    pub(crate) fn set_link_supported(&mut self, supported: bool, cx: &mut Context<Self>) {
+        if self.link_supported != supported {
+            self.link_supported = supported;
+            cx.notify();
+        }
     }
 
     /// Asks the window to act; it takes requests on its next tick.
