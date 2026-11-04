@@ -1,6 +1,6 @@
 use super::*;
 use crate::{config::DocumentTheme, doc_view::theme};
-use gpui::{FontStyle, FontWeight, rgba};
+use gpui::{FontStyle, FontWeight};
 
 fn themed(choice: DocumentTheme) -> Look {
     let app = look();
@@ -63,7 +63,7 @@ fn app_theme_does_not_gain_tag_styling() {
     assert_eq!(themed.text, unchanged.text);
     assert_eq!(themed.runs, unchanged.runs);
     let tag = run_at(&themed, "@today");
-    assert_eq!(tag.color, rgba(legacy.theme.foreground).into());
+    assert_eq!(tag.color, Hsla::from(rgb(legacy.theme.foreground)));
     assert_eq!(tag.font.weight, FontWeight::NORMAL);
     assert_eq!(tag.background_color, None);
 }

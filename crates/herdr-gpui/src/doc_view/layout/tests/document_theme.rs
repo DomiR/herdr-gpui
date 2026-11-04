@@ -116,8 +116,10 @@ fn notebook_runs_use_roles_without_changing_source_mapping() {
         let prose = row(SAMPLE, &lines[3], &notebook, decorate, &[], &|_| None);
         assert_eq!(run_at(&prose, "ordinary").color, inks.plain);
     }
-    for (index, needle) in [(1, "**"), (4, ">"), (5, "---"), (6, "```")] {
-        let row = row(SAMPLE, &lines[index], &notebook, false, &[], &|_| None);
-        assert_eq!(run_at(&row, needle).color, rgba(0x00000044).into());
+    let bold = row(SAMPLE, &lines[1], &notebook, false, &[], &|_| None);
+    assert_eq!(run_at(&bold, "**").color, inks.delimiter);
+    for (index, needle) in [(4, ">"), (5, "---"), (6, "```")] {
+        let styled = row(SAMPLE, &lines[index], &notebook, false, &[], &|_| None);
+        assert_eq!(run_at(&styled, needle).color, rgba(0x00000044).into());
     }
 }
