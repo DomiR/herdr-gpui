@@ -1,6 +1,6 @@
 use super::*;
-use sheprd_client::{Method, protocol::ClientShellSnapshot};
 use serde_json::json;
+use sheprd_client::{Method, protocol::ClientShellSnapshot};
 
 fn snapshot() -> ClientShellSnapshot {
     serde_json::from_str(include_str!(

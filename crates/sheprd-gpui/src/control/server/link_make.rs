@@ -1,6 +1,6 @@
 use super::{target, window_for};
 use crate::{
-    SheprdWindow, NavigationTarget,
+    NavigationTarget, SheprdWindow,
     control::protocol::{
         Call, ErrorCode, Response,
         link::{LinkMakeOp, LinkTarget},
@@ -22,7 +22,11 @@ pub(super) fn serve(call: Call<LinkMakeOp>, cx: &mut App) -> Response {
         .unwrap_or_else(|_| Response::error(ErrorCode::NoWindow, "The window closed"))
 }
 
-fn make(view: &SheprdWindow, caller: &crate::control::protocol::Caller, op: LinkMakeOp) -> Response {
+fn make(
+    view: &SheprdWindow,
+    caller: &crate::control::protocol::Caller,
+    op: LinkMakeOp,
+) -> Response {
     let Some(pane_id) = op.pane_id.or_else(|| caller.pane_id.clone()) else {
         return Response::error(
             ErrorCode::InvalidRequest,

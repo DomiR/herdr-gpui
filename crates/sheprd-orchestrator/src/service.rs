@@ -14,12 +14,12 @@ use super::{
     ssh_slots,
 };
 use crate::cache::{Cache, Kind};
-use sheprd_client::ConnectTarget;
-use sheprd_github::Tokens;
-use sheprd_remote::teleport::{AgentKind, Host};
 use linear::LinearKey;
 use secrecy::SecretString;
 use serde_json::Value;
+use sheprd_client::ConnectTarget;
+use sheprd_github::Tokens;
+use sheprd_remote::teleport::{AgentKind, Host};
 use sources::{recognize, statuses};
 use std::{
     collections::{HashMap, VecDeque},

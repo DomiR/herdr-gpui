@@ -10,12 +10,12 @@ use super::{
 };
 use crate::{browser::Scope, config::DocAgentConfig, doc_view::DocBuffer, teleport::Host};
 use gpui::{App, AppContext, Context, Entity, Global, Subscription, Task};
+use persistence::Persistence;
 use sheprd_client::{
     ConnectTarget,
     protocol::{AgentStatus, ClientShellSnapshot},
 };
 use sheprd_doc::Version;
-use persistence::Persistence;
 use std::{
     path::{Path, PathBuf},
     rc::Rc,

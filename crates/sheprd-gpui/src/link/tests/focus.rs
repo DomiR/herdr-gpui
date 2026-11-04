@@ -52,10 +52,7 @@ fn focus_links_require_a_target() {
 #[test]
 fn focus_links_reject_invalid_values() {
     let cases = [
-        (
-            "sheprd://focus?workspace=",
-            Error::FocusText("workspace"),
-        ),
+        ("sheprd://focus?workspace=", Error::FocusText("workspace")),
         (
             &format!("sheprd://focus?agent={}", "a".repeat(257)),
             Error::FocusText("agent"),
@@ -65,14 +62,8 @@ fn focus_links_reject_invalid_values() {
             Error::FocusText("tab"),
         ),
         ("sheprd://focus?path=/tmp&id=", Error::FocusId),
-        (
-            "sheprd://focus?path=/tmp&device=a%20b",
-            Error::FocusDevice,
-        ),
-        (
-            "sheprd://focus?path=relative&workspace=Notes",
-            Error::Path,
-        ),
+        ("sheprd://focus?path=/tmp&device=a%20b", Error::FocusDevice),
+        ("sheprd://focus?path=relative&workspace=Notes", Error::Path),
     ];
     for (url, error) in cases {
         assert_eq!(Link::parse(url), Err(error), "{url}");
@@ -90,10 +81,7 @@ fn focus_links_reject_unknown_duplicate_and_oversize_parameters() {
         Err(Error::DuplicateParameter("path"))
     );
     assert_eq!(
-        Link::parse(&format!(
-            "sheprd://focus?workspace={}",
-            "a".repeat(4100)
-        )),
+        Link::parse(&format!("sheprd://focus?workspace={}", "a".repeat(4100))),
         Err(Error::TooLong)
     );
 }

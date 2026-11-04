@@ -9,10 +9,7 @@ use super::{
 use chrono::Utc;
 use sheprd_github::Tokens;
 use sheprd_remote::teleport::Host;
-use std::{
-    sync::Arc,
-    time::Instant,
-};
+use std::{sync::Arc, time::Instant};
 
 /// When a sync reads Linear.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

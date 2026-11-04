@@ -2,8 +2,8 @@
 //! with which arguments, aimed at what the snapshot has focused.
 
 use crate::Command;
-use sheprd_client::{Method, protocol::ClientShellSnapshot};
 use serde_json::{Value, json};
+use sheprd_client::{Method, protocol::ClientShellSnapshot};
 
 pub fn request(command: Command, snapshot: &ClientShellSnapshot) -> Option<(Method, Value)> {
     let workspace = snapshot

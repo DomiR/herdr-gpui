@@ -419,7 +419,12 @@ impl DocBuffer {
         .detach();
     }
 
-    fn wrote(&mut self, write: Synced, result: sheprd_doc::Result<Written>, cx: &mut Context<Self>) {
+    fn wrote(
+        &mut self,
+        write: Synced,
+        result: sheprd_doc::Result<Written>,
+        cx: &mut Context<Self>,
+    ) {
         let Some(doc) = self.doc.as_mut() else {
             return;
         };

@@ -58,9 +58,9 @@ fn copy_link_is_before_close_and_confirms_with_a_flash(cx: &mut TestAppContext) 
             );
             let clipboard = cx.read_from_clipboard().and_then(|item| item.text());
             assert!(
-                clipboard.as_deref().is_some_and(
-                    |text| text.starts_with('[') && text.contains("sheprd://focus?")
-                )
+                clipboard
+                    .as_deref()
+                    .is_some_and(|text| text.starts_with('[') && text.contains("sheprd://focus?"))
             );
         })
     });

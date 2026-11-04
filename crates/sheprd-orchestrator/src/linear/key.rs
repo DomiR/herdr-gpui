@@ -4,8 +4,8 @@
 //! so only the orchestrator's worker calls them.
 
 use crate::{Error, Result};
-use sheprd_credentials::Store;
 use secrecy::{ExposeSecret, SecretString};
+use sheprd_credentials::Store;
 use std::{ffi::OsString, path::PathBuf};
 use zeroize::Zeroizing;
 

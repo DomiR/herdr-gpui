@@ -41,8 +41,8 @@ fn closing_the_view_does_not_cancel_an_accepted_action() {
 
 mod extras;
 mod glab_mapping;
-mod retry;
 mod refresh;
+mod retry;
 mod syncing_count;
 mod unreached;
 
