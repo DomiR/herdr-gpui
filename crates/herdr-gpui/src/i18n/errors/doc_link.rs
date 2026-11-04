@@ -23,7 +23,6 @@ fn step(step: JobStep) -> &'static str {
 impl Localize for AgentCommandError {
     fn localize(&self) -> String {
         match self {
-            // keep-sorted start
             Self::ControlCharacter => fl!("error-doc-link-agent-command-control"),
             Self::Empty => fl!("error-doc-link-agent-command-empty"),
             Self::Kind { kind } => fl!("error-doc-link-agent-command-kind", kind = kind),
@@ -35,7 +34,6 @@ impl Localize for AgentCommandError {
                 "error-doc-link-agent-command-too-many-bytes",
                 limit = *limit
             ),
-            // keep-sorted end
         }
     }
 }
@@ -43,7 +41,6 @@ impl Localize for AgentCommandError {
 impl Localize for RecordError {
     fn localize(&self) -> String {
         match self {
-            // keep-sorted start
             Self::ControlCharacter { field } => fl!(
                 "error-doc-link-record-control-character",
                 field = *field
@@ -65,7 +62,6 @@ impl Localize for RecordError {
                 limit = *limit
             ),
             Self::RelativePath => fl!("error-doc-link-record-relative-path"),
-            // keep-sorted end
         }
     }
 }
@@ -73,7 +69,6 @@ impl Localize for RecordError {
 impl Localize for Error {
     fn localize(&self) -> String {
         match self {
-            // keep-sorted start
             Self::AgentCommand { .. } => fl!("error-doc-link-agent-command"),
             Self::AgentGone { .. } => fl!("error-doc-link-agent-gone"),
             Self::Busy => fl!("error-doc-link-busy"),
@@ -109,7 +104,6 @@ impl Localize for Error {
             Self::TooMany { limit } => fl!("error-doc-link-too-many", limit = *limit),
             Self::Unavailable => fl!("error-doc-link-unavailable"),
             Self::Unsupported { .. } => fl!("error-doc-link-unsupported"),
-            // keep-sorted end
         }
     }
 }
