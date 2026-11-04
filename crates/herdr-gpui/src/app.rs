@@ -400,6 +400,11 @@ pub(crate) fn run() -> std::process::ExitCode {
     } else {
         crate::browser::Layouts::default()
     };
+    let doc_links = if mode == LaunchMode::Normal {
+        crate::doc_link::Startup::load()
+    } else {
+        crate::doc_link::Startup::default()
+    };
     // Nor with the user's worktree notes, which they would overwrite.
     let worktree_notes = if mode == LaunchMode::Normal {
         crate::worktree_notes::Notes::load()
@@ -493,6 +498,7 @@ pub(crate) fn run() -> std::process::ExitCode {
                 crate::cloud::install_idle_checks(cx);
             }
             cx.set_global(appearance.select(light_appearance(cx)));
+            doc_links.install(cx);
             // Only the user's own app follows their saved SSH host choices.
             if mode == LaunchMode::Normal {
                 let ssh = cx.global::<InitialAppearance>().config.ssh.clone();

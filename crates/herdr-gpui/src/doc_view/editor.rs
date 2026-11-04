@@ -152,6 +152,7 @@ pub(crate) struct DocEditor {
     pub(super) layouts: Layouts,
     /// Code colours, diagrams, and formulas, drawn off the UI thread.
     pub(super) visuals: Visuals,
+    pub(super) link_supported: bool,
     /// Which code spans name files.
     pub(super) links: FileLinks,
     /// What this view asks of its window: files to open, notes to send.
@@ -187,6 +188,10 @@ impl DocEditor {
             this.restore(cx);
             cx.notify();
         });
+        let mut subscriptions = vec![changed, observed];
+        if let Some(links) = crate::doc_link::links(cx) {
+            subscriptions.push(cx.observe(&links, |_, _, cx| cx.notify()));
+        }
         let mut editor = Self {
             focus: cx.focus_handle(),
             buffer,
@@ -203,6 +208,7 @@ impl DocEditor {
             stale: true,
             layouts: Rc::default(),
             visuals: Visuals::default(),
+            link_supported: false,
             links: FileLinks::default(),
             requests: Vec::new(),
             comments: Vec::new(),
@@ -211,7 +217,7 @@ impl DocEditor {
             highlights: Vec::new(),
             selecting: false,
             restore: Some((folded, line)),
-            _subscriptions: vec![changed, observed],
+            _subscriptions: subscriptions,
         };
         editor.restore(cx);
         editor
@@ -219,6 +225,13 @@ impl DocEditor {
 
     pub(crate) fn tab(&self) -> TabId {
         self.tab
+    }
+
+    pub(crate) fn set_link_supported(&mut self, supported: bool, cx: &mut Context<Self>) {
+        if self.link_supported != supported {
+            self.link_supported = supported;
+            cx.notify();
+        }
     }
 
     /// Asks the window to act; it takes requests on its next tick.

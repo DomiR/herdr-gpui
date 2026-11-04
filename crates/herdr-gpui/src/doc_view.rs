@@ -17,8 +17,9 @@ mod keys;
 mod layout;
 mod links;
 mod render;
+mod toolbar;
 
-pub(crate) use buffer::{DocBuffer, Docs, State};
+pub(crate) use buffer::{Changed, DocBuffer, Docs, State};
 pub(crate) use editor::{DocEditor, FoldsChanged};
 pub use error::Error;
 pub(crate) use layout::Look;
@@ -37,10 +38,14 @@ use std::path::Path;
 /// What an editor asks its window to do.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Request {
-    /// Open a file a link names: a document, or a code tab.
-    Open(EditorTarget),
+    // keep-sorted start
     /// Send notes to the agent in a pane, or copy them without one.
     Notes { pane: Option<String>, text: String },
+    /// Open a file a link names: a document, or a code tab.
+    Open(EditorTarget),
+    /// Toggle this document's app-owned agent link.
+    ToggleAgentLink,
+    // keep-sorted end
 }
 
 /// The most folded sections a tab saves.
@@ -226,6 +231,9 @@ impl HerdrWindow {
             let requests = editor.update(cx, |editor, _| editor.take_requests());
             for request in requests {
                 match request {
+                    Request::ToggleAgentLink => {
+                        crate::doc_link::window::toggle(self, &editor, window, cx)
+                    }
                     Request::Open(target) => self.open_code_view(&target, window, cx),
                     Request::Notes { pane, text } => {
                         let target = pane.map(|pane_id| crate::browser::FeedbackKey {

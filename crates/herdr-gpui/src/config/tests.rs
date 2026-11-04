@@ -23,6 +23,7 @@ mod device_icons;
 mod device_theme;
 mod diagnostic_text;
 mod discovery;
+mod doc_agent;
 mod edit;
 mod favorite_themes;
 mod features;

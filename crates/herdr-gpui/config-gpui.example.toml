@@ -245,6 +245,13 @@ project_roots = []
 # Play the system alert sound.
 # sound = false
 
+# What a Markdown document's Connect agent button starts: an agent kind that
+# Herdr's agent start accepts, then its arguments. debounce_seconds is how long
+# typing pauses before the change is sent to that agent, from 1 to 300.
+# [doc_agent]
+# agent_command = ["claude"]
+# debounce_seconds = 25
+
 # Which releases the in-app updater offers. "beta" also installs prereleases,
 # which are promoted to stable once they prove out; Homebrew only sees stable.
 # [updates]

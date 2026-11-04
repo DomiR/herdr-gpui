@@ -27,6 +27,7 @@ mod daemon;
 mod devices;
 mod dispatch;
 mod doc;
+mod doc_link;
 mod editor;
 mod fan_out;
 mod file_drop;
