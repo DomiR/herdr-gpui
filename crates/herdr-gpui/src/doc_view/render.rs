@@ -423,11 +423,9 @@ impl DocEditor {
         links: &[(Range<usize>, layout::Target)],
         cx: &mut Context<Self>,
     ) {
-        if let Some((range, _)) = checkbox
-            && index >= range.start
-            && index <= range.end
-            && !event.modifiers.shift
-        {
+        let on_checkbox =
+            checkbox.is_some_and(|(range, _)| index >= range.start && index <= range.end);
+        if on_checkbox && !event.modifiers.shift {
             if event.modifiers.alt {
                 self.toggle_cancel_task(line, cx);
             } else {
@@ -465,6 +463,16 @@ impl DocEditor {
                 layout::Target::Url(_) => {}
             }
         }
+        let offset = if !on_checkbox
+            && let Some(line_data) = self.prepared.lines.get(line)
+            && line_data.task().is_some()
+            && line_data.marker.start < offset
+            && offset < line_data.marker.end
+        {
+            line_data.marker.end
+        } else {
+            offset
+        };
         self.marked = None;
         let text = self.text(cx);
         let selection = match event.click_count {

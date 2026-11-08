@@ -10,6 +10,7 @@ mod cancel_keys;
 mod disk_sync;
 mod document_theme;
 mod folding;
+mod marker_keys;
 mod saved_tab;
 mod todo_keys;
 mod typing;

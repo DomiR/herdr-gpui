@@ -163,6 +163,7 @@ impl DocEditor {
             "left" | "backspace" => words::previous_start(text, head),
             _ => words::next_end(text, head),
         };
+        let at = self.snap_task_marker(at, matches!(key, "left" | "backspace"));
         match key {
             "left" | "right" => self.move_to(at, shift, cx),
             _ => {
@@ -192,8 +193,24 @@ impl DocEditor {
             .grapheme_indices(true)
             .map(|(at, _)| start + at)
             .collect();
+        if line.task().is_some() {
+            out.retain(|at| !(line.marker.start < *at && *at < line.marker.end));
+        }
         out.push(line.range.end);
         out
+    }
+
+    fn snap_task_marker(&self, at: usize, left: bool) -> usize {
+        let line = &self.prepared.lines[markdown::line_at(&self.prepared.lines, at)];
+        if line.task().is_some() && line.marker.start < at && at < line.marker.end {
+            if left {
+                line.marker.start
+            } else {
+                line.marker.end
+            }
+        } else {
+            at
+        }
     }
 
     fn previous_boundary(&self, cx: &Context<Self>) -> usize {
@@ -304,8 +321,14 @@ impl DocEditor {
         if self.selection.is_empty() {
             let head = self.selection.head;
             let line = self.prepared.lines[self.caret_line()].clone();
-            // Backspace right after a list marker removes the marker.
-            if backward && line.is_item() && head == line.marker.end && head > line.marker.start {
+            // Backspace right after or Delete before a list marker removes it.
+            if (backward && line.is_item() && head == line.marker.end && head > line.marker.start)
+                || (!backward
+                    && line.is_item()
+                    && head == line.marker.start
+                    && head < line.marker.end)
+                || (line.task().is_some() && line.marker.start < head && head < line.marker.end)
+            {
                 self.apply(
                     vec![Edit::new(line.marker.clone(), "")],
                     line.marker.start,
