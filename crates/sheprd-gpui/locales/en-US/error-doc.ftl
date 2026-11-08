@@ -1,6 +1,7 @@
 # Markdown documents that could not be read, changed, or written. $path is
 # a file path; $error is the system's own description; $id is a section's
-# ID; $query is what an agent named a todo by.
+# ID; $query is what an agent named a todo by; $tag is a todo tag an
+# agent asked for.
 
 error-doc-loading = The document is still loading
 error-doc-missing = The document's file is gone; save to write it again
@@ -9,6 +10,7 @@ error-doc-ambiguous-text = { $count } places match the text to replace; include 
 error-doc-ambiguous-todo = { $count } todos match “{ $query }”; name one by its number
 error-doc-bad-item = A todo must be one line of text, at most 4096 characters
 error-doc-bad-range = The edit is outside the text or splits a character
+error-doc-bad-tag = A todo tag is letters, digits, “_”, or “-”, at most 64 bytes, not “{ $tag }”
 error-doc-bad-version = A version is the number the document reports
 # $current is the document's version now; $expected the one named.
 error-doc-conflict = The document is at version { $current }, not { $expected }
