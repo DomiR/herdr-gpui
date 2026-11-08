@@ -256,7 +256,7 @@ pub(super) fn row(
             mark(local(&tag.range), &|p| {
                 p.tag = Some(tag.kind);
                 p.tag_meta = tag_meta;
-                p.bold = !tag_meta;
+                p.bold = !tag_meta && tag.kind != TagKind::Cancelled;
                 p.italic = false;
                 p.strike = false;
             });
@@ -371,7 +371,9 @@ fn run(len: usize, paint: Paint, look: &Look) -> TextRun {
             inks.tag_meta
         } else if let Some(tag) = paint.tag {
             match tag {
+                TagKind::Cancelled => inks.tag_meta,
                 TagKind::Critical => inks.critical.0,
+                TagKind::Done => inks.tag_done,
                 TagKind::Generic => inks.tag,
                 TagKind::High => inks.high.0,
                 TagKind::Low => inks.low.0,
@@ -411,6 +413,7 @@ fn run(len: usize, paint: Paint, look: &Look) -> TextRun {
         && !paint.hidden
     {
         match tag {
+            TagKind::Cancelled | TagKind::Done => None,
             TagKind::Today => Some(inks.today.1),
             TagKind::High => Some(inks.high.1),
             TagKind::Critical => Some(inks.critical.1),

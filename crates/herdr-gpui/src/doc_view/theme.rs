@@ -27,6 +27,8 @@ const DONE_MARKER: u32 = 0x00723e;
 const CANCELLED_MARKER: u32 = 0xb60101;
 // meta.tag.todo
 const TAG: u32 = 0xa02e2b99;
+// claude-do-it --pt-tag-done (PlainTasks' orange @done stamp)
+const TAG_DONE: u32 = 0xa85000;
 // meta.tag.todo.completed and meta.tag.todo.cancelled
 const TAG_META: u32 = 0x00000050;
 // todo.url
@@ -67,6 +69,7 @@ pub(super) struct Inks {
     pub(super) cancelled: Hsla,
     pub(super) delimiter: Hsla,
     pub(super) tag: Hsla,
+    pub(super) tag_done: Hsla,
     pub(super) tag_meta: Hsla,
     pub(super) url: Hsla,
     pub(super) today: (Hsla, Hsla),
@@ -104,6 +107,7 @@ pub(super) fn resolve(choice: DocumentTheme, app: &Theme) -> (Theme, Option<Inks
         cancelled: rgba((CANCELLED << 8) | 0xff).into(),
         delimiter: rgba((DELIMITER << 8) | 0xff).into(),
         tag: rgba(TAG).into(),
+        tag_done: rgba((TAG_DONE << 8) | 0xff).into(),
         tag_meta: rgba(TAG_META).into(),
         url: rgba(URL).into(),
         today: (

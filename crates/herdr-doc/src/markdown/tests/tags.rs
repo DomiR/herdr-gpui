@@ -55,7 +55,7 @@ fn tags_are_allowed_on_headings_and_tasks() {
 
 #[test]
 fn named_kinds_are_case_insensitive() {
-    let text = "@TODAY @High @critical @LOW @other";
+    let text = "@TODAY @High @critical @LOW @done @lasted @cancelled @DONE @due";
     let all = lines(text);
     let kinds = tags(text, &all[0])
         .into_iter()
@@ -68,6 +68,10 @@ fn named_kinds_are_case_insensitive() {
             TagKind::High,
             TagKind::Critical,
             TagKind::Low,
+            TagKind::Done,
+            TagKind::Done,
+            TagKind::Cancelled,
+            TagKind::Done,
             TagKind::Generic,
         ]
     );

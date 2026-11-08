@@ -37,24 +37,53 @@ fn tags_are_bold_and_use_their_tag_ink_and_background() {
 }
 
 #[test]
+fn done_and_cancelled_tags_use_their_plain_tasks_roles() {
+    let look = themed(DocumentTheme::PlainTasks);
+    let inks = look.inks.unwrap();
+    let text = "- [ ] ship @done(26-11-04 10:10) @cancelled @due(fri)";
+    let line = markdown::lines(text).remove(0);
+    let styled = row(text, &line, &look, false, &[], &|_| None);
+    let done = run_at(&styled, "@done");
+    assert_eq!(done.color, inks.tag_done);
+    assert_eq!(done.font.weight, FontWeight::BOLD);
+    assert_eq!(done.background_color, None);
+    let cancelled = run_at(&styled, "@cancelled");
+    assert_eq!(cancelled.color, inks.tag_meta);
+    assert_eq!(cancelled.font.weight, FontWeight::NORMAL);
+    assert_eq!(cancelled.background_color, None);
+    let due = run_at(&styled, "@due");
+    assert_eq!(due.color, inks.tag);
+    assert_eq!(due.font.weight, FontWeight::BOLD);
+}
+
+#[test]
 fn resolved_task_tags_are_meta_ink_without_bold_or_strike() {
     let look = themed(DocumentTheme::PlainTasks);
     let inks = look.inks.unwrap();
-    for text in ["- [x] shipped @today", "- [-] cancelled @today"] {
+    for text in [
+        "- [x] shipped @done(26-11-04 10:10) @today",
+        "- [-] cancelled @today",
+    ] {
         let line = markdown::lines(text).remove(0);
         let styled = row(text, &line, &look, false, &[], &|_| None);
-        let tag = run_at(&styled, "@today");
-        assert_eq!(tag.color, inks.tag_meta);
-        assert_eq!(tag.font.weight, FontWeight::NORMAL);
-        assert_eq!(tag.font.style, FontStyle::Normal);
-        assert_eq!(tag.background_color, None);
-        assert_eq!(tag.strikethrough, None);
+        for needle in if text.contains("@done") {
+            vec!["@done", "@today"]
+        } else {
+            vec!["@today"]
+        } {
+            let tag = run_at(&styled, needle);
+            assert_eq!(tag.color, inks.tag_meta);
+            assert_eq!(tag.font.weight, FontWeight::NORMAL);
+            assert_eq!(tag.font.style, FontStyle::Normal);
+            assert_eq!(tag.background_color, None);
+            assert_eq!(tag.strikethrough, None);
+        }
     }
 }
 
 #[test]
 fn app_theme_does_not_gain_tag_styling() {
-    let text = "- [ ] ship @today";
+    let text = "- [ ] ship @today @done";
     let line = markdown::lines(text).remove(0);
     let app = themed(DocumentTheme::App);
     let legacy = look();
@@ -66,4 +95,8 @@ fn app_theme_does_not_gain_tag_styling() {
     assert_eq!(tag.color, Hsla::from(rgb(legacy.theme.foreground)));
     assert_eq!(tag.font.weight, FontWeight::NORMAL);
     assert_eq!(tag.background_color, None);
+    assert_eq!(
+        run_at(&themed, "@done").color,
+        Hsla::from(rgb(legacy.theme.foreground))
+    );
 }

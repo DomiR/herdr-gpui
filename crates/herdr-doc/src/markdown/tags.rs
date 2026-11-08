@@ -11,7 +11,9 @@ pub struct TagSpan {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TagKind {
     // keep-sorted start
+    Cancelled,
     Critical,
+    Done,
     Generic,
     High,
     Low,
@@ -74,7 +76,9 @@ pub fn tags(text: &str, line: &Line) -> Vec<TagSpan> {
         }) {
             let name = global_start + 1..content.start + name_end;
             let kind = match text[name.clone()].to_ascii_lowercase().as_str() {
+                "cancelled" => TagKind::Cancelled,
                 "critical" => TagKind::Critical,
+                "done" | "lasted" => TagKind::Done,
                 "high" => TagKind::High,
                 "low" => TagKind::Low,
                 "today" => TagKind::Today,

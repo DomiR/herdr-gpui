@@ -23,6 +23,7 @@ fn notebook_has_the_exact_packed_inks() {
     assert_eq!(inks.done_marker, rgba(0x00723eff).into());
     assert_eq!(inks.cancelled_marker, rgba(0xb60101ff).into());
     assert_eq!(inks.tag, rgba(0xa02e2b99).into());
+    assert_eq!(inks.tag_done, rgba(0xa85000ff).into());
     assert_eq!(inks.tag_meta, rgba(0x00000050).into());
     assert_eq!(inks.url, rgba(0x003e7290).into());
     assert_eq!(inks.delimiter, rgba(0xded9a6ff).into());
