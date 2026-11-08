@@ -215,14 +215,24 @@ impl SheprdWindow {
     }
 
     fn set_document_theme(&mut self, theme: DocumentTheme, cx: &mut Context<Self>) {
+        if self.apply_document_theme(theme, cx) {
+            self.write_preference(
+                move || Config::set_key("documents.theme", theme.as_str().into()),
+                cx,
+            );
+        }
+    }
+
+    pub(super) fn apply_document_theme(
+        &mut self,
+        theme: DocumentTheme,
+        cx: &mut Context<Self>,
+    ) -> bool {
         if self.config.documents.theme == theme {
-            return;
+            return false;
         }
         self.config.documents.theme = theme;
         cx.notify();
-        self.write_preference(
-            move || Config::set_key("documents.theme", theme.as_str().into()),
-            cx,
-        );
+        true
     }
 }

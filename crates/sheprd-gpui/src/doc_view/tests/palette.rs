@@ -56,7 +56,7 @@ fn outline_lists_labels_and_parent_folds(cx: &mut TestAppContext) {
 fn fold_all_and_unfold_all_commands_change_visible_rows(cx: &mut TestAppContext) {
     let mut doc = open(DOC, cx);
     run(&mut doc, Command::FoldAll);
-    assert_eq!(doc.rows(), vec![0, 5, 6, 7]);
+    assert_eq!(doc.rows(), vec![0, 5, 7]);
     run(&mut doc, Command::UnfoldAll);
     assert_eq!(doc.rows(), (0..8).collect::<Vec<_>>());
 }

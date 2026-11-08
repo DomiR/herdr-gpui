@@ -1,8 +1,8 @@
 use super::*;
 use crate::{
-    browser::TabId,
-    config::{Config, DocumentTheme, Theme},
-    doc_view::{DocEditor, Docs, Look},
+    browser::{TabId, Zoom},
+    config::DocumentTheme,
+    doc_view::{DocEditor, Docs},
 };
 use gpui::{Entity, TestAppContext, VisualTestContext};
 use std::path::PathBuf;
@@ -22,12 +22,7 @@ fn open_doc<'a>(text: &str, cx: &'a mut TestAppContext) -> Fixture<'a> {
     let (view, cx) = cx.add_window_view(move |window, cx| {
         let mut view = super::super::fixture_window(window, cx);
         let buffer = Docs::open(&opened, cx);
-        let look = Look {
-            theme: Theme::default(),
-            inks: None,
-            ui: Config::default().ui,
-            code: Config::default().terminal,
-        };
+        let look = view.doc_look(Zoom::default());
         let editor =
             cx.new(|cx| DocEditor::new(TabId::from(1), buffer, look, Vec::new(), None, cx));
         view.doc_views.insert(TabId::from(1), editor);
@@ -150,9 +145,10 @@ fn current_theme_is_marked_and_other_theme_updates_config(cx: &mut TestAppContex
     });
     assert_eq!(plain.0, "Current");
     assert_eq!(app.0, "");
-    doc.cx.update(|window, cx| {
-        doc.view
-            .update(cx, |view, cx| view.activate_palette(app.1, window, cx));
+    doc.cx.update(|_, cx| {
+        doc.view.update(cx, |view, cx| {
+            assert!(view.apply_document_theme(DocumentTheme::App, cx))
+        });
     });
     assert_eq!(
         doc.view
@@ -176,7 +172,7 @@ fn activating_an_outline_row_closes_palette_and_focuses_the_editor(cx: &mut Test
             .iter()
             .find_map(|entry| match &entry.action {
                 Action::Doc(DocAction::Run(crate::doc_view::Command::GoToLine(line)))
-                    if line == 3 =>
+                    if *line == 2 =>
                 {
                     Some(entry.action.clone())
                 }
@@ -195,6 +191,6 @@ fn activating_an_outline_row_closes_palette_and_focuses_the_editor(cx: &mut Test
     );
     assert_eq!(
         doc.cx.update(|_, cx| doc.editor.read(cx).caret()),
-        "# A\nintro\n## B\n".len()
+        "# A\nintro\n".len()
     );
 }

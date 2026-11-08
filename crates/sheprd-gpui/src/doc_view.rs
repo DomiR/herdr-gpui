@@ -205,7 +205,7 @@ impl SheprdWindow {
         self.doc_views.insert(id, editor);
     }
 
-    fn doc_look(&self, zoom: Zoom) -> Look {
+    pub(crate) fn doc_look(&self, zoom: Zoom) -> Look {
         let (theme, inks) = theme::resolve(self.config.documents.theme, &self.theme);
         let factor = zoom.factor() as f32;
         let mut ui = self.config.ui.clone();
