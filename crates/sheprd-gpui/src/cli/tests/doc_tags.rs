@@ -35,7 +35,7 @@ fn list_rejects_invalid_or_too_many_tags() {
         Err(CliError::InvalidValue("--tag"))
     ));
     let mut args = vec!["doc", "todo", "list", "TODO.md"];
-    for _ in 0..33 {
+    for _ in 0..=sheprd_control_protocol::protocol::doc::MAX_TAGS {
         args.extend(["--tag", "tag"]);
     }
     assert!(matches!(doc(&args), Err(CliError::InvalidValue("--tag"))));

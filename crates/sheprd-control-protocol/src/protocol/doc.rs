@@ -438,8 +438,9 @@ mod tests {
             r#"{"op":"todo_list","path":"/a.md","section":null}"#
         );
         let tagged = DocOp::TodoList {
+            path: "/a.md".into(),
+            section: None,
             tags: vec!["high".into()],
-            ..empty
         };
         assert!(
             serde_json::to_string(&tagged)
