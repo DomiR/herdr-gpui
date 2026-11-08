@@ -162,6 +162,8 @@ pub(crate) struct DocEditor {
     pub(super) link_supported: bool,
     /// Which code spans name files.
     pub(super) links: FileLinks,
+    /// The line whose openable file link is under the primary modifier.
+    pub(super) hovered_link: Option<usize>,
     /// What this view asks of its window: files to open, notes to send.
     requests: Vec<Request>,
     /// The document's compaction count when anchors were last taken.
@@ -228,6 +230,7 @@ impl DocEditor {
             visuals: Visuals::default(),
             link_supported: false,
             links: FileLinks::default(),
+            hovered_link: None,
             requests: Vec::new(),
             comments: Vec::new(),
             draft: None,

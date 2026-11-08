@@ -1,81 +1,132 @@
-//! File paths written as inline code, as agents write them in todo lists
-//! (`` `src/main.rs` ``, `` `docs/plan.md:12` ``), made links when the file
-//! exists, as comet's inline-code links do. Paths resolve against the
-//! document's folder, then the root of the Git checkout it is in. Every
-//! check of the file system runs off the UI thread and is remembered per
-//! text, so drawing only reads answers already found.
+//! File references in a Markdown document: inline code, Markdown link targets,
+//! and bare prose paths, with `:line`, `:line:column`, and `#Lline` suffixes.
+//! Relative paths resolve against the document's folder, then its Git checkout
+//! root; `~/` paths resolve against home. All disk checks stay off the UI
+//! thread and are remembered per reference, so drawing only reads answers
+//! already found.
+
+mod prose;
+mod reference;
+
+pub(super) use prose::bare_paths;
 
 use super::editor::DocEditor;
 use gpui::{AppContext as _, Context};
-use sheprd_doc::markdown::{self, Line, Style};
+use sheprd_doc::markdown::{self, Line, Span, Style};
 use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
 };
 
-/// The most code spans one check looks up.
+/// The most references one check looks up.
 const MAX_PROBES: usize = 512;
-/// The longest code span taken for a path.
+/// The longest reference taken for a path.
 const MAX_PATH: usize = 512;
 
-/// A path a code span names, and the line in it, if one follows `:`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+/// The source form of a file reference.
+pub(super) enum Form {
+    Code,
+    Prose,
+    Target,
+}
+
+#[derive(Clone, Copy, Debug)]
+/// A borrowed lookup key for the cached reference maps.
+pub(super) struct Key<'a> {
+    pub(super) form: Form,
+    pub(super) text: &'a str,
+}
+
+/// A path a reference names, and the line in it, if one follows.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct FileLink {
     pub(crate) path: PathBuf,
     pub(crate) line: Option<u32>,
 }
 
-/// What this view knows of the code spans it shows.
+#[derive(Clone, Debug, Default)]
+/// The document and home roots used by the background probe.
+struct Roots {
+    dirs: Vec<PathBuf>,
+    home: Option<PathBuf>,
+}
+
+/// What this view knows of the references it shows.
 #[derive(Debug, Default)]
 pub(super) struct FileLinks {
-    /// Where relative paths resolve, nearest first; found off the UI thread.
-    roots: Option<Vec<PathBuf>>,
-    known: HashMap<String, Option<FileLink>>,
+    /// Where relative paths resolve, and the home directory, found off the UI thread.
+    roots: Option<Roots>,
+    known: HashMap<Form, HashMap<String, Option<FileLink>>>,
     probing: bool,
 }
 
 impl FileLinks {
-    /// The file `span` names, if it is known to exist.
-    pub(super) fn get(&self, span: &str) -> Option<&FileLink> {
-        self.known.get(span)?.as_ref()
+    /// The reference `text` names, if it is known to exist.
+    pub(super) fn get(&self, form: Form, text: &str) -> Option<&FileLink> {
+        self.known.get(&form)?.get(text)?.as_ref()
     }
 }
 
-/// Whether a code span's text could be a path: one word with a dot or a
-/// slash, not an address.
+/// Whether a code span's text could be a path.
 fn looks_like_path(text: &str) -> bool {
-    !text.is_empty()
-        && text.len() <= MAX_PATH
-        && (text.contains('/') || text.contains('.'))
-        && !text.contains("://")
-        && !text.chars().any(|ch| ch.is_whitespace() || ch.is_control())
-        && !text.starts_with('-')
+    reference::parse(text, false).is_some()
+        && (text.contains('/') || text.contains('.') || text.starts_with("~/"))
 }
 
-/// `text` split into a path and a line, as `path:12` names one.
-fn path_and_line(text: &str) -> (&str, Option<u32>) {
-    match text.rsplit_once(':') {
-        Some((path, line)) if !path.is_empty() => match line.parse::<u32>() {
-            Ok(line) if line > 0 => (path, Some(line)),
-            _ => (text, None),
-        },
-        _ => (text, None),
+/// The target text in a Markdown link. Angle-bracket targets retain spaces.
+pub(super) fn target<'a>(text: &'a str, span: &Span) -> Option<&'a str> {
+    let Style::Link { url } = &span.style else {
+        return None;
+    };
+    let Some(url) = url else {
+        return markdown::link_url(text, span);
+    };
+    let raw = text.get(url.clone())?;
+    let trimmed = raw.trim_start();
+    if let Some(rest) = trimmed.strip_prefix('<')
+        && let Some(end) = rest.find('>')
+    {
+        return trimmed.get(..end + 2);
     }
+    markdown::link_url(text, span)
 }
 
-/// The code spans of `lines` that could be paths.
-pub(super) fn candidates(text: &str, lines: &[Line]) -> Vec<String> {
+/// Every reference form that can be probed in `lines`.
+pub(super) fn candidates(text: &str, lines: &[Line]) -> Vec<(Form, String)> {
     let mut out = Vec::new();
     for line in lines {
         for span in markdown::inline(text, line) {
-            if span.style != Style::Code {
-                continue;
+            match &span.style {
+                Style::Code => {
+                    let Some(code) = text.get(span.range) else {
+                        continue;
+                    };
+                    if looks_like_path(code) {
+                        out.push((Form::Code, code.to_owned()));
+                    }
+                }
+                Style::Link { .. } => {
+                    let Some(url) = markdown::link_url(text, &span) else {
+                        continue;
+                    };
+                    if super::layout::web(url)
+                        || target(text, &span)
+                            .and_then(|target| reference::parse(target, true))
+                            .is_none()
+                    {
+                        continue;
+                    }
+                    if let Some(target) = target(text, &span) {
+                        out.push((Form::Target, target.to_owned()));
+                    }
+                }
+                _ => {}
             }
-            let Some(code) = text.get(span.range) else {
-                continue;
-            };
-            if looks_like_path(code) {
-                out.push(code.to_owned());
+        }
+        for range in prose::bare_paths(text, line) {
+            if let Some(path) = text.get(range) {
+                out.push((Form::Prose, path.to_owned()));
             }
         }
     }
@@ -99,32 +150,49 @@ fn roots(document: &Path) -> Vec<PathBuf> {
     roots
 }
 
-/// Looks `span` up under `roots`. Blocking.
-fn probe(roots: &[PathBuf], span: &str) -> Option<FileLink> {
-    let (path, line) = path_and_line(span);
-    let path = Path::new(path);
-    let candidates: Vec<PathBuf> = if path.is_absolute() {
-        vec![path.to_owned()]
+/// Looks up one reference. This is called only by the background probe job.
+fn probe(roots: &Roots, form: Form, text: &str) -> Option<FileLink> {
+    let reference = reference::parse(text, matches!(form, Form::Target))?;
+    let path = PathBuf::from(reference.path);
+    let candidates: Vec<PathBuf> = if reference.home {
+        vec![roots.home.as_ref()?.join(&path)]
+    } else if path.is_absolute() {
+        vec![path]
     } else {
-        roots.iter().map(|root| root.join(path)).collect()
+        roots.dirs.iter().map(|root| root.join(&path)).collect()
     };
     candidates
         .into_iter()
         .find(|candidate| candidate.is_file())
-        .map(|path| FileLink { path, line })
+        .map(|path| FileLink {
+            path,
+            line: reference.line,
+        })
 }
 
 impl DocEditor {
-    /// Starts looking up the code spans no check has answered yet.
-    pub(super) fn probe_links(&mut self, wanted: Vec<String>, cx: &mut Context<Self>) {
+    /// Starts looking up references no check has answered yet.
+    pub(super) fn probe_links(&mut self, wanted: Vec<(Form, String)>, cx: &mut Context<Self>) {
         if self.links.probing {
             return;
         }
-        let unknown: Vec<String> = wanted
-            .into_iter()
-            .filter(|span| !self.links.known.contains_key(span))
-            .collect::<HashSet<_>>()
-            .into_iter()
+        let wanted: HashSet<(Form, String)> = wanted.into_iter().collect();
+        let known_len: usize = self.links.known.values().map(HashMap::len).sum();
+        if known_len > 4096 {
+            for (form, known) in &mut self.links.known {
+                known.retain(|text, _| wanted.contains(&(*form, text.clone())));
+            }
+        }
+        let unknown: Vec<(Form, String)> = wanted
+            .iter()
+            .filter(|(form, text)| {
+                !self
+                    .links
+                    .known
+                    .get(form)
+                    .is_some_and(|known| known.contains_key(text))
+            })
+            .cloned()
             .take(MAX_PROBES)
             .collect();
         if unknown.is_empty() && self.links.roots.is_some() {
@@ -134,12 +202,15 @@ impl DocEditor {
         let document = self.buffer.read(cx).path().to_owned();
         let known_roots = self.links.roots.clone();
         let job = cx.background_spawn(async move {
-            let roots = known_roots.unwrap_or_else(|| roots(&document));
-            let found: Vec<(String, Option<FileLink>)> = unknown
+            let roots = known_roots.unwrap_or_else(|| Roots {
+                dirs: roots(&document),
+                home: sheprd_client::local_path::home_dir(),
+            });
+            let found: Vec<((Form, String), Option<FileLink>)> = unknown
                 .into_iter()
-                .map(|span| {
-                    let link = probe(&roots, &span);
-                    (span, link)
+                .map(|(form, text)| {
+                    let link = probe(&roots, form, &text);
+                    ((form, text), link)
                 })
                 .collect();
             (roots, found)
@@ -150,7 +221,9 @@ impl DocEditor {
                 this.links.probing = false;
                 this.links.roots = Some(roots);
                 let any = found.iter().any(|(_, link)| link.is_some());
-                this.links.known.extend(found);
+                for ((form, text), link) in found {
+                    this.links.known.entry(form).or_default().insert(text, link);
+                }
                 if any {
                     cx.notify();
                 }
