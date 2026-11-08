@@ -5,6 +5,7 @@ use std::{cell::RefCell, collections::VecDeque, path::PathBuf};
 
 mod busy;
 mod cancelled;
+mod started;
 
 /// A fake app: answers each request with the next scripted answer, and
 /// remembers what was asked. When the script runs out, the document goes.

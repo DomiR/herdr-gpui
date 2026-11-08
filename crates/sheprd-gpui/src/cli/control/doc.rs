@@ -76,6 +76,11 @@ pub enum DocCommand {
         todo: String,
         state: TaskState,
     },
+    TodoStart {
+        path: PathBuf,
+        change: Change,
+        todo: String,
+    },
 }
 
 pub(super) fn command(args: &mut Args) -> Result<DocCommand, CliError> {
@@ -132,7 +137,7 @@ pub(super) fn command(args: &mut Args) -> Result<DocCommand, CliError> {
 fn todo(args: &mut Args) -> Result<DocCommand, CliError> {
     let verb = args.verb().ok_or(CliError::MissingArgument {
         command: "doc",
-        what: "todo list|add|check|uncheck|cancel|uncancel",
+        what: "todo list|add|check|uncheck|cancel|uncancel|start",
     })?;
     Ok(match verb.to_str() {
         Some("list") => DocCommand::TodoList {
@@ -180,6 +185,15 @@ fn todo(args: &mut Args) -> Result<DocCommand, CliError> {
                     TaskState::Open
                 },
             }
+        }
+        Some("start") => {
+            let change = change(args)?;
+            let path = path(args)?;
+            let todo = match text(args)? {
+                Text::Inline(todo) => todo,
+                Text::Stdin => return Err(CliError::InvalidValue("NUMBER|TEXT")),
+            };
+            DocCommand::TodoStart { path, change, todo }
         }
         _ => return Err(unknown("doc todo", verb)),
     })

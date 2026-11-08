@@ -100,6 +100,14 @@ pub enum DocOp {
         todo: String,
         state: TaskState,
     },
+    /// Writes an `@started` stamp to the task `todo` names.
+    TodoStart {
+        path: String,
+        version: u64,
+        #[serde(default)]
+        section: Option<String>,
+        todo: String,
+    },
     /// Reports or disables the document's connected agent.
     Link {
         path: String,
@@ -125,6 +133,7 @@ impl DocOp {
             | Self::TodoAdd { path, .. }
             | Self::TodoCheck { path, .. }
             | Self::TodoState { path, .. }
+            | Self::TodoStart { path, .. }
             | Self::Link { path, .. } => path,
         }
     }
@@ -146,6 +155,7 @@ impl DocOp {
             Self::Edit { old, new, .. } => &[old, new],
             Self::TodoCheck { todo, .. } => &[todo],
             Self::TodoState { todo, .. } => &[todo],
+            Self::TodoStart { todo, .. } => &[todo],
             _ => &[],
         };
         texts.iter().all(|text| text.len() <= MAX_TEXT) && self.path().len() <= 4096
@@ -190,6 +200,7 @@ pub enum TodoChangeKind {
     Edited,
     Cancelled,
     Uncancelled,
+    Started,
 }
 
 impl TodoChangeKind {
@@ -202,6 +213,7 @@ impl TodoChangeKind {
             Self::Unchecked => "unchecked",
             Self::Cancelled => "cancelled",
             Self::Uncancelled => "uncancelled",
+            Self::Started => "started",
             Self::Edited => "edited",
         }
     }
@@ -317,6 +329,18 @@ mod tests {
             )
         );
         assert_eq!(serde_json::from_str::<DocOp>(&text).unwrap(), state);
+        let start = DocOp::TodoStart {
+            path: "/a.md".into(),
+            version: 4,
+            section: Some("goals".into()),
+            todo: "2".into(),
+        };
+        let text = serde_json::to_string(&start).unwrap();
+        assert_eq!(
+            text,
+            r#"{"op":"todo_start","path":"/a.md","version":4,"section":"goals","todo":"2"}"#
+        );
+        assert_eq!(serde_json::from_str::<DocOp>(&text).unwrap(), start);
         let read: DocOp = serde_json::from_str(r#"{"op":"read","path":"/a.md"}"#).unwrap();
         assert_eq!(
             read,
@@ -352,6 +376,15 @@ mod tests {
             DocOp::Read {
                 path: "/a.md".into(),
                 section: None
+            }
+            .bounded()
+        );
+        assert!(
+            !DocOp::TodoStart {
+                path: "/a.md".into(),
+                version: 1,
+                section: None,
+                todo: "x".repeat(MAX_TEXT + 1),
             }
             .bounded()
         );
@@ -407,5 +440,7 @@ mod tests {
         assert_eq!(older.state, TaskState::Open);
         assert_eq!(TodoChangeKind::Cancelled.name(), "cancelled");
         assert_eq!(TodoChangeKind::Uncancelled.name(), "uncancelled");
+        assert_eq!(TodoChangeKind::Started.name(), "started");
+        assert!(serde_json::from_str::<TodoChangeKind>(r#""future""#).is_err());
     }
 }

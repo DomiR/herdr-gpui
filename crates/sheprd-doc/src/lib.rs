@@ -13,8 +13,8 @@
 //! - [`Version`]: the hash agents name their changes against, and the
 //!   diff a stale one gets back.
 //! - [`section`]: the sections headings start, by slug.
-//! - [`todo`]: task lists: listing, adding, checking, moving, and indenting
-//!   items, as edits.
+//! - [`todo`]: task lists: listing, adding, checking, stamping,
+//!   moving, and indenting items, as edits.
 //!
 //! No GPUI and no I/O outside [`disk`]; callers run disk work off their UI
 //! thread.

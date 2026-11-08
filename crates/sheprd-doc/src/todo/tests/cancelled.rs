@@ -1,50 +1,50 @@
 use super::*;
 
-fn apply(text: &str, edit: Edit) -> String {
-    Edit::apply_all(text, &[edit])
+fn apply_edits(text: &str, edits: Vec<Edit>) -> String {
+    Edit::apply_all(text, &edits)
 }
 
 #[test]
 fn sets_states_and_is_idempotent() {
     let text = "- [ ] open\n- [x] done\n- [-] cancelled\n";
     assert_eq!(
-        apply(text, set_state(text, 0, TaskState::Done).unwrap()),
+        apply_edits(text, set_state(text, 0, TaskState::Done, None)),
         "- [x] open\n- [x] done\n- [-] cancelled\n"
     );
     assert_eq!(
-        apply(text, set_state(text, 1, TaskState::Open).unwrap()),
+        apply_edits(text, set_state(text, 1, TaskState::Open, None)),
         "- [ ] open\n- [ ] done\n- [-] cancelled\n"
     );
     assert_eq!(
-        apply(text, set_state(text, 2, TaskState::Open).unwrap()),
+        apply_edits(text, set_state(text, 2, TaskState::Open, None)),
         "- [ ] open\n- [x] done\n- [ ] cancelled\n"
     );
-    assert_eq!(set_state(text, 0, TaskState::Open), None);
-    assert_eq!(set_state(text, 1, TaskState::Done), None);
-    assert_eq!(set_state(text, 2, TaskState::Cancelled), None);
+    assert!(set_state(text, 0, TaskState::Open, None).is_empty());
+    assert!(set_state(text, 1, TaskState::Done, None).is_empty());
+    assert!(set_state(text, 2, TaskState::Cancelled, None).is_empty());
 }
 
 #[test]
 fn toggles_cancelled_tasks_as_specified() {
     let text = "- [ ] open\n- [x] done\n- [-] cancelled\n";
     assert_eq!(
-        apply(text, toggle(text, 0).unwrap()),
+        apply_edits(text, toggle(text, 0, None)),
         "- [x] open\n- [x] done\n- [-] cancelled\n"
     );
     assert_eq!(
-        apply(text, toggle(text, 1).unwrap()),
+        apply_edits(text, toggle(text, 1, None)),
         "- [ ] open\n- [ ] done\n- [-] cancelled\n"
     );
     assert_eq!(
-        apply(text, toggle(text, 2).unwrap()),
+        apply_edits(text, toggle(text, 2, None)),
         "- [ ] open\n- [x] done\n- [ ] cancelled\n"
     );
     assert_eq!(
-        apply(text, toggle_cancel(text, 0).unwrap()),
+        apply_edits(text, toggle_cancel(text, 0, None)),
         "- [-] open\n- [x] done\n- [-] cancelled\n"
     );
     assert_eq!(
-        apply(text, toggle_cancel(text, 2).unwrap()),
+        apply_edits(text, toggle_cancel(text, 2, None)),
         "- [ ] open\n- [x] done\n- [ ] cancelled\n"
     );
 }

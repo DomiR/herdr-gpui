@@ -237,7 +237,7 @@ for what only Sheprd shows or keeps.
 | To | Run |
 | --- | --- |
 | Show a file at a line, read-only | `sheprd code open src/main.rs:42` |
-| Read or change a Markdown doc or todo list the user and other agents edit too: name the version you read, and the section you work in | `sheprd doc read TODO.md`, `sheprd doc todo add TODO.md --version 3 --section next "Write tests"`, `sheprd doc todo check TODO.md --version 4 2`; on `Version mismatch` apply the diff it prints and retry with the new version; `sheprd doc diff TODO.md --since 4 --wait 600` waits for the next change |
+| Read or change a Markdown doc or todo list the user and other agents edit too: name the version you read, and the section you work in | `sheprd doc read TODO.md`, `sheprd doc todo add TODO.md --version 3 --section next "Write tests"`, `sheprd doc todo check TODO.md --version 4 2` (writes `@done (date)`), `sheprd doc todo start TODO.md --version 5 3` when you begin a task (writes `@started(date)`); on `Version mismatch` apply the diff it prints and retry with the new version; `sheprd doc diff TODO.md --since 4 --wait 600` waits for the next change |
 | React to every change in a shared Markdown doc or todo list while you work | Run `sheprd doc watch TODO.md --todos` in the background (Claude Code's Monitor tool turns each line into an event; elsewhere, tail its output), act on each `Version N by WHO` change, and stop it when done |
 | Find out whether Sheprd pushes a doc's changes to you (the user turned on Connect agent), so you do not watch it yourself | `sheprd doc link TODO.md` prints `on: agent ...` or `off`; `--off` stops the pushes |
 | Open the review of your uncommitted changes | `sheprd review` |

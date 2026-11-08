@@ -11,6 +11,7 @@ mod cloud_setup;
 mod control_commands;
 mod doc;
 mod doc_cancel;
+mod doc_start;
 mod language;
 mod link_command;
 mod links;

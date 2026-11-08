@@ -8,6 +8,7 @@ mod cancel;
 use gpui::TestAppContext;
 
 mod link;
+mod stamps;
 
 struct Doc {
     _dir: tempfile::TempDir,

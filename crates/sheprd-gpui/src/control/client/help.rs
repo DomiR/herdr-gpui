@@ -28,10 +28,10 @@ sheprd doc watch FILE [--since N] [--section ID] [--todos]
     that land together print as one change, `Versions A-N`. --section
     prints only changes to that section; --todos prints task changes, one
     line each (`checked 3. Ship`, `cancelled 3. Ship`, `uncancelled 3. Ship`,
-    `added`, `removed`, `unchecked`, `edited`), instead of the diff. --json
-    prints one JSON object per line. Busy or cut-off requests wait and ask
-    again from the same version. App restarts are followed, with one line
-    saying so.
+    `started 3. Ship`, `added`, `removed`, `unchecked`, `edited`), instead of
+    the diff. --json prints one JSON object per line. Busy or cut-off requests
+    wait and ask again from the same version. App restarts are followed, with
+    one line saying so.
 sheprd doc link FILE [--off]
     Whether Sheprd pushes FILE's changes to an agent (the document's
     Connect agent button), and to which; --off stops the pushes and leaves
@@ -44,18 +44,21 @@ sheprd doc todo list FILE [--section ID]
 sheprd doc append FILE --version N [--section ID] TEXT...|-- TEXT|-
 sheprd doc edit FILE --version N [--section ID] --old TEXT --new TEXT
 sheprd doc todo add FILE --version N [--section ID] TEXT...|-- TEXT|-
-sheprd doc todo check|uncheck|cancel|uncancel FILE --version N [--section ID] NUMBER|TEXT
+sheprd doc todo check|uncheck|cancel|uncancel|start FILE --version N [--section ID] NUMBER|TEXT
     Change the document: append a block (at the end, or of the section),
     replace the one place --old occurs, add a task, check one off, or cancel
     one by its number or text. Cancel strikes a task out as `- [-]`.
-    Uncheck or uncancel reopens it. -- passes text starting with -, and -
-    reads standard input. --version is the number you last read. When the
-    document has changed since, nothing is applied and the reply is the
-    latest version and a diff since yours (exit 1): read it and send a new
-    change. With --section, a stale version still applies if that section
-    is unchanged, and the reply carries the diff of the other sections.
-    Changes merge with the user's typing and are written to the file
-    before the reply.
+    Uncheck or uncancel reopens it. Start writes `@started(yy-mm-dd HH:MM)`
+    once. Checking writes `@done (yy-mm-dd HH:MM)`, with `@lasted(H:MM)` after
+    a start; cancelling writes `@cancelled (yy-mm-dd HH:MM)`; reopening
+    removes them. `[documents] stamps = false` turns off all but start's.
+    -- passes text starting with -, and - reads standard input. --version is
+    the number you last read. When the document has changed since, nothing is
+    applied and the reply is the latest version and a diff since yours (exit
+    1): read it and send a new change. With --section, a stale version still
+    applies if that section is unchanged, and the reply carries the diff of
+    the other sections. Changes merge with the user's typing and are written
+    to the file before the reply.
 FILE is a .md path, relative to the current directory.";
 
 const BROWSER: &str = "\

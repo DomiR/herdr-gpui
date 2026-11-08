@@ -2,7 +2,10 @@
 //! lists want from Enter, Tab, and Alt-arrows. Printable text is left to the
 //! platform's input handler, so compositions and dead keys work.
 
-use super::editor::{DocEditor, Selection};
+use super::{
+    editor::{DocEditor, Selection},
+    stamps,
+};
 use crate::{actions, controls::CTRL_SHORTCUTS, words};
 use gpui::{ClipboardItem, Context, KeyDownEvent, Modifiers, Window, point};
 use sheprd_doc::{
@@ -479,6 +482,7 @@ impl DocEditor {
     /// its folded block; otherwise a task is checked or unchecked, a list
     /// item becomes a task, and other text becomes a task item.
     fn cycle_task(&mut self, cx: &mut Context<Self>) {
+        let at = stamps::stamp_time(cx);
         let line = self.caret_line();
         if self.selection.is_empty()
             && matches!(
@@ -491,32 +495,38 @@ impl DocEditor {
             self.apply(vec![edit], caret, cx);
             return;
         }
-        let range = self.selection.range();
-        let lines = &self.prepared.lines;
-        let first = markdown::line_at(lines, range.start);
-        let last = markdown::line_at(lines, range.end);
-        let mut edits = Vec::new();
-        for line in &lines[first..=last] {
-            match line.kind {
-                Kind::Item {
-                    task: Some(state), ..
-                } => {
-                    if let Some(checkbox) = line.checkbox.clone() {
-                        edits.push(Edit::new(checkbox, state.toggled().checkbox()));
+        let mut edits = {
+            let range = self.selection.range();
+            let lines = &self.prepared.lines;
+            let first = markdown::line_at(lines, range.start);
+            let last = markdown::line_at(lines, range.end);
+            let text = self.text(cx);
+            let mut edits = Vec::new();
+            for line in &lines[first..=last] {
+                match line.kind {
+                    Kind::Item {
+                        task: Some(state), ..
+                    } => edits.extend(todo::state_edits(text, line, state.toggled(), at)),
+                    Kind::Item { task: None, .. } => {
+                        edits.push(Edit::insert(line.marker.end, "[ ] "));
                     }
+                    Kind::Paragraph => {
+                        edits.push(Edit::insert(line.range.start + line.indent, "- [ ] "));
+                    }
+                    Kind::Blank if first == last => {
+                        edits.push(Edit::insert(line.range.start, "- [ ] "));
+                    }
+                    _ => {}
                 }
-                Kind::Item { task: None, .. } => {
-                    edits.push(Edit::insert(line.marker.end, "[ ] "));
-                }
-                Kind::Paragraph => {
-                    edits.push(Edit::insert(line.range.start + line.indent, "- [ ] "));
-                }
-                Kind::Blank if first == last => {
-                    edits.push(Edit::insert(line.range.start, "- [ ] "));
-                }
-                _ => {}
             }
-        }
+            edits
+        };
+        edits.sort_by(|a, b| {
+            a.range
+                .start
+                .cmp(&b.range.start)
+                .then(a.range.end.cmp(&b.range.end))
+        });
         let map = |at: usize| Edit::map_offset(at, &edits);
         let selection = Selection {
             anchor: map(self.selection.anchor),
@@ -527,22 +537,31 @@ impl DocEditor {
 
     /// Cancels or reopens every task in the selected lines.
     fn cancel_task(&mut self, cx: &mut Context<Self>) {
-        let range = self.selection.range();
-        let lines = &self.prepared.lines;
-        let first = markdown::line_at(lines, range.start);
-        let last = markdown::line_at(lines, range.end);
-        let mut edits = Vec::new();
-        for line in &lines[first..=last] {
-            let Kind::Item {
-                task: Some(state), ..
-            } = line.kind
-            else {
-                continue;
-            };
-            if let Some(checkbox) = line.checkbox.clone() {
-                edits.push(Edit::new(checkbox, state.cancel_toggled().checkbox()));
+        let at = stamps::stamp_time(cx);
+        let mut edits = {
+            let range = self.selection.range();
+            let lines = &self.prepared.lines;
+            let first = markdown::line_at(lines, range.start);
+            let last = markdown::line_at(lines, range.end);
+            let text = self.text(cx);
+            let mut edits = Vec::new();
+            for line in &lines[first..=last] {
+                let Kind::Item {
+                    task: Some(state), ..
+                } = line.kind
+                else {
+                    continue;
+                };
+                edits.extend(todo::state_edits(text, line, state.cancel_toggled(), at));
             }
-        }
+            edits
+        };
+        edits.sort_by(|a, b| {
+            a.range
+                .start
+                .cmp(&b.range.start)
+                .then(a.range.end.cmp(&b.range.end))
+        });
         let map = |at: usize| Edit::map_offset(at, &edits);
         let selection = Selection {
             anchor: map(self.selection.anchor),

@@ -21,6 +21,7 @@ mod layout;
 mod links;
 mod markers;
 mod render;
+pub(crate) mod stamps;
 mod theme;
 mod toolbar;
 

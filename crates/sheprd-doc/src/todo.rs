@@ -8,10 +8,12 @@ use crate::{
     markdown::{self, Kind, Line, List},
     section,
 };
+use chrono::NaiveDateTime;
 use std::ops::Range;
 
 mod changes;
 mod moves;
+pub mod stamp;
 
 pub use crate::markdown::TaskState;
 pub use changes::{ChangeKind, TodoChange, changes};
@@ -92,12 +94,17 @@ pub fn find_in(text: &str, query: &str, section: Option<&str>) -> Result<Todo> {
     let needle = query.to_lowercase();
     let exact: Vec<&Todo> = todos
         .iter()
-        .filter(|todo| todo.text.to_lowercase() == needle)
+        .filter(|todo| stamp::without_stamps(&todo.text).to_lowercase() == needle)
         .collect();
     let mut matching: Vec<Todo> = match exact.as_slice() {
         [] => todos
             .iter()
-            .filter(|todo| !needle.is_empty() && todo.text.to_lowercase().contains(&needle))
+            .filter(|todo| {
+                !needle.is_empty()
+                    && stamp::without_stamps(&todo.text)
+                        .to_lowercase()
+                        .contains(&needle)
+            })
             .cloned()
             .collect(),
         _ => exact.into_iter().cloned().collect(),
@@ -114,18 +121,76 @@ pub fn find_in(text: &str, query: &str, section: Option<&str>) -> Result<Todo> {
     }
 }
 
-/// Writes `state` to the task on `line`; `None` when it is not a task or
-/// already in that state.
-pub fn set_state(text: &str, line: usize, state: TaskState) -> Option<Edit> {
+/// Finds `line` in `text` and writes `state`; an empty vector when it is not a
+/// task or already in that state.
+pub fn set_state(
+    text: &str,
+    line: usize,
+    state: TaskState,
+    at: Option<NaiveDateTime>,
+) -> Vec<Edit> {
     let lines = markdown::lines(text);
-    let line = lines.get(line)?;
-    let checkbox = line.checkbox.clone()?;
-    (line.task()? != state).then(|| Edit::new(checkbox, state.checkbox()))
+    let Some(line) = lines.get(line) else {
+        return Vec::new();
+    };
+    state_edits(text, line, state, at)
 }
 
-/// Checks or unchecks the task on `line`; `None` when it is not a task or
-/// already so.
-pub fn set_done(text: &str, line: usize, done: bool) -> Option<Edit> {
+/// Writes `state` to a parsed task line; `line` must be a line of
+/// [`markdown::lines`] from `text`.
+pub fn state_edits(
+    text: &str,
+    line: &Line,
+    state: TaskState,
+    at: Option<NaiveDateTime>,
+) -> Vec<Edit> {
+    let Some(checkbox) = line.checkbox.clone() else {
+        return Vec::new();
+    };
+    let Some(current) = line.task() else {
+        return Vec::new();
+    };
+    if current == state {
+        return Vec::new();
+    }
+    let mut edits = vec![Edit::new(checkbox, state.checkbox())];
+    if let Some(at) = at {
+        let label = line.content();
+        let label_text = &text[label.clone()];
+        let (remove, insert) = match state {
+            TaskState::Done => {
+                let mut stamp = stamp::stamp(stamp::Tag::Done, at);
+                if let Some(started) = stamp::started_at(label_text) {
+                    stamp.push(' ');
+                    stamp.push_str(&stamp::lasted_stamp(&stamp::lasted(started, at)));
+                }
+                (
+                    vec![stamp::Tag::Cancelled, stamp::Tag::Done, stamp::Tag::Lasted],
+                    Some(stamp),
+                )
+            }
+            TaskState::Cancelled => (
+                vec![stamp::Tag::Cancelled, stamp::Tag::Done, stamp::Tag::Lasted],
+                Some(stamp::stamp(stamp::Tag::Cancelled, at)),
+            ),
+            TaskState::Open => (
+                vec![stamp::Tag::Cancelled, stamp::Tag::Done, stamp::Tag::Lasted],
+                None,
+            ),
+        };
+        edits.extend(label_edits(&label, label_text, &remove, insert));
+    }
+    edits.sort_by(|a, b| {
+        a.range
+            .start
+            .cmp(&b.range.start)
+            .then(a.range.end.cmp(&b.range.end))
+    });
+    edits
+}
+
+/// Checks or unchecks the task on `line`.
+pub fn set_done(text: &str, line: usize, done: bool, at: Option<NaiveDateTime>) -> Vec<Edit> {
     set_state(
         text,
         line,
@@ -134,20 +199,85 @@ pub fn set_done(text: &str, line: usize, done: bool) -> Option<Edit> {
         } else {
             TaskState::Open
         },
+        at,
     )
 }
 
 /// Flips the task on `line`.
-pub fn toggle(text: &str, line: usize) -> Option<Edit> {
-    let state = markdown::lines(text).get(line)?.task()?;
-    set_state(text, line, state.toggled())
+pub fn toggle(text: &str, line: usize, at: Option<NaiveDateTime>) -> Vec<Edit> {
+    let Some(state) = markdown::lines(text).get(line).and_then(Line::task) else {
+        return Vec::new();
+    };
+    set_state(text, line, state.toggled(), at)
 }
 
 /// Toggles cancellation on `line`, reopening a cancelled task and cancelling
 /// every other task state.
-pub fn toggle_cancel(text: &str, line: usize) -> Option<Edit> {
-    let state = markdown::lines(text).get(line)?.task()?;
-    set_state(text, line, state.cancel_toggled())
+pub fn toggle_cancel(text: &str, line: usize, at: Option<NaiveDateTime>) -> Vec<Edit> {
+    let Some(state) = markdown::lines(text).get(line).and_then(Line::task) else {
+        return Vec::new();
+    };
+    set_state(text, line, state.cancel_toggled(), at)
+}
+
+/// Adds a dated @started stamp without changing the task state.
+pub fn start(text: &str, line: usize, at: NaiveDateTime) -> Vec<Edit> {
+    let lines = markdown::lines(text);
+    let Some(line) = lines.get(line) else {
+        return Vec::new();
+    };
+    if line.task().is_none() {
+        return Vec::new();
+    }
+    let label = line.content();
+    let label_text = &text[label.clone()];
+    if stamp::started_at(label_text).is_some() {
+        return Vec::new();
+    }
+    label_edits(
+        &label,
+        label_text,
+        &[],
+        Some(stamp::stamp(stamp::Tag::Started, at)),
+    )
+}
+
+fn label_edits(
+    label: &Range<usize>,
+    text: &str,
+    remove: &[stamp::Tag],
+    insert: Option<String>,
+) -> Vec<Edit> {
+    let mut spans: Vec<Range<usize>> = remove
+        .iter()
+        .flat_map(|tag| stamp::spans(text, *tag))
+        .collect();
+    spans.sort_by(|a, b| a.start.cmp(&b.start).then(a.end.cmp(&b.end)));
+    let insert_at = text.trim_end_matches([' ', '\t']).len();
+    let prefix = remove_ranges(&text[..insert_at], &spans);
+    let mut edits: Vec<Edit> = spans
+        .into_iter()
+        .map(|span| Edit::new(label.start + span.start..label.start + span.end, ""))
+        .collect();
+    if let Some(insert) = insert {
+        let separator = if prefix.is_empty() { "" } else { " " };
+        edits.push(Edit::insert(
+            label.start + insert_at,
+            format!("{separator}{insert}"),
+        ));
+    }
+    edits
+}
+
+fn remove_ranges(text: &str, spans: &[Range<usize>]) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut at = 0;
+    for span in spans {
+        out.push_str(&text[at..span.start]);
+        at = span.end;
+    }
+    out.push_str(&text[at..]);
+    out
 }
 
 /// Adds the task `item`: after the last task under the heading `under`
