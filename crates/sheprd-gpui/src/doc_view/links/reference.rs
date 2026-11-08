@@ -102,9 +102,7 @@ fn line_suffix(path: &mut String) -> Option<u32> {
         return Some(line);
     }
 
-    let Some(last_colon) = path.rfind(':') else {
-        return None;
-    };
+    let last_colon = path.rfind(':')?;
     let tail = &path[last_colon + 1..];
     if tail.is_empty() || !tail.bytes().all(|byte| byte.is_ascii_digit()) {
         return None;
@@ -119,9 +117,7 @@ fn line_suffix(path: &mut String) -> Option<u32> {
     } else {
         (last_colon, tail)
     };
-    let Some(line) = line_text.parse::<u32>().ok() else {
-        return None;
-    };
+    let line = line_text.parse::<u32>().ok()?;
     if line == 0 {
         return None;
     }
