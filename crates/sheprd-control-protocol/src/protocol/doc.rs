@@ -12,6 +12,10 @@ pub use link::{LinkMode, LinkPending, LinkStatus};
 pub const MAX_TEXT: usize = 64 * 1024;
 /// The longest a change waits for the document to load and be written.
 pub const WAIT_SECONDS: u64 = 15;
+/// The most requested tags in one todo list operation.
+pub const MAX_TAGS: usize = 32;
+/// The longest tag name, in bytes; kept in sync with `sheprd_doc::todo::MAX_TAG`.
+pub const MAX_TAG: usize = 64;
 
 /// The state of a Markdown task checkbox.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -56,6 +60,8 @@ pub enum DocOp {
         path: String,
         #[serde(default)]
         section: Option<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        tags: Vec<String>,
     },
     /// Adds a block at the end of the document or of `section`.
     Append {
@@ -148,7 +154,13 @@ impl DocOp {
             Self::TodoState { todo, .. } => &[todo],
             _ => &[],
         };
-        texts.iter().all(|text| text.len() <= MAX_TEXT) && self.path().len() <= 4096
+        let tags_bounded = match self {
+            Self::TodoList { tags, .. } => {
+                tags.len() <= MAX_TAGS && tags.iter().all(|tag| tag.len() <= MAX_TAG)
+            }
+            _ => true,
+        };
+        texts.iter().all(|text| text.len() <= MAX_TEXT) && self.path().len() <= 4096 && tags_bounded
     }
 }
 
@@ -177,6 +189,9 @@ pub struct TodoInfo {
     pub text: String,
     pub depth: usize,
     pub section: Option<String>,
+    /// Lowercase tag names without `@`; older apps send none.
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 /// What happened to a task.
@@ -391,12 +406,13 @@ mod tests {
             text: "ship".into(),
             depth: 0,
             section: None,
+            tags: Vec::new(),
         };
         assert_eq!(
             serde_json::to_string(&info).unwrap(),
             concat!(
                 r#"{"number":2,"line":4,"done":false,"state":"cancelled","text":"ship","#,
-                r#""depth":0,"section":null}"#
+                r#""depth":0,"section":null,"tags":[]}"#
             )
         );
         let older: TodoInfo = serde_json::from_str(
@@ -405,7 +421,46 @@ mod tests {
         .unwrap();
         assert!(older.done);
         assert_eq!(older.state, TaskState::Open);
+        assert!(older.tags.is_empty());
         assert_eq!(TodoChangeKind::Cancelled.name(), "cancelled");
         assert_eq!(TodoChangeKind::Uncancelled.name(), "uncancelled");
+    }
+
+    #[test]
+    fn todo_list_omits_empty_tags_and_bounds_tags() {
+        let empty = DocOp::TodoList {
+            path: "/a.md".into(),
+            section: None,
+            tags: Vec::new(),
+        };
+        assert_eq!(
+            serde_json::to_string(&empty).unwrap(),
+            r#"{"op":"todo_list","path":"/a.md","section":null}"#
+        );
+        let tagged = DocOp::TodoList {
+            tags: vec!["high".into()],
+            ..empty
+        };
+        assert!(
+            serde_json::to_string(&tagged)
+                .unwrap()
+                .contains(r#""tags":["high"]"#)
+        );
+        assert!(
+            !DocOp::TodoList {
+                path: "/a.md".into(),
+                section: None,
+                tags: vec!["x".into(); MAX_TAGS + 1],
+            }
+            .bounded()
+        );
+        assert!(
+            !DocOp::TodoList {
+                path: "/a.md".into(),
+                section: None,
+                tags: vec!["x".repeat(MAX_TAG + 1)],
+            }
+            .bounded()
+        );
     }
 }

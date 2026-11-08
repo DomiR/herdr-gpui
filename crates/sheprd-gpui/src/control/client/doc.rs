@@ -77,9 +77,14 @@ pub(super) fn run(command: DocCommand, context: &Context) -> crate::Result<Outpu
         DocCommand::Sections { path } => DocOp::Sections {
             path: absolute(&path)?,
         },
-        DocCommand::TodoList { path, section } => DocOp::TodoList {
+        DocCommand::TodoList {
+            path,
+            section,
+            tags,
+        } => DocOp::TodoList {
             path: absolute(&path)?,
             section,
+            tags,
         },
         DocCommand::Append { path, change, text } => {
             let Change { version, section } = change;

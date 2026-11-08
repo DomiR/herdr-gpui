@@ -39,8 +39,9 @@ sheprd doc link FILE [--off]
 sheprd doc sections FILE
     The sections: each #, ##, and ### heading starts one, named by the
     heading's slug (its GitHub anchor ID).
-sheprd doc todo list FILE [--section ID]
-    The tasks, numbered.
+sheprd doc todo list FILE [--section ID] [--tag NAME]...
+    The tasks, numbered. --tag lists only tasks carrying any of the named @
+    tags, with or without @ and in any case; their numbers stay the document's.
 sheprd doc append FILE --version N [--section ID] TEXT...|-- TEXT|-
 sheprd doc edit FILE --version N [--section ID] --old TEXT --new TEXT
 sheprd doc todo add FILE --version N [--section ID] TEXT...|-- TEXT|-
