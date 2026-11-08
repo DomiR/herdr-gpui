@@ -123,7 +123,7 @@ pub(super) fn candidates(text: &str, lines: &[Line]) -> Vec<(Form, String)> {
                 _ => {}
             }
         }
-        for range in prose::bare_paths(text, line) {
+        for range in bare_paths(text, line) {
             if let Some(path) = text.get(range) {
                 out.push((Form::Prose, path.to_owned()));
             }

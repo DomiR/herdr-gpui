@@ -3,7 +3,7 @@ use sheprd_doc::markdown;
 
 fn ranges(text: &str) -> Vec<&str> {
     let lines = markdown::lines(text);
-    super::super::prose::bare_paths(text, &lines[0])
+    bare_paths(text, &lines[0])
         .into_iter()
         .map(|range| &text[range])
         .collect()
@@ -30,5 +30,5 @@ fn prose_skips_code_links_urls_and_non_paths() {
         Vec::<&str>::new()
     );
     let lines = markdown::lines("```\nsrc/no.rs\n```");
-    assert!(super::super::prose::bare_paths("```\nsrc/no.rs\n```", &lines[1]).is_empty());
+    assert!(bare_paths("```\nsrc/no.rs\n```", &lines[1]).is_empty());
 }

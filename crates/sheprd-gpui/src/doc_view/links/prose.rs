@@ -28,24 +28,31 @@ pub(in crate::doc_view) fn bare_paths(text: &str, line: &Line) -> Vec<Range<usiz
 
     let mut out = Vec::new();
     let mut start = None;
-    let mut finish = |end: usize| {
-        let Some(start) = start.take() else {
-            return;
-        };
-        let range = trim_token(source, start..end);
-        if range.start < range.end && qualifies(&source[range.clone()]) && out.len() < MAX_TOKENS {
-            out.push(content.start + range.start..content.start + range.end);
-        }
-    };
     for (offset, ch) in source.char_indices() {
         if covered[offset] || ch.is_whitespace() {
-            finish(offset);
+            finish(source, content.start, &mut start, offset, &mut out);
         } else if start.is_none() {
             start = Some(offset);
         }
     }
-    finish(source.len());
+    finish(source, content.start, &mut start, source.len(), &mut out);
     out
+}
+
+fn finish(
+    source: &str,
+    base: usize,
+    start: &mut Option<usize>,
+    end: usize,
+    out: &mut Vec<Range<usize>>,
+) {
+    let Some(start) = start.take() else {
+        return;
+    };
+    let range = trim_token(source, start..end);
+    if range.start < range.end && qualifies(&source[range.clone()]) && out.len() < MAX_TOKENS {
+        out.push(base + range.start..base + range.end);
+    }
 }
 
 fn trim_token(text: &str, mut range: Range<usize>) -> Range<usize> {
