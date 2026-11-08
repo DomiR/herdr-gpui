@@ -330,6 +330,7 @@ impl DocEditor {
         let hover_map = mouse_map.clone();
         let hover_links = links.clone();
         let hover_entity = entity.clone();
+        let hover_clear_entity = entity.clone();
         let drawn = div()
             .id(("doc-row", line_ix))
             .w_full()
@@ -373,6 +374,7 @@ impl DocEditor {
             )
             .child(
                 div()
+                    .id(("doc-text", line_ix))
                     .relative()
                     .flex_1()
                     .min_w_0()
@@ -420,6 +422,16 @@ impl DocEditor {
                                 cx.notify();
                             }
                         });
+                    })
+                    .on_hover(move |hovered, _, cx| {
+                        if !*hovered {
+                            hover_clear_entity.update(cx, |this, cx| {
+                                if this.hovered_link == Some(line_ix) {
+                                    this.hovered_link = None;
+                                    cx.notify();
+                                }
+                            });
+                        }
                     })
                     .on_mouse_down(
                         MouseButton::Left,
@@ -660,6 +672,17 @@ impl Render for DocEditor {
             }))
             .on_action(cx.listener(|this, _: &cursors::AddNextOccurrence, _, cx| {
                 this.add_next_occurrence(cx);
+            }))
+            .on_modifiers_changed(cx.listener(|this, event: &ModifiersChangedEvent, _, cx| {
+                let primary = if crate::controls::CTRL_SHORTCUTS {
+                    event.modifiers.control
+                } else {
+                    event.modifiers.platform
+                };
+                if !primary && this.hovered_link.is_some() {
+                    this.hovered_link = None;
+                    cx.notify();
+                }
             }))
             .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
                 if !this.selecting || event.pressed_button != Some(MouseButton::Left) {

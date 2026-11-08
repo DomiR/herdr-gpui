@@ -77,7 +77,17 @@ fn has_non_drive_scheme(text: &str) -> bool {
         return false;
     };
     let scheme = &text[..colon];
+    let suffix = &text[colon + 1..];
     if scheme.len() == 1 && scheme.as_bytes()[0].is_ascii_alphabetic() {
+        return false;
+    }
+    let location = |text: &str| !text.is_empty() && text.bytes().all(|byte| byte.is_ascii_digit());
+    let numeric_location = suffix
+        .split_once(':')
+        .map_or(location(suffix), |(line, column)| {
+            location(line) && location(column)
+        });
+    if numeric_location {
         return false;
     }
     !scheme.is_empty() && scheme.bytes().all(|byte| byte.is_ascii_alphabetic())

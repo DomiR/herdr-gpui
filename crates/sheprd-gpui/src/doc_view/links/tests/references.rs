@@ -15,6 +15,19 @@ fn references_parse_all_line_forms() {
 }
 
 #[test]
+fn names_with_location_suffixes_are_not_schemes() {
+    for (text, path, line) in [
+        ("Makefile:12", "Makefile", Some(12)),
+        ("Dockerfile:3", "Dockerfile", Some(3)),
+        ("LICENSE:1:4", "LICENSE", Some(1)),
+    ] {
+        let reference = reference::parse(text, false).unwrap();
+        assert_eq!(reference.path, path);
+        assert_eq!(reference.line, line);
+    }
+}
+
+#[test]
 fn references_decode_targets_and_home_paths() {
     let decoded = reference::parse("<docs/my%20plan.md>", true).unwrap();
     assert_eq!(decoded.path, "docs/my plan.md");

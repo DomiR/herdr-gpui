@@ -58,6 +58,8 @@ pub(super) struct FileLinks {
     /// Where relative paths resolve, and the home directory, found off the UI thread.
     roots: Option<Roots>,
     known: HashMap<Form, HashMap<String, Option<FileLink>>>,
+    /// The latest references waiting for the current background probe.
+    pending: Option<Vec<(Form, String)>>,
     probing: bool,
 }
 
@@ -110,16 +112,13 @@ pub(super) fn candidates(text: &str, lines: &[Line]) -> Vec<(Form, String)> {
                     let Some(url) = markdown::link_url(text, &span) else {
                         continue;
                     };
-                    if super::layout::web(url)
-                        || target(text, &span)
-                            .and_then(|target| reference::parse(target, true))
-                            .is_none()
-                    {
+                    let Some(target) = target(text, &span) else {
+                        continue;
+                    };
+                    if super::layout::web(url) || reference::parse(target, true).is_none() {
                         continue;
                     }
-                    if let Some(target) = target(text, &span) {
-                        out.push((Form::Target, target.to_owned()));
-                    }
+                    out.push((Form::Target, target.to_owned()));
                 }
                 _ => {}
             }
@@ -174,6 +173,7 @@ impl DocEditor {
     /// Starts looking up references no check has answered yet.
     pub(super) fn probe_links(&mut self, wanted: Vec<(Form, String)>, cx: &mut Context<Self>) {
         if self.links.probing {
+            self.links.pending = Some(wanted);
             return;
         }
         let wanted: HashSet<(Form, String)> = wanted.into_iter().collect();
@@ -183,7 +183,7 @@ impl DocEditor {
                 known.retain(|text, _| wanted.contains(&(*form, text.clone())));
             }
         }
-        let unknown: Vec<(Form, String)> = wanted
+        let mut unknown: Vec<(Form, String)> = wanted
             .iter()
             .filter(|(form, text)| {
                 !self
@@ -193,8 +193,12 @@ impl DocEditor {
                     .is_some_and(|known| known.contains_key(text))
             })
             .cloned()
-            .take(MAX_PROBES)
             .collect();
+        let truncated = unknown.len() > MAX_PROBES;
+        unknown.truncate(MAX_PROBES);
+        if truncated {
+            self.links.pending = Some(wanted.into_iter().collect());
+        }
         if unknown.is_empty() && self.links.roots.is_some() {
             return;
         }
@@ -226,6 +230,9 @@ impl DocEditor {
                 }
                 if any {
                     cx.notify();
+                }
+                if let Some(pending) = this.links.pending.take() {
+                    this.probe_links(pending, cx);
                 }
             });
         })
