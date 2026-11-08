@@ -9927,6 +9927,7 @@ dependencies = [
 name = "sheprd-doc"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "loro",
  "pulldown-cmark",
  "similar",
