@@ -511,6 +511,13 @@ impl DocEditor {
 
     /// Replaces the selection (or the composition) with `text`, as typing.
     pub(super) fn insert(&mut self, text: &str, cx: &mut Context<Self>) {
+        if self.selection.is_empty() {
+            let head = self.selection.head;
+            let line = &self.prepared.lines[markdown::line_at(&self.prepared.lines, head)];
+            if line.task().is_some() && line.marker.start < head && head < line.marker.end {
+                self.selection = Selection::caret(line.marker.end);
+            }
+        }
         let range = self.marked.take().unwrap_or_else(|| self.selection.range());
         let caret = range.start + text.len();
         self.apply(vec![Edit::new(range, text)], caret, cx);

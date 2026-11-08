@@ -46,6 +46,29 @@ fn plain_list_arrows_still_move_by_character(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn vertical_movement_and_typing_snap_past_a_task_marker(cx: &mut TestAppContext) {
+    let mut doc = open("abc\n- [ ] a\n", cx);
+    doc.caret_at("abc", 3);
+    doc.keys("down");
+    let marker_end = "abc\n- [ ] ".len();
+    assert_eq!(doc.selection(), Selection::caret(marker_end));
+    doc.type_text("z");
+    assert_eq!(doc.text(), "abc\n- [ ] za\n");
+}
+
+#[gpui::test]
+fn typing_inside_a_task_marker_starts_after_it(cx: &mut TestAppContext) {
+    let mut doc = open("- [ ] a\n", cx);
+    doc.cx.update(|_, cx| {
+        doc.editor.update(cx, |editor, cx| {
+            editor.select(Selection { anchor: 2, head: 2 }, cx);
+        });
+    });
+    doc.type_text("z");
+    assert_eq!(doc.text(), "- [ ] za\n");
+}
+
+#[gpui::test]
 fn word_movement_stays_outside_a_task_marker(cx: &mut TestAppContext) {
     let mut doc = open("- [x] first word\n", cx);
     doc.caret_at("first", 2);

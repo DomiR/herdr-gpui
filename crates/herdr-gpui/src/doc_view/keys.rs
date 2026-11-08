@@ -291,6 +291,7 @@ impl DocEditor {
             Some(found) => (found.0, Some(found.1)),
             None => (self.by_column(down, cx), self.goal_x),
         };
+        let at = self.snap_task_marker(at, false);
         let anchor = if extend { self.selection.anchor } else { at };
         self.select(Selection { anchor, head: at }, cx);
         self.goal_x = x;

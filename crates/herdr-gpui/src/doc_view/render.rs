@@ -463,8 +463,7 @@ impl DocEditor {
                 layout::Target::Url(_) => {}
             }
         }
-        let offset = if !on_checkbox
-            && let Some(line_data) = self.prepared.lines.get(line)
+        let offset = if let Some(line_data) = self.prepared.lines.get(line)
             && line_data.task().is_some()
             && line_data.marker.start < offset
             && offset < line_data.marker.end
