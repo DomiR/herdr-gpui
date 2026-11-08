@@ -86,3 +86,12 @@ fn fenced_code_and_code_lines_have_no_tags() {
     assert!(tags(text, &all[2]).is_empty());
     assert_eq!(tags(text, &all[3]).len(), 1);
 }
+
+#[test]
+fn stamp_tags_take_a_space_before_their_date() {
+    let text = "- [x] ship @done (26-11-04 10:10) @high (not a date)";
+    let all = lines(text);
+    let found = tags(text, &all[0]);
+    let texts: Vec<_> = found.iter().map(|tag| &text[tag.range.clone()]).collect();
+    assert_eq!(texts, vec!["@done (26-11-04 10:10)", "@high"]);
+}

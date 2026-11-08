@@ -61,10 +61,22 @@ pub fn tags(text: &str, line: &Line) -> Vec<TagSpan> {
                 break;
             }
         }
-        let end = if source[name_end..].starts_with('(') {
-            source[name_end..]
+        // PlainTasks writes its date stamps with a space before the paren,
+        // `@done (26-11-04 10:10)`, so those names may have one.
+        let stamp = matches!(
+            source[name_start..name_end].to_ascii_lowercase().as_str(),
+            "cancelled" | "created" | "done" | "lasted" | "started"
+        );
+        let after = &source[name_end..];
+        let paren = if stamp {
+            after.len() - after.trim_start_matches([' ', '\t']).len()
+        } else {
+            0
+        };
+        let end = if source[name_end + paren..].starts_with('(') {
+            source[name_end + paren..]
                 .find(')')
-                .map_or(name_end, |close| name_end + close + 1)
+                .map_or(name_end, |close| name_end + paren + close + 1)
         } else {
             name_end
         };
