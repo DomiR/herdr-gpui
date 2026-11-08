@@ -116,7 +116,7 @@ fn trailing_spaces_remain_after_a_new_stamp() {
     let text = "- [ ] Keep \t ";
     assert_eq!(
         apply_edits(text, set_done(text, 0, true, Some(now))),
-        "- [x] Keep @done (26-11-08 14:02)\t "
+        "- [x] Keep @done (26-11-08 14:02) \t "
     );
 }
 
