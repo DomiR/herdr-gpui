@@ -95,7 +95,7 @@ fn todo_state_changes_write_and_remove_stamps(cx: &mut TestAppContext) {
 
     let checked_again = reply(ask(
         DocOp::TodoCheck {
-            path: doc.path,
+            path: doc.path.clone(),
             version: 5,
             section: None,
             todo: "Ship".into(),
