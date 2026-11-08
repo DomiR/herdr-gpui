@@ -245,6 +245,10 @@ impl DocEditor {
         self.tab
     }
 
+    pub(crate) fn caret(&self) -> usize {
+        self.selection.head
+    }
+
     pub(crate) fn set_link_supported(&mut self, supported: bool, cx: &mut Context<Self>) {
         if self.link_supported != supported {
             self.link_supported = supported;
@@ -765,6 +769,10 @@ impl DocEditor {
             self.select_current_find(cx);
         }
         cx.notify();
+    }
+
+    pub(crate) fn hide_done(&self) -> bool {
+        self.hide_done
     }
 
     /// Checks or unchecks the task on `line`, keeping the selection.

@@ -6,6 +6,7 @@ use sheprd_client::protocol::ClientShellCommand;
 
 mod agent_filter;
 mod background_ranking;
+mod doc;
 mod en_xa;
 mod frecency_ranking;
 mod go_to_search;
@@ -113,6 +114,7 @@ fn command_badges_mark_daemon_commands_and_go_to_badges_mark_agent_status(cx: &m
                     Action::NewProject(_) => "Project",
                     Action::Note { .. } => "Note",
                     Action::Mod { .. } => "Mod",
+                    Action::Doc(_) => "Document",
                 };
                 assert_eq!(entry.badge, expected, "{}", entry.label);
             }

@@ -51,29 +51,39 @@ impl SheprdWindow {
                             .row()
                             .flex_wrap()
                             .gap(px(4.))
-                            .children(Filter::ALL.into_iter().map(|filter| {
-                                div()
-                                    .id(("palette-filter", filter as usize))
-                                    .debug_selector(move || {
-                                        format!("palette-filter-{}", filter.name())
+                            .children(
+                                Filter::ALL
+                                    .iter()
+                                    .copied()
+                                    .filter(|filter| {
+                                        *filter != Filter::Document || palette.doc.is_some()
                                     })
-                                    .px_2()
-                                    .py_1()
-                                    .rounded(px(crate::config::corners::CONTROL))
-                                    .cursor_pointer()
-                                    .when(filter == palette.filter, |tab| {
-                                        tab.bg(rgb(theme.active)).text_color(rgb(theme.foreground))
-                                    })
-                                    .hover(|tab| tab.bg(rgb(theme.active)))
-                                    .child(filter.label())
-                                    .on_click(cx.listener(move |this, _, window, cx| {
-                                        this.set_palette_filter(filter, cx);
-                                        if let Some(palette) = &this.menu.palette {
-                                            let focus = palette.search.read(cx).focus.clone();
-                                            window.focus(&focus, cx);
-                                        }
-                                    }))
-                            })),
+                                    .map(|filter| {
+                                        div()
+                                            .id(("palette-filter", filter as usize))
+                                            .debug_selector(move || {
+                                                format!("palette-filter-{}", filter.name())
+                                            })
+                                            .px_2()
+                                            .py_1()
+                                            .rounded(px(crate::config::corners::CONTROL))
+                                            .cursor_pointer()
+                                            .when(filter == palette.filter, |tab| {
+                                                tab.bg(rgb(theme.active))
+                                                    .text_color(rgb(theme.foreground))
+                                            })
+                                            .hover(|tab| tab.bg(rgb(theme.active)))
+                                            .child(filter.label())
+                                            .on_click(cx.listener(move |this, _, window, cx| {
+                                                this.set_palette_filter(filter, cx);
+                                                if let Some(palette) = &this.menu.palette {
+                                                    let focus =
+                                                        palette.search.read(cx).focus.clone();
+                                                    window.focus(&focus, cx);
+                                                }
+                                            }))
+                                    }),
+                            ),
                     )
                     .child(div().flex_none().child(fl!(
                         "palette-count",

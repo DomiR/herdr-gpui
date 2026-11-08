@@ -20,6 +20,7 @@ mod keys;
 mod layout;
 mod links;
 mod markers;
+mod palette;
 mod render;
 mod theme;
 mod toolbar;
@@ -30,6 +31,7 @@ pub(crate) use editor::{DocEditor, FoldsChanged};
 pub use error::Error;
 pub(crate) use fold_keys::fold_key_bindings;
 pub(crate) use layout::Look;
+pub(crate) use palette::{Command, Outline};
 
 use crate::{
     SheprdWindow,

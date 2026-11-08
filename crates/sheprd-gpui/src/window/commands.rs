@@ -452,16 +452,12 @@ impl SheprdWindow {
                 self.install_browser_skill(window, cx);
                 return;
             }
-            Command::Palette | Command::WorkspacePicker => {
-                self.open_palette(
-                    if command == Command::WorkspacePicker {
-                        crate::palette::Filter::Navigation
-                    } else {
-                        crate::palette::Filter::All
-                    },
-                    window,
-                    cx,
-                );
+            Command::Palette => {
+                self.open_palette(self.palette_default_filter(window, cx), window, cx);
+                return;
+            }
+            Command::WorkspacePicker => {
+                self.open_palette(crate::palette::Filter::Navigation, window, cx);
                 return;
             }
             Command::ResumePalette => {

@@ -39,7 +39,10 @@ fn one_palette_combines_navigation_actions_commands_and_projects(cx: &mut TestAp
             view.prepare_palette_entries(&mut palette, Some(&notes));
             view.menu.palette = Some(palette);
             view.rank_palette(Selection::Keep, cx);
-            for filter in Filter::ALL {
+            for filter in Filter::ALL.iter().copied() {
+                if filter == Filter::Document {
+                    continue;
+                }
                 view.set_palette_filter(filter, cx);
                 let palette = view.menu.palette.as_ref().unwrap();
                 assert!(!palette.filtered.is_empty());
