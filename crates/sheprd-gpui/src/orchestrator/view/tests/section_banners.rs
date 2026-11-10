@@ -12,6 +12,7 @@ use std::sync::Arc;
 fn a_sources_failure_shows_only_in_its_own_section(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
     let request = Request {
+        azure_store: Default::default(),
         target: sheprd_client::ConnectTarget::Local,
         checkout: dir.path().join("app").to_string_lossy().into_owned(),
         workspace_id: "app".into(),

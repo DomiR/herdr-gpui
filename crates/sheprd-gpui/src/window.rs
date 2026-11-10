@@ -19,6 +19,7 @@ mod device_themes;
 mod double_shift;
 pub(crate) mod file_drop;
 mod file_links;
+pub(crate) use file_links::FileLink;
 mod find;
 mod flash;
 pub(crate) use commands::run_window_command;
@@ -27,24 +28,29 @@ pub(crate) use zen::slide_start;
 mod function_keys;
 pub(crate) mod image_source;
 mod images;
+pub(crate) use images::external_paths;
 mod input;
 mod layout_save;
+pub(crate) use layout_save::LayoutSaves;
 mod lifecycle;
 pub(crate) use lifecycle::reasserts;
 mod links;
 mod monitors;
 pub(crate) use links::PressedLink;
 mod mouse;
+mod notices;
 mod pending_input;
 mod plugin_selection;
 pub(crate) mod prefix;
 mod reconnecting;
 mod regions;
 mod render;
+pub(crate) use notices::NoticeCard;
 mod report_issue;
 mod select_hint;
 mod selection;
 mod server_keys;
+mod skill_offer;
 mod sound;
 mod status_bar;
 pub(crate) mod system_notifications;
@@ -100,6 +106,7 @@ pub(crate) struct SheprdWindow {
     pub(crate) _activation: Subscription,
     pub(crate) _appearance: Subscription,
     pub(crate) _browser_tabs: Subscription,
+    pub(crate) _device_tags: Subscription,
     pub(crate) _host_theme: Subscription,
     /// Another window may mute or unmute what this one shows.
     pub(crate) _notification_mutes: Subscription,
@@ -116,6 +123,9 @@ pub(crate) struct SheprdWindow {
     pub(crate) active: bool,
     /// The activity bar's panel and filter.
     pub(crate) activity: sidebar::Activity,
+    /// The coordinator group the agents panel is narrowed to, by name: a
+    /// group outlives its coordinator's pane. None lists every group.
+    pub(crate) agent_group: Option<String>,
     pub(crate) agent_sort: preferences::AgentSort,
     /// Whether the user chose the sort with the panel toggle, now or in a
     /// stored session. Until then the daemon's `ui.agent_panel_sort` decides,
@@ -181,6 +191,13 @@ pub(crate) struct SheprdWindow {
     /// The device IDs in the order the user dragged them into; see
     /// `endpoint::order`.
     pub(crate) device_order: Vec<String>,
+    /// The tag the sidebar's switch narrows the list to.
+    pub(crate) device_tag_filter: Option<String>,
+    /// The sections folded in the sidebar, for this run like a host's fold;
+    /// see `sidebar::tag_groups`.
+    pub(crate) device_tag_folds: std::collections::HashSet<Option<String>>,
+    /// This app's copy of every device's tags.
+    pub(crate) device_tags: std::sync::Arc<crate::device_tags::Tags>,
     /// Each saved device's terminal theme, read off the UI thread.
     pub(crate) device_themes: device_themes::DeviceThemes,
     /// The Devices overview's activity history and open tabs.
@@ -196,6 +213,8 @@ pub(crate) struct SheprdWindow {
     pub(crate) editor_open: Option<crate::editor::Job>,
     /// Editor panes whose Neovim later files open in.
     pub(crate) editor_panes: Vec<crate::editor::EditorPane>,
+    /// Pages to bring back when the editor panes opened from them quit.
+    pub(crate) editor_returns: Vec<crate::editor::Return>,
     pub(crate) endpoints: Vec<endpoint::Endpoint>,
     /// A prompt fanned out to several agents; once launched it outlives its
     /// dialog so the lanes can be compared later.
@@ -230,6 +249,12 @@ pub(crate) struct SheprdWindow {
     /// The Linear section's list or board, as last picked and stored with
     /// the chrome; `None` until the user picks one.
     pub(crate) issue_layout: Option<crate::orchestrator::IssueLayout>,
+    /// Git work for a kept workspace's worktree dialog that finished off the
+    /// UI thread, landed on the next tick, which has the window to land in.
+    /// Worktree scripts of kept workspaces the window follows: a new
+    /// checkout's setup until its workspace opens, an archive until it ends.
+    pub(crate) kept_scripts: crate::worktree_scripts::Kept,
+    pub(crate) kept_worktree_done: Vec<menu::KeptDone>,
     /// What a key code types in the active layout, to restore a dropped Shift.
     pub(crate) key_layout: fn(u16) -> Option<prefix::KeyChars>,
     /// The key code and Shift of the key being handled, from AppKit's event.
@@ -250,6 +275,8 @@ pub(crate) struct SheprdWindow {
     pub(crate) listening_ports: crate::listening_ports::ListeningPorts,
     pub(crate) live: LiveState,
     pub(crate) local_error: Option<String>,
+    /// Every port this computer's user listens on, for the Ports section.
+    pub(crate) local_ports: crate::local_ports::LocalPorts,
     /// Draws the moving status marks the sidebar and the tab strip reserve
     /// room for; see `mark_layer`.
     pub(crate) mark_layer: Entity<crate::mark_layer::MarkLayer>,
@@ -258,6 +285,9 @@ pub(crate) struct SheprdWindow {
     /// UTF-16; `None` puts the caret after it.
     pub(crate) marked_selection: Option<std::ops::Range<usize>>,
     pub(crate) menu: menu::MenuState,
+    /// Starts as `config.show_menu_bar`; Toggle Menu Bar flips it for the
+    /// session, and a reload that changes the setting applies it again.
+    pub(crate) menu_bar_visible: bool,
     /// Removing worktrees whose pull request is merged, when enabled.
     pub(crate) merged_cleanup: crate::merged_cleanup::Cleanup,
     /// The mod panel's width; see `crate::mods::panel`.
@@ -575,6 +605,7 @@ impl SheprdWindow {
             }
             cx.notify();
         }
+        crate::remote::Supervisor::follow_updater(&mut self.updater, cx);
         if self
             .avatars
             .as_mut()
@@ -599,6 +630,8 @@ impl SheprdWindow {
         };
         let old_tab = focused_tab(&self.live);
         self.poll_endpoints(cx);
+        let own = window.window_handle().window_id();
+        self.follow_focus(own, std::time::Instant::now(), cx);
         if self
             .icon_font_notice
             .observe(self.config.icon_font_missing, self.live.surface.as_deref())
@@ -685,7 +718,10 @@ impl SheprdWindow {
             self.poll_cloud_setup_tab(cx);
         }
         self.poll_editor_open(cx);
+        self.poll_editor_returns(window, cx);
         self.poll_worktree_source(cx);
+        self.poll_kept_worktree(window, cx);
+        self.poll_kept_scripts(cx);
         self.poll_hover_menu(std::time::Instant::now(), window, cx);
         if self.tick_flash(std::time::Instant::now()) {
             cx.notify();
@@ -711,6 +747,7 @@ impl SheprdWindow {
         }
         self.publish_remote_pull_requests(cx);
         self.sync_remote_hosts(window, cx);
+        self.reach_device_tags(cx);
         self.update_merged_cleanup(window, cx);
         if self.update_git() {
             cx.notify();
@@ -736,6 +773,9 @@ impl SheprdWindow {
         self.update_checkpoints(cx);
         self.update_port_forwards(cx);
         if self.update_listening_ports() {
+            cx.notify();
+        }
+        if self.update_local_ports() {
             cx.notify();
         }
         #[cfg(feature = "azure")]

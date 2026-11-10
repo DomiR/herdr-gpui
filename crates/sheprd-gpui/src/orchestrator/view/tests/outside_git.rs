@@ -16,6 +16,7 @@ fn request(dir: &std::path::Path, name: &str) -> Request {
         workspace_id: name.into(),
         token: None,
         data_root: Some(dir.join("data")),
+        azure_store: Default::default(),
         gitlab_store: Default::default(),
         timing: Timing::default(),
         linear: None,
@@ -57,7 +58,7 @@ fn a_folder_outside_git_is_left_out_quietly(cx: &mut TestAppContext) {
     cx.run_until_parked();
     assert_eq!(cx.update(|_, cx| view.read(cx).projects_named().count()), 1);
     assert!(cx.debug_bounds("orchestrator-banner").is_none());
-    assert!(cx.debug_bounds("orchestrator-picker-project").is_none());
+    assert!(cx.debug_bounds("orchestrator-project-filter").is_none());
 }
 
 #[gpui::test]

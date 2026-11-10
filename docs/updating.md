@@ -1,8 +1,8 @@
 # Shared Rust Updater Releases
 
 The updater authenticates a small JSON manifest using an Ed25519 public key
-embedded in the executable. macOS updates replace the installed app in place
-(including a legacy `Herdr.app` path) with the `Sheprd.app` payload; the Linux archive
+embedded in the executable. macOS updates replace the installed app with the
+`Sheprd.app` payload, moving a standalone legacy `Herdr.app` to that name; the Linux archive
 contract replaces a standalone executable. Installation requires explicit user
 approval. Updating the GUI must not stop or upgrade the daemon or its terminals.
 
@@ -256,25 +256,28 @@ Installation contracts, beyond accepting a filename:
   links and mixed roots are refused. The whole candidate still must satisfy the
   existing Developer ID requirement, **`so.pen.herdr-gpui`**, the installed
   signing team and both expected bundle versions. Renaming to a new bundle ID
-  is not supported. The updater replaces the existing bundle directory **in
-  place**: a `Sheprd.app` payload installed over `/Applications/Herdr.app` remains
-  at `/Applications/Herdr.app`. It launches the candidate's selected executable
-  under that preserved path, retains the previous bundle, and restores it on
-  rename/spawn failure. Moving the installed directory to `Sheprd.app` is a
-  separate future migration, not an implicit side effect of this update.
+  is not supported. The updater replaces the existing bundle directory, and
+  `Herdr.app` moves to `Sheprd.app` as described in
+  [Moving `Herdr.app` To `Sheprd.app`](#moving-herdrapp-to-sheprdapp). It launches
+  the candidate's selected executable from where the bundle landed, retains the
+  previous bundle, and restores it on rename/spawn failure.
 - **Homebrew stable:** ownership still requires an artifact receipt symlink to
-  this exact running bundle under `Caskroom/herdr-gpui/VERSION`. Either
-  `Herdr.app` or `Sheprd.app` may name that receipt; the cask token remains
-  `herdr-gpui`. Relaunch accepts either executable at the original bundle path.
-  The renamed cask displays Sheprd but keeps its install target at
-  `Herdr.app` (`app "Sheprd.app", target: "Herdr.app"`) and stays in `penso/tap`.
-  Changing that needs an explicit cask-token/destination migration. The bridge cannot
-  follow a cask that removes its old target and installs only at a new path.
+  this exact running bundle under `Caskroom/TOKEN/VERSION`, for the `herdr-gpui`
+  or `sheprd` token, and that token is what the updater upgrades. Either
+  `Herdr.app` or `Sheprd.app` may name that receipt. Relaunch accepts either executable.
+  `sheprd` in `sheprd-labs/tap` installs `Sheprd.app`. `herdr-gpui` in `penso/tap`
+  displays Sheprd but keeps its install target at `Herdr.app`
+  (`app "Sheprd.app", target: "Herdr.app"`) for existing installs.
+  Clients follow the cask when it drops that target; see
+  [Moving `Herdr.app` To `Sheprd.app`](#moving-herdrapp-to-sheprdapp) for the order.
 - **Linux standalone:** the single regular executable inside the updater tar
   has the asset's exact stem without `-update.tar.gz`, namely
   `herdr-gpui-VERSION-TARGET` or `sheprd-VERSION-TARGET`. It replaces and relaunches
   the existing user-owned executable path, even if that path is still named
-  `herdr-gpui`. Companion binaries and desktop integration are not migrated.
+  `herdr-gpui`. Companion binaries and desktop integration are not migrated, so
+  a desktop entry copied from an older archive keeps `so.pen.herdr-gpui` and no
+  longer matches the window; replace it with `org.sheprd.Sheprd.desktop` from the
+  current manual archive to get the dock icon back.
 - **Linux packages:** the current client accepts both asset filename generations
   during preparation and through both verifiers. The deployed `v20261103.1`
   bridge still requires a legacy filename during preparation, so publication
@@ -312,6 +315,49 @@ Installation contracts, beyond accepting a filename:
   self-update inputs. Publication uses `Sheprd-VERSION-...` names and updated
   layouts. Test install scripts, the Homebrew cask, winget publication and site
   download links together; accepting updater names alone does not validate those paths.
+
+### Moving `Herdr.app` To `Sheprd.app`
+
+Installed bundles leave the old name with an update, never on their own.
+
+**Standalone.** When a `Sheprd.app` payload updates a bundle named `Herdr.app`,
+the helper installs it as `Sheprd.app` beside the old path, inside the same
+transaction as any update: the previous bundle goes to `previous-installation`,
+and a failed link or relaunch puts the old name back. The running app's helper
+performs the install, so the release that adds this only moves the bundle on the
+update after it.
+
+The bundle stays at `Herdr.app`, updated in place, when:
+
+- a Homebrew receipt names it, even if Homebrew is not trusted to run, because the
+  receipt would go stale. This includes a Homebrew install on the beta channel,
+  which updates in place: it moves only when Homebrew upgrades it;
+- anything already exists at `Sheprd.app`, including a dangling link;
+- the payload is still named `Herdr.app`.
+
+**Homebrew.** Homebrew moves the bundle when the cask drops its target. A client
+follows that move when a receipt names `Sheprd.app` beside its old path and no
+real bundle remains there, reopening the new path after the upgrade. A client
+without this cannot find the bundle after the upgrade and has to be opened by
+hand. So publish a release with this code, give clients time to take it, and only
+then change the cask:
+
+```ruby
+app "Sheprd.app"
+binary "#{appdir}/Sheprd.app/Contents/MacOS/sheprd"
+```
+
+**The old path.** A move leaves `Herdr.app` as a relative symlink to `Sheprd.app`,
+hidden from Finder but listed by `ls`. Paths outside the app keep resolving: a
+core started from the old bundle outlives the app, and scripts and shell profiles
+may name it. The app rewrites the paths it owns when it next starts, such as the
+remote control LaunchAgent and the agent skills. A Homebrew move only gets the
+link when the app itself restarts after the upgrade, so a `brew upgrade` run in a
+terminal leaves no link. Nothing removes the link later.
+
+`open`, Finder, and the Dock resolve the link and start the real bundle. Running
+the executable through it keeps the old path, so that process refuses in-app
+updates as a symlinked installation.
 
 ### Ordering And Clients That Miss This Release
 
@@ -613,9 +659,13 @@ that helper independently authenticates the request's signed manifest, opens the
 user's staging directory and regular files without following symlinks, and copies
 the package into a private root-owned directory under `/var/cache`. The copied
 bytes must match the signed length and SHA-256 before APT (`apt-get install --yes
---no-remove`), DNF (`dnf install --assumeyes`), or pacman (`pacman -U --noconfirm`)
-is invoked on the protected copy. Replacing the user's download while the password
-prompt is open cannot change which bytes the elevated package manager installs.
+--no-remove`), DNF (`dnf install --assumeyes`), zypper (`zypper install -y
+--allow-unsigned-rpm`), or pacman (`pacman -U --noconfirm`) is invoked on the
+protected copy. The format selects the asset; for an `.rpm` the helper then uses
+`/usr/bin/dnf` where that exists and `/usr/bin/zypper` otherwise, as openSUSE has
+only the latter. Neither the request nor `PATH` chooses a program. Replacing the
+user's download while the password prompt is open cannot change which bytes the
+elevated package manager installs.
 The desktop must have a PolicyKit authentication agent; the app never collects
 passwords. Package managers resolve dependencies and update their installation
 records, desktop files, icons, and license notices along with the executable.
@@ -637,13 +687,14 @@ Older installed clients with the blanket package-manager rejection require one
 manual upgrade. Releases without `package-manifest.json` and its signature cannot
 be installed by the package updater; the panel directs users to Manual Releases.
 Native PolicyKit authorization and real two-version package upgrades still require
-QA on Debian/Ubuntu, Fedora, and Arch.
+QA on Debian/Ubuntu, Fedora, openSUSE, and Arch.
 
 ## Homebrew Casks
 
 A macOS installation is treated as Homebrew-managed only when Homebrew's own
 records point at the running bundle: the `Herdr.app` or `Sheprd.app` receipt under
-`<prefix>/Caskroom/herdr-gpui/<version>/` must be a symlink to it.
+`<prefix>/Caskroom/herdr-gpui/<version>/` must be a symlink to it, or to the
+`Sheprd.app` the cask moved it to.
 `HOMEBREW_PREFIX`, then `/opt/homebrew`, then `/usr/local`
 are consulted; `PATH` is not, so a writable directory earlier in it cannot decide
 what the app executes. The prefix and `brew` itself must be owned by this user or

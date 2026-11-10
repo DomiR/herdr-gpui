@@ -57,11 +57,15 @@ impl SheprdWindow {
         {
             crate::agent_skill::AgentSkill::choose(crate::agent_skill::Choice::Declined, cx);
         }
-        let return_focus = self
-            .menu
-            .application
-            .as_ref()
-            .and_then(|menu| menu.return_focus.clone());
+        let application = self.menu.application.as_ref();
+        let return_focus = (application.and_then(|menu| menu.return_focus.clone()))
+            .or_else(|| self.core_menu_return_focus(cx));
+        // The Overview shows no terminal, which must not take the keys next.
+        let section = self
+            .activity
+            .section_focus
+            .clone()
+            .filter(|_| self.menu.page == Some(Page::OverviewReply));
         // A page that animates out keeps what it reads from the reset.
         if let Some(page) = self.menu.page.filter(|page| super::appear::leaves(*page)) {
             let kept = super::appear::Kept::take(&mut self.menu);
@@ -69,7 +73,8 @@ impl SheprdWindow {
         }
         self.menu.reset();
         self.apply_shared_theme(cx);
-        window.focus(return_focus.as_ref().unwrap_or(&self.focus), cx);
+        let focus = return_focus.or(section);
+        window.focus(focus.as_ref().unwrap_or(&self.focus), cx);
         cx.notify();
     }
 
@@ -418,73 +423,51 @@ impl SheprdWindow {
                     .overflow_hidden()
                     .shadow_lg()
             })
-            .when(
-                matches!(
+            .when(page.popover_sized(), |panel| {
+                panel
+                    .w((viewport.width - px(24.))
+                        .max(px(0.))
+                        .min(px(if page == Page::Git { 340. } else { 420. })))
+                    .max_h((viewport.height - px(24.)).max(px(0.)))
+                    .when(page == Page::Git, |panel| {
+                        let top = crate::titlebar::HEIGHT + 6.;
+                        panel
+                            .max_h((viewport.height - px(top + 12.)).max(px(0.)))
+                            .shadow_lg()
+                    })
+                    // Its lists scroll inside; the panel never outgrows the window.
+                    .when(page == Page::PrReview, |panel| panel.overflow_hidden())
+            })
+            .when(page.context_sized(), |panel| {
+                let room = (viewport.width - px(24.)).max(px(0.));
+                // A list of actions takes its longest label's width, which
+                // the UI font and size decide, so no fixed width fits all.
+                let forwards = page == Page::Host && self.host_menu_lists_forwards();
+                if matches!(
                     page,
-                    Page::Git | Page::GitCommit | Page::PrReview | Page::PrComment | Page::PrMerge
-                ),
-                |panel| {
-                    panel
-                        .w((viewport.width - px(24.))
-                            .max(px(0.))
-                            .min(px(if page == Page::Git { 340. } else { 420. })))
-                        .max_h((viewport.height - px(24.)).max(px(0.)))
-                        .when(page == Page::Git, |panel| {
-                            let top = crate::titlebar::HEIGHT + 6.;
-                            panel
-                                .max_h((viewport.height - px(top + 12.)).max(px(0.)))
-                                .shadow_lg()
-                        })
-                        // Its lists scroll inside; the panel never outgrows the window.
-                        .when(page == Page::PrReview, |panel| panel.overflow_hidden())
-                },
-            )
-            .when(
-                matches!(
-                    page,
-                    Page::Tab
-                        | Page::RenameTab
-                        | Page::MoveTab
-                        | Page::Group
-                        | Page::Pane
-                        | Page::RenamePane
-                        | Page::MovePane
-                        | Page::CarryPane
-                        | Page::PaneProcesses
-                        | Page::KillProcesses
-                        | Page::Host
-                        | Page::RemoveDevice
-                        | Page::RemoveWsl
-                ),
-                |panel| {
-                    let room = (viewport.width - px(24.)).max(px(0.));
-                    // A list of actions takes its longest label's width, which
-                    // the UI font and size decide, so no fixed width fits all.
-                    let forwards = page == Page::Host && self.host_menu_lists_forwards();
-                    if matches!(page, Page::Tab | Page::Pane | Page::Group | Page::Host)
-                        && !forwards
-                    {
-                        let least = if page == Page::Group { 240. } else { 180. };
-                        return panel
-                            .min_w(px(least).min(room))
-                            .max_w(room)
-                            .max_h((viewport.height - px(24.)).max(px(0.)));
-                    }
-                    panel
-                        .w(room.min(px(if forwards {
-                            // Room for a forward's port, state, and actions.
-                            260.
-                        } else if page == Page::PaneProcesses {
-                            // Name, command, pid, CPU and memory columns.
-                            560.
-                        } else if matches!(page, Page::MovePane | Page::MoveTab) {
-                            240.
-                        } else {
-                            360.
-                        })))
-                        .max_h((viewport.height - px(24.)).max(px(0.)))
-                },
-            )
+                    Page::Tab | Page::Pane | Page::Group | Page::Host | Page::CoreMenu
+                ) && !forwards
+                {
+                    let least = if page == Page::Group { 240. } else { 180. };
+                    return panel
+                        .min_w(px(least).min(room))
+                        .max_w(room)
+                        .max_h((viewport.height - px(24.)).max(px(0.)));
+                }
+                panel
+                    .w(room.min(px(if forwards {
+                        // Room for a forward's port, state, and actions.
+                        260.
+                    } else if page == Page::PaneProcesses {
+                        // Name, command, pid, CPU and memory columns.
+                        560.
+                    } else if matches!(page, Page::MovePane | Page::MoveTab | Page::CoreMove) {
+                        240.
+                    } else {
+                        360.
+                    })))
+                    .max_h((viewport.height - px(24.)).max(px(0.)))
+            })
             .when(
                 !footer_anchored
                     && !matches!(page, Page::Usage(_))
@@ -519,6 +502,7 @@ impl SheprdWindow {
                         | Page::AppUpdate
                         | Page::GitHub
                         | Page::GitLab
+                        | Page::AzureDevOps
                         | Page::AddDevice
                         | Page::AddWsl
                         | Page::Usage(_)
@@ -569,14 +553,17 @@ impl SheprdWindow {
                         .min(px(crate::remote::MENU_WIDTH)))
                     .shadow_lg()
             })
-            .when(matches!(page, Page::GitHub | Page::GitLab), |panel| {
-                panel
-                    .w((viewport.width - px(32.)).max(px(0.)).min(px(400.)))
-                    .flex()
-                    .flex_col()
-                    .overflow_hidden()
-                    .shadow_lg()
-            })
+            .when(
+                matches!(page, Page::GitHub | Page::GitLab | Page::AzureDevOps),
+                |panel| {
+                    panel
+                        .w((viewport.width - px(32.)).max(px(0.)).min(px(400.)))
+                        .flex()
+                        .flex_col()
+                        .overflow_hidden()
+                        .shadow_lg()
+                },
+            )
             .when(
                 matches!(
                     page,
@@ -585,6 +572,7 @@ impl SheprdWindow {
                         | Page::VersionMismatch
                         | Page::OpenCheckout
                         | Page::OpenLink
+                        | Page::PortSignal
                 ) || self.cloud_batch_open()
                     || self.remote_dialog_open(),
                 |panel| {
@@ -694,6 +682,8 @@ impl SheprdWindow {
             panel = panel.child(self.render_github_auth(cx));
         } else if page == Page::GitLab {
             panel = panel.child(self.render_gitlab_page(cx));
+        } else if page == Page::AzureDevOps {
+            panel = panel.child(self.render_azure_page(cx));
         } else if page == Page::RemoteDevices {
             panel = panel.child(self.render_remote_menu(cx));
         } else if page == Page::Workspace {
@@ -724,18 +714,21 @@ impl SheprdWindow {
             panel = panel.child(self.render_pr_comment(cx));
         } else if page == Page::PrMerge {
             panel = panel.child(self.render_pr_merge(cx));
+        } else if page == Page::OverviewReply {
+            panel = panel.child(self.render_overview_reply(cx));
         } else if matches!(
             page,
             Page::Host
                 | Page::RenameDevice
                 | Page::ForwardPort
+                | Page::DeviceTags
                 | Page::DeviceTheme
                 | Page::RemoveDevice
         ) {
             panel = panel.child(self.render_host_menu(cx));
         } else if page == Page::MoveTab {
             panel = self.render_tab_move_picker(panel, cx);
-        } else if matches!(page, Page::Tab | Page::RenameTab) {
+        } else if page.is_tab_menu() {
             panel = panel.child(self.render_tab_menu(cx));
         } else if page == Page::Group {
             panel = self.render_group_menu(panel, cx);
@@ -768,6 +761,8 @@ impl SheprdWindow {
             panel = panel.child(self.render_worktree_script(cx));
         } else if page == Page::OpenLink {
             panel = panel.child(self.render_open_link(cx));
+        } else if page == Page::PortSignal {
+            panel = panel.child(self.render_port_signal(cx));
         } else if let Some(body) = self.cloud_batch_page(cx) {
             panel = panel.child(body);
         } else if let Some(body) = self.automation_dialog_page(cx) {
@@ -938,7 +933,7 @@ impl SheprdWindow {
                     this.dismiss_menu(window, cx);
                 }),
             )
-            .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
+            .on_scroll(|_, _, cx| cx.stop_propagation())
             .on_mouse_down(
                 MouseButton::Right,
                 cx.listener(|this, _, window, cx| {

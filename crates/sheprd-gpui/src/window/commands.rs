@@ -110,6 +110,24 @@ impl SheprdWindow {
         );
     }
 
+    /// The layout after the one showing now, not the one the last frame
+    /// drew: a second click can land before the next frame.
+    pub(crate) fn step_chat_layout(&mut self, cx: &mut Context<Self>) {
+        self.step_chat_layout_with(
+            |mode| Config::save_preference(Preference::ChatLayout(mode)),
+            cx,
+        );
+    }
+
+    /// `save` persists the choice, as in [`Self::set_chat_layout_with`].
+    pub(crate) fn step_chat_layout_with(
+        &mut self,
+        save: impl FnOnce(ChatLayoutMode) -> crate::Result<()> + Send + 'static,
+        cx: &mut Context<Self>,
+    ) {
+        self.set_chat_layout_with(self.config.chat.layout.next(), save, cx);
+    }
+
     /// `save` persists the choice; tests pass one that leaves the real
     /// config alone.
     pub(crate) fn set_chat_layout_with(
@@ -126,6 +144,7 @@ impl SheprdWindow {
             cx.global_mut::<InitialAppearance>().config.chat.layout = mode;
         }
         self.chats.relayout(mode);
+        crate::menus::install(cx);
         cx.notify();
         let saves = cx.default_global::<LayoutSaves>().chat.clone();
         saves.want(mode);
@@ -202,9 +221,17 @@ impl SheprdWindow {
         target: NavigationTarget<&str>,
         cx: &mut Context<Self>,
     ) -> bool {
+        if let NavigationTarget::Workspace(id) = target
+            && self.focus_kept_workspace(id, cx)
+        {
+            return true;
+        }
         if !self.input_ready() {
             return false;
         }
+        // Anything of Herdr 1's brings its focused workspace back in front.
+        self.leave_kept_workspace();
+        self.note_editor_navigation(target.as_deref());
         let queued = self.request_focus_change(
             &fl!("window-notices-navigate"),
             Some((&target).into()),
@@ -334,7 +361,22 @@ impl SheprdWindow {
         {
             self.input_probe.actions += 1;
         }
-        if self.core_pane_command(command, window, cx) {
+        if self.core_pane_command(command, window, cx)
+            || self.core_history_command(command, window, cx)
+        {
+            return;
+        }
+        // A workspace the app keeps has no Herdr 1 panes: a pane command no
+        // herdr-core pane took must not reach Herdr 1's focused one. A review
+        // in front still searches its changes.
+        let searches_review = matches!(
+            command,
+            Command::Find | Command::FindNext | Command::FindPrevious
+        ) && self.focused_review(window, cx).is_some();
+        if self.kept_in_front().is_some()
+            && crate::core_terminals::acts_on_panes(command)
+            && !searches_review
+        {
             return;
         }
         match command {
@@ -500,9 +542,17 @@ impl SheprdWindow {
             }
             // Every interactive creation path ends here, so Herdr's name prompt
             // covers buttons, menus, shortcuts, and the palette alike.
-            // With Herdr 2 chosen for new terminals, a new tab is herdr-core's.
-            Command::Tab if self.config.herdr_2_terminals => {
+            // With Herdr 2 chosen for new terminals, a new tab on this computer
+            // is herdr-core's.
+            Command::Tab if self.new_tabs_use_core() => {
                 self.new_core_terminal(window, cx);
+                return;
+            }
+            // A new workspace starts where the one in front is.
+            Command::Workspace if self.new_workspaces_use_core() => {
+                let cwd = self.front_workspace_cwd();
+                self.dismiss_menu(window, cx);
+                self.new_kept_workspace(None, cwd, cx);
                 return;
             }
             Command::Tab | Command::Workspace if self.open_name_prompt(command, window, cx) => {
@@ -599,6 +649,14 @@ impl SheprdWindow {
                 self.toggle_sidebar_ports(cx);
                 return;
             }
+            Command::ToggleMenuBar => {
+                if crate::menus::IN_WINDOW {
+                    self.menu_bar_visible = !self.menu_bar_visible;
+                    window.focus(&self.focus, cx);
+                    cx.notify();
+                }
+                return;
+            }
             Command::ToggleModPanel => {
                 self.mods.set_panel_hidden(!self.mods.panel_hidden());
                 cx.notify();
@@ -612,6 +670,10 @@ impl SheprdWindow {
                 self.open_devices_overview(window, cx);
                 return;
             }
+            Command::NotificationHistory => {
+                self.show_notification_history(window, cx);
+                return;
+            }
             Command::NewCoreTerminal => {
                 self.new_core_terminal(window, cx);
                 return;
@@ -619,6 +681,10 @@ impl SheprdWindow {
             // A herdr-core pane with the keyboard mirrors itself above.
             Command::MirrorCorePane => {
                 self.show_flash(Flash::warning(fl!("core-terminals-mirror-needs-pane")), cx);
+                return;
+            }
+            Command::ConvertToChat => {
+                self.convert_to_chat_or_flash(window, cx);
                 return;
             }
             // A focused page or document zooms instead of the terminal font,
@@ -727,8 +793,9 @@ impl SheprdWindow {
             | Command::PreviousAgent
             | Command::NextAgent
             | Command::AgentNumber(_) => {
-                self.step_sidebar(command, cx);
-                window.focus(&self.focus, cx);
+                if !self.step_sidebar(command, window, cx) {
+                    window.focus(&self.focus, cx);
+                }
                 return;
             }
             // A browser tab moves without the daemon, so before its check.
@@ -760,161 +827,100 @@ impl SheprdWindow {
     }
 
     /// Focuses the workspace or agent a sidebar step lands on, selecting its
-    /// host first when that is another one.
-    fn step_sidebar(&mut self, command: Command, cx: &mut Context<Self>) {
+    /// host first when that is another one. Whether it gave the keyboard to
+    /// a Herdr 2 agent's pane, which keeps it.
+    fn step_sidebar(
+        &mut self,
+        command: Command,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
         let agents = matches!(
             command,
             Command::PreviousAgent | Command::NextAgent | Command::AgentNumber(_)
         );
-        let rows = if agents {
-            self.sidebar_agents()
-        } else {
-            self.sidebar_workspaces()
-        };
+        if agents {
+            return self.step_agents(command, window, cx);
+        }
+        let workspaces = self.sidebar_workspaces();
+        let rows: Vec<(usize, &str)> = workspaces
+            .iter()
+            .map(|(host, id)| (*host, id.as_str()))
+            .collect();
         let selected = self.selected_endpoint;
-        let focused = self.live.snapshot.as_ref().and_then(|snapshot| {
-            if agents {
-                snapshot.focused_pane_id.as_deref()
-            } else {
-                snapshot.focused_workspace_id.as_deref()
-            }
-        });
+        // The workspace in front may be one the app keeps for Herdr 2.
+        let front = self.browser_key().map(|(_, workspace)| workspace);
         let current = rows
             .iter()
-            .position(|&(host, id)| host == selected && Some(id) == focused);
+            .position(|&(host, id)| host == selected && Some(id) == front.as_deref());
         let Some(&(host, id)) = crate::sidebar::sidebar_step(&rows, current, selected, command)
             .and_then(|index| rows.get(index))
         else {
-            return;
+            return false;
         };
         let id = id.to_owned();
-        let target = if agents {
-            NavigationTarget::Pane(id.as_str())
-        } else {
-            NavigationTarget::Workspace(id.as_str())
-        };
+        let target = NavigationTarget::Workspace(id.as_str());
         if host == selected {
             self.navigate(target, cx);
         } else {
             let endpoint = self.endpoints[host].id.clone();
             self.navigate_endpoint(&endpoint, target, cx);
         }
+        false
     }
 
-    /// Installs the agent skill for browser tabs where Claude Code and other
-    /// agents look for skills, and keeps it current from now on. Only on
-    /// request: the one-time offer, the palette, or Settings.
-    pub(crate) fn install_browser_skill(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        use crate::agent_skill::{AgentSkill, Choice};
-        let home = match crate::config::home() {
-            Ok(home) => home,
-            Err(error) => {
-                self.show_flash(Flash::warning(error.localize()), cx);
-                return;
-            }
+    /// Steps through the agents list, Herdr 1's agents and Herdr 2's alike,
+    /// from the one whose pane holds the keyboard: a Herdr 2 pane, else the
+    /// selected host's focused pane.
+    fn step_agents(
+        &mut self,
+        command: Command,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let listed = self.panel_agents();
+        let rows: Vec<(usize, &str)> = listed
+            .iter()
+            .map(|(host, agent)| (*host, agent.id()))
+            .collect();
+        let selected = self.selected_endpoint;
+        let core_focus = self.current_core_terminal(window, cx);
+        let focused = match &core_focus {
+            Some(terminal) => Some(terminal.as_str()),
+            None => self
+                .live
+                .snapshot
+                .as_ref()
+                .and_then(|snapshot| snapshot.focused_pane_id.as_deref()),
         };
-        AgentSkill::choose(Choice::Installed, cx);
-        if self.menu.page == Some(crate::menu::Page::AgentSkill) {
-            self.dismiss_menu(window, cx);
-        }
-        let install = cx.background_executor().spawn(async move {
-            let text = crate::agent_skill::text(crate::agent_skill::executable().as_deref());
-            crate::agent_skill::install(&home, &text)
+        let current = listed.iter().position(|(host, agent)| {
+            *host == selected
+                && Some(agent.id()) == focused
+                && agent.is_core() == core_focus.is_some()
         });
-        cx.spawn(async move |this, cx| {
-            let result = install.await;
-            this.update(cx, |this, cx| {
-                let flash = match result {
-                    Ok(paths) => Flash::success(match paths.as_slice() {
-                        [path] => fl!(
-                            "window-notices-skill-installed-at",
-                            path = path.display().to_string()
-                        ),
-                        _ => fl!("window-notices-skill-installed-places", count = paths.len()),
-                    }),
-                    Err(error) => Flash::warning(error.localize()),
-                };
-                this.show_flash(flash, cx);
-            })
-            .ok();
-        })
-        .detach();
-    }
-
-    /// Offers the agent skill once, when this is the first window ready to
-    /// show a dialog. Runs every tick; asking claims the question app-wide.
-    pub(crate) fn offer_browser_skill(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let ready = self.menu.page.is_none() && self.active && self.live.snapshot.is_some();
-        if !ready || !crate::agent_skill::AgentSkill::take_ask(cx) {
-            return;
-        }
-        if self.open_menu(window, cx) {
-            self.menu.page = Some(crate::menu::Page::AgentSkill);
-            cx.notify();
-        }
-    }
-
-    pub(crate) fn render_agent_skill_offer(&self, cx: &mut Context<Self>) -> gpui::Div {
-        use gpui::{prelude::*, *};
-        let theme = &self.theme;
-        let button = |id: &'static str, label: String, primary: bool| {
-            div()
-                .id(id)
-                .debug_selector(move || id.into())
-                .p(px(8.))
-                .rounded(px(crate::config::corners::CONTROL))
-                .when(primary, |button| button.bg(rgb(theme.active)))
-                .when(!primary, |button| button.hover(|s| s.bg(rgb(theme.active))))
-                .cursor_pointer()
-                .child(label)
+        let Some((host, agent)) = crate::sidebar::sidebar_step(&rows, current, selected, command)
+            .and_then(|index| listed.get(index))
+        else {
+            return false;
         };
-        div()
-            .debug_selector(|| "agent-skill-offer".into())
-            .child(
-                div()
-                    .p(px(8.))
-                    .child(fl!("window-notices-skill-offer-title")),
-            )
-            .child(
-                div()
-                    .p(px(8.))
-                    .child(fl!("window-notices-skill-offer-body")),
-            )
-            .child(
-                div()
-                    .p(px(8.))
-                    .text_color(rgb(theme.muted))
-                    .child(fl!("window-notices-skill-offer-detail")),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .gap(px(8.))
-                    .p(px(8.))
-                    .child(
-                        button(
-                            "agent-skill-install",
-                            fl!("window-notices-skill-offer-install"),
-                            true,
-                        )
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            cx.stop_propagation();
-                            this.install_browser_skill(window, cx);
-                        })),
-                    )
-                    .child(
-                        button(
-                            "agent-skill-decline",
-                            fl!("window-notices-skill-offer-decline"),
-                            false,
-                        )
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            cx.stop_propagation();
-                            this.dismiss_menu(window, cx);
-                        })),
-                    ),
-            )
+        let (host, target, core) = (*host, agent.target(), agent.is_core());
+        drop(listed);
+        if core {
+            let endpoint = self.endpoints[host].id.clone();
+            self.open_listed_agent(&endpoint, &target, window, cx);
+            return true;
+        }
+        let crate::sidebar::AgentTarget::Pane(pane) = &target else {
+            return false;
+        };
+        let target = NavigationTarget::Pane(pane.as_str());
+        if host == selected {
+            self.navigate(target, cx);
+        } else {
+            let endpoint = self.endpoints[host].id.clone();
+            self.navigate_endpoint(&endpoint, target, cx);
+        }
+        false
     }
 }
 

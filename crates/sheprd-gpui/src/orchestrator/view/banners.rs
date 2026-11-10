@@ -4,7 +4,7 @@
 //! its trouble clears and comes back ([`Dismissed`]).
 
 use super::{
-    OrchestratorView,
+    Event, OrchestratorView,
     inbox::failure_text,
     look::{Look, RED, YELLOW},
     repo::Repo,
@@ -12,7 +12,7 @@ use super::{
 use crate::{
     config::corners,
     i18n::{Localize, fl},
-    orchestrator::{Access, SourceKey, SyncState},
+    orchestrator::{Access, Provider, SourceKey, SyncState},
 };
 use gpui::{prelude::*, *};
 use std::collections::HashMap;
@@ -95,10 +95,17 @@ impl OrchestratorView {
                         found = found,
                         known = crate::orchestrator::SCHEMA_VERSION
                     )),
+                    None,
                 ));
             }
             if let Some(error) = &snapshot.error {
-                banners.push((slot(Of::Error), RED, "icons/x.svg", of(error.localize())));
+                banners.push((
+                    slot(Of::Error),
+                    RED,
+                    "icons/x.svg",
+                    of(error.localize()),
+                    None,
+                ));
             }
             // Each section reports only its own sources' trouble, as its
             // header shows only their chips: GitHub's failures are not the
@@ -108,6 +115,24 @@ impl OrchestratorView {
                 .iter()
                 .filter(|status| self.issue_source.lists(status.key.provider));
             for status in sources {
+                // Azure DevOps has no sign-in of its own in the title bar
+                // for most users, so its missing token says where to add one.
+                if status.key.provider == Provider::Azure
+                    && matches!(status.state, SyncState::SignIn)
+                {
+                    let text = fl!(
+                        "azure-devops-menu-connect-banner",
+                        repository = status.key.repository.as_str()
+                    );
+                    banners.push((
+                        slot(Of::Source(status.key.clone())),
+                        YELLOW,
+                        "icons/azure-devops.svg",
+                        of(text),
+                        Some(Provider::Azure),
+                    ));
+                    continue;
+                }
                 let text = match &status.state {
                     SyncState::Failed(error) => failure_text(status.key.provider, error),
                     SyncState::Capped { count } => fl!(
@@ -127,14 +152,15 @@ impl OrchestratorView {
                     hue,
                     "icons/refresh.svg",
                     of(text),
+                    None,
                 ));
             }
         }
         banners
             .into_iter()
-            .filter(|(slot, _, _, text)| !self.dismissed.hides(slot, text))
+            .filter(|(slot, _, _, text, _)| !self.dismissed.hides(slot, text))
             .enumerate()
-            .map(|(index, (slot, hue, icon, text))| {
+            .map(|(index, (slot, hue, icon, text, sign_in))| {
                 let close = look
                     .icon_button(
                         ("orchestrator-banner-close", index),
@@ -153,11 +179,17 @@ impl OrchestratorView {
                     }));
                 banner(look, hue, icon, text)
                     .child(close)
-                    .debug_selector(|| "orchestrator-banner".into())
+                    .debug_selector(move || match sign_in {
+                        Some(_) => "orchestrator-banner-sign-in".into(),
+                        None => "orchestrator-banner".into(),
+                    })
                     .id(("orchestrator-banner", index))
                     .cursor_pointer()
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.ask_refresh();
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        match sign_in {
+                            Some(provider) => cx.emit(Event::SignIn(provider)),
+                            None => this.ask_refresh(),
+                        }
                         cx.notify();
                     }))
                     .into_any_element()

@@ -138,7 +138,7 @@ fn finish_setup(
         report(step(readiness));
     })
     .map_err(crate::Error::from)
-    .map_err(&setup_error)?;
+    .map_err(setup_error)?;
     prepare(&sandbox).map_err(setup_error)?;
     device.machine = sandbox.name;
     save_device(&device, &mut save)?;
@@ -177,6 +177,14 @@ fn ensure_herdr(
             .with_command(|command| install::installed(command, &cancelled))?
         {
             return Err(cloud::Error::Install(install::Failure::Missing).into());
+        }
+    }
+    if install {
+        match gateway::prepare(request, &sandbox.id) {
+            Ok(gateway) => gateway.with_command(|command| {
+                install::add_core(Ok::<_, std::convert::Infallible>(command), &cancelled)
+            })?,
+            Err(error) => install::core_unprepared(error, &cancelled)?,
         }
     }
     Ok(())

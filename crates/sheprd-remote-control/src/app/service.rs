@@ -15,6 +15,7 @@ use crate::app::{
     config::{Certificate, RemoteConfig},
 };
 use crate::control::{Request, Response};
+use crate::core_target::CoreTarget;
 use std::{
     ffi::OsString,
     fs, io,
@@ -35,6 +36,12 @@ pub const PROGRAM: &str = if cfg!(windows) {
 };
 /// How much of a failed command's own message is kept.
 const STDERR_LIMIT: usize = 512;
+/// How often, and how far apart, a step that waits on the one before it is
+/// tried: launchd finishes a `bootout` of a running daemon after the command
+/// returns, and a `bootstrap` sent before then fails with an I/O error and
+/// leaves no service at all. Five seconds bounds the wait.
+const SETTLE_ATTEMPTS: u32 = 20;
+const SETTLE_DELAY: std::time::Duration = std::time::Duration::from_millis(250);
 
 /// What the service runs: the daemon, its state, and the settings it serves
 /// with.
@@ -43,18 +50,22 @@ pub struct Plan {
     pub program: PathBuf,
     pub state_dir: PathBuf,
     pub config: RemoteConfig,
-    /// The Herdr daemon's client socket and the chat socket folder as this
-    /// app resolved them, passed on because a service manager's
-    /// environment may lack the shell's `XDG_CONFIG_HOME` or
-    /// `XDG_STATE_HOME`.
+    /// The Herdr daemon's client socket, the chat socket folder, and on
+    /// Windows the saved WSL distributions as this app resolved them, passed
+    /// on because a service manager's environment may lack the shell's
+    /// `XDG_CONFIG_HOME` or `XDG_STATE_HOME`.
     pub herdr_socket: Option<PathBuf>,
     pub chat_dir: Option<PathBuf>,
+    pub wsl_catalog: Option<PathBuf>,
+    /// The core endpoint or setup failure resolved in the desktop process.
+    pub core_endpoint: CoreTarget,
 }
 
 impl Plan {
     /// `serve --state-dir DIR --port N --bind ADDR [--cert F --key F]
-    /// --privacy generic|excerpt --device-idle-days N [--herdr-socket P]
-    /// [--chat-dir D]`.
+    /// --privacy generic|excerpt --device-idle-days N [--live-activities
+    /// generic] [--herdr-socket P] [--chat-dir D] [--wsl-catalog F]
+    /// [--core-socket P --core-session S]`.
     pub fn args(&self) -> Vec<OsString> {
         let config = &self.config;
         let mut args: Vec<OsString> = vec![
@@ -80,11 +91,31 @@ impl Plan {
             "--device-idle-days".into(),
             config.device_idle_days.to_string().into(),
         ]);
+        // The default is left out, so the service definition, and with it
+        // the running daemon, stays as it was for everyone who keeps it.
+        if !config.live_activities.is_detailed() {
+            args.extend([
+                "--live-activities".into(),
+                config.live_activities.name().into(),
+            ]);
+        }
         if let Some(socket) = &self.herdr_socket {
             args.extend(["--herdr-socket".into(), socket.clone().into()]);
         }
         if let Some(dir) = &self.chat_dir {
             args.extend(["--chat-dir".into(), dir.clone().into()]);
+        }
+        if let Some(catalog) = &self.wsl_catalog {
+            args.extend(["--wsl-catalog".into(), catalog.clone().into()]);
+        }
+        match &self.core_endpoint {
+            CoreTarget::Endpoint(endpoint) => args.extend([
+                "--core-socket".into(),
+                endpoint.socket.clone().into(),
+                "--core-session".into(),
+                endpoint.session.clone().into(),
+            ]),
+            CoreTarget::Discover => {}
         }
         args
     }
@@ -98,6 +129,9 @@ pub struct Step {
     /// Whether its failure fails the whole change. Unloading something not
     /// loaded fails, and is fine.
     pub required: bool,
+    /// Whether a failure is tried again for a bounded time, while the
+    /// manager still finishes the step before it.
+    pub settles: bool,
 }
 
 fn step<const N: usize>(program: &'static str, args: [&str; N], required: bool) -> Step {
@@ -105,6 +139,7 @@ fn step<const N: usize>(program: &'static str, args: [&str; N], required: bool) 
         program,
         args: args.into_iter().map(OsString::from).collect(),
         required,
+        settles: false,
     }
 }
 
@@ -193,6 +228,7 @@ impl Manager {
                         program: "launchctl",
                         args: vec!["bootstrap".into(), domain.into(), file.into()],
                         required: true,
+                        settles: true,
                     },
                 ]
             }
@@ -214,6 +250,7 @@ impl Manager {
                         "/F".into(),
                     ],
                     required: true,
+                    settles: false,
                 },
                 step("schtasks", ["/Run", "/TN", TASK], true),
             ],
@@ -232,6 +269,7 @@ impl Manager {
                         program: "launchctl",
                         args: vec!["bootstrap".into(), domain.clone().into(), file.into()],
                         required: false,
+                        settles: false,
                     },
                     step(
                         "launchctl",
@@ -242,6 +280,33 @@ impl Manager {
             }
             Self::Systemd => vec![step("systemctl", ["--user", "start", UNIT], true)],
             Self::ScheduledTask { .. } => vec![step("schtasks", ["/Run", "/TN", TASK], true)],
+        }
+    }
+
+    /// Restarts the daemon under a definition that did not change, as after
+    /// an update replaced the binary beside the app. launchd restarts the
+    /// loaded job in place (`kickstart -k`) rather than unloading it, so the
+    /// service is never left out of launchd; one not loaded is loaded first.
+    pub fn reload(&self, file: &Path) -> Vec<Step> {
+        match self {
+            Self::LaunchAgent { uid } => {
+                let domain = format!("gui/{uid}");
+                vec![
+                    // Fails when already loaded, which is what kickstart wants.
+                    Step {
+                        program: "launchctl",
+                        args: vec!["bootstrap".into(), domain.clone().into(), file.into()],
+                        required: false,
+                        settles: false,
+                    },
+                    step(
+                        "launchctl",
+                        ["kickstart", "-k", &format!("{domain}/{LABEL}")],
+                        true,
+                    ),
+                ]
+            }
+            Self::Systemd | Self::ScheduledTask { .. } => self.load(file),
         }
     }
 
@@ -305,7 +370,19 @@ pub fn reconcile(
     config: &RemoteConfig,
     host: &Host,
     send: impl Fn(&Request) -> Result<Response, crate::control::Error>,
+    run: impl FnMut(&Step) -> Result<()>,
+) -> Result<Outcome> {
+    reconcile_with_core(config, host, send, run, || {
+        sheprd_core_client::Endpoint::resolve(sheprd_client::login_env::var)
+    })
+}
+
+fn reconcile_with_core(
+    config: &RemoteConfig,
+    host: &Host,
+    send: impl Fn(&Request) -> Result<Response, crate::control::Error>,
     mut run: impl FnMut(&Step) -> Result<()>,
+    core_endpoint: impl FnOnce() -> sheprd_core_client::Result<sheprd_core_client::Endpoint>,
 ) -> Result<Outcome> {
     let installed = host.file.exists();
     if !config.enabled {
@@ -325,7 +402,7 @@ pub fn reconcile(
         }
         return Ok(Outcome::Removed);
     }
-    if write_definition(config, host)? {
+    if write_definition(config, host, core_endpoint())? {
         for step in host.manager.load(&host.file) {
             run(&step)?;
         }
@@ -340,7 +417,7 @@ pub fn reconcile(
                 .as_ref()
                 .is_some_and(|version| *version != status.version) =>
         {
-            for step in host.manager.load(&host.file) {
+            for step in host.manager.reload(&host.file) {
                 run(&step)?;
             }
             Ok(Outcome::Started)
@@ -366,8 +443,17 @@ pub fn restart(
     if !config.enabled {
         return Ok(Outcome::Unchanged);
     }
-    write_definition(config, host)?;
-    for step in host.manager.load(&host.file) {
+    let wrote = write_definition(
+        config,
+        host,
+        sheprd_core_client::Endpoint::resolve(sheprd_client::login_env::var),
+    )?;
+    let steps = if wrote {
+        host.manager.load(&host.file)
+    } else {
+        host.manager.reload(&host.file)
+    };
+    for step in steps {
         run(&step)?;
     }
     Ok(Outcome::Started)
@@ -375,7 +461,11 @@ pub fn restart(
 
 /// Writes the service definition for `config` unless the file already
 /// holds it. Returns whether it wrote.
-fn write_definition(config: &RemoteConfig, host: &Host) -> Result<bool> {
+fn write_definition(
+    config: &RemoteConfig,
+    host: &Host,
+    core_endpoint: sheprd_core_client::Result<sheprd_core_client::Endpoint>,
+) -> Result<bool> {
     let program = host.program.clone().ok_or(Error::ProgramMissing)?;
     let plan = Plan {
         program,
@@ -383,6 +473,8 @@ fn write_definition(config: &RemoteConfig, host: &Host) -> Result<bool> {
         config: config.clone(),
         herdr_socket: sheprd_client::ConnectTarget::Local.socket_path().ok(),
         chat_dir: sheprd_chat_protocol::endpoint_dir(),
+        wsl_catalog: cfg!(windows).then(|| sheprd_client::wsl_hosts_path(false)),
+        core_endpoint: CoreTarget::resolved(core_endpoint),
     };
     let text = host.manager.text(&plan)?;
     let bytes = host.manager.bytes(&text);
@@ -394,8 +486,39 @@ fn write_definition(config: &RemoteConfig, host: &Host) -> Result<bool> {
     Ok(true)
 }
 
-/// Runs one manager command through `sheprd_client::new_command`.
+/// Runs one manager command through `sheprd_client::new_command`; a step
+/// that settles is tried again, a bounded number of times, while it fails.
 pub fn run(step: &Step) -> Result<()> {
+    settle(
+        step,
+        SETTLE_ATTEMPTS,
+        || run_once(step),
+        || std::thread::sleep(SETTLE_DELAY),
+    )
+}
+
+/// Tries `once` up to `attempts` times when `step` settles, waiting between
+/// tries; any other step is tried once. The last failure is returned.
+fn settle(
+    step: &Step,
+    attempts: u32,
+    mut once: impl FnMut() -> Result<()>,
+    mut wait: impl FnMut(),
+) -> Result<()> {
+    let attempts = if step.settles { attempts.max(1) } else { 1 };
+    let mut tried = 1;
+    loop {
+        match once() {
+            Err(Error::Service { .. }) if tried < attempts => {
+                tried += 1;
+                wait();
+            }
+            result => return result,
+        }
+    }
+}
+
+fn run_once(step: &Step) -> Result<()> {
     let output = sheprd_client::new_command(step.program)
         .args(&step.args)
         .stdin(std::process::Stdio::null())

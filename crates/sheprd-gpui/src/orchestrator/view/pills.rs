@@ -1,8 +1,8 @@
 //! The row under a section's search: a pill per backend, each with how many
-//! of the shown list's items it holds, then the Project and Author pickers
-//! (`pickers.rs`). Picking some narrows the list to them; none picked lists
-//! everything. The row shows only when there is more than one to choose
-//! between.
+//! of the shown list's items it holds, then the Author picker (`pickers.rs`).
+//! Picking some narrows the list to them; none picked lists everything. The
+//! row shows only when there is more than one to choose between. Projects
+//! narrow through their own menu (`projects`).
 
 use super::{OrchestratorView, inbox::provider_mark, rows::Tab};
 use crate::orchestrator::Provider;
@@ -17,6 +17,7 @@ impl OrchestratorView {
             match tab {
                 Tab::Issues => &repo.issue_rows,
                 Tab::PullRequests => &repo.pull_request_rows,
+                Tab::Tasks => &repo.task_rows,
             }
         }
         let mut backends: Vec<(Provider, usize)> = Vec::new();

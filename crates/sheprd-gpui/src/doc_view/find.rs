@@ -388,7 +388,7 @@ impl DocEditor {
                 .opacity(shown)
                 .mt(px(-(1. - shown) * 4.))
                 .on_key_down(cx.listener(Self::find_key_down))
-                .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
+                .on_scroll(|_, _, cx| cx.stop_propagation())
                 .child(
                     div()
                         .id("doc-find-input")

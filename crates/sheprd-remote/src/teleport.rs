@@ -8,6 +8,7 @@
 //! cloud provider's authenticated command).
 
 pub mod carry;
+mod core;
 mod credentials;
 pub mod error;
 mod fresh;
@@ -20,17 +21,18 @@ pub mod marks;
 pub mod provision;
 pub mod remote;
 mod sessions;
-pub mod snapshot;
+pub use sheprd_client::herdr::snapshot;
 mod warning;
 
 pub use {
     error::{Error, Step},
     fresh::{
         Created, Naming, NewCheckout, Origin as FreshOrigin, Prepared, base_commit,
-        dispatch_workspace, dispatch_worktree, prepare,
+        dispatch_kept_workspace, dispatch_kept_worktree, dispatch_workspace, dispatch_worktree,
+        prepare,
     },
     host::{Host, installed_programs_script},
-    job::{HostRepositories, Place, Retired, Source, open_repositories},
+    job::{HostRepositories, Keeping, Landed, Place, Retired, Source, open_repositories},
     launch::AgentKind,
     marks::{Mark, Marks},
     snapshot::{

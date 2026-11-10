@@ -166,6 +166,7 @@ impl SheprdWindow {
         let theme_revision = crate::settings_window::theme_load_revision(cx);
         let layout_revision = crate::settings_window::layout_load_revision(cx);
         let sidebar_revision = crate::settings_window::sidebar_load_revision(cx);
+        let layouts = cx.default_global::<crate::window::LayoutSaves>().stamp();
         // Loaders resolve the theme for the appearance when they start.
         let light = crate::app::light_appearance(cx);
         let load = cx.background_executor().spawn(async move { load() });
@@ -177,6 +178,9 @@ impl SheprdWindow {
                 // Apply a coherent pair only after both have loaded successfully.
                 match loaded {
                     Ok((mut config, mut theme)) => {
+                        // Before the Settings drafts: a draft being edited wins.
+                        cx.default_global::<crate::window::LayoutSaves>()
+                            .keep_newer(layouts, &mut config);
                         crate::settings_window::apply_loaded_layout(&mut config, layout_revision, cx);
                         crate::settings_window::apply_loaded_sidebar(&mut config, sidebar_revision, cx);
                         crate::settings_window::apply_loaded_theme(&mut config, &mut theme, theme_revision, cx);
@@ -211,6 +215,9 @@ impl SheprdWindow {
                         }
                         if config.status_bar.show != this.config.status_bar.show {
                             this.status_bar_visible = config.status_bar.show;
+                        }
+                        if config.show_menu_bar != this.config.show_menu_bar {
+                            this.menu_bar_visible = config.show_menu_bar;
                         }
                         this.config = config.clone();
                         // i18n: data
@@ -389,13 +396,16 @@ impl SheprdWindow {
                 | Command::RemotePair
                 | Command::ToggleStatusBar
                 | Command::ToggleSidebarPorts
+                | Command::ToggleMenuBar
                 | Command::ToggleModPanel
                 | Command::FocusNextRegion
                 | Command::FocusPreviousRegion
                 | Command::ToggleZenMode
                 | Command::DevicesOverview
+                | Command::NotificationHistory
                 | Command::NewCoreTerminal
                 | Command::MirrorCorePane
+                | Command::ConvertToChat
                 | Command::IncreaseFontSize
                 | Command::DecreaseFontSize
                 | Command::ResetFontSize

@@ -3,6 +3,12 @@ import Foundation
 /// What one computer lists: `GET /api/v2/home` and the live socket's
 /// `home` message (`crates/sheprd-remote-control/src/native/model.rs`).
 public struct Home: Codable, Hashable, Sendable {
+    /// The `api` this app relies on: `API_LEVEL` in the daemon's `model.rs`
+    /// raised to something new means raising this with it.
+    public static let requiredAPI = 1
+
+    /// What the computer's daemon offers phones; older computers leave it out.
+    public var api: Int?
     public var computer: String
     public var fingerprint: String
     /// Whether the computer's Herdr daemon is reachable.
@@ -12,21 +18,62 @@ public struct Home: Codable, Hashable, Sendable {
     /// The computer's CPU and memory; absent until it first read them, and
     /// from older computers.
     public var load: Load?
+    /// Agents working now, counted one by one, as a terminal tab lists only
+    /// its most pressing agent; older computers leave it out.
+    public var working: Int?
+    /// The release serving, to show; older computers leave it out.
+    public var version: String?
     public var workspaces: [Workspace]
+    /// The tags this computer keeps; older computers leave them out.
+    public var tags: Tags?
 
-    public init(computer: String, fingerprint: String, connected: Bool, waiting: Int, load: Load? = nil, workspaces: [Workspace]) {
+    public init(api: Int? = nil, computer: String, fingerprint: String, connected: Bool, waiting: Int, load: Load? = nil, working: Int? = nil, version: String? = nil, workspaces: [Workspace], tags: Tags? = nil) {
+        self.api = api
         self.computer = computer
         self.fingerprint = fingerprint
         self.connected = connected
         self.waiting = waiting
         self.load = load
+        self.working = working
+        self.version = version
         self.workspaces = workspaces
+        self.tags = tags
     }
 
-    /// Whole percentages, 0 to 100.
+    /// A computer's tags and when they were last edited, also the body and
+    /// answer of `PUT /api/v2/tags`.
+    public struct Tags: Codable, Hashable, Sendable {
+        public var tags: [String]
+        public var updatedMs: UInt64
+
+        public init(tags: [String], updatedMs: UInt64) {
+            self.tags = tags
+            self.updatedMs = updatedMs
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case tags
+            case updatedMs = "updated_ms"
+        }
+    }
+
+    /// Whether the computer runs a Sheprd too old for this app.
+    public var needsUpdate: Bool { (api ?? 0) < Self.requiredAPI }
+
+    /// CPU and memory in whole percentages, 0 to 100. Older computers
+    /// send neither `cores` nor `load5Tenths`, and a computer whose OS
+    /// keeps no load average leaves that out.
     public struct Load: Codable, Hashable, Sendable {
+        public var cores: Int?
         public var cpu: Int
+        /// The 5 minute load average, in tenths.
+        public var load5Tenths: Int?
         public var memory: Int
+
+        enum CodingKeys: String, CodingKey {
+            case cores, cpu, memory
+            case load5Tenths = "load5_tenths"
+        }
     }
 
     public struct Workspace: Codable, Hashable, Sendable, Identifiable {
@@ -36,13 +83,23 @@ public struct Home: Codable, Hashable, Sendable {
         public var cwd: String
         /// The repository checkout it is; older computers leave it out.
         public var worktree: Worktree?
+        /// The Herdr session it is in, when its computer names one; older
+        /// computers, and Herdr 2 workspaces, leave it out.
+        public var session: String?
         public var pullRequest: PullRequest?
+        /// Commits on its branch that no pull request carries yet; older
+        /// computers leave it out.
+        public var unopenedCommits: Int?
         public var chats: [ChatRow]
         public var terminals: [TerminalRow]
 
+        /// Its pull request is merged, so the work here is done.
+        public var merged: Bool { pullRequest?.tone == .merged }
+
         enum CodingKeys: String, CodingKey {
-            case id, label, branch, cwd, worktree, chats, terminals
+            case id, label, branch, cwd, worktree, session, chats, terminals
             case pullRequest = "pull_request"
+            case unopenedCommits = "unopened_commits"
         }
     }
 
@@ -117,14 +174,41 @@ public struct Home: Codable, Hashable, Sendable {
         public var label: String
         public var cwd: String?
         public var zoomed: Bool
+        /// What its menu may do besides closing (`rename`, `split`,
+        /// `zoom`): a Herdr desktop space's tab keeps its layout and names
+        /// there. Older computers send none and allow them all.
+        public var actions: [String]? = nil
         public var panes: [Pane]
         /// The agent Herdr detects in it, the most pressing first.
         public var agent: DetectedAgent?
+        /// What the tab's menu may move into a chat
+        /// (`POST /api/v2/term/{pane}/convert`); absent when nothing can,
+        /// and from older computers.
+        public var convert: ConvertOffer?
 
         public var id: String { tab }
 
+        /// A terminal agent that may move into a chat: its pane, and which
+        /// agent it is, which the request names back so a computer refuses
+        /// one replaced since.
+        public struct ConvertOffer: Codable, Hashable, Sendable {
+            /// Herdr's name for the agent, such as `claude`.
+            public var agent: String
+            public var pane: String
+        }
+
         /// The pane a phone opens first: the focused one, else the first.
         public var firstPane: Pane? { panes.first { $0.focused } ?? panes.first }
+
+        /// What a terminal tab's menu may do with it.
+        public enum Action: String, Sendable {
+            case rename, split, zoom
+        }
+
+        /// Whether the computer would do `action` with this tab.
+        public func offers(_ action: Action) -> Bool {
+            actions?.contains(action.rawValue) ?? true
+        }
 
         public struct Pane: Codable, Hashable, Sendable, Identifiable {
             public var pane: String
@@ -141,6 +225,14 @@ public struct Home: Codable, Hashable, Sendable {
             public var pane: String?
             /// What it works on, from its terminal title.
             public var title: String?
+            /// When the computer saw it last change state; unknown until
+            /// it does, and from older computers.
+            public var changedMs: UInt64?
+
+            enum CodingKeys: String, CodingKey {
+                case name, status, pane, title
+                case changedMs = "changed_ms"
+            }
         }
 
         /// The pane a phone opens for the tab's agent: its own, else the

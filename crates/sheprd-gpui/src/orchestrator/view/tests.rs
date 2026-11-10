@@ -1,16 +1,19 @@
 use super::rows::*;
 use crate::orchestrator::{
-    Activity, Backend, HerdrSession, Item, ItemKey, Owner, Provider, Run, RunState, SourceKey,
-    Workspace,
+    Activity, Backend, HerdrSession, Item, ItemKey, Owner, Pane, Provider, Run, RunState,
+    SourceKey, Workspace,
 };
 use chrono::{DateTime, Utc};
 use sheprd_client::protocol::AgentStatus;
 
+mod author_column;
+mod azure_browse;
 mod banners;
-mod check_counts;
+mod browse_pages;
 mod clicks;
 mod conversation;
 mod conversation_list;
+mod core_runs;
 mod dialog;
 mod empty;
 mod en_xa;
@@ -41,16 +44,22 @@ mod pickers;
 mod pills;
 mod pr_creators;
 mod pr_empty;
+mod pr_standing;
+mod pr_status;
+mod project_filter;
 mod refresh;
 mod repo_name;
 mod review_requested;
 mod row_start;
 mod rows;
+mod search_row;
 mod section_banners;
 mod sessions;
 mod sign_in;
 mod source_chip;
 mod status;
+mod stores;
+mod tasks;
 mod twin_text;
 mod twins;
 
@@ -88,6 +97,8 @@ fn item(provider: Provider, id: &str, title: &str, updated: &str) -> Item {
         labels: Vec::new(),
         parent_id: None,
         blocked_by: Vec::new(),
+        assignee: None,
+        acceptance: None,
         priority: None,
         created_at: Some(at(updated)),
         updated_at: Some(at(updated)),
@@ -124,8 +135,10 @@ fn session(run: &Run, pane: &str) -> HerdrSession {
         run_id: run.id.clone(),
         host: None,
         session: None,
-        workspace_id: format!("w-{}", run.id),
-        pane_id: pane.into(),
+        pane: Pane::Herdr1 {
+            workspace_id: format!("w-{}", run.id),
+            pane_id: pane.into(),
+        },
         agent_name: format!("herdr-gpui-{}", run.id),
         updated_at: run.started_at,
     }
@@ -180,6 +193,7 @@ pub(super) fn open_linear(
     use gpui::AppContext;
     let dir = tempfile::tempdir().unwrap();
     let request = Request {
+        azure_store: Default::default(),
         target: sheprd_client::ConnectTarget::Local,
         checkout: dir.path().join("missing").to_string_lossy().into_owned(),
         workspace_id: "w1".into(),

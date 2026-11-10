@@ -21,6 +21,7 @@ pub(super) enum SidebarKey {
     Numbers,
     ActivityBar,
     Automations,
+    PortsCount,
     ChangeCounts,
     Ports,
     Host(String),
@@ -37,6 +38,7 @@ impl SidebarKey {
         Self::Numbers,
         Self::ActivityBar,
         Self::Automations,
+        Self::PortsCount,
         Self::ChangeCounts,
         Self::Ports,
     ];
@@ -54,6 +56,7 @@ impl SidebarKey {
             Self::Numbers => to.numbers = from.numbers,
             Self::ActivityBar => to.activity_bar = from.activity_bar,
             Self::Automations => to.automations = from.automations,
+            Self::PortsCount => to.ports_count = from.ports_count,
             Self::ChangeCounts => to.change_counts = from.change_counts,
             Self::Ports => to.ports = from.ports,
             Self::Host(host) => match from.hosts.get(host) {
@@ -80,6 +83,7 @@ impl SidebarKey {
             Self::Numbers => Preference::SidebarNumbers(style.numbers),
             Self::ActivityBar => Preference::SidebarActivityBar(style.activity_bar),
             Self::Automations => Preference::SidebarAutomations(style.automations),
+            Self::PortsCount => Preference::SidebarPortsCount(style.ports_count),
             Self::ChangeCounts => Preference::SidebarChangeCounts(style.change_counts),
             Self::Ports => Preference::SidebarPorts(style.ports),
             Self::Host(host) => Preference::HostColor {
@@ -101,6 +105,7 @@ impl SidebarKey {
             Self::Numbers => before.numbers != after.numbers,
             Self::ActivityBar => before.activity_bar != after.activity_bar,
             Self::Automations => before.automations != after.automations,
+            Self::PortsCount => before.ports_count != after.ports_count,
             Self::ChangeCounts => before.change_counts != after.change_counts,
             Self::Ports => before.ports != after.ports,
             Self::Host(host) => before.hosts.get(host) != after.hosts.get(host),

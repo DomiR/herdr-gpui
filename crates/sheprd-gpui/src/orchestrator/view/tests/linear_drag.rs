@@ -62,6 +62,7 @@ fn key(id: &str) -> String {
 fn open_view(cx: &mut TestAppContext) -> (Entity<OrchestratorView>, &mut VisualTestContext) {
     let dir = tempfile::tempdir().unwrap();
     let request = Request {
+        azure_store: Default::default(),
         target: sheprd_client::ConnectTarget::Local,
         checkout: dir.path().join("missing").to_string_lossy().into_owned(),
         workspace_id: "w1".into(),

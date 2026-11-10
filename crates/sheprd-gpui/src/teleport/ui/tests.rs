@@ -1,9 +1,14 @@
 //! A Teleport dialog at each stage, with what the stage shows as data.
 use super::*;
-use crate::teleport::{Host, Node, Repository, SourceState, TabPlan, launch::Work};
+use crate::teleport::{
+    Host, Keeping, Landed, Node, Repository, SourceState, TabPlan, launch::Work,
+};
 use sheprd_client::ConnectTarget;
 
+mod closing;
 mod en_xa;
+mod kept;
+mod opening;
 
 fn place(label: &str) -> Place {
     Place {
@@ -17,11 +22,14 @@ fn source() -> Source {
     Source {
         place: place("laptop"),
         workspace_id: "w1".into(),
+        keeping: Keeping::Herdr1,
         custom_label: None,
         repo_key: "repo".into(),
         repo_label: "herdr".into(),
         branch: Some("feature".into()),
         tab_labels: Default::default(),
+        core_tabs: Vec::new(),
+        core_preferred: false,
     }
 }
 
@@ -37,6 +45,7 @@ fn candidate() -> Candidate {
             reason: MatchReason::Name,
         },
         origin: None,
+        lands_in: Keeper::Herdr1,
     }
 }
 
@@ -59,6 +68,8 @@ fn review(github: GitHubAccess) -> Review {
         },
         tabs: vec![
             TabPlan {
+                generation: Generation::Herdr1,
+                into: Generation::Herdr2,
                 label: None,
                 tree: Node::Pane("p1".into()),
                 panes: vec![
@@ -67,6 +78,8 @@ fn review(github: GitHubAccess) -> Review {
                 ],
             },
             TabPlan {
+                generation: Generation::Herdr1,
+                into: Generation::Herdr1,
                 label: Some("agents".into()),
                 tree: Node::Pane("p3".into()),
                 panes: vec![pane("p3", Action::Missing("aider".into()))],
@@ -90,11 +103,13 @@ pub(super) fn stages() -> Vec<(&'static str, Teleport)> {
             place: place("buildbox"),
             repositories: Some(Vec::new()),
             retired: Vec::new(),
+            lands_in: Keeper::Herdr1,
         },
         HostRepositories {
             place: place("nas"),
             repositories: None,
             retired: Vec::new(),
+            lands_in: Keeper::Herdr1,
         },
     ];
     vec![

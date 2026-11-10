@@ -8,6 +8,7 @@ fn home_draws_its_controls_as_line_icons() {
     let layout = Layout {
         connected: true,
         boot: "b".into(),
+        working: 0,
         workspaces: vec![workspace(vec![row("p1")])],
     };
     let summaries = HashMap::new();
@@ -44,4 +45,13 @@ fn agents_show_their_logos_not_symbols() {
         agent_icon(Some("copilot"), "").into_string(),
         agent_icon(Some("pi"), "").into_string()
     );
+    // Herdr names these; each has its own logo, not the generic one.
+    let generic = agent_icon(None, "").into_string();
+    for agent in ["grok", "cursor", "agy"] {
+        assert_ne!(
+            agent_icon(Some(agent), "").into_string(),
+            generic,
+            "{agent}"
+        );
+    }
 }

@@ -6,6 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/sheprd-labs/sheprd/actions/workflows/ci.yml"><img src="https://github.com/sheprd-labs/sheprd/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://discord.gg/GE4JRp8kaX"><img src="https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white" alt="Join the Sheprd Discord"></a>
 </p>
 
 <p align="center">
@@ -23,7 +24,8 @@ A native Rust/GPUI workspace for terminals and AI agents on macOS, Linux, and
 Windows. Organize repositories, worktrees, tabs and splits; chat with agents,
 review their changes, track pull requests and usage, and work across local,
 SSH and cloud machines. Browser previews, automations, mods and phone remote
-control connect those workflows in one app.
+control connect those workflows in one app. The iPhone and iPad app is in a
+[TestFlight beta](https://sheprd.org/testflight/).
 
 Sheprd supports both an existing [Herdr](https://herdr.dev/) daemon and
 [herdr-core terminals](crates/sheprd-gpui/README.md#herdr-2-terminals). Releases
@@ -159,9 +161,10 @@ Then install the latest stable release:
 
 | Platform | Command |
 | --- | --- |
-| macOS | `brew install penso/tap/herdr-gpui` |
-| Linux (APT, DNF or pacman) | `curl -fsSL https://sheprd.org/install.sh \| sh` |
+| macOS | `brew install sheprd-labs/tap/sheprd` |
+| Linux (APT, DNF, zypper or pacman) | `curl -fsSL https://sheprd.org/install.sh \| sh` |
 | Windows (PowerShell) | `irm https://sheprd.org/install.ps1 \| iex` |
+| iPhone and iPad (beta) | Join on TestFlight: [sheprd.org/testflight](https://sheprd.org/testflight/) |
 
 Details, manual downloads, and other methods follow. Coding agents can read
 [sheprd.org/llms.txt](https://sheprd.org/llms.txt) for the same steps.
@@ -177,25 +180,21 @@ Requires [Homebrew](https://brew.sh/) and macOS 14.2 Sonoma or newer, on Apple
 Silicon or Intel. The cask installs the signed, notarized universal app.
 
 ```sh
-brew install penso/tap/herdr-gpui
-open /Applications/Herdr.app
+brew install sheprd-labs/tap/sheprd
+open /Applications/Sheprd.app
 ```
 
-`brew install` resolves casks directly, so `--cask` is not required. To update it
-later, or to install by its short name, tap once first:
+`brew install` resolves casks directly, so `--cask` is not required. Use the full
+name: it taps `sheprd-labs/tap` and trusts the cask for you, which Homebrew requires
+for any non-official tap. `brew install sheprd` alone needs `brew trust --cask
+sheprd-labs/tap/sheprd` first.
 
-```sh
-brew tap penso/tap
-brew install herdr-gpui
-```
-
-The stable cask token remains `herdr-gpui` in `penso/tap`. It displays **Sheprd**
-and installs the `Sheprd.app` payload at the legacy `Herdr.app` target so existing
-clients can restart in place. The cask is published from the
-[tap](https://github.com/penso/homebrew-tap) by the
-release workflow. A cask install updates itself through Homebrew: the in-app
-updater detects that Homebrew owns the bundle and runs `brew upgrade --cask
-herdr-gpui` for you, so Homebrew's records stay correct. If its metadata is stale,
+The cask is published to the [tap](https://github.com/sheprd-labs/homebrew-tap) by
+the release workflow. Installs from the older `penso/tap` keep upgrading as
+`herdr-gpui` at `Herdr.app`, because every release publishes there too. A cask
+install updates itself through Homebrew: the in-app updater detects that Homebrew
+owns the bundle and runs `brew upgrade --cask` on its cask for you, so Homebrew's
+records stay correct. If its metadata is stale,
 the updater runs `brew update` and retries once. The update panel shows progress
 throughout. macOS `.dmg`, Linux packages, and Windows installers
 and `.zip`s are also published on [Releases](https://github.com/sheprd-labs/sheprd/releases).
@@ -210,7 +209,8 @@ and Homebrew takes it back at its next upgrade.
 
 Each release publishes x86_64 and ARM64 builds as a `.deb`, an `.rpm`, an Arch
 Linux package, and a plain tarball, all containing the same executable. They need
-glibc 2.39 or newer (Ubuntu 24.04, Debian 13, Fedora 40, current Arch, or later).
+glibc 2.39 or newer (Ubuntu 24.04, Debian 13, Fedora 40, current Arch, openSUSE
+Tumbleweed or Leap 16, or later).
 The install script picks the package for your architecture and package manager,
 checks it against the release's published SHA-256, and installs it with `sudo`:
 
@@ -226,6 +226,8 @@ download the file for your architecture from
 sudo apt install ./Sheprd-VERSION-x86_64-unknown-linux-gnu.deb      # Debian, Ubuntu
 sudo dnf install ./Sheprd-VERSION-x86_64-unknown-linux-gnu.rpm      # Fedora
 sudo pacman -U Sheprd-VERSION-x86_64-unknown-linux-gnu.pkg.tar.zst  # Arch Linux
+# openSUSE: the release RPM is unsigned, which zypper stops on without the flag
+sudo zypper install --allow-unsigned-rpm ./Sheprd-VERSION-x86_64-unknown-linux-gnu.rpm
 ```
 
 The internal package name remains `herdr-gpui`; packages provide the canonical
@@ -239,7 +241,8 @@ return to its workspace. On Arch Linux, install `vulkan-radeon` for AMD or
 `vulkan-intel` for Intel. **App Updates** detects which
 package manager owns the installed executable, downloads the matching `.deb`,
 `.rpm`, or Arch package, verifies its signed release metadata and checksum, then
-installs it through APT, DNF, or pacman with a PolicyKit authentication prompt.
+installs it through APT, DNF, zypper, or pacman with a PolicyKit authentication
+prompt. An `.rpm` goes to DNF where the host has it and to zypper on openSUSE.
 The authorized helper verifies and installs a protected root-owned copy.
 Choose **Restart** after installation; daemon and terminal sessions stay running.
 This requires `pkexec` and your desktop's PolicyKit authentication agent. Older
@@ -301,7 +304,7 @@ too.
 ### From source
 
 Install Rust/rustup and, on macOS, the Xcode command-line tools. The repository
-pins Rust 1.96.1 and GPUI 0.3.6 (the `gpui-pre` snapshot crate); the Rust version
+pins Rust 1.99.0 and GPUI 0.3.10 (the `gpui-pre` snapshot crate); the Rust version
 is declared in `rust-toolchain.toml` and mirrored in `mise.toml`, so `mise install`
 also provisions it.
 

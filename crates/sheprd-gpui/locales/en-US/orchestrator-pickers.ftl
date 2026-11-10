@@ -1,5 +1,4 @@
-# The Project and Author pickers under a section's search.
-orchestrator-pickers-project = Project
+# The Author picker under a section's search.
 orchestrator-pickers-author = Author
 orchestrator-pickers-narrow = Narrow…
 orchestrator-pickers-clear = Clear

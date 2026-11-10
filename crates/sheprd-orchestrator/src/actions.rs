@@ -4,18 +4,24 @@
 //! start never holds up syncing, and writes only runs herdr-gpui owns.
 
 use super::{
-    Error, HerdrSession, Owner, Result, Run, RunState, SourceKey, Store, beads,
+    Error, HerdrSession, ItemKey, Owner, Provider, Result, Run, RunState, SourceKey, Store,
+    Terminals, beads,
     error::script,
-    model::{Backend, Workspace},
+    model::{Backend, Pane, Workspace},
 };
 use chrono::Utc;
 use sheprd_client::{ConnectTarget, shell_quote};
-use sheprd_remote::teleport::{
-    self, AgentKind, Envelope, FreshOrigin, Host, HostRepositories, HostSnapshot, SnapshotResult,
-    WorkspaceCreated, WorktreeCreated,
+pub use sheprd_remote::work::valid_model;
+use sheprd_remote::{
+    teleport::{
+        self, AgentKind, Envelope, FreshOrigin, Host, HostRepositories, HostSnapshot,
+        SnapshotResult, WorkspaceCreated, WorktreeCreated,
+    },
+    work::{self, Opened, Worktree},
 };
 use std::{path::PathBuf, sync::atomic::AtomicBool};
 
+mod herdr2;
 mod start;
 
 /// How long `herdr agent start` may wait for the agent to be ready.
@@ -58,6 +64,19 @@ pub struct DispatchRequest {
     pub base: Option<String>,
     /// Another host to start on; the repository's own when `None`.
     pub elsewhere: Option<Elsewhere>,
+    /// Which Herdr starts the work on the repository's own host. A dispatch
+    /// elsewhere goes through Herdr 1 there.
+    pub terminals: Terminals,
+}
+
+impl DispatchRequest {
+    /// The item's key when it is a bead.
+    fn bead(&self) -> Option<ItemKey> {
+        self.item_key
+            .parse::<ItemKey>()
+            .ok()
+            .filter(|key| key.source.provider == Provider::Beads)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -84,6 +103,15 @@ pub enum Action {
 }
 
 impl Action {
+    /// Whether it changes a source's items, which the next sync then shows.
+    pub(crate) fn changes_items(&self) -> bool {
+        match self {
+            Self::DeleteBead { .. } => true,
+            Self::Dispatch(request) => request.bead().is_some(),
+            Self::Stop { .. } | Self::Send { .. } | Self::Remove { .. } => false,
+        }
+    }
+
     /// What the user reads once it succeeded.
     fn done(&self) -> Done {
         match self {
@@ -111,30 +139,24 @@ pub enum Done {
     // keep-sorted end
 }
 
-/// Whether `model` is a name an agent's `--model` could take: no spaces,
-/// controls, or leading dash, so it cannot become another option.
-pub fn valid_model(model: &str) -> bool {
-    !model.is_empty()
-        && model.len() <= 128
-        && !model.starts_with('-')
-        && model
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '/' | ':' | '@'))
-}
-
 /// Runs `action` to completion; what it did, or why it failed.
 pub fn perform(site: &Site, action: &Action, cancelled: &AtomicBool) -> Result<Done> {
     match action {
         Action::Dispatch(request) => dispatch(site, request, cancelled)?,
         Action::Stop { run } => {
             let (mut store, mut found, session, host) = own_run(site, run)?;
-            for key in ["esc", "ctrl+c"] {
-                herdr(
-                    &host,
-                    &["agent", "send-keys", &session.pane_id, key],
-                    "Stopping the agent",
-                    cancelled,
-                )?;
+            match &session.pane {
+                Pane::Herdr1 { pane_id, .. } => {
+                    for key in ["esc", "ctrl+c"] {
+                        herdr(
+                            &host,
+                            &["agent", "send-keys", pane_id, key],
+                            "Stopping the agent",
+                            cancelled,
+                        )?;
+                    }
+                }
+                Pane::Herdr2 { terminal } => herdr2::stop(&host, terminal, cancelled)?,
             }
             found.state = RunState::Cancelled;
             found.updated_at = Utc::now();
@@ -142,12 +164,17 @@ pub fn perform(site: &Site, action: &Action, cancelled: &AtomicBool) -> Result<D
         }
         Action::Send { run, text } => {
             let (_, _, session, host) = own_run(site, run)?;
-            herdr(
-                &host,
-                &["agent", "prompt", &session.pane_id, text],
-                "Sending the message",
-                cancelled,
-            )?;
+            match &session.pane {
+                Pane::Herdr1 { pane_id, .. } => {
+                    herdr(
+                        &host,
+                        &["agent", "prompt", pane_id, text],
+                        "Sending the message",
+                        cancelled,
+                    )?;
+                }
+                Pane::Herdr2 { terminal } => herdr2::send(&host, terminal, text, cancelled)?,
+            }
         }
         Action::Remove { run } => {
             let (mut store, found, session) = owned(site, run)?;
@@ -230,7 +257,8 @@ fn herdr(
 /// recorded at dispatch goes stale once the run's pane is gone. A workspace
 /// the snapshot still lists goes through Herdr, which also closes its panes;
 /// a gone one has its recorded checkout removed with git, which only the
-/// workspace could have asked Herdr to do.
+/// workspace could have asked Herdr to do. A Herdr 2 run's agent is ended
+/// and its checkout removed with git, as herdr-core keeps no worktrees.
 fn remove_worktree(
     site: &Site,
     session: &HerdrSession,
@@ -238,8 +266,11 @@ fn remove_worktree(
     cancelled: &AtomicBool,
 ) -> Result<()> {
     const READING: &str = "Reading the workspaces";
-    const REMOVING: &str = "Removing the worktree";
     let host = host_of(site, session)?;
+    if let Pane::Herdr2 { terminal } = &session.pane {
+        herdr2::end(&host, terminal);
+        return remove_checkout(&host, workspace, cancelled);
+    }
     let alive = host_snapshot(&host, READING, cancelled)?;
     if alive.workspace(&workspace.id).is_some() {
         herdr(
@@ -256,8 +287,15 @@ fn remove_worktree(
         )?;
         return Ok(());
     }
-    // Without the workspace only its checkout could remain; a run without
-    // a recorded one has nothing on the host to remove.
+    remove_checkout(&host, workspace, cancelled)
+}
+
+const REMOVING: &str = "Removing the worktree";
+
+/// The checkout a run recorded, removed with Git: all a Herdr 1 workspace
+/// that is gone could leave, and all a Herdr 2 run has.
+fn remove_checkout(host: &Host, workspace: &Workspace, cancelled: &AtomicBool) -> Result<()> {
+    // A run without a recorded checkout has nothing on the host to remove.
     let Some(path) = workspace.path.as_deref() else {
         return Ok(());
     };
@@ -341,17 +379,43 @@ pub fn start_agent(
     start::agent(host, &args, pane, terminal, cancelled)
 }
 
-/// Where the new worktree goes: the host, its target, the workspace whose
-/// repository gets it, and the base commit.
+/// Where the new worktree goes: the host, its target, the repository that
+/// gets it (a Herdr 1 workspace of it, or a checkout for Herdr 2), and the
+/// base commit.
 struct Destination {
     host: Host,
     target: ConnectTarget,
-    workspace_id: String,
+    repository: work::Repository,
     commit: String,
     prepared: Option<teleport::Prepared>,
 }
 
+/// Dispatches `request`. An agent sent to a bead claims it first, on the
+/// host of its database, so a bead someone holds starts nothing. A launch
+/// that fails gives the claim back, so nothing stays in progress that no
+/// agent is working on; the bead's status is otherwise the agent's to change.
 fn dispatch(site: &Site, request: &DispatchRequest, cancelled: &AtomicBool) -> Result<()> {
+    let Some(key) = request.bead() else {
+        return start_run(site, request, cancelled);
+    };
+    let claim = beads::claim::take(&site.host, &key.source, &key.native_id, cancelled)?;
+    let outcome = start_run(site, request, cancelled);
+    if outcome.is_err() {
+        // Run even when cancelled, as a failed run's worktree is removed.
+        let released =
+            beads::claim::release(&site.host, &key.source, &claim, &AtomicBool::new(false));
+        if let Err(error) = released {
+            tracing::warn!(
+                category = "orchestrator",
+                %error,
+                "A failed dispatch could not give its claim back"
+            );
+        }
+    }
+    outcome
+}
+
+fn start_run(site: &Site, request: &DispatchRequest, cancelled: &AtomicBool) -> Result<()> {
     let mut store = Store::open(&site.database)?;
     let name = agent_name();
     let now = Utc::now();
@@ -369,7 +433,7 @@ fn dispatch(site: &Site, request: &DispatchRequest, cancelled: &AtomicBool) -> R
         owner: Owner::Sheprd,
     };
     store.save_run(&run, None)?;
-    let mut created: Option<(Host, String)> = None;
+    let mut created: Option<(Host, Worktree)> = None;
     let outcome = destination(site, request, cancelled).and_then(|destination| {
         let outcome = launch(
             &destination,
@@ -391,13 +455,20 @@ fn dispatch(site: &Site, request: &DispatchRequest, cancelled: &AtomicBool) -> R
         // A checkout that would not go keeps its session, which names the
         // host, so Remove can try again; one that went is no longer the run's.
         let mut kept = None;
-        if let Some((host, workspace)) = created {
-            let removed = herdr(
-                &host,
-                &["worktree", "remove", "--workspace", &workspace, "--force"],
-                "Removing the worktree",
-                &AtomicBool::new(false),
-            );
+        if let Some((host, worktree)) = created {
+            let removed = match &worktree.opened {
+                Opened::Herdr1 { workspace_id, .. } => herdr(
+                    &host,
+                    &["worktree", "remove", "--workspace", workspace_id, "--force"],
+                    "Removing the worktree",
+                    &AtomicBool::new(false),
+                )
+                .map(drop),
+                Opened::Herdr2 => {
+                    work::remove(&host, &worktree.path, true, &AtomicBool::new(false))
+                        .map_err(Error::from)
+                }
+            };
             if removed.is_ok() {
                 run.workspace = None;
             } else {
@@ -439,7 +510,9 @@ fn destination(
         return Ok(Destination {
             host: elsewhere.destination.place.host.clone(),
             target: elsewhere.target.clone(),
-            workspace_id: prepared.repository.workspace_id.clone(),
+            repository: work::Repository::Herdr1 {
+                workspace_id: prepared.repository.workspace_id.clone(),
+            },
             commit,
             prepared: Some(prepared),
         });
@@ -470,10 +543,19 @@ fn destination(
             operation: "Reading the base commit",
         });
     }
+    let repository = match request.terminals {
+        Terminals::Herdr1 => work::Repository::Herdr1 {
+            workspace_id: parent_workspace(site, &request.workspace_id, cancelled)?,
+        },
+        // Git makes the worktree from any checkout of the repository.
+        Terminals::Herdr2 => work::Repository::Herdr2 {
+            checkout: site.main_root.clone(),
+        },
+    };
     Ok(Destination {
         host: site.host.clone(),
         target: site.target.clone(),
-        workspace_id: parent_workspace(site, &request.workspace_id, cancelled)?,
+        repository,
         commit,
         prepared: None,
     })
@@ -556,9 +638,24 @@ fn launch(
     name: &str,
     run: &mut Run,
     store: &mut Store,
-    created_workspace: &mut Option<(Host, String)>,
+    created_worktree: &mut Option<(Host, Worktree)>,
     cancelled: &AtomicBool,
 ) -> Result<()> {
+    let workspace_id = match &destination.repository {
+        work::Repository::Herdr1 { workspace_id } => workspace_id,
+        work::Repository::Herdr2 { checkout } => {
+            return herdr2::launch(
+                destination,
+                checkout,
+                request,
+                name,
+                run,
+                store,
+                created_worktree,
+                cancelled,
+            );
+        }
+    };
     let host = &destination.host;
     let output = herdr(
         host,
@@ -566,7 +663,7 @@ fn launch(
             "worktree",
             "create",
             "--workspace",
-            &destination.workspace_id,
+            workspace_id,
             "--branch",
             &request.branch,
             "--base",
@@ -582,7 +679,16 @@ fn launch(
             source,
         })?
         .result;
-    *created_workspace = Some((host.clone(), created.workspace.workspace_id.clone()));
+    *created_worktree = Some((
+        host.clone(),
+        Worktree {
+            path: created.worktree.path.clone(),
+            opened: Opened::Herdr1 {
+                workspace_id: created.workspace.workspace_id.clone(),
+                pane_id: created.root_pane.pane_id.clone(),
+            },
+        },
+    ));
     let (ssh, session) = place(&destination.target);
     run.workspace = Some(Workspace {
         backend: Backend::Herdr,
@@ -597,8 +703,10 @@ fn launch(
         run_id: run.id.clone(),
         host: ssh,
         session,
-        workspace_id: created.workspace.workspace_id,
-        pane_id: created.root_pane.pane_id,
+        pane: Pane::Herdr1 {
+            workspace_id: created.workspace.workspace_id,
+            pane_id: created.root_pane.pane_id.clone(),
+        },
         agent_name: name.to_owned(),
         updated_at: run.updated_at,
     };
@@ -610,7 +718,7 @@ fn launch(
         "--kind",
         request.kind.name(),
         "--pane",
-        &herdr_session.pane_id,
+        &created.root_pane.pane_id,
         "--timeout",
         AGENT_START_TIMEOUT_MS,
     ];
@@ -621,7 +729,7 @@ fn launch(
     start::agent(
         host,
         &start,
-        &herdr_session.pane_id,
+        &created.root_pane.pane_id,
         created.root_pane.terminal_id.as_deref(),
         cancelled,
     )?;
@@ -642,7 +750,7 @@ fn launch(
         )?;
         herdr(
             host,
-            &["pane", "rename", &herdr_session.pane_id, &title],
+            &["pane", "rename", &created.root_pane.pane_id, &title],
             "Naming the agent pane",
             cancelled,
         )?;
@@ -650,7 +758,12 @@ fn launch(
     // The pane is the target: a name could match an agent started elsewhere.
     herdr(
         host,
-        &["agent", "prompt", &herdr_session.pane_id, &request.prompt],
+        &[
+            "agent",
+            "prompt",
+            &created.root_pane.pane_id,
+            &request.prompt,
+        ],
         "Sending the prompt",
         cancelled,
     )?;

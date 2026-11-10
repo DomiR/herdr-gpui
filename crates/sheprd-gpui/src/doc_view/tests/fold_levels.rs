@@ -9,14 +9,14 @@ fn bind(cx: &mut TestAppContext, fold_keys_last: bool) {
         cx.on_action(|_: &crate::actions::RunCommand, _| {});
         let app_bindings = [
             KeyBinding::new(
-                &primary("1"),
+                Box::leak(primary("1").into_boxed_str()),
                 crate::actions::RunCommand {
                     command: sheprd_commands::Command::TabNumber(1),
                 },
                 None,
             ),
             KeyBinding::new(
-                &primary("0"),
+                Box::leak(primary("0").into_boxed_str()),
                 crate::actions::RunCommand {
                     command: sheprd_commands::Command::ResetFontSize,
                 },

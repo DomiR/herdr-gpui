@@ -42,6 +42,8 @@ pub fn retry_wait(error: &Error, cooldown: Option<Duration>, failures: u32) -> O
             sheprd_github::Error::RepositoryHidden { .. } => HIDDEN_BACKOFF,
             _ => BACKOFF,
         },
+        Error::Azure(source) if source.needs_user() => HIDDEN_BACKOFF,
+        Error::Azure(_) => BACKOFF,
         Error::Gitlab(source) if source.needs_user() => HIDDEN_BACKOFF,
         Error::Gitlab(_) => BACKOFF,
         _ => return Some(BACKOFF),
@@ -59,6 +61,11 @@ fn unreachable(error: &Error) -> bool {
         Error::Github(source) => match **source {
             sheprd_github::Error::Network(_) | sheprd_github::Error::Read(_) => true,
             sheprd_github::Error::Status(status) => server(status),
+            _ => false,
+        },
+        Error::Azure(source) => match source {
+            super::azure::Error::Network { .. } | super::azure::Error::Read(_) => true,
+            super::azure::Error::Status(status) => server(*status),
             _ => false,
         },
         Error::Gitlab(source) => match source {

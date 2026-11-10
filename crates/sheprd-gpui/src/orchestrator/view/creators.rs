@@ -148,7 +148,7 @@ impl OrchestratorView {
                 .child(grouping.label())
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.grouping = grouping;
-                    this.sort_open = false;
+                    this.menu = None;
                     this.refresh_rows();
                     cx.notify();
                 }))

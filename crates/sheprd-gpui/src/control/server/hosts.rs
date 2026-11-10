@@ -2,8 +2,12 @@
 //! `automation approve`: what the
 //! window gathers about its hosts, read from the state it already keeps.
 //! Nothing here starts a lookup, a scan, or a sample of its own; a request
-//! answers from the latest one, and says why when there is none.
+//! answers from the latest one, and says why when there is none. The one
+//! exception is `ports all`, which keeps the Ports section's scan of this
+//! computer running for a minute (see `local_ports`).
 mod automation;
+mod local_ports;
+mod mute;
 mod ports;
 mod pr;
 mod security;
@@ -32,14 +36,18 @@ pub(super) fn serve(
 ) {
     let caller = &call.caller;
     let response = match call.op {
-        HostOp::List => in_window(caller, cx, |view, _, _| Response::Host {
+        HostOp::List => in_window(caller, cx, |view, _, cx| Response::Host {
             reply: Reply::Hosts {
-                hosts: view.control_hosts(),
+                hosts: view.control_hosts(cx),
             },
+        }),
+        HostOp::Mute { host, muted } => in_window(caller, cx, |view, _, cx| {
+            mute::set(view, caller, host.as_deref(), muted, cx)
         }),
         HostOp::Select { id } => in_free_window(caller, cx, |view, _, cx| {
             select(view, &id, |view, id| view.select_endpoint(id, cx))
         }),
+        HostOp::Tag { id, tags } => in_window(caller, cx, |view, _, cx| tag(view, &id, tags, cx)),
         HostOp::Pr => in_window(caller, cx, |view, _, _| pr::status(view, caller)),
         HostOp::PrQuota => in_window(caller, cx, |view, _, _| pr::quota(view)),
         HostOp::PrComments => return pr::comments(call.caller, incoming, watches, cx),
@@ -54,6 +62,10 @@ pub(super) fn serve(
             ports::unforward(view, caller, port, cx)
         }),
         HostOp::OpenPort { port } => return ports::open(call.caller, port, incoming, watches, cx),
+        HostOp::LocalPorts => return local_ports::all(caller, incoming, watches, cx),
+        HostOp::SignalPort { port, action } => {
+            return local_ports::act(caller, port, action, incoming, watches, cx);
+        }
         HostOp::Usage => in_window(caller, cx, |view, _, _| usage(view, SystemTime::now())),
         HostOp::System => in_window(caller, cx, |view, _, _| system(view)),
         HostOp::Security => in_window(caller, cx, |view, _, _| security::alerts(view)),
@@ -130,13 +142,46 @@ impl Place {
             .find(|workspace| workspace.workspace_id == self.workspace)
     }
 
+    /// Whether the window shows this workspace in front: a workspace the
+    /// app keeps for Herdr 2 when one is, else Herdr 1's focused one.
     pub(super) fn focused(&self, view: &SheprdWindow) -> bool {
         self.selected(view)
-            && self
-                .snapshot(view)
-                .and_then(|snapshot| snapshot.focused_workspace_id.as_deref())
-                == Some(self.workspace.as_str())
+            && view
+                .browser_key()
+                .is_some_and(|(_, front)| front == self.workspace)
     }
+}
+
+/// The host named by ID, else by label.
+fn named<'a>(
+    view: &'a SheprdWindow,
+    name: &str,
+) -> Result<&'a crate::endpoint::Endpoint, Response> {
+    view.endpoints
+        .iter()
+        .find(|endpoint| endpoint.id == name)
+        .or_else(|| {
+            view.endpoints
+                .iter()
+                .find(|endpoint| endpoint.label.eq_ignore_ascii_case(name))
+        })
+        .ok_or_else(|| {
+            Response::error(
+                ErrorCode::NotFound,
+                format!("No host is named {name}; `sheprd host list` lists them"),
+            )
+        })
+}
+
+/// Replaces the tags of the host named by ID or label.
+fn tag(view: &mut SheprdWindow, name: &str, tags: Vec<String>, cx: &mut App) -> Response {
+    let endpoint = match named(view, name) {
+        Ok(endpoint) => endpoint,
+        Err(response) => return response,
+    };
+    let (id, label) = (endpoint.id.clone(), endpoint.label.clone());
+    crate::device_tags::DeviceTags::set(cx, &id, tags);
+    Response::done(format!("Tagged {label}"))
 }
 
 /// Shows the host named by ID or label. `choose` is the window's own
@@ -146,20 +191,9 @@ fn select(
     name: &str,
     choose: impl FnOnce(&mut SheprdWindow, &str) -> bool,
 ) -> Response {
-    let found = view
-        .endpoints
-        .iter()
-        .find(|endpoint| endpoint.id == name)
-        .or_else(|| {
-            view.endpoints
-                .iter()
-                .find(|endpoint| endpoint.label.eq_ignore_ascii_case(name))
-        });
-    let Some(endpoint) = found else {
-        return Response::error(
-            ErrorCode::NotFound,
-            format!("No host is named {name}; `sheprd host list` lists them"),
-        );
+    let endpoint = match named(view, name) {
+        Ok(endpoint) => endpoint,
+        Err(response) => return response,
     };
     let (id, label) = (endpoint.id.clone(), endpoint.label.clone());
     if !endpoint.enabled {

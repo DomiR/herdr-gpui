@@ -16,7 +16,7 @@ use super::{
     Input, Lookup, Origin, PullRequest, State,
     batch::{BATCH_LIMIT, Batch},
     lookup::{Finished, Prefetch},
-    model::Outcome,
+    model::{MergeState, Outcome},
     store::{Entry, Store, View},
 };
 use chrono::{DateTime, DurationRound as _, Local, TimeDelta};
@@ -86,14 +86,18 @@ fn due(entry: &Entry, idle: bool) -> Instant {
 }
 
 /// How long an answer stays fresh: the less a pull request can still change,
-/// the less often it is asked about.
+/// the less often it is asked about. GitHub works out whether an open pull
+/// request can merge only once asked, answering UNKNOWN until then, and again
+/// after every push to its base; it is reread as soon as running checks are,
+/// so merge conflicts show on the next read rather than a quiet wait later.
 fn freshness(value: Option<&PullRequest>) -> Duration {
     match value {
         Some(pr) if matches!(pr.state, State::Merged | State::Closed) => SETTLED_REFRESH,
         Some(pr)
-            if pr
-                .check_list()
-                .any(|(_, outcome)| outcome == Outcome::Pending) =>
+            if pr.merge_state_status == MergeState::Unknown
+                || pr
+                    .check_list()
+                    .any(|(_, outcome)| outcome == Outcome::Pending) =>
         {
             REFRESH
         }
@@ -131,6 +135,16 @@ impl Cache {
             None,
             (now, now + REFRESH),
         );
+    }
+
+    /// Fixture: a finished lookup that found no pull request.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn seed_none(&mut self, input: Input, now: Instant) {
+        let mut store = self.store.borrow_mut();
+        store
+            .entries
+            .retain(|entry| entry.view != self.view || entry.input != input);
+        store.record(&self.view, input, Some(None), None, (now, now + REFRESH));
     }
 
     /// Forgets this account set's answers and its accounts' pauses, for
@@ -523,6 +537,31 @@ impl Cache {
                 .and_then(|entry| entry.value.as_ref())
         })
         .ok()
+    }
+
+    /// Whether the listed checkout's commits ending at `head` still need a
+    /// pull request, as `peek` names a row. See [`Entry::unopened`].
+    pub fn unopened(&self, view: &View, repo_key: &str, branch: &str, head: &str) -> bool {
+        let Ok(store) = self.store.try_borrow() else {
+            return false;
+        };
+        store
+            .entries
+            .iter()
+            .find(|entry| {
+                entry.view == *view
+                    && entry.input.checkout.is_none()
+                    && entry.input.repo_key.as_deref() == Some(repo_key)
+                    && entry.input.branch == branch
+            })
+            .is_some_and(|entry| entry.unopened(head))
+    }
+
+    /// [`Self::unopened`] for exactly `input`, as `peek_input` reads it.
+    pub fn unopened_input(&self, view: &View, input: &Input, head: &str) -> bool {
+        self.store
+            .try_borrow()
+            .is_ok_and(|store| store.entry(view, input).is_some_and(|e| e.unopened(head)))
     }
 
     /// Pure cache read of one checkout's lookup, local checkouts included:

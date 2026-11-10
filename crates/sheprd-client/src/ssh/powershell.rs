@@ -5,7 +5,7 @@
 //! base64. Discovery and the bridge are separate connections: PowerShell
 //! buffers stdin it reads, so it cannot answer a handshake and then hand the
 //! rest of the stream to `herdr.exe` as the POSIX script does.
-use super::{PROBE_CANDIDATE, PROBE_DONE, READY};
+use super::{PROBE_CANDIDATE, PROBE_CORE, PROBE_DONE, READY};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 
 /// Precedes each candidate's base64 UTF-8 path, inside its probe block.
@@ -14,15 +14,17 @@ const PATH_MARKER: &str = "herdr-windows-path:";
 /// Whether a remote shell exit before the bridge was ready means the host
 /// could not run `/bin/sh`. `ssh` exits 255 for its own failures and the
 /// bridge script 127 when it found no Herdr; anything else is the shell.
-pub(super) fn rejected_posix(code: Option<i32>) -> bool {
+pub(crate) fn rejected_posix(code: Option<i32>) -> bool {
     code.is_some_and(|code| !matches!(code, 0 | 127 | 255))
 }
 
 /// The probe for a Windows host: the same candidate blocks as
-/// [`super::probe_script`], each also naming its executable's path.
+/// [`super::probe_script`], each also naming its executable's path, then
+/// the core marker when herdr-core is where its bridge
+/// (`core_bridge::powershell_command`) looks.
 pub(super) fn probe_command(session: &str) -> String {
     encoded_command(&format!(
-        r#"$herdrPaths = [System.Collections.Generic.List[string]]::new(); function Add-HerdrPath([string]$CandidatePath) {{ if ([string]::IsNullOrWhiteSpace($CandidatePath) -or -not (Test-Path -LiteralPath $CandidatePath -PathType Leaf)) {{ return }}; $fullPath = [System.IO.Path]::GetFullPath($CandidatePath); if ($herdrPaths -notcontains $fullPath) {{ $herdrPaths.Add($fullPath) }} }}; $pathCommand = Get-Command herdr.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1; if ($null -ne $pathCommand) {{ Add-HerdrPath $pathCommand.Source }}; $userSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value; Get-CimInstance Win32_Process -Filter "Name = 'herdr.exe' OR Name = 'herdr-dev.exe'" -ErrorAction SilentlyContinue | ForEach-Object {{ $owner = Invoke-CimMethod -InputObject $_ -MethodName GetOwnerSid -ErrorAction SilentlyContinue; if ($owner.ReturnValue -eq 0 -and $owner.Sid -eq $userSid) {{ Add-HerdrPath $_.ExecutablePath }} }}; $herdrHome = if ([string]::IsNullOrWhiteSpace($env:HERDR_HOME)) {{ Join-Path $env:USERPROFILE '.herdr' }} else {{ $env:HERDR_HOME }}; $activeJunction = Get-Item -LiteralPath (Join-Path $herdrHome 'packages\standalone\current') -Force -ErrorAction SilentlyContinue; if ($null -ne $activeJunction -and -not [string]::IsNullOrWhiteSpace([string]$activeJunction.Target)) {{ Add-HerdrPath (Join-Path ([string]$activeJunction.Target) 'herdr.exe') }}; foreach ($herdrPath in $herdrPaths) {{ try {{ $status = (& $herdrPath status client --json 2>$null) -join ''; if ($LASTEXITCODE -ne 0) {{ continue }} }} catch {{ continue }}; try {{ $server = (& $herdrPath --session {session} status server --json 2>$null) -join ''; if ($LASTEXITCODE -ne 0) {{ $server = '' }} }} catch {{ $server = '' }}; [Console]::Out.WriteLine('{PROBE_CANDIDATE}'); [Console]::Out.WriteLine('{PATH_MARKER}' + [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($herdrPath))); [Console]::Out.WriteLine($status); [Console]::Out.WriteLine($server) }}; [Console]::Out.WriteLine('{PROBE_DONE}'); exit 0"#,
+        r#"$herdrPaths = [System.Collections.Generic.List[string]]::new(); function Add-HerdrPath([string]$CandidatePath) {{ if ([string]::IsNullOrWhiteSpace($CandidatePath) -or -not (Test-Path -LiteralPath $CandidatePath -PathType Leaf)) {{ return }}; $fullPath = [System.IO.Path]::GetFullPath($CandidatePath); if ($herdrPaths -notcontains $fullPath) {{ $herdrPaths.Add($fullPath) }} }}; $pathCommand = Get-Command herdr.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1; if ($null -ne $pathCommand) {{ Add-HerdrPath $pathCommand.Source }}; $userSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value; Get-CimInstance Win32_Process -Filter "Name = 'herdr.exe' OR Name = 'herdr-dev.exe'" -ErrorAction SilentlyContinue | ForEach-Object {{ $owner = Invoke-CimMethod -InputObject $_ -MethodName GetOwnerSid -ErrorAction SilentlyContinue; if ($owner.ReturnValue -eq 0 -and $owner.Sid -eq $userSid) {{ Add-HerdrPath $_.ExecutablePath }} }}; $herdrHome = if ([string]::IsNullOrWhiteSpace($env:HERDR_HOME)) {{ Join-Path $env:USERPROFILE '.herdr' }} else {{ $env:HERDR_HOME }}; $activeJunction = Get-Item -LiteralPath (Join-Path $herdrHome 'packages\standalone\current') -Force -ErrorAction SilentlyContinue; if ($null -ne $activeJunction -and -not [string]::IsNullOrWhiteSpace([string]$activeJunction.Target)) {{ Add-HerdrPath (Join-Path ([string]$activeJunction.Target) 'herdr.exe') }}; foreach ($herdrPath in $herdrPaths) {{ try {{ $status = (& $herdrPath status client --json 2>$null) -join ''; if ($LASTEXITCODE -ne 0) {{ continue }} }} catch {{ continue }}; try {{ $server = (& $herdrPath --session {session} status server --json 2>$null) -join ''; if ($LASTEXITCODE -ne 0) {{ $server = '' }} }} catch {{ $server = '' }}; [Console]::Out.WriteLine('{PROBE_CANDIDATE}'); [Console]::Out.WriteLine('{PATH_MARKER}' + [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($herdrPath))); [Console]::Out.WriteLine($status); [Console]::Out.WriteLine($server) }}; $core = Get-Command herdr-core.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1; $corePath = if ($null -ne $core) {{ $core.Source }} else {{ Join-Path $env:USERPROFILE '.local\bin\herdr-core.exe' }}; if (Test-Path -LiteralPath $corePath -PathType Leaf) {{ [Console]::Out.WriteLine('{PROBE_CORE}') }}; [Console]::Out.WriteLine('{PROBE_DONE}'); exit 0"#,
         session = quote_powershell_arg(session),
     ))
 }
@@ -94,7 +96,7 @@ pub(super) fn bridge_command(path: &str, session: &str, idle_timeout: bool) -> S
 
 /// `script` as a `powershell.exe` command line, encoded as UTF-16LE base64
 /// so neither `cmd.exe` nor PowerShell as the login shell reinterprets it.
-fn encoded_command(script: &str) -> String {
+pub(crate) fn encoded_command(script: &str) -> String {
     let utf16 = script
         .encode_utf16()
         .flat_map(u16::to_le_bytes)
@@ -105,7 +107,7 @@ fn encoded_command(script: &str) -> String {
     )
 }
 
-fn quote_powershell_arg(value: &str) -> String {
+pub(crate) fn quote_powershell_arg(value: &str) -> String {
     if !value.is_empty()
         && !value.starts_with('-')
         && value.bytes().all(|byte| {

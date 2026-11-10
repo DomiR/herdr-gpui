@@ -5,7 +5,7 @@
 
 use crate::teleport::ProcessInfo;
 use sheprd_chat_protocol::{EndpointId, TOKEN, restore};
-use sheprd_client::protocol::ClientShellSnapshot;
+use sheprd_client::{protocol::ClientShellSnapshot, quoted_line};
 use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
@@ -326,15 +326,10 @@ pub(in crate::chat) fn line(program: &Path, record: &restore::Record) -> Option<
         words.push("--acp");
     }
     words.push(record.agent.name());
-    if !restore::session_id_is_plain(&record.session)
-        || words
-            .iter()
-            .any(|word| word.contains('\'') || word.chars().any(char::is_control))
-    {
+    if !restore::session_id_is_plain(&record.session) {
         return None;
     }
-    let quoted: Vec<String> = words.iter().map(|word| format!("'{word}'")).collect();
-    Some(format!(" sh -c 'exec \"$0\" \"$@\"' {}", quoted.join(" ")))
+    quoted_line(&words)
 }
 
 /// How the pass learns what it cannot see in a record or a snapshot.

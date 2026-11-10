@@ -25,6 +25,9 @@ error-remote-cloud-cancelled = Cancelled.
 # $detail is the tail of what the installer or the probe printed on the
 # machine.
 error-remote-cloud-install = Installing Herdr failed: { $detail }
+# $detail is the tail of what herdr-core's installer printed on the machine.
+error-remote-cloud-install-core = Installing Herdr failed: herdr-core could not be installed: { $detail }
+error-remote-cloud-install-core-unknown = Installing Herdr failed: herdr-core could not be installed
 error-remote-cloud-install-missing = Installing Herdr failed: the installer finished but Herdr is not on the expected paths
 error-remote-cloud-install-no-curl = Installing Herdr failed: the machine has no curl; add it to its image or install Herdr there manually
 error-remote-cloud-install-no-output = Installing Herdr failed: the installer did not finish
@@ -83,8 +86,8 @@ error-remote-cloud-socket-closed = The exec stream closed before the command fin
 
 # What a cloud provider refused, for every provider. $key is a setting such
 # as daytona.api_url or an environment variable, as written. Each $value
-# branch is a whole sentence; Azure, Boat, Coder, Daytona, OpenSandbox, and
-# Sprites are product names, and execd is a program's name.
+# branch is a whole sentence; Azure, Boat, boxd, Coder, Daytona, OpenSandbox,
+# and Sprites are product names, and execd is a program's name.
 error-remote-cloud-value-invalid-key = { $key } is not valid.
 error-remote-cloud-value-invalid = { $value ->
    *[account] Account is not valid.
@@ -102,6 +105,8 @@ error-remote-cloud-value-invalid = { $value ->
     [boat-sandbox-id] Boat sandbox ID is not valid.
     [boat-ssh-private-key] Boat SSH private key is not valid.
     [boat-ssh-public-key] Boat SSH public key is not valid.
+    [boxd-api-key] boxd API key is not valid.
+    [boxd-machine] boxd machine is not valid.
     [coder-identifier] Coder identifier is not valid.
     [coder-workspace] Coder workspace is not valid.
     [container-engine] Container engine is not valid.
@@ -135,6 +140,8 @@ error-remote-cloud-value-encoding = { $value ->
     [boat-sandbox-id] Boat sandbox ID must be UTF-8.
     [boat-ssh-private-key] Boat SSH private key must be UTF-8.
     [boat-ssh-public-key] Boat SSH public key must be UTF-8.
+    [boxd-api-key] boxd API key must be UTF-8.
+    [boxd-machine] boxd machine must be UTF-8.
     [coder-identifier] Coder identifier must be UTF-8.
     [coder-workspace] Coder workspace must be UTF-8.
     [container-engine] Container engine must be UTF-8.

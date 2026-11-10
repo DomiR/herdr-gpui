@@ -1,10 +1,10 @@
-//! Project and Author, beside the backend pills under a section's search:
-//! each a button opening a menu of checks, most items first, with a field
-//! that narrows it, and each pick a chip that drops it. A pill per project
-//! and per person grew a row for every dozen of them and pushed the list
-//! down; the buttons stay one line however many there are.
+//! Author, beside the backend pills under a section's search: a button
+//! opening a menu of checks, most items first, with a field that narrows it,
+//! and each pick a chip that drops it. A pill per person grew a row for every
+//! dozen of them and pushed the list down; the button stays one line however
+//! many there are. Projects have their own menu (`projects.rs`).
 
-use super::{IssueSource, OrchestratorView, rows::Tab};
+use super::{OrchestratorView, rows::Tab};
 use crate::{
     config::corners,
     i18n::fl,
@@ -21,21 +21,18 @@ const MENU_ROWS: usize = 200;
 /// What a picker narrows the list by.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Facet {
-    Project,
     Author,
 }
 
 impl Facet {
     fn name(self) -> &'static str {
         match self {
-            Self::Project => "project",
             Self::Author => "author",
         }
     }
 
     fn label(self) -> String {
         match self {
-            Self::Project => fl!("orchestrator-pickers-project"),
             Self::Author => fl!("orchestrator-pickers-author"),
         }
     }
@@ -88,14 +85,10 @@ struct Choice {
 }
 
 impl OrchestratorView {
-    /// The pickers this list offers: Project while several projects are
-    /// listed (Linear's issues belong to none), Author on the Pull requests
-    /// list while there are several people, or one picked.
+    /// The pickers this list offers: Author on the Pull requests list while
+    /// there are several people, or one picked.
     pub(super) fn offered_facets(&self) -> Vec<Facet> {
         let mut offered = Vec::new();
-        if self.issue_source != IssueSource::Linear && self.projects_named().nth(1).is_some() {
-            offered.push(Facet::Project);
-        }
         if self.tab == Tab::PullRequests && (!self.authors.is_empty() || self.people().len() > 1) {
             offered.push(Facet::Author);
         }
@@ -103,26 +96,9 @@ impl OrchestratorView {
     }
 
     /// Each choice `facet` offers, with how many of the shown list's items
-    /// it holds: projects in their listed order, people most items first.
+    /// it holds, people most items first.
     fn choices(&self, facet: Facet) -> Vec<Choice> {
         match facet {
-            Facet::Project => self
-                .projects_named()
-                .enumerate()
-                .map(|(index, repo)| {
-                    let rows = match self.tab {
-                        Tab::Issues => &repo.issue_rows,
-                        Tab::PullRequests => &repo.pull_request_rows,
-                    };
-                    Choice {
-                        on: self.projects.contains(&repo.key),
-                        key: repo.key.clone(),
-                        label: self.project_label(repo),
-                        id: index.to_string(),
-                        count: rows.iter().filter(|row| row.depth == 0).count(),
-                    }
-                })
-                .collect(),
             Facet::Author => {
                 let mut people = self.people();
                 // Stable, so people with as many stay by name.
@@ -143,7 +119,6 @@ impl OrchestratorView {
 
     fn picks_mut(&mut self, facet: Facet) -> &mut std::collections::HashSet<String> {
         match facet {
-            Facet::Project => &mut self.projects,
             Facet::Author => &mut self.authors,
         }
     }
@@ -166,7 +141,7 @@ impl OrchestratorView {
     /// Opens `facet`'s menu with an empty field that has the keyboard.
     fn open_picker(&mut self, facet: Facet, window: &mut Window, cx: &mut Context<Self>) {
         self.picker.open = Some(facet);
-        self.sort_open = false;
+        self.menu = None;
         self.hide_open = false;
         self.picker.filter.update(cx, |filter, cx| filter.clear(cx));
         window.focus(&self.picker.filter.read(cx).focus.clone(), cx);
@@ -272,7 +247,6 @@ impl OrchestratorView {
             .text_size(look.small())
             .child(look.icon(
                 match facet {
-                    Facet::Project => "icons/git-branch.svg",
                     Facet::Author => "icons/user.svg",
                 },
                 11.,

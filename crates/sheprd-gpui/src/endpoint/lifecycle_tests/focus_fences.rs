@@ -178,7 +178,7 @@ fn every_focus_changing_command_fences_immediate_input_until_ack_and_surface(
                     view.command(command, window, cx);
                 }
                 let key = |key: &str| gpui::KeyDownEvent {
-                    keystroke: gpui::Keystroke::parse(key).unwrap(),
+                    keystroke: crate::keymap::parse_keystroke(key).unwrap(),
                     is_held: false,
                     prefer_character_input: false,
                 };
@@ -206,7 +206,8 @@ fn every_focus_changing_command_fences_immediate_input_until_ack_and_surface(
                         view.palette_key(&key("ctrl-tab"), window, cx);
                         view.palette_key(&key("ctrl-tab"), window, cx);
                         let hidden = usize::from(!view.live.supports_pane_clear)
-                            + usize::from(!view.live.supports_edit_scrollback);
+                            + usize::from(!view.live.supports_edit_scrollback)
+                            + usize::from(!crate::menus::IN_WINDOW);
                         for _ in 0..crate::controls::COMMANDS.len() - 2 - hidden {
                             view.palette_key(&key("down"), window, cx);
                         }

@@ -160,11 +160,11 @@ impl SheprdWindow {
     /// of one repository are one: they share its database.
     pub(crate) fn repo_specs(&self) -> Vec<RepoSpec> {
         let mut specs: Vec<RepoSpec> = Vec::new();
-        // A headless window never reads the user's saved GitLab tokens.
-        let gitlab_store = if self.reads_credentials() {
-            self.config.gitlab.store()
+        // A headless window never reads the user's saved tokens.
+        let (azure_store, gitlab_store) = if self.reads_credentials() {
+            (self.config.azure_devops.store(), self.config.gitlab.store())
         } else {
-            sheprd_credentials::Store::default()
+            Default::default()
         };
         for (index, endpoint) in self.endpoints.iter().enumerate() {
             let target = &endpoint.connection.target;
@@ -205,6 +205,7 @@ impl SheprdWindow {
                         workspace_id: workspace.workspace_id.clone(),
                         token: token.clone(),
                         data_root: None,
+                        azure_store,
                         gitlab_store,
                         timing: Timing::default(),
                         // The same store as the GitHub sign-in; the view
@@ -273,9 +274,40 @@ impl SheprdWindow {
     /// One of this window's views has a GitLab source waiting for a token,
     /// which the title bar's account button marks.
     pub(crate) fn orchestrator_gitlab_needs_sign_in(&self, cx: &App) -> bool {
+        self.orchestrator_needs_sign_in(super::Provider::Gitlab, cx)
+    }
+
+    /// One of this window's views has a `provider` source waiting for a
+    /// token, which the title bar's account button marks.
+    pub(crate) fn orchestrator_needs_sign_in(&self, provider: super::Provider, cx: &App) -> bool {
         self.orchestrators
             .values()
-            .any(|orchestrator| orchestrator.view.read(cx).gitlab_needs_sign_in())
+            .any(|orchestrator| orchestrator.view.read(cx).needs_sign_in(provider))
+    }
+
+    /// The Azure DevOps organizations this window's views read, in the
+    /// order their sources list them, for the account menu.
+    pub(crate) fn orchestrator_azure_organizations(&self, cx: &App) -> Vec<String> {
+        let mut organizations: Vec<String> = Vec::new();
+        for orchestrator in self.orchestrators.values() {
+            for organization in orchestrator.view.read(cx).azure_organizations() {
+                if !organizations.contains(&organization) {
+                    organizations.push(organization);
+                }
+            }
+        }
+        organizations
+    }
+
+    /// [`Self::orchestrator_azure_organizations`] over every main window,
+    /// with the same caveats as [`Self::all_orchestrator_gitlab_hosts`].
+    pub(crate) fn all_orchestrator_azure_organizations(cx: &App) -> Vec<String> {
+        cx.windows()
+            .into_iter()
+            .filter_map(|handle| handle.downcast::<SheprdWindow>())
+            .filter_map(|handle| handle.read(cx).ok())
+            .flat_map(|window| window.orchestrator_azure_organizations(cx))
+            .collect()
     }
 
     /// A saved sign-in changed, such as a GitLab token pasted in the account
@@ -359,12 +391,18 @@ impl SheprdWindow {
         let (live, branches) = self.live_agents();
         let look = self.look();
         let specs = self.repo_specs();
+        let local_terminals = if self.local_workspaces_use_core() {
+            super::Terminals::Herdr2
+        } else {
+            super::Terminals::Herdr1
+        };
         // Only the shown Pull requests or Issues section is on screen; the
         // bar's counts alone do not need a sync a minute.
         let shown_view = self
             .activity_section()
             .and_then(super::section::list_of)
             .and(self.activity.section_view);
+        self.activity.tasks_listed = views.iter().any(|(_, view)| view.read(cx).has_tasks());
         for (id, view) in views {
             let accounts: Vec<_> = view
                 .read(cx)
@@ -381,6 +419,7 @@ impl SheprdWindow {
                 view.poll(cx);
                 view.set_look(look.clone(), cx);
                 view.set_live(live.clone(), branches.clone(), cx);
+                view.set_local_terminals(local_terminals);
                 for (target, token, login) in accounts {
                     view.set_github(&target, token, login, cx);
                 }
@@ -518,12 +557,37 @@ impl SheprdWindow {
                     self.tell_orchestrator(id, super::Error::MenuOpen, cx);
                 }
             }
+            Event::OpenCoreRun {
+                path,
+                terminal,
+                label,
+            } => self.open_core_run(id, &label, path, terminal, window, cx),
+            // Removed from this computer, whichever host is shown now.
+            Event::CloseCoreRun { path } => {
+                self.close_local_kept_folder(&path, window, cx);
+            }
             Event::OpenWorkspace {
                 host,
                 session,
                 workspace_id,
             } => {
                 self.open_run_workspace(id, host.as_deref(), session.as_deref(), &workspace_id, cx)
+            }
+            Event::OpenProject { repo } => {
+                // The workspace that holds it now: the one the view was
+                // told of may have closed since.
+                let Some(spec) = self.repo_specs().into_iter().find(|spec| spec.key == repo) else {
+                    self.tell_orchestrator(id, super::Error::WorkspaceClosed, cx);
+                    return;
+                };
+                let (host, session) = super::actions::place(&spec.request.target);
+                self.open_run_workspace(
+                    id,
+                    host.as_deref(),
+                    session.as_deref(),
+                    &spec.request.workspace_id,
+                    cx,
+                );
             }
             Event::OpenUrl(url) => {
                 // A Linear issue opens in the Linear app when it is there.
@@ -556,10 +620,10 @@ impl SheprdWindow {
             }
             Event::SignIn(provider) => {
                 if self.open_menu(window, cx) {
-                    if provider == super::Provider::Gitlab {
-                        self.open_gitlab_page(window, cx);
-                    } else {
-                        self.menu.page = Some(crate::menu::Page::GitHub);
+                    match provider {
+                        super::Provider::Gitlab => self.open_gitlab_page(window, cx),
+                        super::Provider::Azure => self.open_azure_page(window, cx),
+                        _ => self.menu.page = Some(crate::menu::Page::GitHub),
                     }
                 }
                 cx.notify();
@@ -603,7 +667,7 @@ impl SheprdWindow {
             .orchestrator_repository(&request.workspace_id)
             .and_then(|(key, label)| {
                 let origin = self.dispatch_origin(&request.workspace_id, &key, &label)?;
-                let destination = self.dispatch_destination(endpoint)?;
+                let destination = self.herdr_1_destination(endpoint)?;
                 let target = self
                     .endpoints
                     .iter()
@@ -670,6 +734,53 @@ impl SheprdWindow {
             self.leave_activity_section(view, cx);
         } else {
             self.tell_orchestrator(view, super::Error::MenuOpen, cx);
+        }
+    }
+
+    /// Shows a Herdr 2 run's agent on this computer: the workspace the app
+    /// keeps at its checkout, else one kept now with the run's herdr-core
+    /// terminal as its tab, as the new worktree dialog lands its agent.
+    fn open_core_run(
+        &mut self,
+        view: ViewId,
+        label: &str,
+        path: std::path::PathBuf,
+        terminal: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Ok(terminal) = sheprd_backend::TerminalId::new(terminal) else {
+            self.tell_orchestrator(view, super::Error::NothingToOpen, cx);
+            return;
+        };
+        if self.selected_is_remote() {
+            let local = self
+                .core_host()
+                .map(|index| self.endpoints[index].id.clone());
+            if !local.is_some_and(|local| self.select_endpoint(&local, cx)) {
+                self.tell_orchestrator(view, super::Error::WorkspaceClosed, cx);
+                return;
+            }
+            self.refresh_core_session(cx);
+        }
+        let shown = match self.kept_workspace_at(&path) {
+            // The workspace may predate the agent, or the agent's tab may
+            // have moved: show the run's own terminal either way.
+            Some(id) => self.show_terminal_in_kept_workspace(&id, terminal, window, cx),
+            None => {
+                // The tab drives the terminal, as a Herdr 1 pane does its
+                // agent: closing it ends the agent, and so does a tab that
+                // could not open, which a flash then says.
+                let location = crate::browser::Location::core_terminal(
+                    crate::core_terminals::panes::Panes::single(terminal),
+                    false,
+                );
+                self.open_kept_workspace(Some(label), &path, location, window, cx)
+                    .is_some()
+            }
+        };
+        if shown {
+            self.leave_activity_section(view, cx);
         }
     }
 

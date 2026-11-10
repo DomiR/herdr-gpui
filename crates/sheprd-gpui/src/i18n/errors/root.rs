@@ -116,6 +116,7 @@ impl Localize for Error {
             }
             Self::LocalGit(_) => fl!("error-local-git"),
             Self::LocalNetworkDenied => fl!("error-local-network-denied"),
+            Self::LocalPorts(error) => error.localize(),
             Self::LocalWorktreeNote => fl!("error-local-worktree-note"),
             Self::LogRead { path: file, source } => fl!(
                 "error-log-read",
@@ -136,6 +137,7 @@ impl Localize for Error {
             Self::NotConnected => fl!("error-not-connected"),
             Self::NotificationMutes(error) => error.localize(),
             Self::NotInCheckout => fl!("error-not-in-checkout"),
+            Self::Orchestrator(error) => error.localize(),
             Self::OrchestratorItems(error) => {
                 fl!("error-orchestrator-items", error = error.localize())
             }

@@ -16,6 +16,7 @@ fn spec(dir: &Path, name: &str) -> RepoSpec {
         key: name.into(),
         host: "local".into(),
         request: Request {
+            azure_store: Default::default(),
             target: sheprd_client::ConnectTarget::Local,
             checkout: dir.join(name).to_string_lossy().into_owned(),
             workspace_id: name.into(),

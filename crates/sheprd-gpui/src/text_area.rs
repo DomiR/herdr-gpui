@@ -514,7 +514,7 @@ impl TextArea {
                 MouseButton::Left,
                 cx.listener(|this, _, _, _| this.selecting = false),
             )
-            .on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, window, cx| {
+            .on_scroll(cx.listener(|this, event: &ScrollEvent, window, cx| {
                 let delta = event.delta.pixel_delta(this.line_height()).y;
                 this.scroll_by(-delta);
                 let _ = window;

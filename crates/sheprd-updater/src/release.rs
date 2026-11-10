@@ -4,10 +4,12 @@
 use super::UpdateChannel;
 mod format;
 mod host;
+mod host_chat;
 mod repository;
 use super::error::{Error, Result};
 pub(super) use format::Format;
 pub use host::{HOST_TARGETS, download_host_build};
+pub use host_chat::download_host_chat;
 use std::{
     fs::{File, OpenOptions},
     io::{Read, Write},
@@ -142,7 +144,10 @@ fn hex32(value: &str) -> Result<[u8; 32]> {
         return Err(Error::InvalidHex);
     }
     let mut result = [0; 32];
-    for (out, pair) in result.iter_mut().zip(value.as_bytes().chunks_exact(2)) {
+    for (out, pair) in result
+        .iter_mut()
+        .zip(value.as_bytes().as_chunks::<2>().0.iter())
+    {
         let digit = |b| match b {
             b'0'..=b'9' => Ok(b - b'0'),
             b'a'..=b'f' => Ok(b - b'a' + 10),
@@ -169,7 +174,7 @@ fn validate_manifest(manifest: &Manifest) -> Result<()> {
         1 => (&[Format::Archive], 3),
         2 => (&[Format::Deb, Format::Rpm, Format::Arch], 6),
         3 => (&[Format::Installer], format::WINDOWS_TARGETS.len()),
-        host::SCHEMA => (&[], HOST_TARGETS.len()),
+        host::SCHEMA | host_chat::SCHEMA => (&[], HOST_TARGETS.len()),
         _ => return Err(Error::ManifestSchema),
     };
     if parse_version(&manifest.version).is_none() {
@@ -182,6 +187,7 @@ fn validate_manifest(manifest: &Manifest) -> Result<()> {
         let valid_name = match manifest.schema {
             1 => Format::Archive.accepts(&manifest.version, &asset.target, &asset.name),
             host::SCHEMA => host::accepts(&manifest.version, &asset.target, &asset.name),
+            host_chat::SCHEMA => host_chat::accepts(&manifest.version, &asset.target, &asset.name),
             _ => formats
                 .iter()
                 .any(|format| format.accepts(&manifest.version, &asset.target, &asset.name)),

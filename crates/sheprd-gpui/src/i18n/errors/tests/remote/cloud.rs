@@ -44,6 +44,7 @@ fn every_worker_has_a_message() {
 fn every_install_failure_has_a_message() {
     use sheprd_remote::cloud::install::{Failure, Retry};
     let mut failures = vec![
+        Failure::Core(None),
         Failure::Missing,
         Failure::NoCurl,
         Failure::NoOutput,
@@ -61,6 +62,7 @@ fn every_install_failure_has_a_message() {
     }
     assert_localized(&failures.into_iter().map(Error::Install).collect::<Vec<_>>());
     assert_localized(&[Error::Install(Failure::Output("exit 9: boom".into()))]);
+    assert_localized(&[Error::Install(Failure::Core(Some("curl: (22) 404".into())))]);
 }
 
 #[test]
@@ -101,6 +103,8 @@ fn every_provider_delegates() {
         sheprd_remote::azure::Error::Size.into(),
         #[cfg(feature = "boat")]
         sheprd_remote::boat::Error::Size.into(),
+        #[cfg(feature = "boxd")]
+        sheprd_remote::boxd::Error::Size.into(),
         #[cfg(feature = "coder")]
         sheprd_remote::coder::Error::Size.into(),
         #[cfg(feature = "container")]
@@ -119,7 +123,7 @@ fn every_provider_delegates() {
 
 /// `Tls` and `Stream` hold `rustls` and `tungstenite` errors, which this
 /// crate does not depend on, so they cannot be built here.
-#[cfg(any(feature = "opensandbox", feature = "sprites"))]
+#[cfg(any(feature = "boxd", feature = "opensandbox", feature = "sprites"))]
 #[test]
 fn every_socket_variant_has_a_message() {
     use sheprd_remote::cloud::socket::Error;

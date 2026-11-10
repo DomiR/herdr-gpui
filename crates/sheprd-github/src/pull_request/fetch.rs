@@ -27,7 +27,7 @@ fragment PullRequestFields on PullRequest {
   commits(last: 1) { nodes { commit { statusCheckRollup {
     contexts(first: 100) {
       pageInfo { hasNextPage }
-      nodes { __typename ... on CheckRun { name status conclusion } ... on StatusContext { context state } }
+      nodes { __typename ... on CheckRun { name status conclusion databaseId detailsUrl } ... on StatusContext { context state targetUrl } }
     }
   } } } }
 }"#
@@ -39,7 +39,7 @@ pub(super) const FIELDS: &str = fields!();
 pub(super) const NUMBER_QUERY: &str = concat!(
     r#"query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
-    mergeCommitAllowed squashMergeAllowed rebaseMergeAllowed
+    nameWithOwner mergeCommitAllowed squashMergeAllowed rebaseMergeAllowed
     pullRequest(number: $number) { ...PullRequestFields }
   }
 }"#,

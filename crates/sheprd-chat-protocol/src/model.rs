@@ -115,6 +115,7 @@ impl Transcript {
             match activity.kind {
                 ActivityKind::Subagent => running.subagents += 1,
                 ActivityKind::Shell => running.shells += 1,
+                ActivityKind::Monitor => running.monitors += 1,
                 ActivityKind::Other => running.other += 1,
             }
         }
@@ -260,6 +261,10 @@ pub struct Tool {
     /// The sub-agent call this call is a step of, when a sub-agent made it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent: Option<String>,
+    /// When the call was first seen unfinished (Unix time). Absent from
+    /// older programs and from calls replayed already finished.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_ms: Option<u64>,
     #[serde(default)]
     pub status: ToolStatus,
     pub title: String,
@@ -294,6 +299,11 @@ pub enum ToolStatus {
     Completed,
     Failed,
 }
+
+/// The text an edit becomes when a side is too large to send whole: the
+/// file changed, but by how much is not said. Clients that see it beside
+/// other edits of the same call cannot total them.
+pub const EDIT_OMITTED: &str = "Original edit context exceeds live preview limits.";
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "type")]

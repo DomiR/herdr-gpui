@@ -4,12 +4,19 @@
 
 // i18n: migrated
 mod dispatch;
+mod kept;
+mod kept_worktrees;
 pub(super) mod popover;
 mod render;
 mod requests;
 #[cfg(feature = "cloud")]
 mod sandbox_images;
 mod scripts;
+
+pub(super) use kept_worktrees::Ask;
+pub(crate) use kept_worktrees::KeptDone;
+#[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
+pub(crate) use kept_worktrees::Landing as KeptLanding;
 
 use super::{Page, WorkspaceAction, WorkspaceMenuAction, state::Deletion};
 use crate::{SheprdWindow, dialog_input::DialogInput, i18n::fl};
@@ -36,6 +43,9 @@ pub(crate) struct WorkspaceTarget {
     pub(super) base: Option<String>,
     /// How worktree requests name the repository to the daemon.
     pub(super) source: Source,
+    /// Who carries out what the menu asks: Herdr 1's daemon, or the app for
+    /// a workspace it keeps for Herdr 2 (`kept.rs`).
+    pub(super) keeper: sheprd_session::Keeper,
     /// Whether the user muted the workspace's notifications when the menu
     /// opened, which picks what the toggle in its header does.
     pub(super) muted: bool,
@@ -82,6 +92,7 @@ impl WorkspaceTarget {
             branch: workspace.branch.clone(),
             base: None,
             source: Source::of(workspace),
+            keeper: sheprd_session::Keeper::Herdr1,
             muted: false,
         }
     }
@@ -481,6 +492,10 @@ impl SheprdWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.menu.page.is_none() && self.is_kept_workspace(id) {
+            self.open_kept_workspace_menu(id, anchor, window, cx);
+            return;
+        }
         if self.menu.page.is_some() || !self.live.status.is_connected() {
             return;
         }
@@ -514,6 +529,22 @@ impl SheprdWindow {
     /// "New worktree" row would. When there is no source for one, a flash says
     /// why rather than the shortcut doing nothing visible.
     pub(crate) fn open_new_worktree(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(kept) = self.kept_in_front().map(str::to_owned) {
+            self.open_workspace_menu(&kept, Point::default(), window, cx);
+            let offered = self.workspace_items().iter().any(|(action, _)| {
+                *action == WorkspaceMenuAction::Dialog(WorkspaceAction::NewWorktree)
+            });
+            if !offered {
+                self.dismiss_menu(window, cx);
+                self.show_flash(
+                    crate::window::Flash::warning(NewWorktreeUnavailable::NotGit.message()),
+                    cx,
+                );
+                return;
+            }
+            self.open_workspace_dialog(WorkspaceAction::NewWorktree, window, cx);
+            return;
+        }
         let source = match &self.live.snapshot {
             Some(snapshot) if self.live.status.is_connected() => new_worktree_source(snapshot),
             _ => Err(NewWorktreeUnavailable::Disconnected),
@@ -539,12 +570,8 @@ impl SheprdWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(id) = self
-            .live
-            .snapshot
-            .as_ref()
-            .and_then(|snapshot| snapshot.focused_workspace_id.clone())
-        else {
+        // The workspace in front, Herdr 1's or one the app keeps.
+        let Some((_, id)) = self.browser_key() else {
             return;
         };
         self.open_workspace_dialog_for(&id, action, Point::default(), window, cx);
@@ -620,6 +647,17 @@ impl SheprdWindow {
         let Some(target) = &self.menu.target else {
             return vec![];
         };
+        if target.keeper == sheprd_session::Keeper::App {
+            let mut items = kept::items(
+                target,
+                !self.selected_is_remote(),
+                self.note_checkout().is_some(),
+                self.checkpoint_checkout().is_some(),
+                self.fan_out_item(),
+            );
+            items.extend(self.teleport_items());
+            return items;
+        }
         let mut items = vec![if target.muted {
             (WorkspaceMenuAction::Unmute, Label::UNMUTE)
         } else {
@@ -632,18 +670,7 @@ impl SheprdWindow {
             items.push((WorkspaceMenuAction::FanOut, label));
         }
         items.push((Dialog(WorkspaceAction::Rename), Label::RENAME));
-        if self.teleport_mark().is_some() {
-            items.push((WorkspaceMenuAction::GoToTeleported, Label::GO_TO_TELEPORTED));
-            items.push((
-                WorkspaceMenuAction::ClearTeleported,
-                Label::CLEAR_TELEPORTED,
-            ));
-        } else if self.can_teleport() {
-            items.push((WorkspaceMenuAction::Teleport, Label::TELEPORT));
-            if self.teleport_origin().is_some() {
-                items.push((WorkspaceMenuAction::TeleportBack, Label::TELEPORT_BACK));
-            }
-        }
+        items.extend(self.teleport_items());
         items.push((Dialog(WorkspaceAction::Close), target.close_label()));
         if self.checkpoint_checkout().is_some() {
             items.push((WorkspaceMenuAction::Checkpoints, Label::CHECKPOINTS));
@@ -797,6 +824,8 @@ impl SheprdWindow {
             | WorkspaceAction::OpenWorktree => None,
         };
         self.menu.page = Some(Page::Dialog(action));
+        // A kept workspace's dialog makes its checkouts here with Git, and
+        // another host's through that host's Herdr, as Herdr 1's does.
         self.menu.dispatch = matches!(
             action,
             WorkspaceAction::NewWorktree | WorkspaceAction::NewWorkspace
@@ -824,6 +853,7 @@ impl SheprdWindow {
             return;
         }
         if action == WorkspaceAction::Close
+            && target.keeper == sheprd_session::Keeper::Herdr1
             && let Some(snapshot) = &self.live.snapshot
         {
             self.menu.close_check = Some(super::workspace_close::CloseCheck::start(
@@ -833,7 +863,10 @@ impl SheprdWindow {
                 cx,
             ));
         }
-        if action == WorkspaceAction::DeleteWorktree {
+        if action == WorkspaceAction::DeleteWorktree && target.keeper == sheprd_session::Keeper::App
+        {
+            self.open_kept_deletion(cx);
+        } else if action == WorkspaceAction::DeleteWorktree {
             let result = self.endpoints[self.selected_endpoint]
                 .connection
                 .request_dialog(

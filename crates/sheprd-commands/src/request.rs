@@ -153,13 +153,16 @@ pub fn request(command: Command, snapshot: &ClientShellSnapshot) -> Option<(Meth
         | Command::ToggleSidebar
         | Command::ToggleStatusBar
         | Command::ToggleSidebarPorts
+        | Command::ToggleMenuBar
         | Command::ToggleModPanel
         | Command::FocusNextRegion
         | Command::FocusPreviousRegion
         | Command::ToggleZenMode
         | Command::DevicesOverview
+        | Command::NotificationHistory
         | Command::NewCoreTerminal
         | Command::MirrorCorePane
+        | Command::ConvertToChat
         | Command::IncreaseFontSize
         | Command::DecreaseFontSize
         | Command::ResetFontSize

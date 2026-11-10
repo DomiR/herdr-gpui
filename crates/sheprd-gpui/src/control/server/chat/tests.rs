@@ -77,3 +77,29 @@ fn a_new_chat_names_a_known_agent_and_needs_herdr_acp(cx: &mut gpui::TestAppCont
         assert_eq!(code(&missing), Some(ErrorCode::Unsupported));
     });
 }
+
+#[gpui::test]
+fn converting_needs_chats_on_and_an_agent_to_move(cx: &mut gpui::TestAppContext) {
+    let (view, cx) = cx.add_window_view(fixture_window);
+    view.update(cx, |view, _| view.config.features.acp_chats = false);
+    cx.cx.update(|cx| {
+        let off = serve(call(ChatOp::Convert { pane: None }), cx);
+        assert_eq!(code(&off), Some(ErrorCode::Unsupported));
+    });
+}
+
+#[test]
+fn a_caller_in_a_core_terminal_converts_its_own_terminal() {
+    let from_core = Caller {
+        terminal_id: Some("t7".into()),
+        ..Caller::default()
+    };
+    assert_eq!(callers_pane(&from_core).as_deref(), Some("core:t7"));
+    let from_herdr = Caller {
+        pane_id: Some("w1:p1".into()),
+        ..Caller::default()
+    };
+    assert_eq!(callers_pane(&from_herdr).as_deref(), Some("w1:p1"));
+    // Neither: the focused pane is the window's to pick.
+    assert_eq!(callers_pane(&Caller::default()), None);
+}

@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 fn showing_linear_again_after_its_interval_syncs_it(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
     let request = Request {
+        azure_store: Default::default(),
         target: sheprd_client::ConnectTarget::Local,
         checkout: dir.path().to_string_lossy().into_owned(),
         workspace_id: "w1".into(),

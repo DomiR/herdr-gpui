@@ -48,6 +48,7 @@ fn open_view(
         mono: config.terminal.clone(),
     };
     let request = Request {
+        azure_store: Default::default(),
         target: sheprd_client::ConnectTarget::Local,
         checkout: dir.path().join("app").to_string_lossy().into_owned(),
         workspace_id: "app".into(),

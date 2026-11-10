@@ -9,12 +9,14 @@ fn with_terminal(dir: &std::path::Path) -> Shared {
     let layout = Layout {
         connected: true,
         boot: "b".into(),
+        working: 0,
         workspaces: vec![Workspace {
             id: "w1".into(),
             label: "app".into(),
             branch: None,
             cwd: "/code/app".into(),
             worktree: None,
+            session: None,
             chats: vec![crate::hub::ChatRow {
                 pane: "c1".into(),
                 tab: "t1".into(),
@@ -198,6 +200,14 @@ fn a_pasted_picture_is_typed_as_a_dropped_file() {
     assert_eq!(
         dropped_path(path),
         r"/Users/me/Library/Application\ Support/herdr\ \(1\)/a1.png "
+    );
+}
+
+#[test]
+fn a_picture_for_a_distribution_is_escaped_for_its_shell_on_any_computer() {
+    assert_eq!(
+        crate::web::terminal::dropped_unix_path("/mnt/c/Users/me/a b.png"),
+        r"/mnt/c/Users/me/a\ b.png "
     );
 }
 

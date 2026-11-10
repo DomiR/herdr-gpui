@@ -142,6 +142,7 @@ impl Worker {
                 );
                 match &error {
                     // Waits as a failure does, but offers the sign-in.
+                    Error::Azure(source) if source.needs_sign_in() => SyncState::SignIn,
                     Error::Gitlab(source) if source.needs_sign_in() => SyncState::SignIn,
                     _ => SyncState::Failed(Arc::new(error)),
                 }
@@ -182,6 +183,7 @@ impl Worker {
                 Some(tokens) => self.github_listing(key, tokens),
                 None => Ok(SyncState::SignIn),
             },
+            Provider::Azure => self.sync_azure(key, writable),
             Provider::Gitlab => {
                 let previous = store.checkpoint(key)?;
                 let listing = self.gitlab_listing(key, previous.as_ref())?;

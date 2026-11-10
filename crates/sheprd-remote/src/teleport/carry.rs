@@ -9,7 +9,7 @@
 use super::{
     error::{Error, Step},
     git,
-    job::{self, Destination, HostRepositories, Place, Repository, Source, plan},
+    job::{self, Destination, HostRepositories, Keeping, Place, Repository, Source, plan},
     launch::{
         AgentKind, Work, command_line, handoff_path, handoff_prompt, handoff_resume_prompt, remap,
         remap_argv,
@@ -151,6 +151,7 @@ fn review_repository(
                     workspace_id: space.workspace_id.clone(),
                 }]),
                 retired: Vec::new(),
+                lands_in: destination.lands_in,
             };
             &narrowed
         }
@@ -159,11 +160,14 @@ fn review_repository(
     let source = Source {
         place: origin.place.clone(),
         workspace_id: origin.workspace_id.clone(),
+        keeping: Keeping::Herdr1,
         custom_label: None,
         repo_key: worktree.repo_key.clone(),
         repo_label: worktree.repo_name.clone(),
         branch: None,
         tab_labels: HashMap::new(),
+        core_tabs: Vec::new(),
+        core_preferred: false,
     };
     let candidate = job::resolve(&source, hosts, cancelled)?;
     // Only a repository sharing a remote is the same project; a name alone

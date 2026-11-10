@@ -68,7 +68,12 @@ direction.
 - It keeps running when Sheprd quits, so the phone works and push keeps
   flowing. Pairing needs Sheprd, because only its dialog approves devices.
 - Without a running Herdr daemon it serves the app shell with a "Herdr is not
-  running" state; it never starts or installs a daemon.
+  running" state; it never installs a daemon, and starts only an installed
+  herdr-core, for a phone's new work, on a machine without Herdr 1 or
+  where the user chose "New terminals use Herdr 2" (`herdr_2_terminals`).
+  It never stops or moves Herdr 1. With a core answering, a new workspace
+  asked for in a named Herdr 1 session is refused (409): Herdr 2 has no
+  sessions, and the request says where the workspace should be.
 
 ## TLS without DNS
 
@@ -282,6 +287,14 @@ focus nor resize anything:
   Herdr takes also reads it at once, then 50 ms and 150 ms later, so an
   echo does not wait out the timer. The ANSI (SGR only) becomes escaped
   spans on the server. No cursor position comes with it.
+- **History**: a swipe down or the wheel on the screen reads `pane.read
+  {source: recent, lines: 1000, format: ansi}` once, and the view scrolls
+  through it. It is not streamed: 1,000 lines on every change would be far
+  more than a phone should take. Live screens wait while history shows and
+  return when the view reaches its end or the phone types. A program on the
+  alternate screen has no history here, so its screen stays as it is. A
+  Herdr 2 pane reads the history its shared emulator keeps (1,000 lines,
+  painted by the core's attach when the daemon opens it).
 - **Echo strip**: what was typed but is not on the screen yet shows,
   dotted, above the key rows (backspace takes back what it can). An input
   leaves it once Herdr took it and a screen arrived after, or 1 s after
@@ -299,7 +312,25 @@ focus nor resize anything:
   terminal is, so Claude Code and the like attach it.
 - **Actions** (the sheet): `pane.split {direction: right|down, focus:
   false}`, `pane.zoom`, `pane.close`, `tab.create {focus: false}`,
-  `tab.close`, and moving between panes on the phone only.
+  `tab.close`, and moving between panes on the phone only. A Herdr 2 pane
+  has no layout in herdr-core, so its tab's keeper makes the change:
+  - A tab Sheprd saves is Sheprd's. While Sheprd runs, the daemon asks it
+    (`control::layout`). While it is closed, the daemon edits
+    `browser-tabs.json` itself through `sheprd_session::saved::edit`,
+    touching only that tab's panes, zoom, and names (or a kept workspace's
+    name), and only when the file did not change meanwhile; Sheprd reads it
+    when it starts. A split's shell carries the tab's workspace label, so a
+    Sheprd starting meanwhile still lists it there.
+  - A tab no saved tab holds (every tab on a host Sheprd does not run on, a
+    terminal started outside Sheprd, a phone's new workspace) is the
+    daemon's own: its splits, zoom, and tab, pane, and group names live in
+    `core-tabs.json` in the daemon's state folder, for the core that made
+    them. Sheprd's saved tabs win: a terminal one takes in leaves it.
+  - A Herdr desktop space's tab (`herdr-app` document) is that app's. Each
+    terminal row's `actions` lists what its menu may do (`rename`,
+    `split`, `zoom`); such a tab lists none, and the phone hides them.
+  A workspace with nothing in it gets its first tab from `POST
+  /api/v2/workspaces/{workspace}/terminals`.
 - The same socket now carries New workspace and New chat, which the
   inactive shell connection could never send.
 
@@ -357,6 +388,41 @@ phone never disturbs the desktop's layout.
   Until then the app holds one subscription, for one computer
   (`herdr.push-host`); Settings on any other says where notifications come
   from, and a notification opens its page on the computer shown.
+- **Tags.** Each computer's daemon keeps the tags that group it, such as
+  `personal` and `work` (`tags.json`), for every phone and desktop that
+  reaches it. No client has to match its name for a computer to another's.
+  - **The rule.** A client offers its copy with the time it was edited, and
+    the daemon answers with what stands: the latest edit wins, whole. An
+    offer counts as made by the daemon's clock at the latest, so a fast
+    clock cannot outlast later edits.
+  - **Phones.** `home` carries the tags, and `PUT /api/v2/tags` offers an
+    edit. An edit made while a computer is away is sent when its home next
+    arrives.
+  - **Sheprd.** It keeps a copy by endpoint ID, so a device away still shows
+    its tags. It meets this computer's daemon over the control socket and a
+    connected machine's by running `sheprd-remote-control tags --offer` over
+    SSH: at once after an edit, else every two minutes. A machine without
+    the program is not given one for this: no phone is paired with it, so
+    the copy is all there is.
+- **WSL distributions.** A distribution saved as a device on a Windows
+  computer is part of that computer, not another machine: it sleeps with it,
+  and a phone usually cannot reach its network. So the Windows daemon follows
+  its sessions itself, beside the named ones, and the phone needs no pairing.
+  - **What it follows.** Every 30 seconds it lists the running sessions of
+    the saved distributions that are already running. It boots nothing and
+    starts no server, and a connection that ends is not retried until the
+    session is listed again. A device disabled in Sheprd is still followed
+    while it runs: the daemon reads the saved list, not the window's state.
+  - **How.** The layout comes over `herdr remote-client-bridge` in `wsl.exe`,
+    requests over `herdr remote-api-bridge` (one `wsl.exe` each, so typing is
+    slower than on a native session), and a Herdr without the API bridge
+    lists its sessions read-only. Ids read `herdr:SESSION@DISTRO:ID`. A
+    picture stays on Windows and is typed as the path the distribution reads
+    it at, from its `wslpath`.
+  - **What it cannot do.** A chat's program listens inside the distribution,
+    out of this daemon's reach, so a chat there is listed as a terminal tab,
+    and a phone cannot start one there, nor a new workspace in that session.
+    A herdr-core inside a distribution is not followed.
 - **Other machines.** Allowing a phone on one computer also pairs it with
   the SSH and cloud machines that computer's Sheprd connects to. The phone
   reaches each machine's own daemon directly, so it keeps them while that
@@ -375,8 +441,10 @@ phone never disturbs the desktop's layout.
     - It runs `sheprd-remote-control enroll` there over SSH. On the way that
       sends this daemon's APNs key (0600), so the machine notifies the phone
       itself. It starts the machine's daemon as a user service unless one is
-      installed. It turns on `[remote]` in that machine's Sheprd settings,
-      if it has any. Then it adds the phone, marked `via` this computer.
+      installed, then adds the phone, marked `via` this computer. Only then
+      does it turn on `[remote]` in that machine's Sheprd settings, creating
+      them if it has none, so a Sheprd installed there later keeps the
+      daemon. A failed pairing leaves the settings alone.
     - It reports the machine's fingerprint and addresses back
       (`HostPaired`).
   - **Trust.** The phone pins that fingerprint because the computer it

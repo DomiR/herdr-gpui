@@ -7,9 +7,12 @@
 //! It never blocks: the [`Service`] worker does the I/O, and the host pushes
 //! the theme, live agent statuses, and the GitHub account from its tick.
 
+mod accounts;
 mod banners;
 mod board;
+mod browse;
 mod conversation;
+mod core_removal;
 mod create;
 mod creators;
 mod detail;
@@ -31,11 +34,15 @@ mod moves;
 pub(crate) mod pane;
 mod pickers;
 mod pills;
+mod pr_cells;
+mod projects;
 mod pull;
+mod remote;
 mod repo;
 mod rows;
 mod status;
 mod sub_issues;
+mod tasks;
 mod worktree;
 
 #[cfg(test)]
@@ -76,7 +83,9 @@ use repo::Repo;
 pub(crate) use rows::Tab;
 use rows::{Filters, Runs, Sort};
 use std::{
+    cell::Cell,
     collections::{BTreeSet, HashMap, HashSet},
+    rc::Rc,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -93,12 +102,28 @@ pub(crate) enum Event {
         endpoint: usize,
         pane_id: String,
     },
+    /// Show a Herdr 2 run's agent: the workspace the app keeps at its
+    /// checkout on this machine, kept with `terminal` as its tab when none is.
+    OpenCoreRun {
+        path: std::path::PathBuf,
+        terminal: String,
+        label: String,
+    },
+    /// Close the workspace the app keeps at `path` on this machine: a
+    /// removed Herdr 2 run's checkout.
+    CloseCoreRun {
+        path: std::path::PathBuf,
+    },
     /// Show a run's Herdr workspace on the host it is on: `None` for this
     /// machine, else an SSH destination.
     OpenWorkspace {
         host: Option<String>,
         session: Option<String>,
         workspace_id: String,
+    },
+    /// Show the workspace holding the project with repository key `repo`.
+    OpenProject {
+        repo: String,
     },
     /// Open a web address, such as an issue's page, in a browser tab.
     OpenUrl(String),
@@ -120,6 +145,17 @@ impl EventEmitter<Event> for OrchestratorView {}
 
 /// How long Refresh spins before the workers' own sync states take over.
 const REFRESH_GRACE: Duration = Duration::from_millis(1500);
+
+/// A dropdown under the search row; one is open at a time.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Menu {
+    Sort,
+    State,
+    /// Browsing Azure DevOps organizations.
+    Projects,
+    /// Which listed projects the list shows.
+    Repos,
+}
 
 /// The detail page of one item.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -206,9 +242,12 @@ pub(crate) struct OrchestratorView {
     live_branches: Arc<Vec<super::LiveBranch>>,
     tab: Tab,
     sort: Sort,
-    sort_open: bool,
     /// How the Pull requests list is grouped.
     grouping: creators::Grouping,
+    /// The dropdown open under the search row, if any.
+    menu: Option<Menu>,
+    /// How many repositories the Browse menu draws: its pages so far.
+    browse_rows: usize,
     filters: Filters,
     /// Which issues are listed; `filters` are that source's, and
     /// `stashed_filters` the other's, swapped in when it shows again.
@@ -232,6 +271,8 @@ pub(crate) struct OrchestratorView {
     layout: board::Layout,
     /// Where the board is scrolled, kept while the section is not drawn.
     board_scrolls: board::Scrolls,
+    /// What only the Tasks list narrows by.
+    task_filters: tasks::TaskFilters,
     collapsed: HashSet<String>,
     search: Entity<SearchInput>,
     query: String,
@@ -239,6 +280,9 @@ pub(crate) struct OrchestratorView {
     selected: Option<String>,
     detail: Option<Detail>,
     pane_width: f32,
+    /// The list's width as last laid out, which decides the columns its rows
+    /// keep beside an open item.
+    list_width: Rc<Cell<f32>>,
     focus: FocusHandle,
     scroll: UniformListScrollHandle,
     /// The shown list's lines: headings and rows.
@@ -279,6 +323,11 @@ pub(crate) struct OrchestratorView {
     merge_open: bool,
     /// Hosts a dispatch could go to, while the dialog is open.
     hosts: Arc<Vec<crate::dispatch::Candidate>>,
+    /// Which Herdr starts a dispatch on this machine.
+    local_terminals: super::Terminals,
+    /// Herdr 2 runs being removed here, by ID, with their checkouts, whose
+    /// kept workspaces close once the worker forgot the run.
+    core_removals: Vec<(String, std::path::PathBuf)>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -325,8 +374,9 @@ impl OrchestratorView {
             live_branches: Arc::default(),
             tab: Tab::default(),
             sort: Sort::default(),
-            sort_open: false,
             grouping: creators::Grouping::default(),
+            menu: None,
+            browse_rows: browse::MAX_ROWS,
             filters: Filters::default(),
             issue_source: IssueSource::default(),
             stashed_filters: Filters::default(),
@@ -338,12 +388,14 @@ impl OrchestratorView {
             hide_open: false,
             layout: board::Layout::default(),
             board_scrolls: board::Scrolls::default(),
+            task_filters: tasks::TaskFilters::default(),
             collapsed: HashSet::new(),
             search,
             query: String::new(),
             selected: None,
             detail: None,
             pane_width: PANE_DEFAULT,
+            list_width: Rc::default(),
             focus: cx.focus_handle(),
             scroll: UniformListScrollHandle::new(),
             lines: Vec::new(),
@@ -366,6 +418,8 @@ impl OrchestratorView {
             linear_shown: None,
             merge_open: false,
             hosts: Arc::default(),
+            local_terminals: super::Terminals::default(),
+            core_removals: Vec::new(),
             _subscriptions: vec![subscription],
         }
     }
@@ -440,11 +494,13 @@ impl OrchestratorView {
             self.settle_moves();
             self.discard_non_projects();
             self.default_filters();
+            self.sync_remotes();
             self.reconcile_agents();
             self.refresh_rows();
             self.dismissed.settle(&self.repos);
             self.follow_pull_request();
             self.request_avatars(cx);
+            self.close_removed_core_runs(cx);
             changed = true;
         }
         if self.pr.poll() {
@@ -512,7 +568,8 @@ impl OrchestratorView {
     /// The hosts the listed repositories are on, once each.
     pub(crate) fn targets(&self) -> Vec<sheprd_client::ConnectTarget> {
         let mut targets: Vec<sheprd_client::ConnectTarget> = Vec::new();
-        for repo in &self.repos {
+        // A repository read without a checkout is on no host.
+        for repo in self.repos.iter().filter(|repo| repo.remote.is_none()) {
             if !targets.contains(&repo.request.target) {
                 targets.push(repo.request.target.clone());
             }
@@ -552,6 +609,12 @@ impl OrchestratorView {
         }
         self.hosts = Arc::new(hosts);
         cx.notify();
+    }
+
+    /// Which Herdr starts a dispatch on this machine: Herdr 2 when the
+    /// window's workspaces here use herdr-core.
+    pub(crate) fn set_local_terminals(&mut self, terminals: super::Terminals) {
+        self.local_terminals = terminals;
     }
 
     /// The banner's text, for tests outside the view.
@@ -612,47 +675,6 @@ impl OrchestratorView {
         cx.notify();
     }
 
-    /// The account GitHub is read as on `target`; a change syncs that host's
-    /// repositories again at once and reads the open pull request again.
-    pub(crate) fn set_github(
-        &mut self,
-        target: &sheprd_client::ConnectTarget,
-        token: Option<crate::github::Tokens>,
-        login: Option<String>,
-        cx: &mut Context<Self>,
-    ) {
-        let mut changed = false;
-        for repo in self
-            .repos
-            .iter_mut()
-            .filter(|repo| repo.request.target == *target)
-        {
-            repo.login = login.clone();
-            let same = match (&token, &repo.request.token) {
-                (Some(new), Some(old)) => new.same(old),
-                (None, None) => true,
-                _ => false,
-            };
-            if same {
-                continue;
-            }
-            repo.request.token = token.clone();
-            if let Some(service) = &repo.service {
-                service.refresh(token.clone());
-            }
-            changed = true;
-        }
-        if !changed {
-            return;
-        }
-        // What the old account read goes, and the open pull request is read
-        // again as the new one: a lookup made signed out was dropped.
-        self.pr.track(None);
-        self.reload_pull_request();
-        self.follow_pull_request();
-        cx.notify();
-    }
-
     /// Syncs again, and reads the open pull request's status and
     /// conversation again, which a sync alone leaves as they were.
     /// Refresh as the user asks for it, which waits for a sync under way.
@@ -673,41 +695,6 @@ impl OrchestratorView {
         }
         self.reload_pull_request();
         self.reload_conversation();
-    }
-
-    /// The GitLab hosts this view's repositories are read from.
-    pub(crate) fn gitlab_hosts(&self) -> impl Iterator<Item = GitLabRead> + '_ {
-        self.repos.iter().flat_map(|repo| {
-            let info = repo.snapshot.repo.as_ref();
-            // A remote checkout's .envrc is that machine's, not run here.
-            let checkout = (!repo.request.target.is_remote())
-                .then(|| std::path::PathBuf::from(&repo.request.checkout));
-            repo.snapshot
-                .sources
-                .iter()
-                .filter(|status| status.key.provider == Provider::Gitlab)
-                .map(move |status| GitLabRead {
-                    host: status.key.host.clone(),
-                    scheme: sheprd_orchestrator::gitlab::Scheme::of_source(info, &status.key),
-                    checkout: checkout.clone(),
-                })
-        })
-    }
-
-    /// A GitLab source waits for a token that works.
-    pub(crate) fn gitlab_needs_sign_in(&self) -> bool {
-        self.repos
-            .iter()
-            .flat_map(|repo| &repo.snapshot.sources)
-            .any(|status| {
-                status.key.provider == Provider::Gitlab && matches!(status.state, SyncState::SignIn)
-            })
-    }
-
-    /// A saved credential changed: sync again, as Refresh does.
-    pub(crate) fn credentials_changed(&mut self, cx: &mut Context<Self>) {
-        self.refresh();
-        cx.notify();
     }
 
     /// Whether a sync is under way, or Refresh was pressed so recently that
@@ -765,7 +752,7 @@ impl OrchestratorView {
         // The open item belongs to the list left behind.
         self.detail = None;
         self.merge_open = false;
-        self.sort_open = false;
+        self.menu = None;
         self.refresh_rows();
         self.follow_pull_request();
         cx.notify();
@@ -846,6 +833,10 @@ impl OrchestratorView {
             });
             return;
         }
+        if let Some(event) = core_run(&runs, run) {
+            cx.emit(event);
+            return;
+        }
         let workspace = self.snapshot().runs.get(run).and_then(|run| {
             run.workspace.as_ref().filter(|workspace| {
                 workspace.backend == super::Backend::Herdr && !workspace.id.is_empty()
@@ -922,4 +913,22 @@ impl Render for OrchestratorView {
             .child(body)
             .children(overlay)
     }
+}
+
+/// The event showing run `run` when Herdr 2 runs its agent on this machine:
+/// its checkout and the herdr-core terminal its session records.
+fn core_run(runs: &Runs<'_>, run: usize) -> Option<Event> {
+    let session = runs.session(run)?;
+    let super::Pane::Herdr2 { terminal } = &session.pane else {
+        return None;
+    };
+    let workspace = runs.runs.get(run)?.workspace.as_ref()?;
+    if session.host.is_some() {
+        return None;
+    }
+    Some(Event::OpenCoreRun {
+        path: workspace.path.clone()?,
+        terminal: terminal.clone(),
+        label: workspace.branch.clone(),
+    })
 }

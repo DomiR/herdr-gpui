@@ -30,14 +30,15 @@ pub use error::Error;
 pub use failure::SshFailure;
 pub use host_key::{HostKeyFingerprint, HostKeyScan, NewHostKey, scan_host_key, trust_host_key};
 pub use unverified::{HostKeys, MAX_UNVERIFIED_HOSTS, set_host_keys, set_unverified_hosts};
-mod powershell;
+pub(crate) mod powershell;
 mod serve;
 pub use serve::{remote_socket, serve_command};
 
-const READY: &[u8] = b"herdr-remote-output-ready:1\n";
+pub(crate) const READY: &[u8] = b"herdr-remote-output-ready:1\n";
 
 /// A bridge, probe, or script child (`ssh`, or `wsl.exe` on Windows), killed
 /// and reaped on every exit path.
+#[derive(Debug)]
 pub(crate) struct ChildGuard(pub(crate) Child);
 impl Drop for ChildGuard {
     fn drop(&mut self) {
@@ -46,7 +47,7 @@ impl Drop for ChildGuard {
     }
 }
 
-pub(super) use crate::script::shell_quote as quote;
+pub(crate) use crate::script::shell_quote as quote;
 
 // PATH first, followed by known install roots and mise's installed `latest`
 // links. Never invoke mise/shims: resolving project config can run hooks or
@@ -69,6 +70,8 @@ for path do
 
 const PROBE_CANDIDATE: &str = "herdr-probe:candidate";
 const PROBE_DONE: &str = "herdr-probe:done";
+/// Printed by the probe when herdr-core is where its bridge looks.
+const PROBE_CORE: &str = "herdr-probe:core";
 pub(crate) const PROBE_TIMEOUT: Duration = Duration::from_secs(30);
 /// `ssh -G` only reads configuration, but a cold start on a busy Windows
 /// machine (antivirus scanning `ssh.exe`) has taken over five seconds.
@@ -115,6 +118,9 @@ pub enum HostProbe {
     Stopped,
     /// A compatible Herdr server for the session is running.
     Running,
+    /// No compatible Herdr 1, but herdr-core (Herdr 2) is installed, which
+    /// is a whole setup of its own: the host's terminals run in its core.
+    Core,
 }
 
 /// Every candidate reports its client and server status, one block each, so
@@ -133,7 +139,14 @@ pub(crate) fn probe_script(session: &str) -> String {
         printf '%s\n%s\n%s\n' '{PROBE_CANDIDATE}' "$status" "$server"
     fi
 done
+{CORE_CANDIDATES}
+    if [ -n "$path" ] && [ -x "$path" ]; then
+        printf '%s\n' '{PROBE_CORE}'
+        break
+    fi
+done
 printf '%s\n' '{PROBE_DONE}'"#,
+        CORE_CANDIDATES = crate::core_bridge::CANDIDATES,
         session = quote(session)
     )
 }
@@ -151,13 +164,16 @@ fn classify_probe_with(
 ) -> Option<HostProbe> {
     // Each block holds one candidate's client status, then its server status.
     let mut blocks: Vec<Vec<serde_json::Value>> = Vec::new();
+    let mut core = false;
     for line in lines(output) {
         if line == PROBE_DONE.as_bytes() {
             let Some(statuses) = blocks
                 .iter()
                 .find(|statuses| statuses.iter().any(|s| compatible(s).is_some()))
             else {
-                return Some(if blocks.is_empty() {
+                return Some(if core {
+                    HostProbe::Core
+                } else if blocks.is_empty() {
                     HostProbe::Missing
                 } else {
                     HostProbe::Outdated
@@ -172,7 +188,9 @@ fn classify_probe_with(
                 HostProbe::Stopped
             });
         }
-        if line == PROBE_CANDIDATE.as_bytes() {
+        if line == PROBE_CORE.as_bytes() {
+            core = true;
+        } else if line == PROBE_CANDIDATE.as_bytes() {
             blocks.push(Vec::new());
         } else if let (Some(block), Ok(status)) = (blocks.last_mut(), serde_json::from_slice(line))
         {
@@ -456,7 +474,7 @@ fn run_with_stderr(
 /// it fails with "getsockname failed: Not a socket" and exits 127, which reads
 /// as a host without Herdr. There the policy sets `ControlPath=none`, so each
 /// connection authenticates on its own.
-pub(super) fn command(target: &str, remote_command: &str) -> Command {
+pub(crate) fn command(target: &str, remote_command: &str) -> Command {
     command_with(target, remote_command, HostKeys::of(target))
 }
 
@@ -667,20 +685,27 @@ pub struct Bridge {
     pub(crate) child: ChildGuard,
 }
 
+impl Bridge {
+    /// The stream to the child; the child lives as long as the bridge.
+    pub fn stream_mut(&mut self) -> &mut Stream {
+        &mut self.stream
+    }
+}
+
 fn bridge(command: Command, stop: &AtomicBool) -> Result<(Stream, ChildGuard)> {
     start_bridge(command, stop, handshake)?.map_err(|closed| Error::Refused(closed.failure).into())
 }
 
 /// A bridge whose child closed its stdout before answering, with the exit
 /// code that tells a failed `ssh` from a remote shell that could not run.
-struct Closed {
-    code: Option<i32>,
-    failure: SshFailure,
+pub(crate) struct Closed {
+    pub(crate) code: Option<i32>,
+    pub(crate) failure: SshFailure,
 }
 
 /// Spawn `command` as a bridge and let `answer` read its banner. The outer
 /// error is any failure but an early close, which is the inner one.
-fn start_bridge(
+pub(crate) fn start_bridge(
     command: Command,
     stop: &AtomicBool,
     answer: impl FnOnce(&mut Stream, &AtomicBool) -> Result<()>,
@@ -739,6 +764,17 @@ fn spawn_bridge(mut command: Command) -> Result<(Stream, ChildGuard)> {
 /// When every candidate was skipped, the script exits and the first refusal
 /// says why, instead of the closed bridge every other failure also ends in.
 pub(crate) fn handshake(stream: &mut (impl Read + Write), stop: &AtomicBool) -> Result<()> {
+    negotiate(stream, stop, true)
+}
+
+/// [`handshake`] for a client that sends no keepalives: the bridge is never
+/// asked to close on idle.
+#[cfg(windows)]
+pub(crate) fn handshake_quiet(stream: &mut (impl Read + Write), stop: &AtomicBool) -> Result<()> {
+    negotiate(stream, stop, false)
+}
+
+fn negotiate(stream: &mut (impl Read + Write), stop: &AtomicBool, idle: bool) -> Result<()> {
     let started = Instant::now();
     let mut refused = None;
     loop {
@@ -749,7 +785,7 @@ pub(crate) fn handshake(stream: &mut (impl Read + Write), stop: &AtomicBool) -> 
             result => result?,
         };
         if let Some(idle_timeout) = compatible_status(&status) {
-            stream.write_all(if idle_timeout {
+            stream.write_all(if idle_timeout && idle {
                 b"accept-idle\n"
             } else {
                 b"accept\n"
@@ -813,7 +849,7 @@ fn compatible(status: &serde_json::Value) -> Option<bool> {
 /// Read the bridge's banner until the ready line, returning what preceded it.
 /// Takes only `Read`: the SSH child's pipe is a `UnixStream`, but the limit,
 /// cancellation and timeout rules here are stream-independent and tested so.
-fn await_ready(
+pub(crate) fn await_ready(
     stream: &mut (impl Read + ?Sized),
     stop: &AtomicBool,
     started: Instant,

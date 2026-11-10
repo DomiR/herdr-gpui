@@ -1,9 +1,9 @@
-//! The activity bar's Pull requests, Issues, and Linear sections: one
-//! orchestrator view the window owns, listing every repository the connected
-//! hosts' workspaces hold, drawn across the window in place of its terminals
-//! on the list and issue source the section names. Linear's issues are the
-//! user's, not a repository's, so they list only in their own section. The
-//! menus and `sheprd orchestrator` open it narrowed to one workspace's
+//! The activity bar's Pull requests, Issues, Tasks, and Linear sections:
+//! one orchestrator view the window owns, listing every repository the
+//! connected hosts' workspaces hold, drawn across the window in place of its
+//! terminals on the list and issue source the section names. Linear's issues
+//! are the user's, not a repository's, so they list only in their own section.
+//! The menus and `sheprd orchestrator` open it narrowed to one workspace's
 //! project.
 
 use super::{IssueSource, List, OrchestratorView, ViewId};
@@ -229,12 +229,14 @@ pub(crate) fn list_of(section: ActivityPanel) -> Option<(List, IssueSource)> {
     match section {
         ActivityPanel::Issues => Some((List::Issues, IssueSource::Repositories)),
         ActivityPanel::Linear => Some((List::Issues, IssueSource::Linear)),
+        ActivityPanel::Tasks => Some((List::Tasks, IssueSource::Repositories)),
         ActivityPanel::PullRequests => Some((List::PullRequests, IssueSource::Repositories)),
         ActivityPanel::Overview
         | ActivityPanel::Security
         | ActivityPanel::Automations
         | ActivityPanel::Tickets
         | ActivityPanel::TicketsNative
+        | ActivityPanel::Ports
         | ActivityPanel::Workspaces
         | ActivityPanel::Usage => None,
     }

@@ -14,7 +14,15 @@ public enum TermInput {
         public static let ctrl = Modifiers(rawValue: 1)
         public static let alt = Modifiers(rawValue: 2)
         public static let shift = Modifiers(rawValue: 4)
+
+        /// What stays held after a key: ctrl and alt are for one key, and
+        /// shift latches until it is tapped off, for runs of shift+arrows.
+        public var afterKey: Modifiers { intersection(.shift) }
     }
+
+    /// The keys a held shift changes. Others ignore it, so ^C stays an
+    /// interrupt while shift is latched.
+    private static let shiftable: Set<String> = ["down", "left", "right", "tab", "up"]
 
     /// One request's worth of input.
     public enum Send: Hashable, Sendable {
@@ -29,6 +37,12 @@ public enum TermInput {
     /// (dictation, an autocorrected word) goes as a paste unless a
     /// modifier is held.
     public static func sends(for text: String, modifiers: Modifiers = []) -> [Send] {
+        // A space with no key name (Japanese input's full-width U+3000)
+        // would be dropped, and the daemon refuses whitespace as a key. A
+        // paste would not press Enter, so a typed line stays keys.
+        if modifiers.isEmpty, !text.contains(where: \.isNewline), text.contains(where: { $0.isWhitespace && key(for: $0) == nil }) {
+            return [.paste(text)]
+        }
         let keys = text.enumerated().compactMap { index, character in
             key(for: character, modifiers: index == 0 ? modifiers : [])
         }
@@ -58,6 +72,24 @@ public enum TermInput {
             name = modifiers.contains(.ctrl) ? String(character).lowercased() : String(character)
         }
         return named(name, modifiers: modifiers)
+    }
+
+    /// A named key (`esc`, `up`) or a combination (`ctrl+c`) from the key
+    /// row, with the `held` modifiers added.
+    public static func pressed(_ name: String, held: Modifiers = []) -> String {
+        let parts = name.split(separator: "+").map(String.init)
+        let key = parts.last ?? name
+        var modifiers = held
+        if !shiftable.contains(key) { modifiers.remove(.shift) }
+        for part in parts.dropLast() {
+            switch part {
+            case "ctrl": modifiers.insert(.ctrl)
+            case "alt": modifiers.insert(.alt)
+            case "shift": modifiers.insert(.shift)
+            default: break
+            }
+        }
+        return named(key, modifiers: modifiers)
     }
 
     /// `name` with `modifiers`, in the order the daemon checks them.

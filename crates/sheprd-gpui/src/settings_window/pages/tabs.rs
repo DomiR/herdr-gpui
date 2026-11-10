@@ -10,6 +10,10 @@ use crate::{
 };
 use gpui::{prelude::*, *};
 
+/// The scrollback sizes offered for Herdr 2 terminals; the config file may
+/// name any other within `config::HERDR_2_SCROLLBACK_RANGE`.
+const SCROLLBACK_CHOICES: [u32; 4] = [1_000, 10_000, 50_000, 100_000];
+
 impl SettingsWindow {
     pub(in crate::settings_window) fn render_tabs(&self, cx: &mut Context<Self>) -> Div {
         let theme = &self.theme;
@@ -50,6 +54,16 @@ impl SettingsWindow {
                     )),
             )
             .child(
+                ui::row(theme, "tabs-agent-title", fl!("settings-tabs-agent-title"))
+                    .description(fl!("settings-tabs-agent-title-description"))
+                    .switch(self.preference_toggle(
+                        "tabs-agent-title-toggle",
+                        self.config.tab_labels.agent_title,
+                        Preference::TabAgentTitle(!self.config.tab_labels.agent_title),
+                        cx,
+                    )),
+            )
+            .child(
                 ui::row(theme, "tabs-herdr-2", fl!("settings-tabs-herdr-2"))
                     .description(fl!("settings-tabs-herdr-2-description"))
                     .switch(self.preference_toggle(
@@ -58,6 +72,31 @@ impl SettingsWindow {
                         Preference::Herdr2Terminals(!self.config.herdr_2_terminals),
                         cx,
                     )),
+            )
+            .child(
+                ui::row(
+                    theme,
+                    "tabs-herdr-2-scrollback",
+                    fl!("settings-tabs-herdr-2-scrollback"),
+                )
+                .description(fl!("settings-tabs-herdr-2-scrollback-description"))
+                .control(ui::segmented(
+                    theme,
+                    "tabs-herdr-2-scrollback-control",
+                    &SCROLLBACK_CHOICES.map(|lines| {
+                        (
+                            lines,
+                            fl!("settings-tabs-herdr-2-scrollback-lines", lines = lines),
+                        )
+                    }),
+                    u32::try_from(self.config.herdr_2_scrollback)
+                        .ok()
+                        .filter(|lines| SCROLLBACK_CHOICES.contains(lines)),
+                    open,
+                    on_value(cx, |this, lines, _, cx| {
+                        this.save_preference(Preference::Herdr2Scrollback(lines), cx)
+                    }),
+                )),
             )
             .child(ui::section(
                 theme,

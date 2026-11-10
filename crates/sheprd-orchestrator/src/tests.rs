@@ -2,16 +2,18 @@ use super::*;
 use chrono::{DateTime, Utc};
 
 mod actions;
+mod azure;
+mod azure_account;
+mod azure_html;
+mod azure_organization;
+// The private credential file these save to is Unix-only.
+#[cfg(unix)]
+mod azure_saved;
+mod azure_token;
 mod beads;
-
-fn beads() -> SourceKey {
-    SourceKey {
-        provider: Provider::Beads,
-        host: "local".into(),
-        repository: "/Users/me/src/herdr-gpui".into(),
-    }
-}
+mod beads_claim;
 mod beads_only;
+mod beads_redirect;
 #[cfg(unix)]
 mod beads_script;
 mod combined_changes;
@@ -33,6 +35,7 @@ mod gitlab_envrc;
 mod gitlab_hosts;
 mod gitlab_merge_requests;
 mod gitlab_oauth;
+mod gitlab_recent;
 // The private credential file these save to is Unix-only.
 #[cfg(unix)]
 mod gitlab_renewal;
@@ -52,6 +55,7 @@ mod naming;
 #[cfg(unix)]
 mod opening_script;
 mod prompt;
+mod prompt_review;
 mod repo;
 mod repo_output;
 #[cfg(unix)]
@@ -61,6 +65,8 @@ mod retry;
 mod service;
 mod ssh_slots;
 mod store;
+mod store_beads;
+mod store_sessions;
 
 fn at(value: &str) -> DateTime<Utc> {
     DateTime::parse_from_rfc3339(value)
@@ -85,6 +91,8 @@ fn item(source: &SourceKey, native_id: &str, title: &str) -> Item {
         labels: vec!["bug".into()],
         parent_id: None,
         blocked_by: Vec::new(),
+        assignee: None,
+        acceptance: None,
         priority: None,
         created_at: Some(at("2026-10-08T23:23:37+00:00")),
         updated_at: Some(at("2026-10-09T01:00:00.5+00:00")),
@@ -124,9 +132,19 @@ fn session(run_id: &str) -> HerdrSession {
         run_id: run_id.into(),
         host: None,
         session: None,
-        workspace_id: "w12".into(),
-        pane_id: "p31".into(),
+        pane: Pane::Herdr1 {
+            workspace_id: "w12".into(),
+            pane_id: "p31".into(),
+        },
         agent_name: "herdr-gpui-0123456789abcdef0123456".into(),
         updated_at: at("2026-10-08T06:12:47+00:00"),
+    }
+}
+
+fn beads() -> SourceKey {
+    SourceKey {
+        provider: Provider::Beads,
+        host: "local".into(),
+        repository: "/Users/me/src/herdr-gpui".into(),
     }
 }

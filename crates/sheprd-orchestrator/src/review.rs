@@ -1,11 +1,13 @@
 //! Where each open pull request stands on GitHub: its review decision, who
-//! is asked to review it, and its checks, read with one GraphQL query per
-//! page after each sync. The last answer is kept in the database beside the
-//! items, so a restart shows it until the first sync reads it again.
+//! is asked to review it, its checks, and whether it can merge, read with one
+//! GraphQL query per page after each sync. The last answer is kept in the
+//! database beside the items, so a restart shows it until the first sync
+//! reads it again.
 
 use super::{Error, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use sheprd_github::pull_request::{MergeState, ReviewDecision, Standing, Tone};
 use std::{collections::HashMap, time::Duration};
 
 const QUERY: &str = r#"query($owner: String!, $repo: String!, $after: String) {
@@ -15,6 +17,7 @@ const QUERY: &str = r#"query($owner: String!, $repo: String!, $after: String) {
       nodes {
         number
         reviewDecision
+        mergeStateStatus
         reviewRequests(first: 20) {
           nodes { requestedReviewer { __typename ... on User { login } ... on Team { slug } } }
         }
@@ -42,12 +45,29 @@ const MAX_REVIEWERS: usize = 20;
 const MAX_NAME: usize = 100;
 const TIMEOUT: Duration = Duration::from_secs(30);
 
-/// GitHub's verdict on a pull request's reviews.
+/// A forge's verdict on a pull request's reviews. GitHub gives the first
+/// three; Azure DevOps's reviewer votes also give the others, which are
+/// only ever held in memory.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Review {
     Approved,
     ChangesRequested,
     Required,
+    ApprovedWithSuggestions,
+    WaitingForAuthor,
+    Rejected,
+}
+
+impl From<Review> for ReviewDecision {
+    fn from(review: Review) -> Self {
+        match review {
+            Review::Approved | Review::ApprovedWithSuggestions => Self::Approved,
+            Review::ChangesRequested | Review::Rejected | Review::WaitingForAuthor => {
+                Self::ChangesRequested
+            }
+            Review::Required => Self::ReviewRequired,
+        }
+    }
 }
 
 /// Where one check stands.
@@ -72,9 +92,35 @@ pub struct PrStatus {
     /// Logins of the users asked to review, and `team/slug` for teams.
     pub requested: Vec<String>,
     pub checks: Vec<Check>,
+    /// Whether GitHub would merge it. Statuses kept before this was read
+    /// have none, and read as unknown until the first sync.
+    #[serde(default)]
+    pub merge: MergeState,
 }
 
 impl PrStatus {
+    /// The tone an open, non-draft pull request's badge takes: the same
+    /// rule as [`sheprd_github::pull_request::PullRequest::tone`].
+    pub fn tone(&self) -> Tone {
+        let has = |state| self.checks.iter().any(|check| check.state == state);
+        Standing {
+            merge: self.merge,
+            review: self.review.map_or(ReviewDecision::None, Into::into),
+            failed: has(CheckState::Failed),
+            running: has(CheckState::Pending),
+        }
+        .tone()
+    }
+
+    /// Checks that finished without a problem, as GitHub counts them: a
+    /// skipped one holds nothing back.
+    pub fn checks_ok(&self) -> usize {
+        self.checks
+            .iter()
+            .filter(|check| matches!(check.state, CheckState::Passed | CheckState::Skipped))
+            .count()
+    }
+
     /// What the checks add up to: any failure, else anything still running,
     /// else passed. None when nothing but skipped checks reported.
     pub fn checks_state(&self) -> Option<CheckState> {
@@ -177,6 +223,8 @@ struct PageInfo {
 struct Node {
     number: u64,
     review_decision: Option<String>,
+    #[serde(default)]
+    merge_state_status: MergeState,
     review_requests: Option<Nodes<Request>>,
     commits: Option<Nodes<CommitNode>>,
 }
@@ -288,6 +336,7 @@ impl Node {
             review,
             requested,
             checks,
+            merge: self.merge_state_status,
         }
     }
 }

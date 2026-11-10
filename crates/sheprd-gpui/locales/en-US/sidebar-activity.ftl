@@ -10,8 +10,10 @@ sidebar-activity-issues = Issues
 sidebar-activity-linear = Linear
 sidebar-activity-tickets = Tickets
 sidebar-activity-tickets-native = Tickets (native)
+sidebar-activity-tasks = Tasks
 sidebar-activity-security = Security
 sidebar-activity-automations = Automations
+sidebar-activity-ports = Ports
 sidebar-activity-usage = Usage
 sidebar-activity-settings = Settings
 # A screen reader's name for a button with a count: $label is the section,

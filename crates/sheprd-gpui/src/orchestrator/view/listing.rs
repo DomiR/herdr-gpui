@@ -10,7 +10,7 @@ use super::{
     repo::Repo,
     rows::{self, ItemRow, Runs, Tab},
 };
-use crate::orchestrator::{Item, Provider, Request, Snapshot};
+use crate::orchestrator::{Item, Provider, Request, Snapshot, Stores};
 use gpui::Context;
 use std::{collections::HashSet, sync::Arc, time::Instant};
 
@@ -39,6 +39,18 @@ impl OrchestratorView {
         self.repos.iter().filter(|repo| !repo.outside_git())
     }
 
+    /// The projects the shown list could hold: for Tasks, those with Beads.
+    pub(super) fn projects_listing(&self) -> impl Iterator<Item = &Repo> {
+        let tasks = self.tab == Tab::Tasks;
+        self.projects_named()
+            .filter(move |repo| !tasks || repo.has_beads())
+    }
+
+    /// Whether any project offers tasks, so the bar lists the section.
+    pub(crate) fn has_tasks(&self) -> bool {
+        self.repos.iter().any(Repo::has_beads)
+    }
+
     /// Tells every repository's worker whether the view is on screen; a
     /// hidden one syncs less often. Cheap, so the tick calls it each time.
     pub(crate) fn set_visible(&self, visible: bool) {
@@ -49,14 +61,17 @@ impl OrchestratorView {
 
     /// Lists the projects in `specs`: a repository no longer asked for stops
     /// its worker, a new candidate starts its own. The active one stays active.
+    /// Repositories read without a checkout follow the checkouts, kept.
     pub(crate) fn set_repos(&mut self, mut specs: Vec<RepoSpec>, cx: &mut Context<Self>) {
         self.skipped_repos
             .retain(|key| specs.iter().any(|spec| spec.key == *key));
         specs.retain(|spec| !self.skipped_repos.contains(&spec.key));
-        let same = specs.len() == self.repos.len()
+        self.adopt_stores(&specs);
+        let checkouts = self.repos.iter().filter(|repo| repo.remote.is_none());
+        let same = specs.len() == checkouts.clone().count()
             && specs
                 .iter()
-                .zip(&self.repos)
+                .zip(checkouts)
                 .all(|(spec, repo)| spec.key == repo.key);
         if same {
             return;
@@ -65,7 +80,9 @@ impl OrchestratorView {
         // Linear is the user's, not a project's, so one worker lists it: a
         // kept one that already does, else the first started with a store.
         let store = specs.iter().find_map(|spec| spec.request.linear);
-        let mut kept: Vec<Repo> = std::mem::take(&mut self.repos);
+        let (remote, mut kept): (Vec<Repo>, Vec<Repo>) = std::mem::take(&mut self.repos)
+            .into_iter()
+            .partition(|repo| repo.remote.is_some());
         let mut linear = kept.iter().any(|repo| {
             repo.request.linear.is_some() && specs.iter().any(|spec| spec.key == repo.key)
         });
@@ -83,6 +100,7 @@ impl OrchestratorView {
                     }
                 },
             )
+            .chain(remote)
             .collect();
         // The project that listed Linear closed: the first takes it over.
         if let (false, Some(store), Some(first)) = (linear, store, self.repos.first_mut()) {
@@ -98,10 +116,48 @@ impl OrchestratorView {
         self.active = active
             .and_then(|key| self.repos.iter().position(|repo| repo.key == key))
             .unwrap_or(0);
-        self.projects
-            .retain(|key| self.repos.iter().any(|repo| repo.key == *key));
+        // An Azure DevOps project stays picked while any repository lists it.
+        self.projects.retain(|key| {
+            super::projects::is_azure_project(key) || self.repos.iter().any(|repo| repo.key == *key)
+        });
         self.refresh_rows();
         cx.notify();
+    }
+
+    /// Tells the workers kept across `set_repos` where pasted tokens are saved
+    /// now, or the account page and they would use different stores after
+    /// `allow_plaintext_credentials` changes. A full queue leaves the old
+    /// stores here, so the next tick asks again.
+    fn adopt_stores(&mut self, specs: &[RepoSpec]) {
+        // A repository read without a checkout reads as the checkouts do.
+        let shared = specs.first().map(|spec| spec.request.stores());
+        for repo in &mut self.repos {
+            let spec = specs.iter().find(|spec| spec.key == repo.key);
+            let Some(stores) = spec
+                .map(|spec| spec.request.stores())
+                .or(shared.filter(|_| repo.remote.is_some()))
+            else {
+                continue;
+            };
+            if stores != repo.request.stores()
+                && repo
+                    .service
+                    .as_ref()
+                    .is_none_or(|service| service.set_stores(stores))
+            {
+                repo.request.set_stores(stores);
+            }
+        }
+    }
+
+    /// Where the checkouts listed read saved tokens from, which a
+    /// repository read without one follows.
+    pub(super) fn stores(&self) -> Stores {
+        self.repos
+            .iter()
+            .find(|repo| repo.remote.is_none())
+            .map(|repo| repo.request.stores())
+            .unwrap_or_default()
     }
 
     /// Keep ordinary folders out of the project list without restarting a
@@ -129,10 +185,10 @@ impl OrchestratorView {
     /// Lists only the project `key` names, as a menu opening one workspace's
     /// issues asks.
     pub(crate) fn only_project(&mut self, key: String, cx: &mut Context<Self>) {
-        if !self.repos.iter().any(|repo| repo.key == key) {
+        let Some(pick) = self.pick_of(&key) else {
             return;
-        }
-        self.projects = HashSet::from([key]);
+        };
+        self.projects = HashSet::from([pick]);
         self.refresh_rows();
         cx.notify();
     }
@@ -204,11 +260,18 @@ impl OrchestratorView {
                 self.sort,
                 &self.collapsed,
             );
+            // Azure DevOps names two people alike as easily as not: its
+            // Mine matches by the identity id the worker read, not by name.
+            let by_identity = repo.reads_azure();
             let mut pulls = rows::pull_request_rows(
                 items,
                 &runs,
                 &self.query,
-                self.filters,
+                if by_identity {
+                    self.filters.without_yours()
+                } else {
+                    self.filters
+                },
                 (repo.reading_login(), &repo.snapshot.pr_status),
                 self.sort,
             );
@@ -217,8 +280,33 @@ impl OrchestratorView {
                     board::status_of(&items[row.item]).is_some_and(|has| &has.name == status)
                 });
             }
+            if by_identity {
+                let (login, statuses) = (repo.reading_login(), &repo.snapshot.pr_status);
+                let authored = &repo.snapshot.authored;
+                let yours = self.filters.yours();
+                pulls.retain(|row| {
+                    let item = &items[row.item];
+                    let opened = authored.contains(&item.key.canonical());
+                    yours.holds(opened, rows::status_of(item, statuses), login)
+                });
+            }
+            let mut tasks = if self.tab == Tab::Tasks {
+                rows::task_rows(
+                    items,
+                    &runs,
+                    &self.query,
+                    self.filters,
+                    self.sort,
+                    &self.collapsed,
+                    &self.task_filters,
+                )
+            } else {
+                Vec::new()
+            };
             if let Some(label) = &self.label {
-                issues.retain(|row| items[row.item].labels.iter().any(|has| has == label));
+                for rows in [&mut issues, &mut tasks] {
+                    rows.retain(|row| items[row.item].labels.iter().any(|has| has == label));
+                }
             }
             let mut narrowed = self.status.is_some() || self.label.is_some();
             if let Some(hidden) = hidden {
@@ -231,30 +319,32 @@ impl OrchestratorView {
             }
             if narrowed {
                 // A child kept without its parent stands on its own.
-                for row in &mut issues {
+                for row in issues.iter_mut().chain(&mut tasks) {
                     row.depth = 0;
                     row.children = None;
                 }
             }
-            for row in issues.iter_mut().chain(&mut pulls) {
+            for row in issues.iter_mut().chain(&mut pulls).chain(&mut tasks) {
                 row.repo = index;
             }
             repo.issue_rows = issues;
             repo.pull_request_rows = pulls;
+            repo.task_rows = tasks;
         }
         // The backends and projects picked narrow what every repository
         // lists, then all of it is one list.
-        // A project picked in Issues never hides Linear's issues, which one
-        // repository's worker lists for the user.
-        let shown = |repo: &Repo| {
-            self.projects.is_empty()
-                || self.issue_source == IssueSource::Linear
-                || self.projects.contains(&repo.key)
+        // A project picked never hides Linear's issues, which one
+        // repository's worker lists for the user. Projects narrow by the
+        // item's own project on Azure DevOps, whoever listed it.
+        let project = |repo: &Repo, row: &ItemRow| {
+            self.issue_source == IssueSource::Linear || self.picked(repo, self.row_item(row))
         };
         let backend = |row: &ItemRow| {
             let provider = self.row_item(row).key.source.provider;
             self.issue_source.lists(provider)
-                && (self.backends.is_empty() || self.backends.contains(&provider))
+                && (self.tab == Tab::Tasks
+                    || self.backends.is_empty()
+                    || self.backends.contains(&provider))
         };
         // The people picked narrow only the pull requests.
         let author = |row: &ItemRow| {
@@ -263,18 +353,18 @@ impl OrchestratorView {
         let lists: Vec<Vec<ItemRow>> = self
             .repos
             .iter()
-            .filter(|repo| shown(repo))
             .map(|repo| {
                 let rows = match self.tab {
                     Tab::Issues => &repo.issue_rows,
                     Tab::PullRequests => &repo.pull_request_rows,
+                    Tab::Tasks => &repo.task_rows,
                 };
                 // A child whose parent's backend is filtered out goes with it.
                 let mut kept = Vec::new();
                 let mut parent_kept = false;
                 for row in rows {
                     if row.depth == 0 {
-                        parent_kept = backend(row) && author(row);
+                        parent_kept = backend(row) && author(row) && project(repo, row);
                     }
                     if parent_kept {
                         kept.push(*row);
@@ -296,15 +386,16 @@ impl OrchestratorView {
                 };
                 linear_groups::lines(&merged, |row| self.row_item(row), self.sort, collapsed)
             }
-            (Tab::Issues, _) => rows::issue_lines(&merged, |row| self.row_item(row)),
+            (Tab::Issues | Tab::Tasks, _) => rows::issue_lines(&merged, |row| self.row_item(row)),
             (Tab::PullRequests, Grouping::Status) => rows::pull_request_lines(&merged, |row| {
                 let repo = &self.repos[row.repo];
                 let item = self.row_item(row);
-                rows::Next::of(
-                    item,
-                    rows::status_of(item, &repo.snapshot.pr_status),
-                    repo.reading_login(),
-                )
+                let status = rows::status_of(item, &repo.snapshot.pr_status);
+                let login = repo.reading_login();
+                match repo.opened_by_identity(item) {
+                    Some(mine) => rows::Next::given(mine, item, status, login),
+                    None => rows::Next::of(item, status, login),
+                }
             }),
             (Tab::PullRequests, Grouping::Creator) => {
                 creators::creator_lines(&merged, |row| self.row_item(row).author.as_deref())

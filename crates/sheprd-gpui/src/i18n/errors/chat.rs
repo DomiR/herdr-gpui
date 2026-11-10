@@ -2,7 +2,7 @@
 
 use super::Localize;
 use crate::{
-    chat::{Error, StartError, page, pasted, visual, widgets},
+    chat::{ConvertError, Error, StartError, page, pasted, visual, widgets},
     config::chat::{MAX_ENV, MAX_ENV_BYTES},
     i18n::fl,
 };
@@ -17,6 +17,7 @@ impl Localize for Error {
             Self::Bye(reason) => fl!("error-chat-bye", reason = format!("{reason:?}")),
             Self::Closed => fl!("error-chat-closed"),
             Self::Connect(_) => fl!("error-chat-connect"),
+            Self::Convert(error) => error.localize(),
             Self::EnvironmentName { name } => {
                 fl!("error-chat-environment-name", name = name.as_str())
             }
@@ -43,6 +44,76 @@ impl Localize for Error {
                 after = format!("{after:?}")
             ),
             Self::Version(version) => fl!("error-chat-version", version = *version),
+            // keep-sorted end
+        }
+    }
+}
+
+impl Localize for ConvertError {
+    fn localize(&self) -> String {
+        match self {
+            // keep-sorted start
+            Self::AlreadyConverting => fl!("error-chat-convert-already-converting"),
+            Self::Answer(_) => fl!("error-chat-convert-answer"),
+            Self::Convert(error) => error.localize(),
+            Self::Core(error) => fl!("error-chat-convert-core", error = error.to_string()),
+            Self::Disabled => fl!("error-chat-start-disabled"),
+            // Discovery's own diagnostics, which have no message of their own.
+            Self::Existing(error) => error.to_string(),
+            Self::HostProgram(_) => fl!("error-chat-convert-host-program"),
+            Self::NoHome => fl!("error-chat-convert-no-home"),
+            Self::NotConnected => fl!("error-chat-start-not-connected"),
+            Self::NotReachable => fl!("error-chat-convert-not-reachable"),
+            Self::Program(error) => error.localize(),
+            Self::Stale => fl!("error-chat-convert-stale"),
+            Self::Type(error) => error.localize(),
+            Self::Worker(_) => fl!("error-chat-convert-worker"),
+            // keep-sorted end
+        }
+    }
+}
+
+impl Localize for sheprd_client::herdr::convert::Error {
+    fn localize(&self) -> String {
+        match self {
+            // keep-sorted start
+            Self::AlreadyChat => fl!("error-chat-convert-already-chat"),
+            Self::Busy(agent) => fl!("error-chat-convert-busy", agent = agent.display_name()),
+            Self::Line => fl!("error-chat-convert-line"),
+            Self::Moved => fl!("error-chat-convert-moved"),
+            Self::NoAgent => fl!("error-chat-convert-no-agent"),
+            Self::NoCoreSession(agent) => fl!(
+                "error-chat-convert-no-core-session",
+                agent = agent.display_name()
+            ),
+            Self::NoSession(agent) => {
+                fl!(
+                    "error-chat-convert-no-session",
+                    agent = agent.display_name(),
+                    command = agent.name()
+                )
+            }
+            Self::NoShell(agent) => {
+                fl!("error-chat-convert-no-shell", agent = agent.display_name())
+            }
+            Self::NotRunning(agent) => {
+                fl!(
+                    "error-chat-convert-not-running",
+                    agent = agent.display_name()
+                )
+            }
+            Self::StillRunning(agent) => {
+                fl!(
+                    "error-chat-convert-still-running",
+                    agent = agent.display_name()
+                )
+            }
+            Self::Stopped => fl!("error-chat-convert-stopped"),
+            Self::Unknown(name) => fl!("error-chat-convert-unknown", name = name.as_str()),
+            Self::Unsupported(agent) => fl!(
+                "error-chat-convert-unsupported",
+                agent = agent.display_name()
+            ),
             // keep-sorted end
         }
     }
@@ -129,6 +200,7 @@ impl Localize for sheprd_chat_protocol::Rejection {
             Self::UnknownOption => fl!("error-chat-rejection-unknown-option"),
             Self::UnknownMode => fl!("error-chat-rejection-unknown-mode"),
             Self::UnknownSetting => fl!("error-chat-rejection-unknown-setting"),
+            Self::UnknownActivity => fl!("error-chat-rejection-unknown-activity"),
             Self::UnknownQueued => fl!("error-chat-rejection-unknown-queued"),
             Self::AgentUnavailable => fl!("error-chat-rejection-agent-unavailable"),
             Self::TooManyAttachments => fl!(

@@ -69,6 +69,10 @@ pub enum Error {
     BeadsMissing,
     #[error("Bead id {0:?} is not one bd accepts")]
     BeadId(String),
+    #[error(transparent)]
+    Azure(#[from] super::azure::Error),
+    #[error(transparent)]
+    Claim(#[from] crate::beads::claim::Error),
     /// Shown as GitHub's own failure, which already names GitHub and why.
     #[error("{0}")]
     Github(#[source] Box<sheprd_github::Error>),
@@ -151,6 +155,18 @@ pub enum Error {
     /// the dialog keeps what was written.
     #[error("Could not create the issue: {0}")]
     LinearCreate(#[source] std::sync::Arc<Error>),
+    /// A worktree or agent of a Herdr 2 dispatch; a cancel is [`Self::Cancelled`].
+    #[error(transparent)]
+    Work(sheprd_remote::work::Error),
+}
+
+impl From<sheprd_remote::work::Error> for Error {
+    fn from(error: sheprd_remote::work::Error) -> Self {
+        match error {
+            sheprd_remote::work::Error::Cancelled => Self::Cancelled,
+            error => Self::Work(error),
+        }
+    }
 }
 
 /// `map_err` adapter naming the host script that failed.

@@ -10,7 +10,9 @@ fn decoded(command: &str) -> String {
         .unwrap();
     let bytes = STANDARD.decode(encoded).unwrap();
     let utf16 = bytes
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
         .collect::<Vec<_>>();
     String::from_utf16(&utf16).unwrap()
@@ -140,4 +142,27 @@ fn the_windows_probe_asks_each_candidate_for_the_session() {
     assert!(script.ends_with("[Console]::Out.WriteLine('herdr-probe:done'); exit 0"));
     // cmd.exe caps a command line at 8191 characters.
     assert!(powershell::probe_command("work").len() < 8191);
+}
+
+#[test]
+fn a_windows_host_with_herdr_core_alone_is_its_own_setup() {
+    let script = decoded(&powershell::probe_command("work"));
+    // Where the Windows core bridge looks.
+    assert!(script.contains("Get-Command herdr-core.exe"));
+    assert!(script.contains(r"'.local\bin\herdr-core.exe'"));
+    assert!(script.contains("[Console]::Out.WriteLine('herdr-probe:core')"));
+    let output = "profile noise\r\nherdr-probe:core\r\nherdr-probe:done\r\n";
+    assert_eq!(
+        classify_probe_with(output.as_bytes(), powershell::compatible),
+        Some(HostProbe::Core)
+    );
+    // A compatible Herdr beside it still wins.
+    let both = format!(
+        "{}herdr-probe:core\r\nherdr-probe:done\r\n",
+        block(r"C:\h\herdr.exe", COMPATIBLE, r#"{"running":true}"#)
+    );
+    assert_eq!(
+        classify_probe_with(both.as_bytes(), powershell::compatible),
+        Some(HostProbe::Running)
+    );
 }

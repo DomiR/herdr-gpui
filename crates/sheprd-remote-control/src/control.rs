@@ -9,8 +9,12 @@
 //! in the daemon.
 
 use sheprd_chat_protocol::{read_frame, write_frame};
+pub mod app_update;
+pub mod changes;
 pub mod hosts;
+pub mod layout;
 pub mod pull_requests;
+pub mod tags;
 use serde::{Deserialize, Serialize};
 use std::{
     io::{BufReader, BufWriter, Write},
@@ -22,6 +26,9 @@ use std::{
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 /// How long a client waits for the daemon's answer.
 pub const RESPONSE_TIMEOUT: Duration = Duration::from_secs(5);
+/// How long `Request::ChangeAsks` waits for a phone's question: within
+/// [`RESPONSE_TIMEOUT`], so an empty answer is not taken for a dead daemon.
+pub const ASK_WAIT: Duration = Duration::from_secs(4);
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -185,10 +192,36 @@ pub enum Request {
     HostRevokes,
     /// A host no longer holds the device.
     HostRevoked(hosts::HostRevoke),
+    /// This computer's tags: offers Sheprd's copy, if any, and answers with
+    /// the ones that stand (`tags`).
+    Tags {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        offer: Option<tags::ComputerTags>,
+    },
     /// On a host: adds a phone another computer's user allowed, as
     /// `herdr-remote-control enroll` asks. Sheprd never sends it to its
     /// own daemon.
     Enroll(hosts::Enroll),
+    /// Where the app's updater stands, sent with each poll while a window
+    /// runs it. Answered with whether a phone asked to update. `instance`
+    /// names this run of the app: a request is only for the run a phone saw.
+    AppUpdate {
+        instance: u32,
+        update: app_update::AppUpdate,
+    },
+    /// Takes the phones' questions about workspaces, waiting up to
+    /// [`ASK_WAIT`] for one. Sheprd sends it while a phone is connected.
+    ChangeAsks,
+    /// What Sheprd found for an [`changes::Ask`].
+    ChangeAnswer {
+        id: changes::AskId,
+        answer: changes::Answer,
+    },
+    /// What Sheprd did with a [`layout::Ask`].
+    LayoutAnswer {
+        id: changes::AskId,
+        answer: layout::Answer,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -231,6 +264,18 @@ pub enum Response {
         revokes: Vec<hosts::HostRevoke>,
     },
     Enrolled(hosts::Enrolled),
+    Tags(tags::ComputerTags),
+    AppUpdate {
+        /// A phone asked to update since the last report. Taken by reading.
+        requested: bool,
+    },
+    ChangeAsks {
+        asks: Vec<changes::Ask>,
+        /// Changes phones ask for in Herdr 2 tabs' layouts. An older
+        /// daemon sends none, and an older Sheprd leaves them to time out.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        layout: Vec<layout::Ask>,
+    },
 }
 
 /// The daemon's answer to a nearby phone's first step, the same JSON over

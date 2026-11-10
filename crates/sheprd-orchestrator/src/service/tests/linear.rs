@@ -51,6 +51,7 @@ pub(super) fn worker(dir: &std::path::Path) -> Worker {
         workspace_id: "w1".into(),
         token: None,
         data_root: None,
+        azure_store: Default::default(),
         gitlab_store: Default::default(),
         timing: Timing::default(),
         linear: Some(sheprd_credentials::Store::Environment),
@@ -61,6 +62,7 @@ pub(super) fn worker(dir: &std::path::Path) -> Worker {
         repository: Repository::Local(dir.to_owned()),
         main_root: dir.to_string_lossy().into_owned(),
         beads: false,
+        beads_root: None,
         remote: None,
     };
     worker.snapshot.sources = sources(&info, worker.linear_source())

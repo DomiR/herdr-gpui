@@ -7,8 +7,8 @@ use crate::orchestrator::{
     view::{OrchestratorView, board::Layout},
 };
 use gpui::{
-    Bounds, Entity, Modifiers, Pixels, Point, ScrollDelta, ScrollWheelEvent, VisualTestContext,
-    point, px,
+    Bounds, Entity, Modifiers, Pixels, Point, ScrollDelta, ScrollEvent, VisualTestContext, point,
+    px,
 };
 use std::sync::Arc;
 
@@ -53,7 +53,7 @@ fn bounds(cx: &mut VisualTestContext, selector: &str) -> Bounds<Pixels> {
 
 fn wheel(cx: &mut VisualTestContext, at: Point<Pixels>, delta: Point<Pixels>) {
     cx.simulate_mouse_move(at, None, Modifiers::none());
-    cx.simulate_event(ScrollWheelEvent {
+    cx.simulate_event(ScrollEvent {
         position: at,
         delta: ScrollDelta::Pixels(delta),
         ..Default::default()

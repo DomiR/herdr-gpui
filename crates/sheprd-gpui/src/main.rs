@@ -31,6 +31,7 @@ mod close_modal;
     not(any(
         feature = "azure",
         feature = "boat",
+        feature = "boxd",
         feature = "coder",
         feature = "container",
         feature = "daytona",
@@ -40,7 +41,7 @@ mod close_modal;
     ))
 ))]
 compile_error!(
-    "the `cloud` feature is enabled through a provider feature, such as `azure`, `boat`, `coder`, `container`, `daytona`, `opensandbox`, `railway`, or `sprites`"
+    "the `cloud` feature is enabled through a provider feature, such as `azure`, `boat`, `boxd`, `coder`, `container`, `daytona`, `opensandbox`, `railway`, or `sprites`"
 );
 #[cfg(feature = "cloud")]
 mod cloud;
@@ -48,6 +49,7 @@ mod cloud_setup;
 mod code_search;
 mod code_server;
 mod code_view;
+mod composition;
 mod config;
 mod config_diagnostic;
 mod connection;
@@ -57,6 +59,7 @@ mod control;
 mod copy_mode;
 mod core_terminals;
 mod daemon;
+mod device_tags;
 mod devices_overview;
 mod dialog_input;
 mod direction;
@@ -90,6 +93,7 @@ mod lenient;
 mod link;
 mod links;
 mod listening_ports;
+mod local_ports;
 mod log_targets;
 mod log_window;
 mod mark_layer;
@@ -132,6 +136,7 @@ mod review;
 mod scrollback;
 mod search_input;
 mod security;
+mod session_model;
 mod sessions;
 mod settings_panel;
 mod settings_window;
@@ -177,6 +182,10 @@ mod smoke;
 #[cfg(all(test, unix))]
 #[path = "../../test-support/executable.rs"]
 mod test_executable;
+#[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
+#[allow(unsafe_code)]
+#[path = "../../test-support/process.rs"]
+mod test_process;
 
 pub use error::{Error, Result};
 
@@ -203,6 +212,8 @@ use sheprd_client::{local_path, login_env};
 use sheprd_remote::azure;
 #[cfg(feature = "boat")]
 use sheprd_remote::boat;
+#[cfg(feature = "boxd")]
+use sheprd_remote::boxd;
 #[cfg(feature = "coder")]
 use sheprd_remote::coder;
 #[cfg(feature = "container")]

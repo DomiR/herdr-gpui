@@ -125,6 +125,10 @@ impl SheprdWindow {
             self.device_theme_key(event, window, cx);
             return;
         }
+        if self.menu.page == Some(Page::DeviceTags) {
+            self.device_tags_key(event, window, cx);
+            return;
+        }
         if matches!(
             self.menu.page,
             Some(Page::Host | Page::RenameDevice | Page::ForwardPort | Page::RemoveDevice)
@@ -137,6 +141,13 @@ impl SheprdWindow {
             Some(Page::Tab | Page::RenameTab | Page::MoveTab)
         ) {
             self.tab_menu_key(event, window, cx);
+            return;
+        }
+        if matches!(
+            self.menu.page,
+            Some(Page::CoreMenu | Page::CoreMove | Page::RenameCore)
+        ) {
+            self.core_menu_key(event, window, cx);
             return;
         }
         if self.menu.page == Some(Page::Group) {
@@ -228,6 +239,10 @@ impl SheprdWindow {
             self.gitlab_key(event, window, cx);
             return;
         }
+        if self.menu.page == Some(Page::AzureDevOps) {
+            self.azure_key(event, window, cx);
+            return;
+        }
         if self.menu.page == Some(Page::Themes) {
             self.theme_picker_key(event, window, cx);
             return;
@@ -285,6 +300,9 @@ impl SheprdWindow {
             "enter" if self.menu.page == Some(Page::GitCommit) => self.submit_git_commit(cx),
             "enter" if self.menu.page == Some(Page::PrComment) => self.submit_pr_comment(cx),
             "enter" if self.menu.page == Some(Page::PrMerge) => self.submit_pr_merge(cx),
+            "enter" if self.menu.page == Some(Page::OverviewReply) => {
+                self.submit_overview_reply(window, cx)
+            }
             "up" | "down" if self.menu.page == Some(Page::PrMerge) => {
                 self.cycle_merge_method(event.keystroke.key == "down", cx)
             }
@@ -347,6 +365,9 @@ impl SheprdWindow {
             }
             "enter" if self.menu.page == Some(Page::OpenLink) => {
                 self.confirm_open_link(window, cx);
+            }
+            "enter" if self.menu.page == Some(Page::PortSignal) => {
+                self.confirm_port_signal(window, cx);
             }
             #[cfg(feature = "cloud")]
             "enter" if self.menu.page == Some(Page::CreateCloud) => {

@@ -16,6 +16,10 @@ use crate::{
 use gpui::{Entity, Subscription, Task, UniformListScrollHandle, prelude::*};
 use sheprd_client::Method;
 
+mod note;
+
+pub(in crate::menu) use note::{Note, write_note};
+
 /// Which part of the new worktree dialog is showing. A closed set: the tab
 /// strip, the key routing, and the panel geometry all match on it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -75,11 +79,12 @@ impl Tab {
     }
 }
 
-/// Why a pull request or issue tab is faded without an account. Herdr keeps
-/// its own GitHub sign-in, so being signed in to `gh` or a browser is not
-/// enough.
-pub(super) fn signed_out_hint(kind: Kind) -> String {
+/// Why a pull request or issue tab is faded. On GitHub, no account: Herdr
+/// keeps its own GitHub sign-in, so being signed in to `gh` or a browser is
+/// not enough. On GitLab, only issues are listed.
+pub(super) fn faded_hint(kind: Kind, gitlab: bool) -> String {
     match kind {
+        Kind::PullRequest if gitlab => fl!("worktree-source-gitlab-merge-requests"),
         Kind::PullRequest => fl!("worktree-source-sign-in-pull-requests"),
         Kind::Issue => fl!("worktree-source-sign-in-issues"),
     }
@@ -405,9 +410,36 @@ impl SheprdWindow {
             _subscriptions: [subscription, naming],
         });
         // Both are cheap and local, so their counts are ready before a tab is
-        // opened; GitHub waits for its tab or the first search.
-        self.list_checkouts();
+        // opened; GitHub waits for its tab or the first search. Without a
+        // GitHub account the listing starts now: a GitLab project lists its
+        // issues without one, and its tab can only open once that is known.
+        self.list_checkouts(cx);
         self.list_branches(cx);
+        if self.pr_profile().is_none() {
+            self.list_repo_items();
+        }
+    }
+
+    /// The listed repository is a GitLab project.
+    pub(super) fn worktree_on_gitlab(&self) -> bool {
+        self.menu.worktree.as_ref().is_some_and(|source| {
+            matches!(
+                source.lookup.forge(),
+                Some(repo_items::Forge::GitLab { .. })
+            )
+        })
+    }
+
+    /// Whether `tab` can be opened: the pull request and issue tabs need a
+    /// GitHub account, except a GitLab project's issues, which do not; a
+    /// GitLab project lists no pull requests.
+    pub(super) fn worktree_tab_enabled(&self, tab: Tab) -> bool {
+        let gitlab = self.worktree_on_gitlab();
+        match tab.kind() {
+            None => true,
+            Some(Kind::Issue) => gitlab || self.pr_profile().is_some(),
+            Some(Kind::PullRequest) => !gitlab && self.pr_profile().is_some(),
+        }
     }
 
     /// Propose the branch for the name just typed, in place of the proposal
@@ -456,9 +488,9 @@ impl SheprdWindow {
             .flatten();
         if searching {
             if !source.checkouts.listed {
-                self.list_checkouts();
+                self.list_checkouts(cx);
             }
-            if self.pr_profile().is_some() {
+            if self.pr_profile().is_some() || self.worktree_on_gitlab() {
                 self.list_repo_items();
             }
         }
@@ -476,7 +508,7 @@ impl SheprdWindow {
         window: &mut gpui::Window,
         cx: &mut Context<Self>,
     ) {
-        if tab.kind().is_some() && self.pr_profile().is_none() {
+        if !self.worktree_tab_enabled(tab) {
             return;
         }
         let Some(source) = &mut self.menu.worktree else {
@@ -494,7 +526,7 @@ impl SheprdWindow {
             Tab::New => window.focus(&self.menu.focus, cx),
             Tab::Existing => {
                 if list_checkouts {
-                    self.list_checkouts();
+                    self.list_checkouts(cx);
                 }
                 window.focus(&search.read(cx).focus.clone(), cx);
             }
@@ -515,7 +547,12 @@ impl SheprdWindow {
     /// Ask the daemon for the repository's checkouts. The answer comes through
     /// the window's one correlated dialog slot, so nothing is asked while a
     /// creation or a removal is still waiting on it.
-    fn list_checkouts(&mut self) {
+    fn list_checkouts(&mut self, cx: &mut Context<Self>) {
+        // Git keeps a kept workspace's checkouts; the app lists them itself.
+        if self.kept_checkout().is_some() {
+            self.list_kept_checkouts(cx);
+            return;
+        }
         if self.menu.creation.is_some()
             || self
                 .removal
@@ -642,30 +679,37 @@ impl SheprdWindow {
         if self.menu.target.is_none() || !self.menu_target_current() {
             return Err(crate::Error::StaleWorkspace);
         }
-        if self.selected_endpoint != 0 || !self.live.local_daemon_peer {
+        // A kept workspace is in a folder on this computer.
+        if self.kept_checkout().is_none()
+            && (self.selected_endpoint != 0 || !self.live.local_daemon_peer)
+        {
             return Err(sheprd_github::pull_request::Error::UntrustedEndpoint.into());
         }
         self.menu_target_input(&crate::pull_request::Origin::Local)
     }
 
-    /// The checkout to read and the token to read GitHub with.
+    /// The checkout to read and the accounts to read it with: GitHub's, when
+    /// one is connected, and where this window keeps GitLab tokens (none in
+    /// a headless window).
     pub(super) fn repo_items_request(
         &self,
-    ) -> crate::Result<(repo_items::Target, crate::github::Tokens)> {
+    ) -> crate::Result<(repo_items::Target, repo_items::Accounts)> {
         if !self.menu_target_current() {
             return Err(crate::Error::StaleWorkspace);
         }
-        if !self.live.status.is_connected() {
+        // A kept workspace needs no daemon: its repository is read here.
+        if self.kept_checkout().is_none() && !self.live.status.is_connected() {
             return Err(crate::Error::NotConnected);
         }
         let host = self
             .pr_origin()
             .ok_or(sheprd_github::pull_request::Error::UntrustedEndpoint)?;
         let input = self.menu_target_input(&host)?;
-        let tokens = self
-            .pr_tokens()
-            .ok_or(sheprd_github::Error::Authentication)?;
-        Ok((repo_items::Target { host, input }, tokens))
+        let accounts = repo_items::Accounts {
+            github: self.pr_tokens(),
+            gitlab: self.gitlab_store().unwrap_or_default(),
+        };
+        Ok((repo_items::Target { host, input }, accounts))
     }
 
     /// Open or create whatever the row at `row` of the open listing names.
@@ -728,6 +772,26 @@ impl SheprdWindow {
     /// Queue the daemon request for a picked row, under the same fences a
     /// typed branch submission uses.
     fn submit_pick(&mut self, pending: &Pending, cx: &mut Context<Self>) {
+        if self.kept_checkout().is_some() {
+            let ask = self
+                .menu
+                .target
+                .as_ref()
+                .ok_or(crate::Error::StaleWorkspace)
+                .and_then(|target| target.base_ref())
+                .and_then(|base| super::workspace::Ask::of(pending, base));
+            match ask {
+                Ok(ask) => self.submit_kept_checkout(ask, cx),
+                Err(error) => {
+                    if let Some(source) = &mut self.menu.worktree {
+                        source.pending = None;
+                    }
+                    self.menu.error = Some(error.to_string());
+                    cx.notify();
+                }
+            }
+            return;
+        }
         let result = (|| {
             if !self.menu_target_current() {
                 return Err(crate::Error::StaleConnection);
@@ -779,6 +843,19 @@ impl SheprdWindow {
         if !source.lookup.poll() {
             return;
         }
+        // The listing can show that the open tab is one this repository does
+        // not have, as a GitLab project's pull request tab: its issues open
+        // instead, typed into by the same search field.
+        let current = source.tab;
+        let issues = Tab::Items(Kind::Issue);
+        let moved = (!self.worktree_tab_enabled(current) && self.worktree_tab_enabled(issues))
+            .then_some(issues);
+        let Some(source) = &mut self.menu.worktree else {
+            return;
+        };
+        if let Some(tab) = moved {
+            source.tab = tab;
+        }
         let ready = source.lookup.ready.take();
         source.refresh();
         let pending = match (ready, &source.pending) {
@@ -801,47 +878,6 @@ impl SheprdWindow {
             Some(pending) => self.submit_pick(&pending, cx),
             None => cx.notify(),
         }
-    }
-
-    /// Write the note naming what the created checkout is for. The daemon owns
-    /// the checkout, so its own reported path is used rather than a guess, and
-    /// the write itself is file I/O and never runs on the UI thread.
-    pub(super) fn write_worktree_note(
-        &mut self,
-        response: &serde_json::Value,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(host) = self.pr_origin() else {
-            return;
-        };
-        let Some(source) = &mut self.menu.worktree else {
-            return;
-        };
-        let (Some(Pending::Item(item)), Some(origin)) =
-            (source.pending.take(), source.lookup.origin.clone())
-        else {
-            return;
-        };
-        let Some(checkout) = response["workspace"]["worktree"]["checkout_path"]
-            .as_str()
-            .map(str::to_owned)
-        else {
-            self.local_error = Some(fl!("worktree-source-no-checkout-path"));
-            return;
-        };
-        let write = cx
-            .background_executor()
-            .spawn(async move { repo_items::write_context(&host, &checkout, &item, &origin) });
-        cx.spawn(async move |this, cx| {
-            let result = write.await;
-            let _ = this.update(cx, |this, cx| {
-                if let Err(error) = result {
-                    this.local_error = Some(error.to_string());
-                    cx.notify();
-                }
-            });
-        })
-        .detach();
     }
 }
 
@@ -889,6 +925,7 @@ pub(super) fn item_request(
 #[cfg(test)]
 impl WorktreeSource {
     pub(crate) fn install(&mut self, origin: repo_items::Origin, items: Vec<Item>) {
+        self.lookup.install_forge(origin.forge.clone());
         self.lookup.origin = Some(origin);
         self.lookup.items = items;
         self.lookup.loading = false;

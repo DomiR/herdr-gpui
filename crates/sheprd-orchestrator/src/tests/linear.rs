@@ -171,6 +171,8 @@ fn an_issue_reads_as_an_item() {
             labels: vec!["Bug".into(), "Auth".into()],
             parent_id: Some("ENG-1".into()),
             blocked_by: vec!["ENG-3".into(), "ENG-7".into()],
+            assignee: None,
+            acceptance: None,
             priority: Some(2),
             created_at: Some(at("2026-10-01T09:00:00Z")),
             updated_at: Some(at("2026-10-03T10:30:00Z")),

@@ -155,7 +155,11 @@ impl DocEditor {
         }
         let style = DiagramStyle::of(&self.look.theme, &self.look.ui);
         let renderer = cx.svg_renderer();
-        for job in self.visuals.jobs(&style, &renderer) {
+        // A document draws its own visuals: the whole budget is its own.
+        for job in self
+            .visuals
+            .jobs_within(crate::chat::visual::MAX_RUNNING, &style, &renderer)
+        {
             let task = cx.background_spawn(async move { job.run() });
             cx.spawn(async move |this, cx| {
                 let (id, ticket, drawn) = task.await;

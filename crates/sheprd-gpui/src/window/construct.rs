@@ -81,6 +81,7 @@ impl SheprdWindow {
         } = appearance;
         // Effects run here in a fixed order, so the fields below can stay sorted.
         let configured_terminal_size = config.terminal.size;
+        let menu_bar_visible = config.show_menu_bar;
         let status_bar_visible = config.status_bar.show;
         let mut gui_config_diagnostic = crate::config_diagnostic::ConfigDiagnostic::default();
         gui_config_diagnostic.sync_own(config.diagnostic().as_deref());
@@ -94,8 +95,11 @@ impl SheprdWindow {
         let sidebar_invalidation = Self::invalidate_sidebar(cx);
         let host_theme = Self::observe_host_theme(cx);
         let browser = crate::browser::Browser::new(cx);
+        let core_terminals = crate::core_terminals::CoreTerminals::shared(cx);
         // Another window, or an agent, may open or close a tab.
         let browser_tabs = cx.observe_global::<crate::browser::Store>(|_, cx| cx.notify());
+        let device_tags = crate::device_tags::DeviceTags::current(cx);
+        let device_tags_changed = Self::observe_device_tags(cx);
         let worktree_notes = Self::observe_worktree_notes(window, cx);
         let notification_mutes = Self::observe_notification_mutes(cx);
         let prefix_interceptor = Self::intercept_prefix(window, cx);
@@ -129,6 +133,7 @@ impl SheprdWindow {
             _activation: activation,
             _appearance: appearance_change,
             _browser_tabs: browser_tabs,
+            _device_tags: device_tags_changed,
             _host_theme: host_theme,
             _notification_mutes: notification_mutes,
             _poll: poll,
@@ -140,6 +145,7 @@ impl SheprdWindow {
             activation_deadline: None,
             active: window.is_window_active(),
             activity: Default::default(),
+            agent_group: None,
             agent_sort: preferences::AgentSort::default(),
             agent_sort_modified: false,
             app_update_notes: Default::default(),
@@ -169,12 +175,15 @@ impl SheprdWindow {
             config_watch: None,
             configured_terminal_size,
             copy_mode: None,
-            core_terminals: Default::default(),
+            core_terminals,
             daemon_text: Default::default(),
             deliveries: Default::default(),
             device_drag: None,
             device_filter: Default::default(),
             device_order: Vec::new(),
+            device_tag_filter: None,
+            device_tag_folds: Default::default(),
+            device_tags,
             device_themes: Default::default(),
             devices_overview: Default::default(),
             dispatch_job: None,
@@ -182,6 +191,7 @@ impl SheprdWindow {
             doc_views: Default::default(),
             editor_open: None,
             editor_panes: Vec::new(),
+            editor_returns: Vec::new(),
             endpoints: vec![endpoint::Endpoint::new(
                 endpoint::LOCAL.into(),
                 // i18n: data
@@ -209,6 +219,8 @@ impl SheprdWindow {
             install_warning_shown: false,
             integrations: Default::default(),
             issue_layout: None,
+            kept_scripts: Default::default(),
+            kept_worktree_done: Vec::new(),
             key_layout: prefix::current_layout,
             key_press: function_keys::current_press,
             landing_launch: None,
@@ -220,10 +232,12 @@ impl SheprdWindow {
             listening_ports: Default::default(),
             live: LiveState::default(),
             local_error: error,
+            local_ports: Default::default(),
             mark_layer,
             marked: String::new(),
             marked_selection: None,
             menu,
+            menu_bar_visible,
             merged_cleanup: Default::default(),
             mod_panel_width: crate::panel_resize::MOD_PANEL,
             mods: Default::default(),

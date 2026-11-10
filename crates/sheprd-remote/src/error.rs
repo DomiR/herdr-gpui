@@ -14,6 +14,8 @@ pub enum Error {
     #[error(transparent)]
     Config(crate::config::LoadError),
     #[error(transparent)]
+    CoreInstall(#[from] crate::core_install::Error),
+    #[error(transparent)]
     Credentials(#[from] sheprd_credentials::Error),
     #[error("{0}")]
     Io(#[from] std::io::Error),
@@ -33,5 +35,7 @@ pub enum Error {
     SandboxImage(#[from] crate::cloud::image::Error),
     #[error(transparent)]
     Teleport(#[from] crate::teleport::Error),
+    #[error(transparent)]
+    Work(#[from] crate::work::Error),
     // keep-sorted end
 }

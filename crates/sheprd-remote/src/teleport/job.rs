@@ -2,7 +2,7 @@
 //! find destinations, review what will move, and move it.
 
 use super::{
-    credentials,
+    core, credentials,
     error::{Error, Result, Step},
     git,
     host::Host,
@@ -10,21 +10,29 @@ use super::{
     provision::{self, Arrival},
     remote::MatchReason,
     sessions::{Route, move_session},
-    snapshot::{
-        PaneInfoResult, SnapshotResult, TabCreated, TabList, WorkspaceCreated, WorktreeCreated,
-    },
+    snapshot::{AgentSession, PaneInfoResult, TabCreated, WorkspaceCreated},
     warning::Warning,
 };
+use sheprd_backend::Generation;
 use sheprd_client::{protocol::ClientShellSnapshot, shell_quote};
-use std::{collections::HashMap, io::Seek, sync::atomic::AtomicBool, time::Duration};
+use sheprd_session::{Keeper, panes::Panes};
+use std::{
+    collections::HashMap,
+    io::Seek,
+    sync::atomic::{AtomicBool, Ordering},
+    time::Duration,
+};
 
 mod discover;
+mod land;
 pub(super) mod plan;
 
 // Only the live tests read a host's repositories outside discovery.
 #[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
 pub use discover::repositories_of;
 pub use discover::resolve;
+pub use land::Landed;
+use land::{Landing, land, retire};
 pub use plan::{Action, GitHubAccess, PanePlan, Review, review};
 
 /// How long an agent may take to write its handoff note.
@@ -38,11 +46,23 @@ pub struct Place {
     pub host: Host,
 }
 
+/// Who keeps a workspace, and so where Teleport reads its checkout and how
+/// it stops its programs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Keeping {
+    /// Herdr 1, whose snapshot names the checkout.
+    Herdr1,
+    /// The app, for Herdr 2 terminals, with the workspace's folder: the
+    /// checkout, which herdr-core knows nothing of.
+    App { checkout: String },
+}
+
 /// The workspace being moved, as the GUI snapshot describes it.
 #[derive(Debug, Clone)]
 pub struct Source {
     pub place: Place,
     pub workspace_id: String,
+    pub keeping: Keeping,
     /// A label the user chose, carried to the destination workspace.
     pub custom_label: Option<String>,
     pub repo_key: String,
@@ -51,6 +71,13 @@ pub struct Source {
     pub branch: Option<String>,
     /// Tab labels the user chose, by source tab id.
     pub tab_labels: HashMap<String, String>,
+    /// The workspace's Herdr 2 tabs, which the app lays out itself: their
+    /// terminals run in the source host's herdr-core, and each moves as one
+    /// more tab after the Herdr 1 ones.
+    pub core_tabs: Vec<Panes>,
+    /// Herdr 2 was chosen for new tabs: on a destination with a herdr-core,
+    /// Herdr 1 tabs move into it too.
+    pub core_preferred: bool,
 }
 
 /// A repository open on some host, found through one of its workspaces.
@@ -70,6 +97,9 @@ pub struct HostRepositories {
     pub repositories: Option<Vec<Repository>>,
     /// Checkouts on this host this client marked as teleported away.
     pub retired: Vec<Retired>,
+    /// Who keeps a workspace the move opens there: the app, where Herdr 2
+    /// takes new workspaces, else Herdr 1.
+    pub lands_in: Keeper,
 }
 
 /// A checkout whose work was teleported away, still open as a workspace.
@@ -78,6 +108,7 @@ pub struct Retired {
     pub repo_key: String,
     pub branch: String,
     pub workspace_id: String,
+    pub keeping: Keeping,
 }
 
 /// Where the worktree lands on a host.
@@ -94,6 +125,7 @@ pub enum Destination {
     Reclaim {
         repository: Repository,
         workspace_id: String,
+        keeping: Keeping,
     },
 }
 
@@ -103,18 +135,24 @@ pub struct Candidate {
     pub destination: Destination,
     /// `origin`'s URL, for a clone the destination can fetch itself.
     pub origin: Option<String>,
+    /// Who keeps the workspace the move lands in; see
+    /// [`HostRepositories::lands_in`].
+    pub lands_in: Keeper,
 }
 
 /// Where the teleported workspace ended up.
 #[derive(Debug)]
 pub struct Outcome {
     pub endpoint_id: String,
-    pub workspace_id: String,
+    pub workspace: Landed,
     /// The destination repository, for remembering where the work went.
     pub repo_key: String,
     pub branch: String,
     /// Things that did not carry over, for the user to see.
     pub warnings: Vec<Warning>,
+    /// The tabs rebuilt in the destination's herdr-core, for the app to open
+    /// in the workspace, in order.
+    pub core_tabs: Vec<Panes>,
 }
 
 /// The repositories open in `snapshot`, one per Git common directory, each
@@ -147,6 +185,21 @@ pub(super) fn reference_name() -> String {
     format!("refs/herdr-teleport/{nanos:x}-{:x}", std::process::id())
 }
 
+/// The sessions the review found in Herdr 2 terminals, by terminal, which
+/// must still be running when the move stops them.
+fn core_sessions(review: &Review) -> Vec<(String, AgentSession)> {
+    review
+        .tabs
+        .iter()
+        .filter(|tab| tab.generation == Generation::Herdr2)
+        .flat_map(|tab| &tab.panes)
+        .filter_map(|pane| match &pane.work {
+            Work::Session { session, .. } => Some((pane.pane_id.clone(), session.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
 /// Move the workspace. `report` announces each step as it starts.
 pub fn run(
     source: &Source,
@@ -158,6 +211,11 @@ pub fn run(
     let from = &source.place.host;
     let to = &destination.place.host;
     let mut warnings = Vec::new();
+    // Herdr 2 agents' sessions are read from their processes, which may have
+    // moved on to another conversation since the review. Checked before
+    // anything changes, so a refusal leaves nothing behind on either host.
+    let resumed = core_sessions(review);
+    core::confirm(from, &resumed, cancelled)?;
 
     // The repository comes first: if it cannot be put on the destination,
     // nothing on the source has been touched.
@@ -166,30 +224,38 @@ pub fn run(
 
     // Notes are written into the source checkout first, so they travel with
     // the uncommitted changes.
-    let handoffs: Vec<&PanePlan> = review
-        .panes()
-        .filter(|pane| matches!(pane.action, Action::Handoff { .. }))
+    let handoffs: Vec<(Generation, &PanePlan)> = review
+        .tabs
+        .iter()
+        .flat_map(|tab| tab.panes.iter().map(|pane| (tab.generation, pane)))
+        .filter(|(_, pane)| matches!(pane.action, Action::Handoff { .. }))
         .collect();
     if !handoffs.is_empty() {
         report(Step::Handoff);
         let timeout = HANDOFF_TIMEOUT.as_millis().to_string();
-        for pane in handoffs {
+        for (generation, pane) in handoffs {
             let Action::Handoff { note, .. } = &pane.action else {
                 continue;
             };
-            let asked = from.herdr_ok(
-                Step::Handoff,
-                &[
-                    "agent",
-                    "prompt",
-                    &pane.pane_id,
-                    &handoff_prompt(&format!("{}/{note}", review.checkout)),
-                    "--wait",
-                    "--timeout",
-                    &timeout,
-                ],
-                cancelled,
-            );
+            let prompt = handoff_prompt(&format!("{}/{note}", review.checkout));
+            let asked = match generation {
+                Generation::Herdr1 => from.herdr_ok(
+                    Step::Handoff,
+                    &[
+                        "agent",
+                        "prompt",
+                        &pane.pane_id,
+                        &prompt,
+                        "--wait",
+                        "--timeout",
+                        &timeout,
+                    ],
+                    cancelled,
+                ),
+                Generation::Herdr2 => {
+                    core::prompt(from, &pane.pane_id, &prompt, HANDOFF_TIMEOUT, cancelled)
+                }
+            };
             match asked {
                 Err(Error::Cancelled) => return Err(Error::Cancelled),
                 Err(error) => warnings.push(Warning::NoHandoffNote {
@@ -227,6 +293,9 @@ pub fn run(
     let _ = git::discard_upload(to, &uploaded, cancelled);
     fetched?;
 
+    // Herdr 2 terminals started from here on end again unless the move
+    // finishes, since only its outcome gives them tabs.
+    let mut spawned = core::Spawned::new(to);
     let placed = (|| {
         let landing = land(
             source,
@@ -237,10 +306,10 @@ pub fn run(
             &mut report,
             cancelled,
         )?;
-        let panes = rebuild_tabs(to, &landing, review, &mut report, cancelled)?;
-        Ok((landing, panes))
+        let rebuilt = rebuild_tabs(to, &landing, review, &mut spawned, &mut report, cancelled)?;
+        Ok((landing, rebuilt))
     })();
-    let (landing, panes) = match placed {
+    let (landing, (panes, core_tabs)) = match placed {
         Ok(placed) => placed,
         Err(error) => {
             git::drop_reference(to, key, &reference, &AtomicBool::new(false));
@@ -251,7 +320,8 @@ pub fn run(
     // The source's programs stop here, so every session file is complete. The
     // workspace itself stays, for this client to mark as teleported.
     report(Step::Retire);
-    retire(from, &source.workspace_id, &review.checkout, cancelled)?;
+    retire(source, &review.checkout, cancelled)?;
+    core::stop(from, &core::ids(&source.core_tabs), cancelled)?;
 
     report(Step::Sessions);
     let mut launches = Vec::new();
@@ -321,19 +391,24 @@ pub fn run(
         if target.cwd != target.created_in {
             line = format!("cd -- {} && {line}", shell_quote(&target.cwd));
         }
-        to.herdr_ok(
-            Step::Launch,
-            &["pane", "run", &target.pane_id, &line],
-            cancelled,
-        )?;
+        match target.generation {
+            Generation::Herdr1 => to.herdr_ok(
+                Step::Launch,
+                &["pane", "run", &target.pane_id, &line],
+                cancelled,
+            )?,
+            Generation::Herdr2 => core::type_line(to, &target.pane_id, &line, cancelled)?,
+        }
     }
 
+    spawned.keep();
     Ok(Outcome {
         endpoint_id: destination.place.endpoint_id.clone(),
-        workspace_id: landing.workspace_id,
+        workspace: landing.workspace,
         repo_key: repository.key.clone(),
         branch: review.branch.clone(),
         warnings,
+        core_tabs,
     })
 }
 
@@ -364,6 +439,15 @@ pub(super) fn arrive(
             (path, key)
         }
     };
+    // Where the app keeps the workspaces, a worktree is made with Git from
+    // the repository alone: no workspace needs to hold its main checkout.
+    if destination.lands_in == Keeper::App {
+        return Ok(Repository {
+            key,
+            label: source.repo_label.clone(),
+            workspace_id: String::new(),
+        });
+    }
     report(Step::Open);
     let opened: WorkspaceCreated = to.herdr(
         Step::Open,
@@ -414,139 +498,28 @@ pub(super) fn open_workspace(
     Ok(opened.workspace.workspace_id)
 }
 
-/// A destination pane standing in for a source pane.
+/// A destination pane standing in for a source pane: a Herdr 1 pane, or a
+/// Herdr 2 terminal.
 #[derive(Debug, Clone)]
 struct Target {
+    generation: Generation,
     pane_id: String,
     /// Where its program should run, and where its shell started.
     cwd: String,
     created_in: String,
 }
 
-/// Where the work lands: a workspace, its checkout, the empty tab the first
-/// source tab is rebuilt in, and tabs to close once the rebuild is done.
-struct Landing {
-    workspace_id: String,
-    checkout: String,
-    first_tab: String,
-    first_pane: String,
-    stale_tabs: Vec<String>,
-}
-
-/// Put the branch and changes in place: a new worktree, or, coming back, the
-/// checkout the work once left (backed up first).
-fn land(
-    source: &Source,
-    destination: &Candidate,
-    repository: &Repository,
-    review: &Review,
-    reference: &str,
-    report: &mut impl FnMut(Step),
-    cancelled: &AtomicBool,
-) -> Result<Landing> {
-    let to = &destination.place.host;
-    if let Destination::Reclaim { workspace_id, .. } = &destination.destination {
-        report(Step::Restore);
-        let snapshot: SnapshotResult = to.herdr(Step::Restore, &["api", "snapshot"], cancelled)?;
-        let snapshot = snapshot.snapshot;
-        let checkout = snapshot
-            .workspace(workspace_id)
-            .and_then(|workspace| workspace.worktree.as_ref())
-            .map(|worktree| worktree.checkout_path.clone())
-            .ok_or(Error::WorkspaceGone)?;
-        let stale_tabs = snapshot
-            .tabs_of(workspace_id)
-            .iter()
-            .map(|tab| tab.tab_id.clone())
-            .collect();
-        let backup = reference.replacen("refs/herdr-teleport/", "refs/herdr-teleport/backup/", 1);
-        git::reclaim(to, &checkout, reference, &backup, cancelled)?;
-        report(Step::Tabs);
-        let made: TabCreated = to.herdr(
-            Step::Tabs,
-            &[
-                "tab",
-                "create",
-                "--workspace",
-                workspace_id,
-                "--cwd",
-                &checkout,
-                "--no-focus",
-            ],
-            cancelled,
-        )?;
-        return Ok(Landing {
-            workspace_id: workspace_id.clone(),
-            checkout,
-            first_tab: made.tab.tab_id,
-            first_pane: made.root_pane.pane_id,
-            stale_tabs,
-        });
-    }
-    git::advance_branch(to, &repository.key, &review.branch, reference, cancelled)?;
-    report(Step::CreateWorktree);
-    let mut args = vec![
-        "worktree",
-        "create",
-        "--workspace",
-        &repository.workspace_id,
-        "--branch",
-        &review.branch,
-        "--no-focus",
-    ];
-    if let Some(label) = &source.custom_label {
-        args.extend(["--label", label]);
-    }
-    let created: WorktreeCreated = to.herdr(Step::CreateWorktree, &args, cancelled)?;
-    report(Step::Restore);
-    git::restore(to, &created.worktree.path, reference, cancelled)?;
-    Ok(Landing {
-        workspace_id: created.workspace.workspace_id,
-        checkout: created.worktree.path,
-        first_tab: created.tab.tab_id,
-        first_pane: created.root_pane.pane_id,
-        stale_tabs: Vec::new(),
-    })
-}
-
-/// Stop everything running in the source workspace but keep the workspace:
-/// one fresh shell tab replaces its tabs.
-fn retire(host: &Host, workspace_id: &str, checkout: &str, cancelled: &AtomicBool) -> Result<()> {
-    let tabs: TabList = host.herdr(
-        Step::Retire,
-        &["tab", "list", "--workspace", workspace_id],
-        cancelled,
-    )?;
-    host.herdr_ok(
-        Step::Retire,
-        &[
-            "tab",
-            "create",
-            "--workspace",
-            workspace_id,
-            "--cwd",
-            checkout,
-            "--label",
-            "teleported",
-            "--no-focus",
-        ],
-        cancelled,
-    )?;
-    for tab in tabs.tabs {
-        host.herdr_ok(Step::Retire, &["tab", "close", &tab.tab_id], cancelled)?;
-    }
-    Ok(())
-}
-
 /// Rebuild the source tabs in `landing`, then close the tabs it replaces.
-/// Returns one target per pane in `review.panes()` order.
+/// Returns one target per pane in `review.panes()` order, and the pane trees
+/// of the tabs rebuilt in Herdr 2, whose terminals are also in `spawned`.
 fn rebuild_tabs(
     to: &Host,
     landing: &Landing,
     review: &Review,
+    spawned: &mut core::Spawned<'_>,
     report: &mut impl FnMut(Step),
     cancelled: &AtomicBool,
-) -> Result<Vec<Target>> {
+) -> Result<(Vec<Target>, Vec<Panes>)> {
     report(Step::Tabs);
     let checkout = &landing.checkout;
     let cwd_of = |plan: Option<&PanePlan>| {
@@ -555,30 +528,63 @@ fn rebuild_tabs(
             .unwrap_or_else(|| checkout.clone())
     };
     let mut targets: HashMap<String, Target> = HashMap::new();
-    for (index, tab) in review.tabs.iter().enumerate() {
+    let mut core_tabs = Vec::new();
+    // The first tab rebuilt in Herdr 1 takes the landing's empty tab.
+    let mut first = landing.first.clone();
+    for tab in &review.tabs {
         let build = tab.tree.plan();
+        if tab.into == Generation::Herdr2 {
+            let mut terminals = HashMap::new();
+            for source_pane in &build.slots {
+                let cwd = cwd_of(tab.pane(source_pane));
+                // A start is not cancelled midway, so every terminal the
+                // core starts is known to `spawned`, which ends them.
+                let terminal = core::start_shell(to, &cwd, &AtomicBool::new(false))?;
+                spawned.push(terminal.clone());
+                if cancelled.load(Ordering::Acquire) {
+                    return Err(Error::Cancelled);
+                }
+                terminals.insert(source_pane.clone(), terminal.clone());
+                let target = Target {
+                    generation: Generation::Herdr2,
+                    pane_id: terminal,
+                    cwd: cwd.clone(),
+                    created_in: cwd,
+                };
+                targets.insert(source_pane.clone(), target);
+            }
+            core_tabs.push(
+                core::panes(&tab.tree, &terminals).ok_or_else(|| Error::Decode {
+                    step: Step::Tabs,
+                    source: serde::de::Error::custom("a Herdr 2 tab could not be laid out"),
+                })?,
+            );
+            continue;
+        }
         let first_cwd = cwd_of(build.slots.first().and_then(|id| tab.pane(id)));
-        let (tab_id, root, root_cwd) = if index == 0 {
-            (
-                landing.first_tab.clone(),
-                landing.first_pane.clone(),
-                checkout.clone(),
-            )
-        } else {
-            let made: TabCreated = to.herdr(
-                Step::Tabs,
-                &[
-                    "tab",
-                    "create",
-                    "--workspace",
-                    &landing.workspace_id,
-                    "--cwd",
-                    &first_cwd,
-                    "--no-focus",
-                ],
-                cancelled,
-            )?;
-            (made.tab.tab_id, made.root_pane.pane_id, first_cwd.clone())
+        let (tab_id, root, root_cwd) = match first.take() {
+            Some((tab_id, root)) => (tab_id, root, checkout.clone()),
+            None => {
+                let made: TabCreated = to.herdr(
+                    Step::Tabs,
+                    &[
+                        "tab",
+                        "create",
+                        "--workspace",
+                        landing.herdr1.as_deref().ok_or_else(|| Error::Decode {
+                            step: Step::Tabs,
+                            source: serde::de::Error::custom(
+                                "a Herdr 1 tab cannot open in a workspace the app keeps",
+                            ),
+                        })?,
+                        "--cwd",
+                        &first_cwd,
+                        "--no-focus",
+                    ],
+                    cancelled,
+                )?;
+                (made.tab.tab_id, made.root_pane.pane_id, first_cwd.clone())
+            }
         };
         if let Some(label) = &tab.label {
             to.herdr_ok(Step::Tabs, &["tab", "rename", &tab_id, label], cancelled)?;
@@ -610,6 +616,7 @@ fn rebuild_tabs(
             targets.insert(
                 source_pane.clone(),
                 Target {
+                    generation: Generation::Herdr1,
                     pane_id,
                     cwd: cwd_of(tab.pane(source_pane)),
                     created_in,
@@ -620,7 +627,7 @@ fn rebuild_tabs(
     for tab in &landing.stale_tabs {
         to.herdr_ok(Step::Tabs, &["tab", "close", tab], cancelled)?;
     }
-    review
+    let targets = review
         .panes()
         .map(|plan| {
             targets
@@ -631,5 +638,6 @@ fn rebuild_tabs(
                     source: serde::de::Error::custom("a pane was not recreated"),
                 })
         })
-        .collect()
+        .collect::<Result<_>>()?;
+    Ok((targets, core_tabs))
 }

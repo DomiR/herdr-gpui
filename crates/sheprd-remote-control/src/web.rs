@@ -11,6 +11,7 @@
 
 mod api;
 mod assets;
+pub(crate) mod attention;
 mod fragments;
 mod hosts;
 mod indicators;
@@ -20,7 +21,9 @@ mod origins;
 mod pace;
 mod render;
 mod stream;
+mod tags;
 mod terminal;
+mod update;
 mod uploads;
 
 pub(crate) use api::{NEW_CHAT_WAIT, check_new_workspace, parse_agent};
@@ -31,7 +34,8 @@ pub(crate) use origins::Origins;
 pub(crate) use pace::Typed;
 pub(crate) use render::now_ms;
 pub(crate) use stream::Connected;
-pub(crate) use terminal::read_screen;
+pub(crate) use tags::Tags;
+pub(crate) use terminal::read_scrolled;
 pub(crate) use uploads::Uploads;
 
 use crate::control::DeviceId;
@@ -70,11 +74,15 @@ pub(crate) struct State {
     pub(crate) auth: Mutex<Auth>,
     /// Present when the daemon issues its own certificates.
     pub(crate) authority: Option<Authority>,
+    /// Phones' questions about workspaces, waiting for Sheprd.
+    pub(crate) changes: crate::native::changes::Mailbox,
     pub(crate) computer: String,
     /// Streams open per device.
     pub(crate) connected: Mutex<HashMap<DeviceId, usize>>,
     pub(crate) fingerprint: String,
     pub(crate) hub: Arc<Hub>,
+    /// How much this computer lets Live Activities say.
+    pub(crate) live_activities: crate::app::config::ActivityDetail,
     /// This computer's CPU and memory, as `load` last read them.
     pub(crate) load: tokio::sync::watch::Receiver<Option<crate::load::Load>>,
     /// The status marks the lists draw, as Sheprd last sent them.
@@ -83,6 +91,8 @@ pub(crate) struct State {
     /// Devices whose owner is at this computer, as Sheprd last said:
     /// their alerts wait until they leave.
     pub(crate) near: Mutex<crate::push::Near>,
+    /// What phones have looked at, for the badge.
+    pub(crate) opened: attention::Opened,
     pub(crate) port: u16,
     pub(crate) privacy: Privacy,
     pub(crate) pull_requests:
@@ -92,14 +102,22 @@ pub(crate) struct State {
     pub(crate) reports: Mutex<auth::RateLimiter<std::net::IpAddr>>,
     /// Origins served before, which an installed app may still send.
     pub(crate) seen: Mutex<Origins>,
+    /// This computer's tags, which its phones and desktops share.
+    pub(crate) tags: Tags,
     /// Panes phones type into, so their screens are read again at once.
     pub(crate) typed: Typed,
+    /// Where the app's updater stands, and a phone's request to run it.
+    pub(crate) updates: Mutex<update::Relay>,
     pub(crate) uploads: Uploads,
 }
 
 impl State {
     pub(crate) fn auth(&self) -> MutexGuard<'_, Auth> {
         self.auth.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    pub(crate) fn updates(&self) -> MutexGuard<'_, update::Relay> {
+        self.updates.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     pub(crate) fn near(&self) -> MutexGuard<'_, crate::push::Near> {
@@ -208,10 +226,37 @@ pub(crate) fn router(state: Shared) -> Router {
         .route("/api/v2/live", get(crate::native::live))
         .route("/api/v2/new", get(crate::native::new_options))
         .route("/api/v2/search", get(crate::native::search))
+        .route("/api/v2/tags", get(tags::get).put(tags::put))
+        .route("/api/v2/term/{pane}/convert", post(crate::native::convert))
+        .route("/api/v2/update", get(update::status).post(update::request))
         .route("/api/v2/workspaces", post(crate::native::create_workspace))
+        .route(
+            "/api/v2/workspaces/{workspace}/changes",
+            get(crate::native::changes::files),
+        )
+        .route(
+            "/api/v2/workspaces/{workspace}/changes/diff",
+            get(crate::native::changes::diff),
+        )
         .route(
             "/api/v2/workspaces/{workspace}/chats",
             post(crate::native::start_chat),
+        )
+        .route(
+            "/api/v2/workspaces/{workspace}/checks",
+            get(crate::native::changes::checks),
+        )
+        .route(
+            "/api/v2/workspaces/{workspace}/checks/{job}/log",
+            get(crate::native::changes::check_log),
+        )
+        .route(
+            "/api/v2/workspaces/{workspace}/terminals",
+            post(crate::native::new_terminal),
+        )
+        .route(
+            "/api/v2/workspaces/{workspace}/rename",
+            post(terminal::rename_workspace),
         )
         .route("/f/home", get(fragments::home))
         .route("/f/board", get(fragments::board))
@@ -221,6 +266,7 @@ pub(crate) fn router(state: Shared) -> Router {
         .route("/f/new-chat", get(fragments::new_chat))
         .route("/f/settings", get(fragments::settings))
         .route("/f/term/{pane}", get(terminal::fragment))
+        .route("/f/term/{pane}/history", get(terminal::history))
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
         .layer(middleware::from_fn_with_state(state.clone(), cors))
         .layer(middleware::from_fn(security_headers))
@@ -362,7 +408,11 @@ pub(crate) fn bearer(headers: &HeaderMap) -> Option<&str> {
 pub(crate) enum ApiError {
     // keep-sorted start
     #[error(transparent)]
+    App(#[from] crate::app::Error),
+    #[error(transparent)]
     Auth(#[from] auth::Error),
+    #[error(transparent)]
+    Changes(#[from] crate::native::changes::Error),
     #[error("that is not a folder you can start a workspace in")]
     Folder,
     #[error(transparent)]
@@ -380,6 +430,8 @@ pub(crate) enum ApiError {
     #[error("sign in again")]
     Unauthorized,
     #[error(transparent)]
+    Update(#[from] update::Error),
+    #[error(transparent)]
     Upload(#[from] uploads::Error),
     // keep-sorted end
 }
@@ -388,6 +440,7 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let status = match &self {
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
+            Self::Changes(error) => error.status(),
             Self::TooManyStreams => StatusCode::TOO_MANY_REQUESTS,
             Self::NotFound => StatusCode::NOT_FOUND,
             Self::Auth(auth::Error::RateLimited | auth::Error::NearbyBusy) => {
@@ -409,15 +462,29 @@ impl IntoResponse for ApiError {
                 | auth::Error::StoreFormat { .. }
                 | auth::Error::Random(_),
             ) => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::Upload(uploads::Error::Write(_)) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::Update(update::Error::AppClosed) => StatusCode::CONFLICT,
+            Self::App(_) | Self::Upload(uploads::Error::Write(_)) => {
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
             Self::Auth(_) | Self::Folder | Self::Invalid(_) | Self::Push(_) | Self::Upload(_) => {
                 StatusCode::BAD_REQUEST
             }
             Self::Hub(crate::hub::Error::UnknownChat | crate::hub::Error::UnknownWorkspace) => {
                 StatusCode::NOT_FOUND
             }
+            Self::Hub(crate::hub::Error::Convert(
+                crate::hub::ConvertError::AlreadyConverting
+                | crate::hub::ConvertError::Platform
+                | crate::hub::ConvertError::Refused(_),
+            ))
+            | Self::Hub(crate::hub::Error::SessionOnHerdr2) => StatusCode::CONFLICT,
             Self::Hub(_) | Self::NoPush => StatusCode::SERVICE_UNAVAILABLE,
         };
+        // The request line only has the status. A computer without push
+        // answers every phone that registers, which says nothing new.
+        if status.is_server_error() && !matches!(self, Self::NoPush) {
+            tracing::warn!(status = status.as_u16(), error = %self, "request failed");
+        }
         (status, axum::Json(json!({ "error": self.to_string() }))).into_response()
     }
 }

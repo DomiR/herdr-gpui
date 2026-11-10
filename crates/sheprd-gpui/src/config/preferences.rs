@@ -27,13 +27,18 @@ pub(crate) enum Preference {
     AgentCheckpoints(bool),
     ShowListeningPorts(bool),
     ShowAgentsHeader(bool),
-    /// `herdr_2_terminals`: new tabs run in herdr-core.
+    /// `herdr_2_terminals`: new tabs on this computer run in herdr-core.
     Herdr2Terminals(bool),
+    /// `herdr_2_scrollback`: lines each Herdr 2 terminal keeps.
+    Herdr2Scrollback(u32),
     ShowSidebarSearch(bool),
     ShowRepositoryIcons(bool),
+    ShowMenuBar(bool),
     ShowWindowControls(bool),
     /// `status_icons`: the set agent status is drawn with.
     StatusIcons(StatusIcons),
+    /// `[tab_labels] agent_title`: unnamed tabs show their agent's title.
+    TabAgentTitle(bool),
     /// `tab_layout`: how tab strips draw their tabs.
     TabLayout(TabLayoutMode),
     /// `edge_rail`: the bar on busy and finished rows.
@@ -46,6 +51,8 @@ pub(crate) enum Preference {
     NotificationPosition(Option<ToastHerdrPosition>),
     /// `[notifications] finished`: GUI-only, so there is no shared value to follow.
     NotificationFinished(bool),
+    /// `[notifications] quiet_hours`: GUI-only; `None` removes the window.
+    NotificationQuietHours(Option<QuietHours>),
     ClipboardEnabled(Option<bool>),
     ClipboardPosition(Option<ClipboardToastPosition>),
     /// `[terminal] padding_x` or `padding_y`: both sides of one axis.
@@ -73,6 +80,9 @@ pub(crate) enum Preference {
     SidebarAutomations(bool),
     /// `[sidebar] ports`: whether rows carry their listening ports.
     SidebarPorts(bool),
+    /// `[sidebar] ports_count`: whether the bar counts the servers this
+    /// computer's user runs on the Ports icon.
+    SidebarPortsCount(bool),
     /// `[sidebar] device_footer`: when the sidebar draws its device footer.
     SidebarDeviceFooter(DeviceFooter),
     /// `[sidebar] change_counts`: whose line counts a worktree row shows.
@@ -169,6 +179,9 @@ impl Config {
                 Preference::Herdr2Terminals(value) => {
                     (None, "herdr_2_terminals", Some(value.into()))
                 }
+                Preference::Herdr2Scrollback(lines) => {
+                    (None, "herdr_2_scrollback", Some(i64::from(lines).into()))
+                }
                 Preference::ShowSidebarSearch(value) => {
                     (None, "show_sidebar_search", Some(value.into()))
                 }
@@ -178,6 +191,7 @@ impl Config {
                 Preference::ShowDeviceIcons(value) => {
                     (None, "show_device_icons", Some(value.into()))
                 }
+                Preference::ShowMenuBar(value) => (None, "show_menu_bar", Some(value.into())),
                 Preference::ShowWindowControls(value) => {
                     (None, "show_window_controls", Some(value.into()))
                 }
@@ -186,6 +200,9 @@ impl Config {
                     (None, "status_icons", Some(value.as_str().into()))
                 }
                 Preference::EdgeRail(value) => (None, "edge_rail", Some(value.into())),
+                Preference::TabAgentTitle(value) => {
+                    (Some("tab_labels"), "agent_title", Some(value.into()))
+                }
                 Preference::TabLayout(mode) => (None, "tab_layout", Some(mode.name().into())),
                 Preference::FocusFollowsMouse(value) => {
                     (None, "focus_follows_mouse", Some(value.into()))
@@ -218,6 +235,11 @@ impl Config {
                 Preference::NotificationFinished(value) => {
                     (Some("notifications"), "finished", Some(value.into()))
                 }
+                Preference::NotificationQuietHours(value) => (
+                    Some("notifications"),
+                    "quiet_hours",
+                    value.map(|hours| hours.to_string().into()),
+                ),
                 Preference::ClipboardEnabled(value) => {
                     (Some("clipboard_toast"), "enabled", value.map(Into::into))
                 }
@@ -253,6 +275,9 @@ impl Config {
                 }
                 Preference::SidebarAutomations(value) => {
                     (Some("sidebar"), "automations", Some(value.into()))
+                }
+                Preference::SidebarPortsCount(value) => {
+                    (Some("sidebar"), "ports_count", Some(value.into()))
                 }
                 Preference::SidebarPorts(value) => (Some("sidebar"), "ports", Some(value.into())),
                 Preference::SidebarDeviceFooter(footer) => (

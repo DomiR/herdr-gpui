@@ -105,12 +105,14 @@ fn chats() -> Layout {
     Layout {
         connected: true,
         boot: "b".into(),
+        working: 0,
         workspaces: vec![Workspace {
             id: "w1".into(),
             label: "app".into(),
             branch: None,
             cwd: "/work".into(),
             worktree: None,
+            session: None,
             chats: vec![ChatRow {
                 pane: "p1".into(),
                 tab: "t1".into(),

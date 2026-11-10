@@ -276,8 +276,7 @@ impl SheprdWindow {
     ) {
         self.links.pointer = Some((position, modifiers));
         let mut examined = false;
-        let local = modifiers
-            .secondary()
+        let local = crate::keymap::secondary(&modifiers)
             .then(|| self.local_link_at(position))
             .flatten()
             .and_then(|link| {
@@ -304,7 +303,7 @@ impl SheprdWindow {
             self.links.local = local;
             cx.notify();
         }
-        let cell = (modifiers.secondary() && self.live.supports_link_resolve)
+        let cell = (crate::keymap::secondary(&modifiers) && self.live.supports_link_resolve)
             .then(|| self.link_cell_at(position))
             .flatten();
         if cell == self.links.hover {
@@ -434,7 +433,7 @@ impl SheprdWindow {
         position: Point<Pixels>,
         modifiers: Modifiers,
     ) -> Option<PressedLink> {
-        if !modifiers.secondary() {
+        if !crate::keymap::secondary(&modifiers) {
             return None;
         }
         let url = self.terminal_link_at(position);
@@ -554,6 +553,42 @@ impl SheprdWindow {
                 self.open_link(url.map(Fallback::Web).or(fallback), in_tab, window, cx);
             }
         }
+    }
+
+    /// Opens a link clicked in a herdr-core pane as a Herdr pane's opens
+    /// when no plugin handler claims it: herdr-core has none.
+    pub(crate) fn open_core_link(
+        &mut self,
+        click: crate::core_terminals::LinkClick,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let in_tab =
+            (self.config.open_links_in == crate::config::LinkTarget::BrowserTab) != click.alt;
+        let fallback = match click.target {
+            RowTarget::Web(url) => WebUrl::try_from(url.as_str()).ok().map(Fallback::Web),
+            RowTarget::Path {
+                path,
+                line,
+                explicit,
+            } => Some(Fallback::File {
+                link: FileLink {
+                    path,
+                    line,
+                    pane_id: click.terminal.to_string(),
+                    cwd: click.cwd,
+                    explicit,
+                },
+                in_editor: (self.config.open_files_in == crate::config::FileTarget::Editor)
+                    != click.alt,
+            }),
+            RowTarget::External(url) => Some(Fallback::External(url)),
+            RowTarget::OtherHost(host) => {
+                Some(Fallback::Unopened(crate::Error::LinkOnAnotherHost { host }))
+            }
+            RowTarget::Malformed => Some(Fallback::Unopened(crate::Error::MalformedLink)),
+        };
+        self.open_link(fallback, in_tab, window, cx);
     }
 
     fn open_link(

@@ -617,6 +617,8 @@ impl Node {
                 .unwrap_or_default(),
             parent_id,
             blocked_by,
+            assignee: None,
+            acceptance: None,
             priority: self.priority.and_then(priority),
             created_at: Some(self.created_at),
             updated_at: Some(self.updated_at),

@@ -10,8 +10,7 @@
 //! the narrow column cannot.
 
 use super::{
-    agent_name,
-    agents::{Indicators, agent_place, state_label, status_indicator, status_text},
+    agents::{Indicators, status_indicator, status_text},
     cell::RowState,
     glyph_width, label_text,
     layout::{self, Highlight, SidebarLook},
@@ -29,7 +28,7 @@ use crate::{
     herdr_settings::SidebarCollapsedMode,
 };
 use gpui::{prelude::*, *};
-use sheprd_client::protocol::{AgentStatus, ClientShellAgent};
+use sheprd_client::protocol::AgentStatus;
 use std::collections::HashMap;
 
 /// Wide enough for the shared mark grid: a two-digit workspace number, an
@@ -205,6 +204,13 @@ impl SheprdWindow {
                 } else {
                     endpoint.label.clone()
                 };
+                // An offline or folded host has no rows to carry the mark.
+                let text = muted_word(
+                    Some(text.clone()),
+                    crate::notification_mutes::Mutes::any(cx)
+                        .is_some_and(|mutes| mutes.host(&endpoint.id)),
+                )
+                .unwrap_or(text);
                 let box_id = endpoint_id.clone();
                 let chrome = host_chrome(selected, look, theme);
                 spaces = spaces.child(
@@ -260,34 +266,46 @@ impl SheprdWindow {
             if multi && endpoint.collapsed {
                 continue;
             }
-            let live = if selected { &self.live } else { &endpoint.live };
-            let Some(snapshot) = &live.snapshot else {
-                continue;
-            };
+            let sessions = self.sessions(endpoint_index);
             let collapsed_repos = if endpoint_index == 0 {
                 &self.collapsed_repos
             } else {
                 &endpoint.collapsed_repos
             };
             let host = multi.then_some(endpoint.label.as_str());
-            for (index, indented, _) in
-                visible_workspace_entries(&snapshot.workspaces, collapsed_repos)
-            {
-                let workspace = &snapshot.workspaces[index];
-                let id = workspace.workspace_id.clone();
+            let kept_front = self.kept_in_front();
+            // Herdr 1 numbers its workspaces in its own order; those the app
+            // keeps for Herdr 2 count on after them.
+            let rows: Vec<(&sheprd_session::Workspace, bool, bool)> = sessions
+                .keyed()
+                .flat_map(|(keeper, session)| {
+                    let front = selected
+                        .then(|| {
+                            crate::session_model::Sessions::front_of(keeper, session, kept_front)
+                        })
+                        .flatten();
+                    visible_workspace_entries(&session.workspaces, collapsed_repos)
+                        .into_iter()
+                        .map(move |(index, indented, _)| {
+                            let workspace = &session.workspaces[index];
+                            (workspace, indented, front == Some(workspace.id.as_str()))
+                        })
+                })
+                .collect();
+            for (position, (workspace, indented, focused)) in rows.into_iter().enumerate() {
+                let id = workspace.id.clone();
                 let key = format!("rail-workspace-{endpoint_id}-{id}");
                 let navigate_endpoint = endpoint_id.clone();
                 let context_endpoint = endpoint_id.clone();
                 let context_id = id.clone();
-                let focused = selected && workspace.focused;
                 let number = if badge.numbers {
-                    workspace.number.to_string()
+                    (position + 1).to_string()
                 } else {
                     String::new()
                 };
                 let muted = silenced
                     .get(&endpoint_index)
-                    .is_some_and(|silenced| silenced.workspace(&workspace.workspace_id));
+                    .is_some_and(|silenced| silenced.host() || silenced.workspace(&workspace.id));
                 let marks = div()
                     .row()
                     .items_center()
@@ -336,7 +354,7 @@ impl SheprdWindow {
                         format!("rail-dot-{key}"),
                         columns.dot,
                         columns.height,
-                        indicator(workspace.agent_status, font, indicators),
+                        indicator(workspace.status, font, indicators),
                     ));
                 spaces = spaces.child(
                     aligned_row(
@@ -358,7 +376,7 @@ impl SheprdWindow {
                         host,
                         workspace_label(workspace, indented),
                         None,
-                        muted_word(status_word(workspace.agent_status), muted).as_deref(),
+                        muted_word(status_word(workspace.status), muted).as_deref(),
                     )))
                     .on_mouse_down(
                         MouseButton::Right,
@@ -395,17 +413,14 @@ impl SheprdWindow {
                 continue;
             }
             let selected = index == self.selected_endpoint;
-            let live = if selected { &self.live } else { &endpoint.live };
-            let Some(snapshot) = live.snapshot.as_deref() else {
-                continue;
-            };
             let endpoint_id = &endpoint.id;
             let host = multi.then_some(endpoint.label.as_str());
-            let id = agent.pane_id.clone();
+            let id = agent.id();
             let key = format!("rail-agent-{endpoint_id}-{id}");
             let navigate_endpoint = endpoint_id.clone();
-            let focused = selected && agent.focused;
-            let place = agent_place(agent, snapshot);
+            let target = agent.target();
+            let focused = selected && agent.focused();
+            let place = agent.place();
             let place = place.map(|(workspace, tab)| match tab {
                 Some(tab) => format!("{workspace} / {tab}"),
                 None => workspace.to_owned(),
@@ -416,7 +431,7 @@ impl SheprdWindow {
             } else {
                 theme.muted
             };
-            let icon_path = crate::icons::AgentIcon::from_identity(agent.agent.as_deref()).path();
+            let icon_path = agent.icon(&self.config.sidebar_style).path();
             // The host letter shares the workspace number's column. With one
             // host there is no letter, so the icon takes that column and still
             // starts on the badge's left edge.
@@ -464,7 +479,7 @@ impl SheprdWindow {
                     format!("rail-dot-{key}"),
                     columns.dot,
                     columns.height,
-                    indicator(agent.agent_status, font, indicators),
+                    indicator(agent.status(), font, indicators),
                 ));
             agents = agents.child(
                 aligned_row(
@@ -484,13 +499,12 @@ impl SheprdWindow {
                 .cursor_pointer()
                 .tooltip(hint.with(describe(
                     host,
-                    agent_name(agent),
+                    agent.name(),
                     place.as_deref(),
-                    agent_status_word(agent).as_deref(),
+                    agent_status_word(&agent).as_deref(),
                 )))
                 .on_click(cx.listener(move |this, _, window, cx| {
-                    this.navigate_endpoint(&navigate_endpoint, NavigationTarget::Pane(&id), cx);
-                    window.focus(&this.focus, cx);
+                    this.open_listed_agent(&navigate_endpoint, &target, window, cx);
                 })),
             );
         }
@@ -865,9 +879,9 @@ fn status_word(status: AgentStatus) -> Option<String> {
 }
 
 /// An agent's status word: its integration's state label when it set one.
-fn agent_status_word(agent: &ClientShellAgent) -> Option<String> {
-    let fallback = status_word(agent.agent_status).unwrap_or_default();
-    let word = state_label(agent, &fallback).into_owned();
+fn agent_status_word(agent: &super::Listed<'_>) -> Option<String> {
+    let fallback = status_word(agent.status()).unwrap_or_default();
+    let word = agent.state_label(&fallback).into_owned();
     (!word.is_empty()).then_some(word)
 }
 

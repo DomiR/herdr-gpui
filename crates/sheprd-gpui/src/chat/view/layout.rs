@@ -12,10 +12,11 @@ mod cards;
 mod document;
 mod ia;
 mod imessage;
+mod opencode;
 mod terminal;
 mod timeline;
 
-use super::copy::CopyPlacement;
+use super::{copy::CopyPlacement, entries::ToolState};
 use crate::{
     SheprdWindow,
     config::{ChatLayoutMode, FontConfig, Theme},
@@ -28,6 +29,13 @@ use sheprd_chat_protocol::{Author, Entry, EntryKind};
 pub(super) enum Side {
     User,
     Agent,
+}
+
+/// How a message's words are set: who says them, and at what size.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct Voice {
+    pub(super) side: Side,
+    pub(super) size: f32,
 }
 
 pub(super) fn side(kind: &EntryKind) -> Option<Side> {
@@ -55,6 +63,10 @@ pub(super) struct Row<'a> {
     pub(super) live: bool,
     /// The entry belongs to the turn since the user's latest prompt.
     pub(super) current: bool,
+    /// The user opened the entry.
+    pub(super) expanded: bool,
+    /// Where the entry stands, when it is a tool call.
+    pub(super) tool: Option<ToolState>,
     pub(super) content: Div,
 }
 
@@ -122,6 +134,21 @@ pub(super) struct ComposerParts {
     /// Context use, once the agent reports them.
     pub(super) usage: Option<Div>,
     pub(super) send: Stateful<Div>,
+    /// The session's directory, once the agent reports it.
+    pub(super) place: Option<String>,
+    /// How to open the command palette, while it has a shortcut.
+    pub(super) commands: Option<Div>,
+}
+
+/// How much of a tool call shows until it is opened.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum ToolFold {
+    /// Its title, each file's changes, and its first locations and output.
+    Preview,
+    /// Its title and each file's changes.
+    Title,
+    /// One line: its title with the changes totalled beside it.
+    Line,
 }
 
 pub(super) trait ChatLayout {
@@ -138,10 +165,22 @@ pub(super) trait ChatLayout {
         div().h(px(18.)).flex().child(button)
     }
 
-    /// Whether a folded tool call previews its files and first output
-    /// lines under its title: by default it does.
-    fn tool_preview(&self) -> bool {
-        true
+    /// How much of a tool call in `state` shows until it is opened: by
+    /// default its preview.
+    fn tool_fold(&self, _state: ToolState) -> ToolFold {
+        ToolFold::Preview
+    }
+
+    /// Whether messages keep the row's terminal font rather than the
+    /// interface's: by default they take the interface's.
+    fn mono_prose(&self) -> bool {
+        false
+    }
+
+    /// Whether the button back to the end of the list says so in words: by
+    /// default it is a bare arrow until output lands below.
+    fn jump_label(&self) -> bool {
+        false
     }
 
     /// The size the user's prompts are set at: by default the chat's text.
@@ -167,10 +206,11 @@ pub(super) trait ChatLayout {
         Some(look.theme.foreground)
     }
 
-    /// The color of a link in a message: by default the theme's blue.
-    /// `None` draws it as the text around it.
-    fn link(&self, look: &Look<'_>) -> Option<u32> {
-        Some(look.theme.ink(look.theme.palette[4]))
+    /// What `side`'s messages sit on, which their accents must read
+    /// against: by default the theme's background. `None` is a fill with a
+    /// color of its own, where no accent reads and text keeps the row's ink.
+    fn ground(&self, _side: Side, look: &Look<'_>) -> Option<u32> {
+        Some(look.theme.background)
     }
 
     /// The fill behind what is drawn for the theme's background inside a
@@ -214,6 +254,7 @@ pub(super) fn layout_for(mode: ChatLayoutMode) -> &'static dyn ChatLayout {
         ChatLayoutMode::Cards => &cards::Cards,
         ChatLayoutMode::IMessage => &imessage::IMessage,
         ChatLayoutMode::IA => &ia::IA,
+        ChatLayoutMode::OpenCode => &opencode::OpenCode,
     }
 }
 
@@ -232,6 +273,11 @@ pub(super) fn summary_row(row: Row<'_>, look: &Look<'_>, above: f32) -> AnyEleme
     .into_any_element()
 }
 
+/// The fill of the user's bubble in a [`bubble_row`].
+pub(super) fn bubble_fill(look: &Look<'_>) -> u32 {
+    crate::config::mix(look.theme.background, look.theme.foreground, 9)
+}
+
 /// The user's words in a bubble on the right, and the agent's as plain
 /// text across the column, as chat apps draw them. `radius` and `padding`
 /// shape the bubble, and `gap` is the space where the speaker changes.
@@ -244,7 +290,7 @@ pub(super) fn bubble_row(row: Row<'_>, look: &Look<'_>, bubble: Bubble) -> AnyEl
     let id = row.entry.id.0;
     let body = match row.side() {
         Some(Side::User) => {
-            let fill = crate::config::mix(look.theme.background, look.theme.foreground, 9);
+            let fill = bubble_fill(look);
             // Measure rich blocks against the available cross-axis width.
             // A horizontal auto flex basis collapses their percentage widths
             // to the Copy button's width before the text is laid out.

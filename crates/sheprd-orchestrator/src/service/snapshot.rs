@@ -7,7 +7,10 @@ use super::{
 };
 use chrono::{DateTime, Utc};
 use sheprd_remote::teleport::AgentKind;
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 /// A pull request looked up for the open item.
 #[derive(Clone, Debug)]
@@ -37,8 +40,8 @@ pub enum SyncState {
     Capped {
         count: usize,
     },
-    /// GitHub needs a signed-in account, GitLab a token that works, or Linear
-    /// an API key.
+    /// GitHub needs a signed-in account, GitLab or Azure DevOps a token that
+    /// works, or Linear an API key.
     SignIn,
     /// A provider or host this build cannot read yet, such as GitHub Enterprise.
     Unsupported,
@@ -75,6 +78,15 @@ pub struct Snapshot {
     /// Each open pull request's review and checks, by repository and number,
     /// as the last sync of its source read them. Never stored.
     pub pr_status: Arc<HashMap<(String, u64), crate::PrStatus>>,
+    /// The name a forge other than GitHub shows for the reader, as it names
+    /// authors, once a sync has read it: Azure DevOps's display name.
+    pub viewer: Option<String>,
+    /// The canonical keys of the Azure DevOps pull requests the reader
+    /// created, matched by identity id for Mine. Never stored.
+    pub authored: Arc<HashSet<String>>,
+    /// An Azure DevOps organization's projects and repositories, which a
+    /// remote worker of its reader's pull requests reads to browse.
+    pub catalog: Option<Arc<crate::azure::organization::Catalog>>,
     /// The [`crate::linear::Move::sequence`] of the last move this worker
     /// finished, moved or not: `items` shows its outcome.
     pub linear_moved: u64,

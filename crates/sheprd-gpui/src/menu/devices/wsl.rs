@@ -415,6 +415,10 @@ impl SheprdWindow {
         self.dismiss_menu(window, cx);
         cx.spawn(async move |this, cx| {
             let result = background.await;
+            // From the app: the window may have closed by now.
+            if result.is_ok() {
+                cx.update(|cx| crate::notification_mutes::Mutes::forget_host(cx, &id));
+            }
             let _ = this.update(cx, |this, cx| {
                 if let Err(error) = result {
                     // The log's context.
@@ -487,12 +491,13 @@ impl SheprdWindow {
     }
 }
 
-/// Check Herdr inside `distro` and save it when a compatible copy answers. A
-/// stopped server is fine: the bridge starts it on the first connection.
+/// Check Herdr inside `distro` and save it when a compatible copy answers,
+/// or herdr-core (Herdr 2) is there alone. A stopped server is fine: the
+/// bridge starts it on the first connection.
 /// Blocking: runs on the background executor.
 fn add(distro: &str, session: &str) -> Outcome {
     match sheprd_client::probe_distro(distro, session) {
-        Ok(HostProbe::Running | HostProbe::Stopped) => {
+        Ok(HostProbe::Core | HostProbe::Running | HostProbe::Stopped) => {
             match sheprd_client::add_wsl_host(false, distro, session) {
                 Ok(()) => Outcome::Saved,
                 Err(error) => {

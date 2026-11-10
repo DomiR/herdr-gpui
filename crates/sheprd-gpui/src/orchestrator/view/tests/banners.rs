@@ -44,6 +44,7 @@ fn close(cx: &mut VisualTestContext) {
 fn a_closed_banner_stays_closed_until_its_trouble_changes(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
     let request = Request {
+        azure_store: Default::default(),
         target: sheprd_client::ConnectTarget::Local,
         checkout: dir.path().to_string_lossy().into_owned(),
         workspace_id: "w1".into(),

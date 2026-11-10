@@ -51,6 +51,7 @@ pub enum Command {
     ToggleStatusBar,
     /// Shows or hides the listening ports under sidebar rows, and saves it.
     ToggleSidebarPorts,
+    ToggleMenuBar,
     /// Shows or hides the panel of mod sections on the window's right.
     ToggleModPanel,
     /// Moves keyboard focus to the next of the terminal, the title bar, the
@@ -60,10 +61,15 @@ pub enum Command {
     /// Hides the window's chrome and every group but the one in use.
     ToggleZenMode,
     DevicesOverview,
+    /// Shows the alerts kept on the Overview.
+    NotificationHistory,
     /// Starts a shell in herdr-core (Herdr 2) and shows it in a tab.
     NewCoreTerminal,
     /// Opens a watch-only view of the focused herdr-core pane in a new tab.
     MirrorCorePane,
+    /// Moves the focused terminal agent into a chat, in the same pane and
+    /// conversation.
+    ConvertToChat,
     IncreaseFontSize,
     DecreaseFontSize,
     ResetFontSize,
@@ -586,6 +592,11 @@ pub const COMMANDS: &[CommandInfo] = &[
         message: "commands-toggle-sidebar-ports",
     },
     CommandInfo {
+        command: Command::ToggleMenuBar,
+        name: "toggle_menu_bar",
+        message: "commands-toggle-menu-bar",
+    },
+    CommandInfo {
         command: Command::ToggleModPanel,
         name: "toggle_mod_panel",
         message: "commands-toggle-mod-panel",
@@ -611,6 +622,11 @@ pub const COMMANDS: &[CommandInfo] = &[
         message: "commands-devices-overview",
     },
     CommandInfo {
+        command: Command::NotificationHistory,
+        name: "notification_history",
+        message: "commands-notification-history",
+    },
+    CommandInfo {
         command: Command::NewCoreTerminal,
         name: "new_core_terminal",
         message: "commands-new-core-terminal",
@@ -619,6 +635,11 @@ pub const COMMANDS: &[CommandInfo] = &[
         command: Command::MirrorCorePane,
         name: "mirror_core_pane",
         message: "commands-mirror-core-pane",
+    },
+    CommandInfo {
+        command: Command::ConvertToChat,
+        name: "convert_to_chat",
+        message: "commands-convert-to-chat",
     },
     CommandInfo {
         command: Command::IncreaseFontSize,

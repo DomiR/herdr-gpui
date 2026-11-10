@@ -12,10 +12,15 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use sheprd_client::protocol::{AgentStatus, ClientShellAgent, ClientShellSnapshot};
-use std::{collections::HashMap, time::SystemTime};
+use std::{
+    collections::HashMap,
+    time::{Duration, SystemTime},
+};
 
 /// Untrusted titles are cut here: a row has one line for them.
 const TITLE_LIMIT: usize = 200;
+/// How long an agent stays idle before it folds into the "+N idle" row.
+const LONG_IDLE: Duration = Duration::from_secs(60 * 60);
 
 /// What a row stands for, as the user's marks remember it. Pane and
 /// workspace ids do not survive a daemon restart, so an agent is the host,
@@ -107,6 +112,11 @@ pub(crate) enum Open {
     },
     /// The orchestrator view that lists the run.
     Run(ViewId),
+    /// A Herdr 2 agent's pane in the window's herdr-core tab.
+    Core {
+        tab: crate::browser::TabId,
+        terminal: sheprd_backend::TerminalId,
+    },
 }
 
 /// A checkout's pull request as the prefetch last saw it.
@@ -141,6 +151,26 @@ pub(crate) struct Row {
     pub muted: bool,
 }
 
+impl Row {
+    /// Where a reply to the row's agent goes: its Herdr 1 host and pane, or
+    /// a herdr-core terminal under [`super::core::ENDPOINT`]; a run takes
+    /// none.
+    pub(crate) fn reply_pane(&self) -> Option<(&str, &str)> {
+        match &self.open {
+            Open::Core { terminal, .. } => Some((super::core::ENDPOINT, terminal.as_str())),
+            _ => self.pane(),
+        }
+    }
+
+    /// The host and pane of an agent's row; a run has neither.
+    pub(crate) fn pane(&self) -> Option<(&str, &str)> {
+        match &self.open {
+            Open::Pane { endpoint, pane, .. } => Some((endpoint, pane)),
+            Open::Run(_) | Open::Core { .. } => None,
+        }
+    }
+}
+
 /// When each agent entered its state. The daemon reports the order of
 /// changes, not their time, so the time is when this client first saw it.
 #[derive(Debug, Default)]
@@ -153,13 +183,24 @@ impl Since {
     /// that did not change.
     pub(crate) fn observe(&mut self, endpoint: &str, agents: &[ClientShellAgent], now: SystemTime) {
         for agent in agents {
-            let key = (endpoint.to_owned(), agent.pane_id.clone());
-            match self.seen.get_mut(&key) {
-                Some(seen) if seen.0 == agent.agent_status => {}
-                Some(seen) => *seen = (agent.agent_status, now),
-                None => {
-                    self.seen.insert(key, (agent.agent_status, now));
-                }
+            self.observe_one(endpoint, &agent.pane_id, agent.agent_status, now);
+        }
+    }
+
+    /// Records the state of one agent, keeping its time if it did not change.
+    pub(crate) fn observe_one(
+        &mut self,
+        endpoint: &str,
+        pane: &str,
+        status: AgentStatus,
+        now: SystemTime,
+    ) {
+        let key = (endpoint.to_owned(), pane.to_owned());
+        match self.seen.get_mut(&key) {
+            Some(seen) if seen.0 == status => {}
+            Some(seen) => *seen = (status, now),
+            None => {
+                self.seen.insert(key, (status, now));
             }
         }
     }
@@ -290,6 +331,8 @@ pub(crate) struct Sections {
     pub working: Vec<Row>,
     pub ready: Vec<Row>,
     pub idle: Vec<Row>,
+    /// Idle for [`LONG_IDLE`] or more, folded into one row.
+    pub long_idle: Vec<Row>,
     /// With when each wakes.
     pub snoozed: Vec<(Row, SystemTime)>,
     pub settled: Vec<Row>,
@@ -310,6 +353,7 @@ impl Sections {
                     State::Blocked | State::Failed => sections.needs.push(row),
                     State::Working => sections.working.push(row),
                     State::Done => sections.ready.push(row),
+                    State::Idle if long_idle(&row, now) => sections.long_idle.push(row),
                     State::Idle => sections.idle.push(row),
                 },
             }
@@ -325,8 +369,21 @@ impl Sections {
             && self.working.is_empty()
             && self.ready.is_empty()
             && self.idle.is_empty()
+            && self.long_idle.is_empty()
             && self.snoozed.is_empty()
             && self.settled.is_empty()
+    }
+
+    /// The rows that take the page's actions, top to bottom as drawn, which
+    /// a Shift click selects a range of. Folded rows are not drawn.
+    pub(crate) fn active(&self, unfolded: bool) -> impl Iterator<Item = &Row> {
+        self.pinned
+            .iter()
+            .chain(&self.needs)
+            .chain(&self.ready)
+            .chain(&self.working)
+            .chain(&self.idle)
+            .chain(self.long_idle.iter().filter(move |_| unfolded))
     }
 
     /// The rows the activity bar counts: those that need the user and are
@@ -348,4 +405,12 @@ impl Sections {
     pub(crate) fn needing_since(&self) -> Option<SystemTime> {
         self.counted().filter_map(|row| row.since).max()
     }
+}
+
+/// Whether `row` has sat idle long enough to fold. A row whose start this
+/// client never saw stays listed.
+fn long_idle(row: &Row, now: SystemTime) -> bool {
+    row.since
+        .and_then(|since| now.duration_since(since).ok())
+        .is_some_and(|idle| idle >= LONG_IDLE)
 }

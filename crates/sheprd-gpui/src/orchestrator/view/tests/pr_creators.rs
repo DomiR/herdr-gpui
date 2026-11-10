@@ -76,6 +76,7 @@ fn creators_head_their_pull_requests_by_name_with_no_author_last() {
 
 fn request(dir: &std::path::Path) -> Request {
     Request {
+        azure_store: Default::default(),
         target: sheprd_client::ConnectTarget::Local,
         checkout: dir.join("app").to_string_lossy().into_owned(),
         workspace_id: "app".into(),
@@ -133,14 +134,14 @@ fn pull_requests_group_by_creator_and_narrow_to_the_people_picked(cx: &mut TestA
     // The sort menu offers the grouping on the Pull requests list.
     cx.update(|_, cx| {
         view.update(cx, |view, cx| {
-            view.sort_open = true;
+            view.menu = Some(super::super::Menu::Sort);
             cx.notify();
         })
     });
     cx.run_until_parked();
     click(cx, "orchestrator-group-Creator");
     assert_eq!(cx.update(|_, cx| view.read(cx).grouping), Grouping::Creator);
-    assert!(!cx.update(|_, cx| view.read(cx).sort_open));
+    assert!(!cx.update(|_, cx| view.read(cx).menu.is_some()));
     assert_eq!(
         shown(cx),
         [

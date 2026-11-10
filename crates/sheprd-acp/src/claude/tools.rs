@@ -4,7 +4,7 @@
 use acp::v1 as wire;
 use serde_json::Value;
 
-use crate::harness::out;
+use crate::{harness::out, project::todos};
 
 /// The tool that keeps Claude's to-do list, shown as the plan rather than
 /// as a call.
@@ -46,6 +46,7 @@ pub(super) fn title(name: &str, input: &Value) -> String {
     let field = |key: &str| input.get(key).and_then(Value::as_str);
     let titled = match name {
         "Bash" => field("command").map(out::command_title),
+        "Monitor" => field("description").map(str::to_owned),
         "Read" => field("file_path").map(|path| format!("Read {path}")),
         "Write" => field("file_path").map(|path| format!("Write {path}")),
         "Edit" | "MultiEdit" => field("file_path").map(|path| format!("Edit {path}")),
@@ -62,7 +63,7 @@ pub(super) fn title(name: &str, input: &Value) -> String {
     titled.unwrap_or_else(|| name.to_owned())
 }
 
-fn kind(name: &str) -> wire::ToolKind {
+pub(super) fn kind(name: &str) -> wire::ToolKind {
     match name {
         "Bash" | "BashOutput" | "KillShell" => wire::ToolKind::Execute,
         "Read" => wire::ToolKind::Read,
@@ -155,26 +156,7 @@ pub(super) fn question(input: &Value) -> Option<&str> {
 
 /// Claude's to-do list as the plan.
 pub(super) fn plan(input: &Value) -> wire::Plan {
-    let entries = input
-        .get("todos")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|todo| {
-            let content = todo.get("content")?.as_str()?;
-            let status = match todo.get("status").and_then(Value::as_str) {
-                Some("in_progress") => wire::PlanEntryStatus::InProgress,
-                Some("completed") => wire::PlanEntryStatus::Completed,
-                _ => wire::PlanEntryStatus::Pending,
-            };
-            Some(wire::PlanEntry::new(
-                content,
-                wire::PlanEntryPriority::Medium,
-                status,
-            ))
-        })
-        .collect();
-    wire::Plan::new(entries)
+    todos::plan(input).unwrap_or_else(|| wire::Plan::new(Vec::new()))
 }
 
 #[cfg(test)]

@@ -131,8 +131,8 @@ impl From<String> for State {
 /// a value added upstream degrades to "unavailable" instead of failing the
 /// lookup. Parsing here is also why the raw field needs no `clean`: an
 /// unrecognized string never reaches a label.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
-#[serde(from = "String")]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(from = "String", into = "String")]
 pub enum MergeState {
     Clean,
     Dirty,
@@ -172,6 +172,22 @@ impl From<String> for MergeState {
             "HAS_HOOKS" => Self::HasHooks,
             _ => Self::Unknown,
         }
+    }
+}
+
+impl From<MergeState> for String {
+    fn from(state: MergeState) -> Self {
+        match state {
+            MergeState::Clean => "CLEAN",
+            MergeState::Dirty => "DIRTY",
+            MergeState::Behind => "BEHIND",
+            MergeState::Blocked => "BLOCKED",
+            MergeState::Unstable => "UNSTABLE",
+            MergeState::Draft => "DRAFT",
+            MergeState::HasHooks => "HAS_HOOKS",
+            MergeState::Unknown => "UNKNOWN",
+        }
+        .to_owned()
     }
 }
 
@@ -230,9 +246,25 @@ pub(super) struct Check {
     status: CheckStatus,
     #[serde(default)]
     conclusion: Outcome,
+    /// A check run's id. For a GitHub Actions check it is also its job's id,
+    /// which is how the job's log is read.
+    #[serde(default, rename = "databaseId")]
+    database_id: Option<u64>,
+    /// Where a person reads it: a check run's `detailsUrl` or a status
+    /// context's `targetUrl`. Dropped on parse unless it is `https`.
+    #[serde(default, rename = "detailsUrl", alias = "targetUrl")]
+    pub(super) url: Option<String>,
 }
 
 impl Check {
+    /// The GitHub Actions job this check ran as, if it did: other apps'
+    /// check runs have ids too, but no log GitHub serves.
+    fn job(&self) -> Option<u64> {
+        self.database_id
+            .filter(|_| self.kind == CheckKind::CheckRun)
+            .filter(|_| self.url.as_deref().is_some_and(actions_url))
+    }
+
     pub(super) fn outcome(&self) -> Outcome {
         match self.kind {
             CheckKind::StatusContext => self.state,
@@ -240,6 +272,22 @@ impl Check {
             CheckKind::CheckRun => Outcome::Pending,
         }
     }
+}
+
+/// Whether `url` is a run on GitHub Actions, as its check runs link to.
+fn actions_url(url: &str) -> bool {
+    url.strip_prefix("https://github.com/")
+        .is_some_and(|path| path.contains("/actions/runs/"))
+}
+
+/// One check as the checks list shows it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CheckDetail<'a> {
+    pub name: &'a str,
+    pub outcome: Outcome,
+    /// The GitHub Actions job whose log can be read, if it has one.
+    pub job: Option<u64>,
+    pub url: Option<&'a str>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
@@ -340,10 +388,45 @@ pub enum Tone {
     Muted,
 }
 
+/// Where an open, non-draft pull request stands: what decides its [`Tone`],
+/// whichever read it came from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Standing {
+    pub merge: MergeState,
+    pub review: ReviewDecision,
+    /// A check failed.
+    pub failed: bool,
+    /// A check is still running.
+    pub running: bool,
+}
+
+impl Standing {
+    /// Ready only when no known blocker remains.
+    pub fn tone(self) -> Tone {
+        // GitHub also reports UNSTABLE while checks are still running, so it
+        // only means attention once nothing is pending; failed checks are
+        // caught directly.
+        if self.merge == MergeState::Dirty
+            || (self.merge == MergeState::Unstable && !self.running)
+            || self.review == ReviewDecision::ChangesRequested
+            || self.failed
+        {
+            return Tone::Attention;
+        }
+        if self.running || self.review == ReviewDecision::ReviewRequired {
+            return Tone::Waiting;
+        }
+        match self.merge {
+            MergeState::Clean => Tone::Ready,
+            MergeState::Blocked | MergeState::Behind => Tone::Held,
+            _ => Tone::Waiting,
+        }
+    }
+}
+
 impl PullRequest {
-    /// Lifecycle takes precedence; an open PR is ready only when no known
-    /// blocker remains. Shared by sidebar and titlebar badges and the
-    /// workspace menu.
+    /// Lifecycle takes precedence over the [`Standing`]. Shared by sidebar
+    /// and titlebar badges and the workspace menu.
     pub fn tone(&self) -> Tone {
         match self.state {
             State::Merged => return Tone::Merged,
@@ -358,25 +441,13 @@ impl PullRequest {
                 .flatten()
                 .any(|check| check.outcome() == outcome)
         };
-        // GitHub also reports UNSTABLE while checks are still running, so it
-        // only means attention once nothing is pending; failed checks are
-        // caught directly.
-        let running = has_check(Outcome::Pending);
-        if self.merge_state_status == MergeState::Dirty
-            || (self.merge_state_status == MergeState::Unstable && !running)
-            || self.review_decision == ReviewDecision::ChangesRequested
-            || has_check(Outcome::Failed)
-        {
-            return Tone::Attention;
+        Standing {
+            merge: self.merge_state_status,
+            review: self.review_decision,
+            failed: has_check(Outcome::Failed),
+            running: has_check(Outcome::Pending),
         }
-        if running || self.review_decision == ReviewDecision::ReviewRequired {
-            return Tone::Waiting;
-        }
-        match self.merge_state_status {
-            MergeState::Clean => Tone::Ready,
-            MergeState::Blocked | MergeState::Behind => Tone::Held,
-            _ => Tone::Waiting,
-        }
+        .tone()
     }
 
     pub fn lifecycle(&self) -> &'static str {
@@ -394,6 +465,19 @@ impl PullRequest {
             .iter()
             .flatten()
             .map(|check| (check.name.as_str(), check.outcome()))
+    }
+
+    /// [`Self::check_list`] with what a person can follow each check to.
+    pub fn check_details(&self) -> impl Iterator<Item = CheckDetail<'_>> {
+        self.status_check_rollup
+            .iter()
+            .flatten()
+            .map(|check| CheckDetail {
+                name: &check.name,
+                outcome: check.outcome(),
+                job: check.job(),
+                url: check.url.as_deref(),
+            })
     }
 
     pub fn checks(&self) -> String {
@@ -437,17 +521,25 @@ pub fn repository_input(
     worktree: Option<&sheprd_client::protocol::ClientShellWorktree>,
     branch: Option<&str>,
 ) -> crate::Result<Input> {
-    repository_input_on(worktree, branch, &Origin::Local)
+    repository_input_on(
+        worktree.map(|tree| tree.key.as_str()),
+        branch,
+        &Origin::Local,
+    )
+}
+
+/// A local checkout's lookup key from its repository's common Git directory,
+/// as the app reads it for a folder herdr-core reports no metadata for.
+pub fn key_input(key: &str, branch: Option<&str>) -> crate::Result<Input> {
+    repository_input_on(Some(key), branch, &Origin::Local)
 }
 
 fn repository_input_on(
-    worktree: Option<&sheprd_client::protocol::ClientShellWorktree>,
+    key: Option<&str>,
     branch: Option<&str>,
     origin: &Origin,
 ) -> crate::Result<Input> {
-    let key = worktree
-        .map(|tree| tree.key.as_str())
-        .ok_or(super::Error::Metadata)?;
+    let key = key.ok_or(super::Error::Metadata)?;
     let branch = valid_branch(branch)?;
     let absolute = match origin {
         Origin::Local => Path::new(key).is_absolute(),
@@ -482,7 +574,7 @@ pub fn workspace_input(
     });
     let branch = workspace.branch.as_deref();
     if worktree.is_some() || *origin != Origin::Local || workspace.new_workspace_cwd.is_empty() {
-        return repository_input_on(worktree, branch, origin);
+        return repository_input_on(worktree.map(|tree| tree.key.as_str()), branch, origin);
     }
     let branch = valid_branch(branch)?;
     if !Path::new(&workspace.new_workspace_cwd).is_absolute() {

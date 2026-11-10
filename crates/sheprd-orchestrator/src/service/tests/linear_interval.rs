@@ -43,6 +43,7 @@ fn linear_waits_out_its_own_interval_while_the_others_sync() {
         repository: Repository::Local(dir.path().to_owned()),
         main_root: dir.path().to_string_lossy().into_owned(),
         beads: false,
+        beads_root: None,
         remote: Some(Remote {
             name: "origin".into(),
             url: "https://github.com/acme/app.git".into(),

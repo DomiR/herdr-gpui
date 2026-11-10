@@ -5,7 +5,7 @@
 use super::{
     error::Step,
     host::Host,
-    job::{self, Destination, HostRepositories, Place, Repository, Retired, Source},
+    job::{self, Destination, HostRepositories, Keeping, Place, Repository, Retired, Source},
     remote::MatchReason,
     snapshot::{HostSnapshot, ProcessInfoResult, SnapshotResult},
 };
@@ -283,6 +283,7 @@ fn teleport_between_two_daemons() {
     let source = Source {
         place: place(&a, "a"),
         workspace_id: source_ws.clone(),
+        keeping: Keeping::Herdr1,
         custom_label: None,
         repo_key: key(&repo_a),
         repo_label: "app".into(),
@@ -291,6 +292,8 @@ fn teleport_between_two_daemons() {
             tab["tab"]["tab_id"].as_str().unwrap().to_owned(),
             "server".to_owned(),
         )]),
+        core_tabs: Vec::new(),
+        core_preferred: false,
     };
     let cancelled = AtomicBool::new(false);
     let resolved = job::resolve(
@@ -303,6 +306,7 @@ fn teleport_between_two_daemons() {
                 workspace_id: main_b.clone(),
             }]),
             retired: Vec::new(),
+            lands_in: sheprd_session::Keeper::Herdr1,
         },
         &cancelled,
     )
@@ -346,7 +350,7 @@ fn teleport_between_two_daemons() {
 
     // Destination: same commit, same uncommitted state, same tabs and layout.
     let snapshot = b.snapshot();
-    let moved = snapshot.workspace(&outcome.workspace_id).unwrap();
+    let moved = snapshot.workspace(&workspace_of(&outcome)).unwrap();
     let moved_checkout = PathBuf::from(&moved.worktree.as_ref().unwrap().checkout_path);
     assert_eq!(
         git(&moved_checkout, &["rev-parse", "HEAD"]),
@@ -359,7 +363,7 @@ fn teleport_between_two_daemons() {
         ),
         source_status
     );
-    let tabs = snapshot.tabs_of(&outcome.workspace_id);
+    let tabs = snapshot.tabs_of(&workspace_of(&outcome));
     assert_eq!(tabs.len(), 2);
     let first = snapshot.layout(&tabs[0].tab_id).unwrap();
     assert_eq!(first.panes.len(), 2);
@@ -379,19 +383,22 @@ fn teleport_between_two_daemons() {
     wait_for("the destination command", || {
         running(&b, second).is_some_and(|argv| argv == ["sleep", "3600"])
     });
-    let tab_list = b.herdr(&["tab", "list", "--workspace", &outcome.workspace_id]);
+    let tab_list = b.herdr(&["tab", "list", "--workspace", &workspace_of(&outcome)]);
     assert_eq!(tab_list["tabs"][1]["label"], "server");
 
     // Teleport back: the checkout the work left is reused, not duplicated.
     fs::write(moved_checkout.join("more.txt"), "from b\n").unwrap();
     let back = Source {
         place: place(&b, "b"),
-        workspace_id: outcome.workspace_id.clone(),
+        workspace_id: workspace_of(&outcome),
+        keeping: Keeping::Herdr1,
         custom_label: None,
         repo_key: key(&repo_b),
         repo_label: "app".into(),
         branch: Some("feat".into()),
         tab_labels: HashMap::new(),
+        core_tabs: Vec::new(),
+        core_preferred: false,
     };
     let resolved = job::resolve(
         &back,
@@ -406,7 +413,9 @@ fn teleport_between_two_daemons() {
                 repo_key: key(&repo_a),
                 branch: "feat".into(),
                 workspace_id: source_ws.clone(),
+                keeping: Keeping::Herdr1,
             }],
+            lands_in: sheprd_session::Keeper::Herdr1,
         },
         &cancelled,
     )
@@ -416,7 +425,7 @@ fn teleport_between_two_daemons() {
     let review = job::review(&back, home, &cancelled).unwrap();
     let returned = job::run(&back, home, &review, |_| {}, &cancelled).unwrap();
     assert!(returned.warnings.is_empty(), "{:?}", returned.warnings);
-    assert_eq!(returned.workspace_id, source_ws);
+    assert_eq!(workspace_of(&returned), source_ws);
     assert_eq!(
         fs::read_to_string(checkout.join("more.txt")).unwrap(),
         "from b\n"
@@ -495,11 +504,14 @@ fn teleport_copies_the_repository_where_it_is_missing() {
             host: a.host.clone(),
         },
         workspace_id: source_ws.clone(),
+        keeping: Keeping::Herdr1,
         custom_label: None,
         repo_key: repo.join(".git").to_string_lossy().into_owned(),
         repo_label: "app".into(),
         branch: Some("feat".into()),
         tab_labels: HashMap::new(),
+        core_tabs: Vec::new(),
+        core_preferred: false,
     };
     let cancelled = AtomicBool::new(false);
     // No GUI snapshot: the host is read through its CLI, as when disconnected.
@@ -513,6 +525,7 @@ fn teleport_copies_the_repository_where_it_is_missing() {
             },
             repositories: None,
             retired: Vec::new(),
+            lands_in: sheprd_session::Keeper::Herdr1,
         },
         &cancelled,
     )
@@ -537,7 +550,7 @@ fn teleport_copies_the_repository_where_it_is_missing() {
         git(&place, &["remote", "get-url", "origin"]).trim(),
         "https://example.invalid/me/app.git"
     );
-    let moved = snapshot.workspace(&outcome.workspace_id).unwrap();
+    let moved = snapshot.workspace(&workspace_of(&outcome)).unwrap();
     let moved_checkout = PathBuf::from(&moved.worktree.as_ref().unwrap().checkout_path);
     assert_eq!(
         git(&moved_checkout, &["rev-parse", "HEAD"]),
@@ -551,3 +564,11 @@ fn teleport_copies_the_repository_where_it_is_missing() {
 }
 
 mod session_only;
+
+/// The Herdr 1 workspace a move landed in.
+fn workspace_of(outcome: &job::Outcome) -> String {
+    match &outcome.workspace {
+        job::Landed::Workspace(id) => id.clone(),
+        job::Landed::New { .. } => panic!("a Herdr 1 move made no Herdr 1 workspace"),
+    }
+}

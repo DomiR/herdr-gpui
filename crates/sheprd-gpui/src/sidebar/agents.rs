@@ -16,6 +16,9 @@ use crate::{
 use gpui::{prelude::*, *};
 use sheprd_client::protocol::{AgentStatus, ClientShellAgent, ClientShellSnapshot};
 
+pub(crate) mod groups;
+pub(crate) mod listed;
+
 pub(super) fn agents_sort(window: &SheprdWindow, cx: &mut Context<SheprdWindow>) -> Stateful<Div> {
     let theme = &window.theme;
     let view = window
@@ -69,7 +72,7 @@ fn sort_label(sort: AgentSort) -> String {
 }
 
 /// Attention first, then the most recent change, as upstream orders it.
-pub(super) fn status_priority(status: AgentStatus) -> u8 {
+pub(crate) fn status_priority(status: AgentStatus) -> u8 {
     match status {
         AgentStatus::Blocked => 4,
         AgentStatus::Done => 3,
@@ -175,6 +178,23 @@ pub(super) fn agent_names(agent: &ClientShellAgent) -> [Option<&str>; 4] {
             .as_deref()
             .and_then(sheprd_client::text::caption),
     ]
+}
+
+/// The mark an agent's row leads with: a coordinator's own, which every row
+/// layout draws where the agent's identity would be, else that identity.
+pub(super) fn agent_icon(
+    agent: &ClientShellAgent,
+    snapshot: &ClientShellSnapshot,
+    style: &crate::config::SidebarStyle,
+) -> crate::icons::AgentIcon {
+    let coordinator = style
+        .coordinator_suffix
+        .as_deref()
+        .is_some_and(|suffix| groups::is_coordinator(agent, snapshot, suffix));
+    if coordinator {
+        return crate::icons::AgentIcon::Coordinator;
+    }
+    crate::icons::AgentIcon::from_identity(agent.agent.as_deref())
 }
 
 /// The name an agent's row shows for its pane: the label set with Rename,
@@ -578,9 +598,18 @@ pub(crate) fn state_label<'a>(
     agent: &ClientShellAgent,
     fallback: &'a str,
 ) -> std::borrow::Cow<'a, str> {
-    let key = status_key(agent.agent_status);
-    agent
-        .state_labels
+    state_label_in(&agent.state_labels, agent.agent_status, fallback)
+}
+
+/// The words `labels`, an integration's `state_labels`, chose for `status`,
+/// else `fallback`, as [`state_label`] reads them.
+pub(super) fn state_label_in<'a>(
+    labels: &[(String, String)],
+    status: AgentStatus,
+    fallback: &'a str,
+) -> std::borrow::Cow<'a, str> {
+    let key = status_key(status);
+    labels
         .iter()
         .find(|(state, _)| state == key)
         .map(|(_, label)| crate::notifications::safe_text(label, STATE_LABEL_LIMIT))

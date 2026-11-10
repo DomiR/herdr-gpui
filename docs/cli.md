@@ -35,10 +35,20 @@ Every command accepts:
   `{"error": {"code", "message"}}` on standard output.
 - `--window ID`: act in that window (IDs come from `window list`). By default
   a command acts in the window showing the caller's workspace
-  (`HERDR_WORKSPACE_ID`, which Herdr sets in every pane). When no window shows
-  it, as for a session the app does not show, the command exits 5 rather than
-  act on another session's window. Outside Herdr, it acts in the frontmost
-  window.
+  (`HERDR_WORKSPACE_ID`, which Herdr sets in every pane). In a Herdr 2
+  (herdr-core) terminal the caller is that terminal (`HC_TERMINAL_ID`, which
+  herdr-core sets in every terminal): the command acts in the window and
+  workspace of the tab holding it, and pages it opens and their notes belong
+  to it as they would to a Herdr pane. When no window shows it, as for a
+  session the app does not show, the command exits 5 rather than act on
+  another session's window. Outside both, it acts in the frontmost window.
+  From a herdr-core terminal in a workspace Sheprd keeps for Herdr 2, `work`
+  notes, `checkpoint restore`, and `host pr` act on that workspace's
+  checkout; mutes, scripts, and fan-out, which keep Herdr 1's
+  workspace state, exit 8 there for now, as every `work` command does from
+  a terminal in no workspace the window keeps.
+  Teleport works from a workspace the app keeps for Herdr 2 on this
+  computer, as its menu does.
 
 | Exit | Meaning |
 | --- | --- |
@@ -62,14 +72,16 @@ Every command accepts:
 | `status` | Whether the app runs, its version and control protocol, windows, and hosts |
 | `app focus\|hide\|quit` | Bring the app forward, hide it, or quit it (Herdr keeps running) |
 | `window [list]` | Windows with their IDs, size, workspace, and hosts |
+| `window alerts` | The alerts the window kept, newest first, including those held back by quiet hours |
 | `window new [--session NAME]` | Another window, of your own Herdr session or a named local session |
 | `window focus ID` | Bring a window forward |
 | `window fullscreen [on\|off\|toggle]` | |
 | `window size [WIDTHxHEIGHT]` | Print or set the window's size; windows cannot be moved |
 | `window detach\|reconnect` | Detach from, or reconnect to, the selected host |
-| `ui sidebar\|statusbar [on\|off\|toggle]` | For this window and session |
+| `ui sidebar\|statusbar\|menubar [on\|off\|toggle]` | For this window and session. `menubar` is the in-window menu bar on Linux and Windows; macOS, whose menus are the system's, exits 8 |
 | `ui font-size +\|-\|reset\|POINTS` | The terminal font size for this session |
-| `ui panel workspaces\|tickets\|linear\|tickets-native\|overview\|pull-requests\|issues\|security\|automations\|usage` | Show an activity bar section: Workspaces with the sidebar expanded, the herdr-dog ticket board in its web UI at `tickets.url`, your Linear issues, the same ticket board as the app draws it from `tickets.api` (`tickets-native`, still being built), Overview of what needs you on every host, the focused workspace's pull requests or issues across the window, the vulnerability reports and Dependabot alerts of your repositories, every host's automation scripts and runs, or every host's plan usage |
+| `ui agent-group [NAME\|all]` | List the agents panel's coordinator groups, marking the one shown, or show one group's sessions with its coordinator first, or `all` of them, for this window and session. Exits 5 for a group no coordinator names and 8 unless `[sidebar] coordinator_suffix` is set and the agents panel is shown |
+| `ui panel workspaces\|tickets\|linear\|tickets-native\|overview\|pull-requests\|issues\|tasks\|security\|automations\|ports\|usage` | Show an activity bar section: Workspaces with the sidebar expanded, the herdr-dog ticket board in its web UI at `tickets.url`, your Linear issues, the same ticket board as the app draws it from `tickets.api` (`tickets-native`, still being built), Overview of what needs you on every host, the focused workspace's pull requests or issues across the window, Beads tasks across the window's projects, the vulnerability reports and Dependabot alerts of your repositories, every host's automation scripts and runs, every port this computer's user listens on, or every host's plan usage |
 | `run COMMAND` | Any app command by its `[keybindings]` name, as the palette runs it |
 | `commands` | The names `run` accepts (no app needed) |
 | `open DIR` | Open a folder as **Open Project** in the palette does, starting the app if needed (below) |
@@ -109,7 +121,7 @@ Sheprd** entry, which both Windows installers add, runs this command through
 | `doc open FILE[:LINE]` | A Markdown document tab, edited in place (see [Markdown documents](#markdown-documents)) |
 | `devices` | The Devices overview |
 | `orchestrator [--repo PATH]` | Show the Issues section narrowed to your checkout's project, or PATH's |
-| `orchestrator items\|issues\|prs` | What it last synced, from its local database (no app needed) |
+| `orchestrator items\|issues\|prs\|tasks` | What it last synced, from its local database (no app needed); `tasks` is the repository's Beads tasks, with each one's assignee, priority, and blockers in `--json` |
 | `review` | The review of your workspace's uncommitted changes |
 | `px0 [open]` | Open or focus px0 on your local workspace's checkout (macOS and Windows) |
 
@@ -163,6 +175,7 @@ same as fields (`kind`, `version`, `others`, `diff`).
 | --- | --- |
 | `notes [list]` | Every worktree note |
 | `notes get\|clear`, `notes set TEXT` | The note on your checkout (its repository and branch) |
+| `worktree [status]`, `worktree mute\|unmute` | Whether your worktree's notifications are muted; silence them or let them through again |
 | `feedback [--wait S]` | Notes the user sent your pane from pages, reviews, or terminals |
 | `checkpoint [list]` | Checkpoints of the current directory's checkout, newest first (no app needed) |
 | `checkpoint create [LABEL]` | Take one now (no app needed) |
@@ -173,19 +186,37 @@ same as fields (`kind`, `version`, `others`, `diff`).
 | `teleport --to HOST` | Open the teleport dialog for your linked worktree, reviewing HOST; you confirm there |
 | `fan-out PROMPT [--agent KIND[:N]]...` | Open the fan-out dialog prefilled; you start it there |
 | `chat [status]` | The `sheprd-acp` chat panes of the window's host, this machine or an SSH host: agent, status, model, context window use, and whether the chat view or the terminal shows |
+| `chat convert [--pane ID]` | Move the terminal agent in your pane (or ID, else the focused one) into a `sheprd-acp` chat in the same pane, keeping its conversation. From a Herdr 2 pane, your pane is your terminal (`HC_TERMINAL_ID`), whose id in `chat` is `core:` and the terminal's (see [Moving a terminal agent into a chat](rich-chat.md#moving-a-terminal-agent-into-a-chat)). Returns once the move has started; `chat` shows the chat when it attaches. Exits 6 while the agent works, 5 when the pane has no terminal agent, and 8 for an agent or pane that cannot move |
 | `chat show\|hide\|toggle [--pane ID]` | Show the native chat view over your pane (or ID, else the focused one), or its terminal |
 | `chat new AGENT [--pane ID]` | Open a tab running a `sheprd-acp` chat with a built-in agent (`claude`, `codex`, `copilot`, `gemini`, `opencode`, `pi`) in the workspace and folder of your pane (or ID). On an SSH host the tab runs that host's `sheprd-acp` (see [Chats on SSH hosts](#chats-on-ssh-hosts)). With no Herdr pane to go by, as when called from a Herdr 2 pane, a Herdr 2 tab in the active group splits its pane in use with the chat instead (see [Chats in Herdr 2 panes](rich-chat.md#chats-in-herdr-2-panes)); its pane id in `chat` is `core:` and the terminal's. Exits 8 when `sheprd-acp` is missing here, the host cannot be reached, or the agent is not installed on it (`sheprd-acp agents` lists those that are) |
 
 ### Hosts
 
+A focus asked for on a connected host the window is not showing, such as
+`herdr --machine Homelab agent focus NAME`, switches the window to that host
+when it moves the host to another tab. The daemon reports nothing when the
+target is already its focused tab, or when the focus only moves between panes
+of one tab, so a script that must end up on the host runs `sheprd host select`
+as well. A focus waits until you stop typing or composing, so keys meant for
+one host do not reach another, and choosing a host yourself in the meantime
+cancels it. It leaves the host restored at the next launch as it was.
+It does not take the window while a dialog is open, or from another window
+already showing the host. A tab or workspace opening on a background host does
+not take it either.
+
 | Command | What it does |
 | --- | --- |
-| `host [list]`, `host select ID` | The window's hosts; show another one |
+| `host [list]`, `host select ID` | The window's hosts, with their tags; show another one |
+| `host mute\|unmute [HOST]` | Silence a host's notifications as a whole, or let them through again, by ID or label; absent, your host. Works while it is offline |
+| `host tag ID [TAG...]` | Replace the tags that group a host in the sidebar and on paired phones; with no tags, clear them. Each computer's daemon keeps its own tags, so a host away gets the edit once it is back |
 | `pr [status]\|checks\|comments\|open` | Your branch's pull request, on the window's selected host. `comments` needs your workspace focused |
 | `pr quota` | Last reported GraphQL points used, limit, and remaining, plus rate-limit retry delays for the window's GitHub accounts. `--json` returns records merged by login: known observations are preferred, then the latest reset window and greatest usage within it; retry delays retain the longest pause. Usage is never summed across credentials. Unavailable quotas are `null`. No network request is made. |
 | `ports [list]` | Ports your workspace listens on, and forwards |
 | `ports forward\|unforward PORT` | Forward a port of the SSH host to this machine |
 | `ports open PORT` | `localhost:PORT` in a tab, forwarded first when remote |
+| `ports all` | Every TCP port this computer's user listens on, as the Ports section lists them, whoever started it: bind address, a clear name (a macOS app's name, or what an interpreter runs, such as `vite` or `manage.py runserver`), process, pid, command line, project and working directory, CPU and resident memory, uptime, whether it is paused or a system listener, and the Herdr workspace that started it. Keeps the section's scan running for a minute and waits up to 20 seconds for its first listing. macOS and Linux only (exit 8 elsewhere); exits 4 when nothing listens |
+| `ports stop\|pause PORT` | Ask in the app to stop (SIGTERM, then SIGKILL a few seconds later) or pause (SIGSTOP) the processes listening on `PORT` of this computer. Nothing is signalled until the user confirms there; exits 5 when nothing of yours listens on it, 6 while a dialog is open |
+| `ports resume PORT` | Resume (SIGCONT) the paused processes listening on `PORT` of this computer; exits 5 when none is paused |
 | `usage`, `system` | Plan usage and load of the selected host: CPU, memory, disk, uptime, and its GPU and video memory when it has one and `show_gpu_load` or `show_sidebar_gpu_load` is on |
 | `security` | Private vulnerability reports in triage (titles and metadata only, never their descriptions) and open Dependabot alerts of the github.com repositories the window's workspaces hold, most severe first, as the Security section last read them. Exits 4 when there are none |
 | `security open REPOSITORY ALERT\|GHSA` | Show alert `ALERT` (its number) or private report `GHSA` (its GHSA ID) of `REPOSITORY` (`owner/name`) in the Security section, beside its list: the fix, the advisory, and the dependency for an alert; the report, its advisory draft, and its conversation for a report. Only items the section lists open; nothing on GitHub changes |
@@ -200,7 +231,7 @@ same as fields (`kind`, `version`, `others`, `diff`).
 | `cloud destroy ID... \| --batch BATCH` | Ask in the window to delete saved machines at their providers and forget them; the user confirms there, once for all of them. Prints the batch to follow (below) |
 | `cloud wait BATCH [--timeout S]` | Each machine of a batch once all are settled, or after S seconds (default 60, at most 600) |
 | `cloud batches` | The batches the app keeps, newest last; the oldest are left out when they would not fit in one answer |
-| `processes [--pane ID]` | The processes under a pane, with CPU and memory (no app needed) |
+| `processes [--pane ID \| --terminal ID]` | The processes under a Herdr pane or a herdr-core terminal, with CPU and memory; by default the caller's own (`HC_TERMINAL_ID`, else `HERDR_PANE_ID`). No app needed |
 | `search symbol\|file QUERY` | Go to Symbol or Go to File over the current checkout (no app needed) |
 
 ### Settings and services
@@ -271,7 +302,7 @@ destroy it like any other. Coder takes `--template` and `--preset` by name
 (without them, the deployment's only template and its default preset);
 Azure makes a Container Apps sandbox with `--sandbox`. Boat and Railway make
 their machines one at a time. Providers are named by key or name: azure,
-boat, coder, container, daytona, opensandbox, railway, sprites. The device
+boat, boxd, coder, container, daytona, opensandbox, railway, sprites. The device
 list keeps at most 64 cloud devices, counting those being made.
 
 `cloud exec` runs one command on a saved cloud machine, named as for
@@ -297,7 +328,7 @@ sheprd cloud exec herdr-tidy-lark-aa --cwd ~/code/app -- sh -c 'git switch -c fi
 An agent that worked on cloud machines removes them with `cloud destroy`,
 naming each by its machine ID, host ID, or label (a label two machines share
 is refused), or with `--batch` every machine a batch named. The window asks
-once, listing each machine and what happens to it: Azure, Boat, Coder,
+once, listing each machine and what happens to it: Azure, Boat, boxd, Coder,
 Container, Daytona, OpenSandbox, and Sprites delete the machine with what
 goes with it and then forget it here;
 Railway VMs cannot be deleted from this app, so they are only forgotten and
@@ -316,6 +347,9 @@ command or the window that asked goes away; the app keeps the last 32.
 Focus-on-hover between split terminal panes is on by default. Disable it with
 `sheprd config set focus_follows_mouse false`.
 The change applies live; `config get focus_follows_mouse` reads it back.
+
+An unnamed tab shows its number. To show its agent's terminal title instead,
+run `sheprd config set tab_labels.agent_title true`.
 
 ### Remote control
 
@@ -480,9 +514,9 @@ can hold.
 
 ## Chats on SSH hosts
 
-Native chat views are opt-in: turn on **ACP chats** in Settings > General
-(`acp_chats = true` under `[features]`). While it is off, chat panes show
-their terminal and `chat new` exits 8.
+Native chat views are on by default: turn off **ACP chats** in Settings >
+General (`acp_chats = false` under `[features]`) to go without them. While it
+is off, chat panes show their terminal and `chat new` exits 8.
 
 Set the reading width with `sheprd config set chat.max_width 1200`, or use
 `0` for the full available width. Bounded widths range from 320 to 4000 logical
@@ -509,7 +543,7 @@ temporary files under its `${TMPDIR:-/tmp}`, and the copies are attached.
 
 ### Existing agent rendering
 
-Set `chat.render_existing = true` along with `features.acp_chats = true` to
+Set `chat.render_existing = true`, with `features.acp_chats` left on, to
 render existing Linux Codex/Claude conversations automatically. The original
 terminal input remains interactive in the same pane. `chat status --json`
 reports `input_mode` (`chat`, `terminal`, or `read_only`) and `session_id`;

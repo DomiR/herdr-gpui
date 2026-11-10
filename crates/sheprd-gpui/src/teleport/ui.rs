@@ -6,6 +6,9 @@
 //! its outcome as a flash, because stopping halfway would strand work.
 
 use super::text;
+use unclaimed::Unclaimed;
+
+mod unclaimed;
 use crate::teleport::{
     error::{Error, Step},
     job::{
@@ -16,12 +19,15 @@ use crate::teleport::{
 };
 use crate::{
     NavigationTarget, SheprdWindow,
+    browser::{Location, Scope, Store},
     i18n::{errors::Localize, fl},
     menu::Page,
     progress::{self, Progress},
     window::Flash,
 };
 use gpui::{prelude::*, *};
+use sheprd_backend::Generation;
+use sheprd_session::Keeper;
 use std::{
     sync::{
         Arc,
@@ -90,6 +96,11 @@ pub(crate) struct Teleport {
     selected: Option<usize>,
     cancelled: Arc<AtomicBool>,
     events: mpsc::Receiver<Event>,
+    /// The app's Herdr 2 tabs moving with the workspace, and the panes
+    /// that move, closed here once the move has stopped their terminals.
+    closing: Vec<(crate::browser::TabId, sheprd_session::panes::Panes)>,
+    /// The move got past stopping the source's programs.
+    retired: bool,
 }
 
 impl Drop for Teleport {
@@ -141,7 +152,41 @@ impl Teleport {
             selected: None,
             cancelled: Arc::new(AtomicBool::new(false)),
             events,
+            closing: Vec::new(),
+            retired: false,
         }
+    }
+
+    /// Closes `tabs` once a move has stopped their terminals.
+    pub(crate) fn closing(
+        mut self,
+        tabs: Vec<(crate::browser::TabId, sheprd_session::panes::Panes)>,
+    ) -> Self {
+        self.closing = tabs;
+        self
+    }
+
+    /// The Herdr 2 tabs to close now that the move is over: those it
+    /// stopped every terminal of, else none. `now` gives a tab's panes
+    /// today. The window drops ended panes by itself, so a tab with fewer
+    /// panes still closes; one split during the move holds a terminal that
+    /// did not move and stays open with it.
+    fn closed_tabs(
+        &mut self,
+        finished: bool,
+        now: impl Fn(crate::browser::TabId) -> Option<sheprd_session::panes::Panes>,
+    ) -> Vec<crate::browser::TabId> {
+        if !finished && !self.retired {
+            return Vec::new();
+        }
+        unclaimed::moved_tabs(std::mem::take(&mut self.closing), now)
+    }
+
+    /// The workspace being moved, for the tests that open Teleport, which
+    /// host scripts limit to Linux and macOS.
+    #[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
+    pub(crate) fn source_for_test(&self) -> &Source {
+        &self.source
     }
 
     #[cfg(test)]
@@ -162,6 +207,7 @@ impl Teleport {
                 path: "/tmp/repo".into(),
             }),
             origin: None,
+            lands_in: Keeper::Herdr1,
         };
         self.cancelled.store(true, Ordering::Release);
         self.stage = Stage::Moving(candidate, Some(Step::Fetch));
@@ -217,13 +263,22 @@ impl Teleport {
         self.stage = Stage::Reviewing(place);
     }
 
-    fn teleport(&mut self) {
+    /// Starts the move. Should its window close first, `unclaimed` takes
+    /// what the app still has to do once it finishes, with the `scope` the
+    /// destination's tabs belong in.
+    fn teleport(&mut self, unclaimed: Unclaimed, scope: Scope, source_scope: Scope) {
         let Stage::Ready(candidate, review) = &self.stage else {
             return;
         };
         let (candidate, review) = (candidate.clone(), review.clone());
         let source = self.source.clone();
         let target = candidate.clone();
+        let handover = unclaimed::Handover {
+            scope,
+            closing: self.closing.clone(),
+            source: source.clone(),
+            source_scope,
+        };
         self.restart(move |sender, cancelled| {
             let result = job::run(
                 &source,
@@ -234,7 +289,7 @@ impl Teleport {
                 },
                 cancelled,
             );
-            let _ = sender.send(Event::Moved(result));
+            unclaimed::deliver(sender, result, handover, &unclaimed);
         });
         self.stage = Stage::Moving(candidate, None);
     }
@@ -252,6 +307,9 @@ impl Teleport {
                     }
                 }
                 Event::Step(step) => {
+                    // Steps after `Retire` start once the source's programs
+                    // stopped.
+                    self.retired |= step.progress() > Step::Retire.progress();
                     if let Stage::Moving(_, current) = &mut self.stage {
                         *current = Some(step);
                     }
@@ -281,6 +339,7 @@ impl Teleport {
 
 impl SheprdWindow {
     pub(crate) fn poll_teleport(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.claim_teleports(window, cx);
         if self.teleport_marks.poll() {
             cx.notify();
         }
@@ -303,6 +362,21 @@ impl SheprdWindow {
         };
         let destination = teleport.destination_label().unwrap_or_default().to_owned();
         let source = teleport.source.clone();
+        let store = cx.try_global::<Store>();
+        let panes = |tab| match store?.get(tab)?.location.as_ref()? {
+            Location::CoreTerminal { panes, .. } => Some(panes.clone()),
+            _ => None,
+        };
+        // Past stopping its programs, a kept source keeps one idle shell.
+        let retired = result.is_ok() || teleport.retired;
+        let closed = teleport.closed_tabs(result.is_ok(), panes);
+        for tab in closed {
+            self.close_browser_tab(tab, window, cx);
+        }
+        if retired {
+            let scope = self.endpoint_scope(&source.place.endpoint_id);
+            self.retire_kept_source(&source, scope, cx);
+        }
         let outcome = match result {
             Ok(outcome) => outcome,
             Err(error) if !open => {
@@ -322,6 +396,10 @@ impl SheprdWindow {
         for warning in &outcome.warnings {
             tracing::warn!(%warning, "teleport");
         }
+        let scope = self.endpoint_scope(&outcome.endpoint_id);
+        let Some(workspace) = self.settle_teleport(&outcome, &scope, window, cx) else {
+            return;
+        };
         // The checkout left behind is marked; the one the work came back to,
         // if any, no longer is.
         self.teleport_marks
@@ -334,7 +412,7 @@ impl SheprdWindow {
                 endpoint: outcome.endpoint_id.clone(),
                 label: destination.clone(),
                 repo_key: outcome.repo_key.clone(),
-                workspace_id: outcome.workspace_id.clone(),
+                workspace_id: workspace.clone(),
             },
         });
         let flash = match outcome.warnings.first() {
@@ -347,7 +425,7 @@ impl SheprdWindow {
             )),
         };
         self.show_flash(flash, cx);
-        self.teleport_follow = Some(Follow::new(outcome.endpoint_id, outcome.workspace_id));
+        self.teleport_follow = Some(Follow::new(outcome.endpoint_id, workspace));
         self.follow_teleport(cx);
     }
 
@@ -376,6 +454,11 @@ impl SheprdWindow {
         };
         if self.endpoints[self.selected_endpoint].id != endpoint {
             self.navigate_endpoint(&endpoint, target, cx);
+            return;
+        }
+        // A workspace the app keeps needs no daemon to list it.
+        if pane.is_none() && self.focus_kept_workspace(&workspace, cx) {
+            self.teleport_follow = None;
             return;
         }
         let Some(snapshot) = &self.live.snapshot else {
@@ -438,12 +521,60 @@ impl SheprdWindow {
     }
 
     fn submit_teleport(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let room = cx.try_global::<Store>().map_or(usize::MAX, Store::room);
+        let kept_room = cx
+            .try_global::<Store>()
+            .map_or(usize::MAX, Store::kept_room);
+        let unclaimed = cx.default_global::<Unclaimed>().clone();
+        let destination = match self.teleport.as_ref().map(|teleport| &teleport.stage) {
+            Some(Stage::Ready(candidate, _)) => {
+                Some(self.endpoint_scope(&candidate.place.endpoint_id))
+            }
+            _ => None,
+        };
+        let source_scope = self
+            .teleport
+            .as_ref()
+            .map(|teleport| self.endpoint_scope(&teleport.source.place.endpoint_id));
         let Some(teleport) = &mut self.teleport else {
             return;
         };
-        match teleport.stage {
+        match &teleport.stage {
             Stage::Choosing => teleport.review(),
-            Stage::Ready(..) => teleport.teleport(),
+            Stage::Ready(candidate, review) => {
+                let (Some(destination), Some(source_scope)) = (destination, source_scope) else {
+                    return;
+                };
+                // A move into a new workspace the app keeps must find room
+                // for it before the source stops; once the move ends, a
+                // full list would leave its programs with no tab.
+                let new_kept = candidate.lands_in == Keeper::App
+                    && !matches!(candidate.destination, job::Destination::Reclaim { .. });
+                if new_kept && kept_room == 0 {
+                    self.show_flash(Flash::warning(fl!("core-workspaces-too-many")), cx);
+                    return;
+                }
+                // The tabs rebuilt in Herdr 2 must all open once the move
+                // ends, when the source's own Herdr 2 tabs have closed: a
+                // program without a tab would run unseen. A kept source
+                // takes one more, for the idle shell it keeps.
+                let kept_source = usize::from(matches!(
+                    teleport.source.keeping,
+                    crate::teleport::Keeping::App { .. }
+                ));
+                let opening = review
+                    .tabs
+                    .iter()
+                    .filter(|tab| tab.into == Generation::Herdr2)
+                    .count()
+                    + kept_source;
+                if opening > room.saturating_add(teleport.closing.len()) {
+                    let flash = fl!("teleport-too-many-tabs", count = opening);
+                    self.show_flash(Flash::warning(flash), cx);
+                    return;
+                }
+                teleport.teleport(unclaimed, destination, source_scope);
+            }
             Stage::Failed(_) => {
                 self.teleport = None;
                 self.dismiss_menu(window, cx);
@@ -578,7 +709,7 @@ impl SheprdWindow {
                 }
                 for (index, tab) in review.tabs.iter().enumerate() {
                     let number = index + 1;
-                    let title = match &tab.label {
+                    let mut title = match &tab.label {
                         None => fl!("teleport-tab", number = number),
                         Some(label) => {
                             fl!(
@@ -588,6 +719,9 @@ impl SheprdWindow {
                             )
                         }
                     };
+                    if tab.into == Generation::Herdr2 {
+                        title = fl!("teleport-tab-herdr-2", tab = title);
+                    }
                     body = body.child(
                         div()
                             .pt(px(4.))

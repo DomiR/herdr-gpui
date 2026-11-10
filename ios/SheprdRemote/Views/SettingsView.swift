@@ -11,6 +11,11 @@ struct SettingsView: View {
     @State private var forgetting: Computer?
     @State private var editMode = EditMode.inactive
     @AppStorage(AppLock.setting, store: AppLock.store) private var requireFaceID = false
+    @AppStorage(AppAppearance.key) private var appearance = AppAppearance.system
+    @AppStorage(VoiceSettings.speaksKey) private var voiceSpeaks = true
+    @AppStorage(VoiceSettings.confirmsKey) private var voiceConfirms = false
+    @AppStorage(VoiceSettings.languageKey) private var voicePhoneLanguage = false
+    @AppStorage(ActivityTokens.genericSetting) private var genericActivities = false
 
     var body: some View {
         List {
@@ -62,9 +67,30 @@ struct SettingsView: View {
                 }
             }
             Section {
+                Toggle("Speak Results", isOn: $voiceSpeaks)
+                Toggle("Confirm by Voice", isOn: $voiceConfirms)
+                Toggle("Use Phone Language", isOn: $voicePhoneLanguage)
+            } header: {
+                Text("Voice")
+            } footer: {
+                Text("Confirm by Voice reads the plan aloud and starts on a plain yes, for a new worktree only. Anything else still needs a tap. Use Phone Language is experimental: commands other than English are less reliable, and cannot stop or answer a chat.")
+            }
+            Section("Terminal") {
+                NavigationLink {
+                    TerminalKeysView()
+                } label: {
+                    let layout = model.termKeys.layout
+                    LabeledContent("Terminal Keys", value: "\(layout.top.count + layout.bottom.count)")
+                }
+            }
+            Section {
                 if !ActivityAuthorizationInfo().areActivitiesEnabled {
                     Label("Live Activities are off for Sheprd. Turn them on in Settings.", systemImage: "exclamationmark.triangle")
                 }
+                Toggle("Keep Generic", isOn: $genericActivities)
+                    .onChange(of: genericActivities) { _, generic in
+                        Task { await model.tokens.genericChanged(to: generic) }
+                    }
                 #if DEBUG
                 Button("Start a sample activity") { model.startSample() }
                 if let status = model.sampleStatus {
@@ -73,6 +99,19 @@ struct SettingsView: View {
                 #endif
             } header: {
                 Text("Live Activities")
+            } footer: {
+                Text("Generic shows the agent and what it is doing, without the chat's name, steps, or questions. A computer can also choose this in Sheprd's Remote control settings.")
+            }
+            Section {
+                Picker("Appearance", selection: $appearance) {
+                    ForEach(AppAppearance.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            } header: {
+                Text("Appearance")
+            } footer: {
+                Text("Terminals stay dark either way.")
             }
             Section {
                 Toggle("Require Face ID", isOn: Binding(
@@ -91,12 +130,13 @@ struct SettingsView: View {
             } header: {
                 Text("Privacy")
             } footer: {
-                Text("Asks for Face ID when the app opens and hides it in the app switcher. \"Always\" answers and auto-accept ask either way.")
+                Text("Asks for Face ID when the app opens and hides it in the app switcher. \"Always\" answers ask either way.")
             }
             Section("Storage") {
                 LabeledContent("Cached chats and lists", value: ByteCountFormatter.string(fromByteCount: Int64(cacheSize), countStyle: .file))
                 Button("Clear cache", role: .destructive) {
-                    model.fleet.cache.clear()
+                    model.fleet.clearCache()
+                    model.drafts = [:]
                     cacheSize = 0
                 }
             }
@@ -123,11 +163,14 @@ private struct ComputerRow: View {
     var computer: Computer
 
     var body: some View {
-        let status = model.fleet.machines.first { $0.id == computer.device }?.status
+        let machine = model.fleet.machines.first { $0.id == computer.device }
+        let status = machine?.status
         VStack(alignment: .leading, spacing: 2) {
             Text(model.displayName(computer))
             if status == .revoked {
                 ComputerStatusLine(status: .revoked).font(.caption)
+            } else if status == .outdated || machine?.needsUpdate == true {
+                ComputerStatusLine(status: .outdated).font(.caption)
             } else if let vouching = model.vouching(computer) {
                 Text("via \(model.displayName(vouching))").font(.caption).foregroundStyle(.secondary)
             } else if let kind = computer.origins.lazy.map(OriginKind.init(origin:)).first(where: { $0 != .loopback }) {

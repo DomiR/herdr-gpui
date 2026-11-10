@@ -36,7 +36,7 @@ fn one_palette_combines_navigation_actions_commands_and_projects(cx: &mut TestAp
                 },
                 "release blocker",
             );
-            view.prepare_palette_entries(&mut palette, Some(&notes));
+            view.prepare_palette_entries(&mut palette, Some(&notes), cx);
             view.menu.palette = Some(palette);
             view.rank_palette(Selection::Keep, cx);
             for filter in Filter::ALL {
@@ -221,7 +221,7 @@ fn composition_does_not_activate_or_dismiss_the_palette(cx: &mut TestAppContext)
             for key in ["enter", "escape", "tab", "ctrl-tab", "alt-b"] {
                 view.palette_key(
                     &KeyDownEvent {
-                        keystroke: Keystroke::parse(key).unwrap(),
+                        keystroke: crate::keymap::parse_keystroke(key).unwrap(),
                         is_held: false,
                         prefer_character_input: false,
                     },

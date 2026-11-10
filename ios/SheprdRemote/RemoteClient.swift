@@ -2,6 +2,9 @@ import CryptoKit
 import Foundation
 import SheprdRemoteCore
 import Security
+import os
+
+private let log = Logger(subsystem: "so.pen.herdr.remote", category: "network")
 
 /// What the terminal's action sheet asks of Sheprd.
 enum TermAction: String, Encodable, CaseIterable {
@@ -44,6 +47,26 @@ final class PinnedTrust: NSObject, URLSessionTaskDelegate, Sendable {
         nil
     }
 
+    /// One line per request, failed or not: which addresses it used, and
+    /// whether it rode a connection already open, tell a dead path from a
+    /// daemon that is slow. `didCompleteWithError` is no use for this, as
+    /// `URLSession` does not call it for async requests.
+    func urlSession(_ session: URLSession, task: URLSessionTask, didFinishCollecting metrics: URLSessionTaskMetrics) {
+        let last = metrics.transactionMetrics.last
+        let request = task.originalRequest
+        let route = PathFailure.route(request?.url)
+        let took = PathFailure.seconds(.seconds(metrics.taskInterval.duration))
+        let status = (task.response as? HTTPURLResponse)?.statusCode ?? 0
+        let path = "\(last?.localAddress ?? "?") to \(last?.remoteAddress ?? "?") reused=\(last?.isReusedConnection ?? false)"
+        let sent = last?.countOfRequestBodyBytesSent ?? 0
+        if let error = task.error {
+            let code = error as NSError
+            log.error("\(request?.httpMethod ?? "?", privacy: .public) \(route, privacy: .public) at \(request?.url?.host() ?? "?", privacy: .public) failed \(code.code) in \(took, privacy: .public): \(path, privacy: .public) sent=\(sent)")
+        } else {
+            log.notice("\(request?.httpMethod ?? "?", privacy: .public) \(route, privacy: .public) at \(request?.url?.host() ?? "?", privacy: .public) answered \(status) in \(took, privacy: .public): \(path, privacy: .public) sent=\(sent)")
+        }
+    }
+
     static func isEncrypted(_ url: URL?) -> Bool {
         guard let scheme = url?.scheme?.lowercased() else { return false }
         return scheme == "https" || scheme == "wss"
@@ -75,13 +98,14 @@ final class PinnedTrust: NSObject, URLSessionTaskDelegate, Sendable {
 }
 
 enum RemoteError: Error, LocalizedError {
+    /// The status, and what to tell the person (`Refusal`).
     case status(Int, String)
     case notHTTP
     case unreachable
 
     var errorDescription: String? {
         switch self {
-        case let .status(code, body): "The computer answered \(code): \(body)"
+        case let .status(_, text): text
         case .notHTTP: "The computer's answer was not HTTP."
         case .unreachable: "None of the computer's addresses answered."
         }
@@ -183,6 +207,18 @@ final class RemoteClient: Sendable {
         try await send("POST", "/api/v2/workspaces/\(Self.segment(workspace))/chats", body: request, bearer: bearer, timeout: 30)
     }
 
+    // MARK: Updates
+
+    /// Where Sheprd's updater stands there. An older computer answers 404.
+    func computerUpdate(bearer: String) async throws -> ComputerUpdate {
+        try await send("GET", "/api/v2/update", bearer: bearer)
+    }
+
+    /// Asks Sheprd there to update and restart.
+    func askToUpdate(bearer: String) async throws -> ComputerUpdate {
+        try await send("POST", "/api/v2/update", bearer: bearer)
+    }
+
     // MARK: Hosts
 
     /// The other hosts this computer may pair the phone with.
@@ -198,6 +234,14 @@ final class RemoteClient: Sendable {
             "POST", "/api/v2/hosts/\(Self.segment(host))/pair",
             body: API.HostPairRequest(publicKey: publicKey), bearer: bearer
         )
+    }
+
+    // MARK: Tags
+
+    /// Offers this phone's copy of the computer's tags; answers those that
+    /// stand, which are the computer's own if it heard of a later edit.
+    func offerTags(_ tags: Home.Tags, bearer: String) async throws -> Home.Tags {
+        try await send("PUT", "/api/v2/tags", body: tags, bearer: bearer)
     }
 
     // MARK: Terminals
@@ -228,10 +272,33 @@ final class RemoteClient: Sendable {
 
     /// Runs an action from the sheet; answers the pane to show next, or
     /// `nil` when the pane or tab is gone.
+    /// A terminal tab in `workspace`, which needs no pane there, so a
+    /// workspace with nothing in it yet gets its first; answers its pane.
+    func newTerminal(workspace: String, bearer: String) async throws -> String {
+        struct Answer: Decodable { let pane: String }
+        let answer: Answer = try await send("POST", "/api/v2/workspaces/\(Self.segment(workspace))/terminals", bearer: bearer, timeout: 30)
+        return answer.pane
+    }
+
     func termAction(_ action: TermAction, pane: String, bearer: String) async throws -> String? {
         struct Body: Encodable { let action: TermAction }
         struct Answer: Decodable { let pane: String? }
         let answer: Answer = try await send("POST", "/api/term/\(Self.segment(pane))/action", body: Body(action: action), bearer: bearer)
+        return answer.pane
+    }
+
+    /// Moves the agent `offer` names into a chat in the same pane, as
+    /// Sheprd's Move Agent into Chat does; answers the chat's pane once it is
+    /// up, or `nil` when it is still starting. Stopping the agent can take
+    /// a while, so this waits longer than other requests. A refusal leaves
+    /// the agent running and says why.
+    func convertToChat(_ offer: Home.TerminalRow.ConvertOffer, bearer: String) async throws -> String? {
+        struct Body: Encodable { let agent: String }
+        struct Answer: Decodable { let pane: String? }
+        let answer: Answer = try await send(
+            "POST", "/api/v2/term/\(Self.segment(offer.pane))/convert",
+            body: Body(agent: offer.agent), bearer: bearer, timeout: 90
+        )
         return answer.pane
     }
 
@@ -242,15 +309,55 @@ final class RemoteClient: Sendable {
         let _: EmptyAnswer = try await send("POST", "/api/term/\(Self.segment(pane))/rename", body: Body(label: label), bearer: bearer)
     }
 
+    /// A workspace's changed files, which Sheprd reads from its checkout.
+    func changes(workspace: String, scope: ChangeScope, bearer: String) async throws -> ChangeList {
+        try await send("GET", "\(Self.changesPath(workspace))?\(Self.query(["scope": scope.rawValue]))",
+                       bearer: bearer, timeout: Self.askTimeout)
+    }
+
+    /// One listed file's diff.
+    func fileDiff(_ path: String, workspace: String, scope: ChangeScope, bearer: String) async throws -> FileDiff {
+        let query = Self.query(["path": path, "scope": scope.rawValue])
+        return try await send("GET", "\(Self.changesPath(workspace))/diff?\(query)", bearer: bearer, timeout: Self.askTimeout)
+    }
+
+    /// The checks of a workspace's pull request.
+    func checks(workspace: String, bearer: String) async throws -> PullRequestChecks {
+        try await send("GET", "/api/v2/workspaces/\(Self.segment(workspace))/checks", bearer: bearer, timeout: Self.askTimeout)
+    }
+
+    /// An excerpt of a failing check's log.
+    func checkLog(job: UInt64, workspace: String, bearer: String) async throws -> CheckLogExcerpt {
+        try await send("GET", "/api/v2/workspaces/\(Self.segment(workspace))/checks/\(job)/log",
+                       bearer: bearer, timeout: Self.askTimeout)
+    }
+
+    /// Longer than the computer waits for Sheprd (`ANSWER_WAIT`), so it is
+    /// the computer that says what went wrong.
+    private static let askTimeout: TimeInterval = 30
+
+    private static func changesPath(_ workspace: String) -> String {
+        "/api/v2/workspaces/\(segment(workspace))/changes"
+    }
+
+    private static func query(_ items: [String: String]) -> String {
+        var components = URLComponents()
+        components.queryItems = items.sorted { $0.key < $1.key }.map(URLQueryItem.init)
+        // A query string reads `+` as a space.
+        return (components.percentEncodedQuery ?? "").replacingOccurrences(of: "+", with: "%2B")
+    }
+
+    /// Names a workspace; it always has a name.
+    func renameWorkspace(_ workspace: String, to label: String, bearer: String) async throws {
+        struct Body: Encodable { let label: String }
+        let _: EmptyAnswer = try await send("POST", "/api/v2/workspaces/\(Self.segment(workspace))/rename", body: Body(label: label), bearer: bearer)
+    }
+
     /// What was said in this computer's chats; nil from a daemon that
     /// cannot search, so the phone's index answers instead.
     func search(_ query: String, bearer: String) async throws -> SearchAnswer? {
-        var components = URLComponents()
-        components.queryItems = [URLQueryItem(name: "q", value: query)]
-        // A query string reads `+` as a space.
-        let encoded = (components.percentEncodedQuery ?? "").replacingOccurrences(of: "+", with: "%2B")
         do {
-            return try await send("GET", "/api/v2/search?\(encoded)", bearer: bearer)
+            return try await send("GET", "/api/v2/search?\(Self.query(["q": query]))", bearer: bearer)
         } catch RemoteError.status(404, _) {
             return nil
         }
@@ -290,6 +397,26 @@ final class RemoteClient: Sendable {
 
     func registerAPNs(_ registration: API.APNsRegistration, bearer: String) async throws {
         let _: EmptyAnswer = try await send("POST", "/api/apns", body: registration, bearer: bearer)
+    }
+
+    /// Writes what only this phone saw to the computer's `daemon.log`. The
+    /// route is open and rate limited, as pairing fails before any session.
+    func report(context: String, message: String) async throws {
+        struct Body: Encodable {
+            let context: String
+            let message: String
+        }
+        guard let url = URL(string: origin + "/api/log") else { throw RemoteError.unreachable }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.httpBody = try JSONEncoder().encode(Body(context: context, message: message))
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // Answers 204, which has no body to decode.
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw RemoteError.notHTTP }
+        guard (200..<300).contains(http.statusCode) else {
+            throw RemoteError.status(http.statusCode, Refusal.text(status: http.statusCode, body: data))
+        }
     }
 
     private struct EmptyAnswer: Decodable {}
@@ -333,7 +460,8 @@ final class RemoteClient: Sendable {
     private func decode<Answer: Decodable>(_ data: Data, _ response: URLResponse) throws -> Answer {
         guard let http = response as? HTTPURLResponse else { throw RemoteError.notHTTP }
         guard (200..<300).contains(http.statusCode) else {
-            let text = String(decoding: data.prefix(300), as: UTF8.self)
+            let text = Refusal.text(status: http.statusCode, body: data)
+            log.error("\(PathFailure.route(http.url), privacy: .public) refused with \(http.statusCode): \(text, privacy: .public)")
             throw RemoteError.status(http.statusCode, text)
         }
         return try JSONDecoder().decode(Answer.self, from: data)

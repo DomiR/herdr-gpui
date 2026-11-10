@@ -68,8 +68,8 @@ impl OrchestratorView {
                 cx.notify();
                 true
             }
-            ("escape", None) if self.sort_open => {
-                self.sort_open = false;
+            ("escape", None) if self.menu.is_some() => {
+                self.menu = None;
                 cx.notify();
                 true
             }

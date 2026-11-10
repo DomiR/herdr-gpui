@@ -11,6 +11,7 @@ mod agent_recency;
 mod projection;
 
 use agent_recency::AgentRecency;
+pub(crate) use agent_recency::StatusRecency;
 
 pub(crate) type DialogResponse = Result<serde_json::Value, Arc<crate::Error>>;
 
@@ -83,6 +84,8 @@ pub struct LiveState {
     /// When each of `snapshot`'s agents last changed, on a clock shared with
     /// every other connection, so the agents panel can merge hosts by recency.
     pub(crate) agent_recency: AgentRecency,
+    /// `snapshot` as a [`sheprd_session::Session`], built when first read.
+    session: crate::session_model::SnapshotSession,
     /// The pane focused before the current one, in any workspace or tab of
     /// this daemon boot, for Herdr's `last_pane`.
     pub(crate) previous_pane: Option<String>,
@@ -215,6 +218,7 @@ impl Default for LiveState {
             snapshot: None,
             pending_snapshot: None,
             agent_recency: AgentRecency::default(),
+            session: Default::default(),
             previous_pane: None,
             surface: None,
             surface_images: Default::default(),
@@ -272,6 +276,20 @@ pub(crate) enum Answer {
 }
 
 impl LiveState {
+    /// Whether the host has no Herdr 1 that can serve this window: none
+    /// installed on this computer, none a saved host's bridge found, or one
+    /// too old for this client that is not connected. Such a host runs its
+    /// terminals in herdr-core alone, while its core answers.
+    pub(crate) fn herdr_1_unavailable(&self) -> bool {
+        let outdated = matches!(
+            self.version_mismatch,
+            Some(sheprd_client::VersionMismatch::DaemonOutdated { .. })
+        ) && !self.status.is_connected();
+        self.missing_installation
+            || self.ssh_failure == Some(sheprd_client::SshFailure::HerdrMissing)
+            || outdated
+    }
+
     fn answer_slot(&mut self, answer: Answer) -> &mut Option<(String, Option<DialogResponse>)> {
         match answer {
             Answer::Cleanup => &mut self.cleanup_response,
@@ -319,6 +337,7 @@ impl LiveState {
             pending_snapshot: _,
             // Changes only with `snapshot`, which is compared below.
             agent_recency: _,
+            session: _,
             previous_pane,
             surface: _,
             surface_images: _,
@@ -567,6 +586,20 @@ impl LiveState {
     }
 
     /// Track activation without treating receipt or focus gain as presentation.
+    /// The session of the latest metadata, a snapshot still waiting for its
+    /// cells included, with that snapshot's boot.
+    pub(crate) fn latest_session(&self) -> Option<(&str, Arc<sheprd_session::Session>)> {
+        let snapshot = self.latest_snapshot()?;
+        Some((snapshot.boot_id.as_str(), self.session.get(snapshot)))
+    }
+
+    /// The session Herdr 1's snapshot describes, if one landed.
+    pub(crate) fn session(&self) -> Option<Arc<sheprd_session::Session>> {
+        self.snapshot
+            .as_ref()
+            .map(|snapshot| self.session.get(snapshot))
+    }
+
     pub fn set_outer_focus(&mut self, focused: bool) {
         // A focus report retried after inbox contention must still cause a draw.
         self.dirty |= self.outer_focused != Some(focused);
@@ -604,6 +637,8 @@ impl LiveState {
                             welcome.capabilities.iter().any(|value| value == capability)
                         });
                 self.missing_installation = false;
+                // A host that answers again is no longer missing Herdr.
+                self.ssh_failure = None;
                 self.version_mismatch = None;
                 // The daemon reports the mode to each new connection.
                 self.keyboard_report_all = false;

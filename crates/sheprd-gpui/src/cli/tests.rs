@@ -14,12 +14,15 @@ mod doc_cancel;
 mod language;
 mod link_command;
 mod links;
+mod local_ports;
+mod menu_bar;
 mod mods;
 mod open_command;
 mod px0;
 mod quota;
 mod remote;
 mod security;
+mod ui_agent_group;
 mod ui_panel;
 
 #[test]

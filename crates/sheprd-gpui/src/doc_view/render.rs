@@ -305,7 +305,7 @@ impl DocEditor {
             find_matches,
             highlights: row_highlights,
             checkbox: row.checkbox.clone(),
-            marked: self.marked.as_ref().and_then(local).map(&shown),
+            marked: self.marked.as_ref().and_then(local).map(shown),
             colors: self.colors(),
         };
         let fold = self.prepared.fold_at(line_ix).is_some();

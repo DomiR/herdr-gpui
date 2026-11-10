@@ -47,6 +47,7 @@ fn working() -> ServerMessage {
                 kind: ToolKind::Execute,
                 locations: Vec::new(),
                 parent: None,
+                started_ms: None,
                 status: ToolStatus::Completed,
                 title: TITLE.into(),
             }),
@@ -69,6 +70,7 @@ fn working() -> ServerMessage {
         label: SHELL.into(),
         started_ms: now_ms().saturating_sub(65_000),
         state: ActivityState::Running,
+        stoppable: false,
     }];
     ServerMessage::Snapshot {
         cursor: cursor(1, 0),
@@ -88,6 +90,12 @@ fn a_chat_shows_only_messages_and_its_conversation_under_en_xa() {
             .into_iter()
             .chain(STEPS)
             .map(str::to_owned)
+            .chain(view.read_with(cx, |view, _| {
+                view.keymap()
+                    .shortcuts(sheprd_commands::Command::Palette)
+                    .map(str::to_owned)
+                    .collect::<Vec<_>>()
+            }))
             .collect();
         // GPUI shapes a line once, so a layout that cuts a line an earlier
         // one drew whole shows only the cut; it is checked against them all.
@@ -110,6 +118,14 @@ fn a_chat_shows_only_messages_and_its_conversation_under_en_xa() {
             poll(&view, &program, cx);
             assert_translated(&format!("{layout:?} chat"), &shown(recorder.take()), &data);
         }
+        // The table stands in for the rail, whose words the layouts covered.
+        view.update(cx, |view, _| {
+            let pane = view.chats.panes().next().unwrap().target.pane_id.clone();
+            if let Some(chat) = view.chats.pane_mut(&pane) {
+                chat.rail = false;
+            }
+        });
+        poll(&view, &program, cx);
         let row = cx.debug_bounds("chat-running").unwrap();
         cx.simulate_click(row.center(), Modifiers::default());
         wait_until(|| {

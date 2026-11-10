@@ -45,6 +45,8 @@ impl Localize for ProviderError {
             Self::Azure(ref error) => error.localize(),
             #[cfg(feature = "boat")]
             Self::Boat(ref error) => error.localize(),
+            #[cfg(feature = "boxd")]
+            Self::Boxd(ref error) => error.localize(),
             #[cfg(feature = "coder")]
             Self::Coder(ref error) => error.localize(),
             #[cfg(feature = "container")]
@@ -114,6 +116,11 @@ impl Localize for install::Failure {
     fn localize(&self) -> String {
         use install::Retry;
         match self {
+            // What the core's installer printed, in its own words.
+            Self::Core(Some(output)) => {
+                fl!("error-remote-cloud-install-core", detail = output.as_str())
+            }
+            Self::Core(None) => fl!("error-remote-cloud-install-core-unknown"),
             Self::Missing => fl!("error-remote-cloud-install-missing"),
             Self::NoCurl => fl!("error-remote-cloud-install-no-curl"),
             Self::NoOutput => fl!("error-remote-cloud-install-no-output"),
@@ -143,7 +150,7 @@ impl Localize for install::Failure {
     }
 }
 
-#[cfg(any(feature = "opensandbox", feature = "sprites"))]
+#[cfg(any(feature = "boxd", feature = "opensandbox", feature = "sprites"))]
 impl Localize for sheprd_remote::cloud::socket::Error {
     fn localize(&self) -> String {
         match self {

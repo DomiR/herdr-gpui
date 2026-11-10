@@ -11,6 +11,7 @@ use gpui::{Modifiers, TestAppContext};
 fn the_linear_chip_opens_a_dialog_that_refuses_a_non_key(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
     let request = Request {
+        azure_store: Default::default(),
         target: sheprd_client::ConnectTarget::Local,
         checkout: dir.path().to_string_lossy().into_owned(),
         workspace_id: "w1".into(),
@@ -74,6 +75,7 @@ fn the_linear_chip_opens_a_dialog_that_refuses_a_non_key(cx: &mut TestAppContext
 fn the_issues_section_shows_no_linear_chip(cx: &mut TestAppContext) {
     let dir = tempfile::tempdir().unwrap();
     let request = Request {
+        azure_store: Default::default(),
         target: sheprd_client::ConnectTarget::Local,
         checkout: dir.path().to_string_lossy().into_owned(),
         workspace_id: "w1".into(),
