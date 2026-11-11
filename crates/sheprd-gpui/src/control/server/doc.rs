@@ -190,6 +190,7 @@ fn apply(
     let text = doc.text();
     let path = path.to_owned();
     let answer = |reply| Ok(Applied::Answer(Response::Doc { reply }));
+    let stamp_time = doc_view::stamps::stamp_time(cx);
     let (expected, section, make): (u64, Option<&String>, Make) = match op {
         DocOp::Open { .. } => return Err(invalid("Open is not a change")),
         DocOp::Link { .. } => return Err(invalid("Link is not a change")),
@@ -325,7 +326,7 @@ fn apply(
                 section.as_ref(),
                 Box::new(move |doc: &str| {
                     let found = todo::find_in(doc, &query, id.as_deref())?;
-                    Ok(todo::set_done(doc, found.line, done).into_iter().collect())
+                    Ok(todo::set_done(doc, found.line, done, stamp_time))
                 }),
             )
         }
@@ -342,9 +343,23 @@ fn apply(
                 section.as_ref(),
                 Box::new(move |doc: &str| {
                     let found = todo::find_in(doc, &query, id.as_deref())?;
-                    Ok(todo::set_state(doc, found.line, state)
-                        .into_iter()
-                        .collect())
+                    Ok(todo::set_state(doc, found.line, state, stamp_time))
+                }),
+            )
+        }
+        DocOp::TodoStart {
+            version,
+            section,
+            todo: query,
+            ..
+        } => {
+            let (query, id) = (query.clone(), section.clone());
+            (
+                *version,
+                section.as_ref(),
+                Box::new(move |doc: &str| {
+                    let found = todo::find_in(doc, &query, id.as_deref())?;
+                    Ok(todo::start(doc, found.line, doc_view::stamps::now()))
                 }),
             )
         }
@@ -448,6 +463,7 @@ fn kind(kind: todo::ChangeKind) -> TodoChangeKind {
         todo::ChangeKind::Unchecked => TodoChangeKind::Unchecked,
         todo::ChangeKind::Cancelled => TodoChangeKind::Cancelled,
         todo::ChangeKind::Uncancelled => TodoChangeKind::Uncancelled,
+        todo::ChangeKind::Started => TodoChangeKind::Started,
         todo::ChangeKind::Edited => TodoChangeKind::Edited,
     }
 }

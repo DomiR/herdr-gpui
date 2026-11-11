@@ -74,7 +74,7 @@ fn changes_name_who_made_them_and_can_keep_to_a_section() {
     let mut doc = Document::new("# A\n- [ ] a\n# B\n- [ ] b\n").unwrap();
     let start = doc.version();
     doc.agent_edit(&agent("w1:p2"), at(doc.version()), |text| {
-        todo::find(text, "b").map(|t| todo::set_done(text, t.line, true).into_iter().collect())
+        todo::find(text, "b").map(|t| todo::set_done(text, t.line, true, None))
     })
     .unwrap();
     // The app writes the agent's change before another program edits it.

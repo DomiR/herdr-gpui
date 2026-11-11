@@ -19,6 +19,7 @@ mod multi_cursor;
 mod marker_keys;
 mod saved_tab;
 mod shift_enter;
+mod stamp_keys;
 mod task_marker;
 mod todo_keys;
 mod typing;
@@ -35,6 +36,9 @@ pub(super) fn open<'a>(text: &str, cx: &'a mut TestAppContext) -> Fixture<'a> {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("todo.md");
     std::fs::write(&path, text).unwrap();
+    let mut appearance = crate::app::InitialAppearance::default();
+    appearance.config.documents.stamps = false;
+    cx.update(|cx| cx.set_global(appearance));
     let opened = path.clone();
     let (editor, cx) = cx.add_window_view(|_, cx| {
         let buffer = Docs::open(&opened, cx);

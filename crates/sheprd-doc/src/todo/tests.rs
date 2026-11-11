@@ -6,11 +6,16 @@ mod fold_tasks;
 mod line_break;
 mod moves;
 mod tags;
+mod stamps;
 
 const DOC: &str = "# Work\n- [ ] write\n  - [x] outline\n- [x] read\n\n## Later\n- [ ] ship\n";
 
 fn apply(text: &str, edit: Edit) -> String {
     Edit::apply_all(text, &[edit])
+}
+
+fn apply_edits(text: &str, edits: Vec<Edit>) -> String {
+    Edit::apply_all(text, &edits)
 }
 
 #[test]
@@ -54,11 +59,11 @@ fn finds_by_number_or_unique_text() {
 
 #[test]
 fn toggles_and_sets() {
-    let checked = apply(DOC, toggle(DOC, 1).unwrap());
+    let checked = apply_edits(DOC, toggle(DOC, 1, None));
     assert!(checked.contains("- [x] write"));
-    assert_eq!(set_done(DOC, 2, true), None);
-    assert!(apply(DOC, set_done(DOC, 2, false).unwrap()).contains("- [ ] outline"));
-    assert_eq!(toggle(DOC, 0), None);
+    assert!(set_done(DOC, 2, true, None).is_empty());
+    assert!(apply_edits(DOC, set_done(DOC, 2, false, None)).contains("- [ ] outline"));
+    assert!(toggle(DOC, 0, None).is_empty());
 }
 
 #[test]

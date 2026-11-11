@@ -2,11 +2,22 @@
 use serde::Deserialize;
 
 /// Client-local appearance settings for Markdown document tabs.
-#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 pub struct DocumentsConfig {
+    /// Whether checking or cancelling a task writes a `@done` or `@cancelled` date stamp, as PlainTasks does.
+    pub(crate) stamps: bool,
     /// The colors and task markers used by document tabs.
     pub(crate) theme: DocumentTheme,
+}
+
+impl Default for DocumentsConfig {
+    fn default() -> Self {
+        Self {
+            stamps: true,
+            theme: DocumentTheme::default(),
+        }
+    }
 }
 
 /// A preset for the appearance of Markdown document tabs.

@@ -210,6 +210,10 @@ herdr_2_scrollback = 10000
 # notepad) or "app" (follow the app theme).
 [documents]
 theme = "plaintasks"
+# Checking or cancelling a task writes @done (yy-mm-dd HH:MM) or
+# @cancelled (yy-mm-dd HH:MM), and @lasted for a started task. Set false to
+# turn that off. `doc todo start` still writes @started.
+stamps = true
 
 [palette]
 # Two short Shift taps open the unified palette in the focused GUI window.

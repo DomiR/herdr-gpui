@@ -1,10 +1,10 @@
 //! Which tasks changed between two texts, as one line each: what `doc
-//! watch --todos` prints. Tasks are matched by their text in order, so a
+//! watch --todos` prints. Tasks are matched by stamp-free text in order, so a
 //! task whose box flipped reads as checked, unchecked, cancelled, or
 //! uncancelled, one whose text changed in place as edited, and the rest as
 //! added or removed.
 
-use super::{TaskState, Todo, todos};
+use super::{TaskState, Todo, stamp, todos};
 use similar::{Algorithm, DiffOp, capture_diff_slices};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -16,6 +16,7 @@ pub enum ChangeKind {
     Edited,
     Cancelled,
     Uncancelled,
+    Started,
 }
 
 impl ChangeKind {
@@ -28,6 +29,7 @@ impl ChangeKind {
             Self::Unchecked => "unchecked",
             Self::Cancelled => "cancelled",
             Self::Uncancelled => "uncancelled",
+            Self::Started => "started",
             Self::Edited => "edited",
         }
     }
@@ -82,8 +84,14 @@ fn similarity(a: &str, b: &str) -> f32 {
 pub fn changes(old: &str, new: &str) -> Vec<TodoChange> {
     let before = todos(old);
     let after = todos(new);
-    let old_texts: Vec<&str> = before.iter().map(|todo| todo.text.as_str()).collect();
-    let new_texts: Vec<&str> = after.iter().map(|todo| todo.text.as_str()).collect();
+    let old_texts: Vec<String> = before
+        .iter()
+        .map(|todo| stamp::without_stamps(&todo.text))
+        .collect();
+    let new_texts: Vec<String> = after
+        .iter()
+        .map(|todo| stamp::without_stamps(&todo.text))
+        .collect();
     let mut out = Vec::new();
     for op in capture_diff_slices(Algorithm::Myers, &old_texts, &new_texts) {
         match op {
@@ -96,6 +104,10 @@ pub fn changes(old: &str, new: &str) -> Vec<TodoChange> {
                     let (was, now) = (&before[old_index + k], &after[new_index + k]);
                     if let Some(kind) = state_change(was.state, now.state) {
                         out.push(change(kind, now, was));
+                    } else if stamp::started_at(&now.text).is_some()
+                        && stamp::started_at(&was.text).is_none()
+                    {
+                        out.push(change(ChangeKind::Started, now, was));
                     }
                 }
             }
@@ -129,12 +141,20 @@ pub fn changes(old: &str, new: &str) -> Vec<TodoChange> {
                 // rest were added or removed.
                 let olds = &before[old_index..old_index + old_len];
                 let mut taken = vec![false; olds.len()];
-                for now in &after[new_index..new_index + new_len] {
+                for (offset, now) in after[new_index..new_index + new_len].iter().enumerate() {
                     let best = olds
                         .iter()
                         .enumerate()
                         .filter(|(k, _)| !taken[*k])
-                        .map(|(k, was)| (k, similarity(&was.text, &now.text)))
+                        .map(|(k, _)| {
+                            (
+                                k,
+                                similarity(
+                                    &old_texts[old_index + k],
+                                    &new_texts[new_index + offset],
+                                ),
+                            )
+                        })
                         .filter(|(_, score)| *score >= SIMILAR)
                         .max_by(|a, b| a.1.total_cmp(&b.1));
                     match best {

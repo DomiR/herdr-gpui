@@ -11,6 +11,7 @@ use super::{
     comments::{Comment, Draft},
     cursors::Cursors,
     links::{self, FileLinks},
+    stamps,
 };
 use super::{
     blocks::{self, Block},
@@ -780,21 +781,31 @@ impl DocEditor {
     /// Checks or unchecks the task on `line`, keeping the selection.
     pub(super) fn toggle_task(&mut self, line: usize, cx: &mut Context<Self>) {
         let text = self.text(cx);
-        let Some(edit) = todo::toggle(text, line) else {
+        let edits = todo::toggle(text, line, stamps::stamp_time(cx));
+        if edits.is_empty() {
             return;
+        }
+        let map = |offset| Edit::map_offset(offset, &edits);
+        let selection = Selection {
+            anchor: map(self.selection.anchor),
+            head: map(self.selection.head),
         };
-        let selection = self.selection;
-        self.apply_selecting(vec![edit], selection, cx);
+        self.apply_selecting(edits, selection, cx);
     }
 
     /// Toggles cancellation on the task at `line`, keeping the selection.
     pub(super) fn toggle_cancel_task(&mut self, line: usize, cx: &mut Context<Self>) {
         let text = self.text(cx);
-        let Some(edit) = todo::toggle_cancel(text, line) else {
+        let edits = todo::toggle_cancel(text, line, stamps::stamp_time(cx));
+        if edits.is_empty() {
             return;
+        }
+        let map = |offset| Edit::map_offset(offset, &edits);
+        let selection = Selection {
+            anchor: map(self.selection.anchor),
+            head: map(self.selection.head),
         };
-        let selection = self.selection;
-        self.apply_selecting(vec![edit], selection, cx);
+        self.apply_selecting(edits, selection, cx);
     }
 
     pub(super) fn undo(&mut self, redo: bool, cx: &mut Context<Self>) {

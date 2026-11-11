@@ -137,6 +137,12 @@ pub(super) fn run(command: DocCommand, context: &Context) -> crate::Result<Outpu
             todo,
             state,
         },
+        DocCommand::TodoStart { path, change, todo } => DocOp::TodoStart {
+            path: absolute(&path)?,
+            version: change.version,
+            section: change.section,
+            todo,
+        },
     };
     let response = match op {
         DocOp::Diff {

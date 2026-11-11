@@ -25,6 +25,7 @@ mod device_theme;
 mod diagnostic_text;
 mod discovery;
 mod doc_agent;
+mod document_stamps;
 mod documents;
 mod edit;
 mod favorite_themes;
