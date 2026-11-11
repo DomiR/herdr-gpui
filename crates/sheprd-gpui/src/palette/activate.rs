@@ -161,7 +161,8 @@ impl SheprdWindow {
                 | Action::NewProject(_)
                 | Action::Note { .. }
                 | Action::Core { .. }
-                | Action::Mod { .. }| Action::Doc(_) => unreachable!(),
+                | Action::Mod { .. }
+                | Action::Doc(_) => unreachable!(),
             }
         })();
         match result {

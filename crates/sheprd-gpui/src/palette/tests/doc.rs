@@ -20,7 +20,7 @@ fn open_doc<'a>(text: &str, cx: &'a mut TestAppContext) -> Fixture<'a> {
     std::fs::write(&path, text).unwrap();
     let opened: PathBuf = path.clone();
     let (view, cx) = cx.add_window_view(move |window, cx| {
-        let mut view = super::super::fixture_window(window, cx);
+        let mut view = fixture_window(window, cx);
         let buffer = Docs::open(&opened, cx);
         let look = view.doc_look(Zoom::default());
         let editor =
@@ -32,7 +32,10 @@ fn open_doc<'a>(text: &str, cx: &'a mut TestAppContext) -> Fixture<'a> {
     let editor = cx
         .update(|_, cx| view.read(cx).doc_views.get(&TabId::from(1)).cloned())
         .unwrap();
-    cx.update(|window, cx| window.focus(&editor.read(cx).focus, cx));
+    cx.update(|window, cx| {
+        let focus = editor.read(cx).focus.clone();
+        window.focus(&focus, cx);
+    });
     Fixture {
         view,
         editor,
@@ -52,7 +55,7 @@ fn document_filter_accepts_only_document_rows() {
 
 #[gpui::test]
 fn palette_default_filter_follows_document_focus(cx: &mut TestAppContext) {
-    let mut doc = open_doc("# A\ntext\n", cx);
+    let doc = open_doc("# A\ntext\n", cx);
     doc.cx.update(|window, cx| {
         assert_eq!(
             doc.view.read(cx).palette_default_filter(window, cx),
@@ -69,7 +72,7 @@ fn palette_default_filter_follows_document_focus(cx: &mut TestAppContext) {
 
 #[gpui::test]
 fn captured_documents_add_commands_and_nested_outline_rows(cx: &mut TestAppContext) {
-    let mut doc = open_doc("# A\nintro\n## B\n- [ ] x\n  - [ ] y\n# C\nend\n", cx);
+    let doc = open_doc("# A\nintro\n## B\n- [ ] x\n  - [ ] y\n# C\nend\n", cx);
     doc.cx.update(|window, cx| {
         doc.view.update(cx, |view, cx| {
             view.open_palette(Filter::Document, window, cx)
@@ -121,7 +124,7 @@ fn no_document_has_no_document_rows_or_filter_chip(cx: &mut TestAppContext) {
 
 #[gpui::test]
 fn current_theme_is_marked_and_other_theme_updates_config(cx: &mut TestAppContext) {
-    let mut doc = open_doc("# A\ntext\n", cx);
+    let doc = open_doc("# A\ntext\n", cx);
     doc.cx.update(|window, cx| {
         doc.view.update(cx, |view, cx| {
             view.open_palette(Filter::Document, window, cx)
@@ -159,7 +162,7 @@ fn current_theme_is_marked_and_other_theme_updates_config(cx: &mut TestAppContex
 
 #[gpui::test]
 fn activating_an_outline_row_closes_palette_and_focuses_the_editor(cx: &mut TestAppContext) {
-    let mut doc = open_doc("# A\nintro\n## B\nbody\n# C\nend\n", cx);
+    let doc = open_doc("# A\nintro\n## B\nbody\n# C\nend\n", cx);
     doc.cx.update(|window, cx| {
         doc.view.update(cx, |view, cx| {
             view.open_palette(Filter::Document, window, cx)

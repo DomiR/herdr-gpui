@@ -249,6 +249,7 @@ impl DocEditor {
         self.tab
     }
 
+    #[cfg(test)]
     pub(crate) fn caret(&self) -> usize {
         self.selection.head
     }

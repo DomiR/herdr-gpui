@@ -13,6 +13,7 @@ fn list_keeps_started_stamp_in_task_text() {
             text: "Ship @started(26-11-08 14:02)".into(),
             depth: 0,
             section: None,
+            tags: Vec::new(),
         }],
     };
     assert_eq!(

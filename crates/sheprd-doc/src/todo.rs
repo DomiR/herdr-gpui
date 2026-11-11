@@ -13,8 +13,8 @@ use std::ops::Range;
 
 mod changes;
 mod moves;
-mod tags;
 pub mod stamp;
+mod tags;
 
 pub use crate::markdown::TaskState;
 pub use changes::{ChangeKind, TodoChange, changes};

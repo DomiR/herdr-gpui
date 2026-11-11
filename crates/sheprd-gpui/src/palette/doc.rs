@@ -33,36 +33,36 @@ pub(super) fn doc_entries(
         command(
             fl!("palette-document-fold-all"),
             Command::FoldAll,
-            "document fold",
+            "document fold", // i18n: data
         ),
         command(
             fl!("palette-document-unfold-all"),
             Command::UnfoldAll,
-            "document fold",
+            "document fold", // i18n: data
         ),
     ];
     entries.extend((1..=6).map(|level| {
         command(
             fl!("palette-document-fold-to-level", level = level),
             Command::FoldToLevel(level),
-            "document fold",
+            "document fold", // i18n: data
         )
     }));
     entries.extend([
         command(
             fl!("palette-document-toggle-task"),
             Command::ToggleTask,
-            "document task",
+            "document task", // i18n: data
         ),
         command(
             fl!("palette-document-cancel-task"),
             Command::CancelTask,
-            "document task",
+            "document task", // i18n: data
         ),
         command(
             fl!("palette-document-find"),
             Command::Find,
-            "document find search",
+            "document find search", // i18n: data
         ),
         command(
             if hide_done {
@@ -71,22 +71,22 @@ pub(super) fn doc_entries(
                 fl!("palette-document-hide-done")
             },
             Command::ToggleHideDone,
-            "document tasks done",
+            "document tasks done", // i18n: data
         ),
         zoom(
             fl!("palette-document-zoom-in"),
             ZoomStep::In,
-            "document zoom",
+            "document zoom", // i18n: data
         ),
         zoom(
             fl!("palette-document-zoom-out"),
             ZoomStep::Out,
-            "document zoom",
+            "document zoom", // i18n: data
         ),
         zoom(
             fl!("palette-document-zoom-reset"),
             ZoomStep::Reset,
-            "document zoom",
+            "document zoom", // i18n: data
         ),
     ]);
     entries.extend([
@@ -94,13 +94,13 @@ pub(super) fn doc_entries(
             DocumentTheme::PlainTasks,
             theme,
             fl!("palette-document-theme-plaintasks"),
-            "document theme plaintasks",
+            "document theme plaintasks", // i18n: data
         ),
         theme_entry(
             DocumentTheme::App,
             theme,
             fl!("palette-document-theme-app"),
-            "document theme app",
+            "document theme app", // i18n: data
         ),
     ]);
 
@@ -168,7 +168,7 @@ fn outline_entry(outline: Outline, offset: usize) -> Entry {
         badge,
         Action::Doc(DocAction::Run(Command::GoToLine(outline.line))),
         outline.parent.map(|parent| offset + parent),
-        "document heading fold",
+        "document heading fold", // i18n: data
     )
 }
 
@@ -232,6 +232,35 @@ impl SheprdWindow {
             return false;
         }
         self.config.documents.theme = theme;
+        cx.notify();
+        true
+    }
+}
+
+impl SheprdWindow {
+    /// Drops the document the palette was opened over once its tab closed,
+    /// leaving the Document filter for All; whether there was one.
+    pub(super) fn drop_closed_palette_doc(&mut self, cx: &mut Context<Self>) -> bool {
+        let gone = self.menu.palette.as_ref().is_some_and(|palette| {
+            palette
+                .doc
+                .as_ref()
+                .is_some_and(|doc| !self.doc_views.values().any(|candidate| candidate == doc))
+        });
+        if !gone {
+            return false;
+        }
+        let Some(mut palette) = self.menu.palette.take() else {
+            return false;
+        };
+        palette.doc = None;
+        palette.doc_entries.clear();
+        if palette.filter == super::Filter::Document {
+            palette.filter = super::Filter::All;
+        }
+        self.prepare_palette_entries(&mut palette, crate::worktree_notes::Notes::of(cx), cx);
+        self.menu.palette = Some(palette);
+        self.rank_palette(super::Selection::Keep, cx);
         cx.notify();
         true
     }

@@ -334,18 +334,18 @@ pub(super) fn row(
         }
     }
     let decorations = if decorate {
-    let decorations = markdown::decorations(text, line);
-    if look.inks.is_some() && line.is_heading() {
-        decorations
-            .into_iter()
-            .filter(|decoration| decoration.range != line.marker)
-            .collect()
+        let decorations = markdown::decorations(text, line);
+        if look.inks.is_some() && line.is_heading() {
+            decorations
+                .into_iter()
+                .filter(|decoration| decoration.range != line.marker)
+                .collect()
+        } else {
+            decorations
+        }
     } else {
-        decorations
-    }
-} else {
-    markdown::editing_decorations(line)
-};
+        markdown::editing_decorations(line)
+    };
     let mut drawn = String::with_capacity(source.len());
     let mut drawn_paints = Vec::with_capacity(source.len());
     let mut pieces = Vec::new();

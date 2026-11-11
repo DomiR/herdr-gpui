@@ -12,7 +12,7 @@ fn run(doc: &mut Fixture<'_>, command: Command) {
 
 #[gpui::test]
 fn outline_lists_labels_and_parent_folds(cx: &mut TestAppContext) {
-    let mut doc = open(DOC, cx);
+    let doc = open(DOC, cx);
     let outline = doc
         .cx
         .update(|_, cx| doc.editor.update(cx, |editor, cx| editor.outline(cx)));
@@ -94,7 +94,7 @@ fn outline_is_capped_at_two_thousand_entries(cx: &mut TestAppContext) {
     let text: String = (0..2001)
         .map(|index| format!("# Heading {index}\nbody\n"))
         .collect();
-    let mut doc = open(&text, cx);
+    let doc = open(&text, cx);
     let outline = doc
         .cx
         .update(|_, cx| doc.editor.update(cx, |editor, cx| editor.outline(cx)));

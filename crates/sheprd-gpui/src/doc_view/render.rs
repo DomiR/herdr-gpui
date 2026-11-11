@@ -307,7 +307,9 @@ impl DocEditor {
         let code = matches!(row.kind, Kind::Code | Kind::Fence);
         let checkbox = row.checkbox.clone();
         let links: Rc<[(Range<usize>, layout::Target)]> = row.links.clone().into();
-        let caret_row = caret.and(self.look.inks.map(|inks| inks.caret_row));
+        let caret_row = main_parts
+            .caret
+            .and(self.look.inks.map(|inks| inks.caret_row));
         let start = line.range.start;
         let cards = self.comment_cards(line_ix, cx);
         let mouse_layout = text_layout.clone();

@@ -639,8 +639,8 @@ impl SheprdWindow {
             filter
         };
         if !self.open_menu(window, cx) {
-        return;
-    }
+            return;
+        }
         self.menu.page = Some(Page::Palette);
         let search = cx.new(SearchInput::new);
         let subscription = cx.subscribe(&search, |this, search, _: &Changed, cx| {
@@ -912,23 +912,7 @@ impl SheprdWindow {
 
     pub(crate) fn refresh_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.update_palette_project(window, cx);
-        let doc_gone = self.menu.palette.as_ref().is_some_and(|palette| {
-            palette.doc.is_some()
-                && !palette
-                    .doc
-                    .as_ref()
-                    .is_some_and(|doc| self.doc_views.values().any(|candidate| candidate == doc))
-        });
-        if doc_gone && let Some(mut palette) = self.menu.palette.take() {
-            palette.doc = None;
-            palette.doc_entries.clear();
-            if palette.filter == Filter::Document {
-                palette.filter = Filter::All;
-            }
-            self.prepare_palette_entries(&mut palette, crate::worktree_notes::Notes::of(cx));
-            self.menu.palette = Some(palette);
-            self.rank_palette(Selection::Keep, cx);
-            cx.notify();
+        if self.drop_closed_palette_doc(cx) {
             return;
         }
         let Some(palette) = self.menu.palette.as_ref() else {
