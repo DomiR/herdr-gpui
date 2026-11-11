@@ -21,6 +21,7 @@ fn cancel_uncancel_and_check_use_typed_states(cx: &mut TestAppContext) {
         DocOp::TodoList {
             path: doc.path.clone(),
             section: None,
+            tags: Vec::new(),
         },
         cx,
     ));
@@ -70,6 +71,7 @@ fn cancel_uncancel_and_check_use_typed_states(cx: &mut TestAppContext) {
         DocOp::TodoList {
             path: doc.path.clone(),
             section: None,
+            tags: Vec::new(),
         },
         cx,
     ));

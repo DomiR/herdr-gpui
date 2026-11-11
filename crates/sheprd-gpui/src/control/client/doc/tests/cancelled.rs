@@ -13,6 +13,7 @@ fn list_prints_cancelled_checkbox() {
             text: "ship".into(),
             depth: 0,
             section: None,
+            tags: Vec::new(),
         }],
     };
     assert_eq!(message(&reply).0, "Version: 3\n1. [-] ship");

@@ -5,6 +5,7 @@ use super::*;
 use crate::control::protocol::{Request, doc::TodoChangeKind};
 
 mod cancel;
+mod tags;
 use gpui::TestAppContext;
 
 mod link;

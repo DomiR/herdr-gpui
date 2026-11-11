@@ -12,13 +12,17 @@ use std::ops::Range;
 
 mod changes;
 mod moves;
+mod tags;
 
 pub use crate::markdown::TaskState;
 pub use changes::{ChangeKind, TodoChange, changes};
 pub use moves::move_item;
+pub use tags::{tag_name, tags};
 
 /// The most characters a todo added by command may have.
 pub const MAX_ITEM: usize = 4096;
+/// The longest tag name, in bytes.
+pub const MAX_TAG: usize = 64;
 
 /// One task, as `doc todo list` reports it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -34,6 +38,8 @@ pub struct Todo {
     pub depth: usize,
     /// The heading the task is under, if any.
     pub section: Option<String>,
+    /// Lowercase PlainTasks tags without their `@`.
+    pub tags: Vec<String>,
 }
 
 /// Every task of `text`.
@@ -55,6 +61,7 @@ pub fn todos(text: &str) -> Vec<Todo> {
             text: text[line.content()].trim().to_owned(),
             depth: line.depth,
             section: section.clone(),
+            tags: tags(&text[line.content()]),
         });
     }
     todos

@@ -5,6 +5,7 @@ mod cancelled;
 mod fold_tasks;
 mod line_break;
 mod moves;
+mod tags;
 
 const DOC: &str = "# Work\n- [ ] write\n  - [x] outline\n- [x] read\n\n## Later\n- [ ] ship\n";
 

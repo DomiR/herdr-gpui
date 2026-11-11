@@ -15,6 +15,8 @@ pub enum Error {
     BadItem,
     #[error("The edit {start}..{end} is outside the text or splits a character")]
     BadRange { start: usize, end: usize },
+    #[error("A todo tag is letters, digits, `_`, or `-`, at most 64 bytes, not {tag:?}")]
+    BadTag { tag: String },
     #[error("A version is the number `doc read` reports")]
     BadVersion,
     #[error("The document is at version {}, not {}", .0.current, .0.expected)]

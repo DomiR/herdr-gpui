@@ -36,6 +36,7 @@ impl Localize for sheprd_doc::Error {
             }
             E::BadItem => fl!("error-doc-bad-item"),
             E::BadRange { .. } => fl!("error-doc-bad-range"),
+            E::BadTag { tag } => fl!("error-doc-bad-tag", tag = tag.as_str()),
             E::BadVersion => fl!("error-doc-bad-version"),
             E::Conflict(conflict) => fl!(
                 "error-doc-conflict",

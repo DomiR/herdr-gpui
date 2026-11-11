@@ -69,8 +69,11 @@ fn todos_and_reads_start_with_the_version() {
             text: "ship".into(),
             depth: 2,
             section: None,
+            tags: vec!["high".into()],
         }],
     };
+    let json = serde_json::to_string(&todos).unwrap();
+    assert!(json.contains(r#""tags":["high"]"#));
     assert_eq!(message(&todos).0, "Version: 3\n  1. [x] ship");
     let read = Reply::Text {
         path: "/a.md".into(),

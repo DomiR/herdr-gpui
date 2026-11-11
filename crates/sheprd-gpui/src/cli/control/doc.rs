@@ -1,6 +1,7 @@
 //! `doc`: Markdown documents agents read and change through the app.
 use super::{Args, CliError, tabs::FileAt, unknown};
-use sheprd_control_protocol::protocol::doc::TaskState;
+use sheprd_control_protocol::protocol::doc::{MAX_TAGS, TaskState};
+use sheprd_doc::todo;
 use std::{ffi::OsString, path::PathBuf};
 
 /// Text a change carries: given inline, or `-` to read standard input.
@@ -58,6 +59,7 @@ pub enum DocCommand {
     TodoList {
         path: PathBuf,
         section: Option<String>,
+        tags: Vec<String>,
     },
     TodoAdd {
         path: PathBuf,
@@ -137,6 +139,19 @@ fn todo(args: &mut Args) -> Result<DocCommand, CliError> {
     Ok(match verb.to_str() {
         Some("list") => DocCommand::TodoList {
             section: args.text_option("--section")?,
+            tags: args
+                .options("--tag")?
+                .into_iter()
+                .map(crate::cli::args::utf8)
+                .map(|tag| {
+                    tag.and_then(|tag| todo::tag_name(&tag).ok_or(CliError::InvalidValue("--tag")))
+                })
+                .collect::<Result<Vec<_>, _>>()
+                .and_then(|tags| {
+                    (tags.len() <= MAX_TAGS)
+                        .then_some(tags)
+                        .ok_or(CliError::InvalidValue("--tag"))
+                })?,
             path: path(args)?,
         },
         Some("add") => {

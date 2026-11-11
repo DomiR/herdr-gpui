@@ -231,14 +231,23 @@ fn apply(
                 sections,
             });
         }
-        DocOp::TodoList { section, .. } => {
+        DocOp::TodoList { section, tags, .. } => {
             let lines = match section {
                 Some(id) => Some(section::find(text, id).map_err(refused)?.lines),
                 None => None,
             };
+            let tags = tags
+                .iter()
+                .map(|tag| {
+                    todo::tag_name(tag)
+                        .ok_or_else(|| sheprd_doc::Error::BadTag { tag: tag.clone() })
+                        .map_err(refused)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
             let todos = todo::todos(text)
                 .into_iter()
                 .filter(|t| lines.as_ref().is_none_or(|lines| lines.contains(&t.line)))
+                .filter(|t| tags.is_empty() || tags.iter().any(|tag| t.tags.contains(tag)))
                 .map(|t| TodoInfo {
                     number: t.number,
                     line: t.line + 1,
@@ -247,6 +256,7 @@ fn apply(
                     text: t.text,
                     depth: t.depth,
                     section: t.section,
+                    tags: t.tags,
                 })
                 .collect();
             return answer(Reply::Todos {
