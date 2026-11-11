@@ -8,7 +8,7 @@ use gpui::{
     FontStyle, FontWeight, Hsla, SharedString, StrikethroughStyle, TextRun, UnderlineStyle, px, rgb,
 };
 use sheprd_doc::markdown::{self, Kind, Line, Style, TaskState};
-use std::ops::Range;
+use std::{ffi::OsStr, ops::Range};
 
 /// What the editor draws with.
 #[derive(Clone, Debug, PartialEq)]
@@ -78,6 +78,22 @@ pub(super) enum Target {
     File(super::links::FileLink),
 }
 
+impl Target {
+    pub(super) fn opens(&self) -> bool {
+        match self {
+            Self::Url(url) => web(url),
+            Self::File(_) => true,
+        }
+    }
+}
+
+pub(super) fn web(url: &str) -> bool {
+    crate::link::is_link(OsStr::new(url))
+        || ["http://", "https://", "mailto:"]
+            .iter()
+            .any(|scheme| url.starts_with(scheme))
+}
+
 /// A line, ready to draw.
 #[derive(Clone, Debug)]
 pub(super) struct Row {
@@ -137,7 +153,7 @@ pub(super) fn row(
     look: &Look,
     decorate: bool,
     code: &[crate::review::highlight::Span],
-    files: &dyn Fn(&str) -> Option<super::links::FileLink>,
+    files: &dyn for<'a> Fn(super::links::Key<'a>) -> Option<super::links::FileLink>,
 ) -> Row {
     let source = &text[line.range.clone()];
     let base_start = line.range.start;
@@ -229,7 +245,12 @@ pub(super) fn row(
                 p.prose = false;
             }),
             Style::Code => {
-                if let Some(file) = text.get(span.range.clone()).and_then(files) {
+                if let Some(file) = text.get(span.range.clone()).and_then(|path| {
+                    files(super::links::Key {
+                        form: super::links::Form::Code,
+                        text: path,
+                    })
+                }) {
                     links.push((range.clone(), Target::File(file)));
                     mark(range.clone(), &|p| {
                         p.link = true;
@@ -248,7 +269,16 @@ pub(super) fn row(
             }),
             Style::Link { .. } => {
                 if let Some(url) = markdown::link_url(text, &span) {
-                    links.push((range.clone(), Target::Url(url.to_owned())));
+                    if web(url) {
+                        links.push((range.clone(), Target::Url(url.to_owned())));
+                    } else if let Some(target) = super::links::target(text, &span)
+                        && let Some(file) = files(super::links::Key {
+                            form: super::links::Form::Target,
+                            text: target,
+                        })
+                    {
+                        links.push((range.clone(), Target::File(file)));
+                    }
                 }
                 mark(range, &|p| {
                     p.link = true;
@@ -257,6 +287,23 @@ pub(super) fn row(
             }
         }
     }
+    for range in super::links::bare_paths(text, line) {
+        let Some(path) = text.get(range.clone()) else {
+            continue;
+        };
+        if let Some(file) = files(super::links::Key {
+            form: super::links::Form::Prose,
+            text: path,
+        }) {
+            let local_range = local(&range);
+            links.push((local_range.clone(), Target::File(file)));
+            mark(local_range, &|p| {
+                p.link = true;
+                p.prose = false;
+            });
+        }
+    }
+    links.sort_by_key(|(range, _)| range.start);
     let decorations = if decorate {
         markdown::decorations(text, line)
     } else {

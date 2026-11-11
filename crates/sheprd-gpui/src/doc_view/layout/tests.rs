@@ -5,6 +5,7 @@ use sheprd_doc::markdown::TaskState;
 
 mod cancelled;
 mod document_theme;
+mod file_links;
 
 fn look() -> Look {
     Look {

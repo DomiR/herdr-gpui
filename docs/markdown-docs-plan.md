@@ -148,9 +148,10 @@ The user asked for these after the first three phases, from comet
     workers (syntect grammars, mermaid-rs-renderer, RaTeX) draw fences and
     `$$` blocks off the UI thread. Pictures replace their source while the
     caret is outside them.
-24. **Inline-code file links** (comet's inline-code links): resolved
-    against the document's folder, then its Git checkout, off the UI
-    thread and remembered per text.
+24. **File links in Markdown**: inline code, Markdown link targets, and bare
+    prose paths open existing files at `:line`, `:line:column`, or `#Lline`
+    locations, including percent-encoded and `~/` references. Probing stays
+    off the UI thread and remembers the result per reference form.
 25. **Comments to agents** (comet's line comments): view-local, anchored
     in the CRDT, delivered through the existing page-notes path to the
     agent that last used `doc` on the file, else copied.

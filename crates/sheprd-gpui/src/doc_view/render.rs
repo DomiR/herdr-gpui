@@ -12,7 +12,7 @@ use super::{
 use crate::{actions, i18n::fl, input::ViewInputHandler, motion, words};
 use gpui::{prelude::*, *};
 use sheprd_doc::markdown::{Kind, TaskState};
-use std::ops::Range;
+use std::{ops::Range, rc::Rc};
 
 /// The fold chevrons' column.
 pub(super) const GUTTER: f32 = 22.;
@@ -80,6 +80,13 @@ fn spans(layout: &TextLayout, range: Range<usize>, past_end: bool) -> Vec<Bounds
         point(end.x, end.y + height),
     ));
     out
+}
+
+fn link_at(links: &[(Range<usize>, layout::Target)], source: usize) -> Option<&layout::Target> {
+    links
+        .iter()
+        .find(|(range, _)| range.contains(&source))
+        .map(|(_, target)| target)
 }
 
 fn paint_overlay(overlay: &Overlay, bounds: Bounds<Pixels>, window: &mut Window) {
@@ -233,7 +240,7 @@ impl DocEditor {
         let active =
             focused && line.range.start <= selection.end && selection.start <= line.range.end;
         let text = self.text(cx);
-        let files = |span: &str| self.links.get(span).cloned();
+        let files = |key: super::links::Key<'_>| self.links.get(key.form, key.text).cloned();
         let row: Row = layout::row(
             text,
             &line,
@@ -314,11 +321,16 @@ impl DocEditor {
         let entity = cx.entity();
         let code = matches!(row.kind, Kind::Code | Kind::Fence);
         let checkbox = row.checkbox.clone();
-        let links = row.links.clone();
+        let links: Rc<[(Range<usize>, layout::Target)]> = row.links.clone().into();
         let start = line.range.start;
         let cards = self.comment_cards(line_ix, cx);
         let mouse_layout = text_layout.clone();
         let mouse_map = map.clone();
+        let hover_layout = mouse_layout.clone();
+        let hover_map = mouse_map.clone();
+        let hover_links = links.clone();
+        let hover_entity = entity.clone();
+        let hover_clear_entity = entity.clone();
         let drawn = div()
             .id(("doc-row", line_ix))
             .w_full()
@@ -362,6 +374,7 @@ impl DocEditor {
             )
             .child(
                 div()
+                    .id(("doc-text", line_ix))
                     .relative()
                     .flex_1()
                     .min_w_0()
@@ -384,7 +397,42 @@ impl DocEditor {
                         .inset_0(),
                     )
                     .child(styled)
-                    .cursor(CursorStyle::IBeam)
+                    .cursor(if self.hovered_link == Some(line_ix) {
+                        CursorStyle::PointingHand
+                    } else {
+                        CursorStyle::IBeam
+                    })
+                    .on_mouse_move(move |event: &MouseMoveEvent, _, cx| {
+                        let primary = if crate::controls::CTRL_SHORTCUTS {
+                            event.modifiers.control
+                        } else {
+                            event.modifiers.platform
+                        };
+                        let index = hover_layout
+                            .index_for_position(event.position)
+                            .unwrap_or_else(|index| index);
+                        let source = hover_map.to_source(index);
+                        let hovering = primary
+                            && link_at(hover_links.as_ref(), source)
+                                .is_some_and(layout::Target::opens);
+                        hover_entity.update(cx, |this, cx| {
+                            let hovered = hovering.then_some(line_ix);
+                            if this.hovered_link != hovered {
+                                this.hovered_link = hovered;
+                                cx.notify();
+                            }
+                        });
+                    })
+                    .on_hover(move |hovered, _, cx| {
+                        if !*hovered {
+                            hover_clear_entity.update(cx, |this, cx| {
+                                if this.hovered_link == Some(line_ix) {
+                                    this.hovered_link = None;
+                                    cx.notify();
+                                }
+                            });
+                        }
+                    })
                     .on_mouse_down(
                         MouseButton::Left,
                         move |event: &MouseDownEvent, window, cx| {
@@ -402,7 +450,7 @@ impl DocEditor {
                                     source,
                                     event,
                                     checkbox.as_ref(),
-                                    &links,
+                                    links.as_ref(),
                                     cx,
                                 );
                             });
@@ -509,19 +557,13 @@ impl DocEditor {
         } else {
             event.modifiers.platform
         };
-        if primary
-            && let Some((_, target)) = links.iter().find(|(range, _)| range.contains(&source))
-        {
+        if primary && let Some(target) = link_at(links, source) {
             match target {
                 layout::Target::Url(url) if crate::link::is_link(std::ffi::OsStr::new(url)) => {
                     self.request(super::Request::Link(url.clone()), cx);
                     return;
                 }
-                layout::Target::Url(url)
-                    if ["http://", "https://", "mailto:"]
-                        .iter()
-                        .any(|scheme| url.starts_with(scheme)) =>
-                {
+                layout::Target::Url(url) if layout::web(url) => {
                     cx.open_url(url);
                     return;
                 }
@@ -630,6 +672,17 @@ impl Render for DocEditor {
             }))
             .on_action(cx.listener(|this, _: &cursors::AddNextOccurrence, _, cx| {
                 this.add_next_occurrence(cx);
+            }))
+            .on_modifiers_changed(cx.listener(|this, event: &ModifiersChangedEvent, _, cx| {
+                let primary = if crate::controls::CTRL_SHORTCUTS {
+                    event.modifiers.control
+                } else {
+                    event.modifiers.platform
+                };
+                if !primary && this.hovered_link.is_some() {
+                    this.hovered_link = None;
+                    cx.notify();
+                }
             }))
             .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
                 if !this.selecting || event.pressed_button != Some(MouseButton::Left) {
