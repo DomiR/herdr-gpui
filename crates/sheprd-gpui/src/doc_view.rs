@@ -20,6 +20,7 @@ mod keys;
 mod layout;
 mod links;
 mod markers;
+mod palette;
 mod render;
 pub(crate) mod stamps;
 mod theme;
@@ -31,6 +32,7 @@ pub(crate) use editor::{DocEditor, FoldsChanged};
 pub use error::Error;
 pub(crate) use fold_keys::fold_key_bindings;
 pub(crate) use layout::Look;
+pub(crate) use palette::{Command, Outline};
 
 use crate::{
     SheprdWindow,
@@ -204,7 +206,7 @@ impl SheprdWindow {
         self.doc_views.insert(id, editor);
     }
 
-    fn doc_look(&self, zoom: Zoom) -> Look {
+    pub(crate) fn doc_look(&self, zoom: Zoom) -> Look {
         let (theme, inks) = theme::resolve(self.config.documents.theme, &self.theme);
         let factor = zoom.factor() as f32;
         let mut ui = self.config.ui.clone();

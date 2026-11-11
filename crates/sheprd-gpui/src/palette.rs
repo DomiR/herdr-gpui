@@ -18,6 +18,7 @@ use std::sync::Arc;
 mod activate;
 mod agent_filter;
 mod canonical;
+mod doc;
 mod error;
 mod frecency;
 pub(crate) use frecency::{Frecency, now as unix_now};
@@ -40,6 +41,7 @@ pub(crate) use resume::Resume;
 mod search;
 
 use agent_filter::AgentFilter;
+use doc::DocAction;
 use go_to::{destination_exists, go_to_entries, kept_go_to_entries, note_entries};
 
 #[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq)]
@@ -77,16 +79,18 @@ pub(crate) enum Filter {
     All,
     Navigation,
     Commands,
+    Document,
     Projects,
     /// Checkouts the user keeps a note on.
     Notes,
 }
 
 impl Filter {
-    const ALL: [Self; 5] = [
+    const ALL: &[Self] = &[
         Self::All,
         Self::Navigation,
         Self::Commands,
+        Self::Document,
         Self::Projects,
         Self::Notes,
     ];
@@ -97,6 +101,7 @@ impl Filter {
             Self::All => "all",
             Self::Navigation => "navigation",
             Self::Commands => "commands",
+            Self::Document => "document",
             Self::Projects => "projects",
             Self::Notes => "notes",
         }
@@ -107,6 +112,7 @@ impl Filter {
             Self::All => fl!("palette-filter-all"),
             Self::Navigation => fl!("palette-filter-navigation"),
             Self::Commands => fl!("palette-filter-commands"),
+            Self::Document => fl!("palette-filter-document"),
             Self::Projects => fl!("palette-filter-projects"),
             Self::Notes => fl!("palette-filter-notes"),
         }
@@ -119,6 +125,7 @@ impl Filter {
                     Action::Native(_) | Action::Configured(..) | Action::Mod { .. } => {
                         Self::Commands
                     }
+                    Action::Doc(_) => Self::Document,
                     Action::Go { .. } | Action::Core { .. } => Self::Navigation,
                     Action::Project(_) | Action::NewProject(_) => Self::Projects,
                     Action::Note { .. } => Self::Notes,
@@ -156,6 +163,7 @@ enum Action {
         name: String,
         id: String,
     },
+    Doc(DocAction),
 }
 
 #[derive(Clone)]
@@ -227,6 +235,7 @@ enum Identity {
     Note(String, String),
     Core(crate::browser::TabId, Option<sheprd_backend::TerminalId>),
     Mod(String, String),
+    Doc(DocAction),
 }
 
 impl SheprdWindow {
@@ -270,6 +279,7 @@ impl Action {
             } => Identity::Note(endpoint.clone(), workspace.clone()),
             Self::Core { tab, terminal } => Identity::Core(*tab, terminal.clone()),
             Self::Mod { name, id } => Identity::Mod(name.clone(), id.clone()),
+            Self::Doc(action) => Identity::Doc(*action),
         }
     }
 }
@@ -393,6 +403,8 @@ pub(super) struct Palette {
     selected: usize,
     scroll: UniformListScrollHandle,
     target: Option<Target>,
+    doc: Option<Entity<crate::doc_view::DocEditor>>,
+    doc_entries: Vec<Entry>,
     filter: Filter,
     /// Narrows Go To to agents in one status; other filters ignore it.
     agent_filter: AgentFilter,
@@ -514,6 +526,14 @@ fn rank_rows(
 }
 
 impl SheprdWindow {
+    pub(crate) fn palette_default_filter(&self, window: &Window, cx: &App) -> Filter {
+        if self.focused_doc(window, cx).is_some() {
+            Filter::Document
+        } else {
+            Filter::All
+        }
+    }
+
     /// Ranks for `query`. A new query starts from the best row; the same
     /// query again, such as a resumed one echoed by its field, keeps the row.
     pub(super) fn filter_palette(&mut self, query: &str, cx: &mut Context<Self>) {
@@ -610,9 +630,17 @@ impl SheprdWindow {
     ) {
         // Read before the menu takes the keyboard.
         let core_view = self.core_terminals.focused_view(window, cx);
+        let doc = matches!(filter, Filter::All | Filter::Document)
+            .then(|| self.focused_doc(window, cx))
+            .flatten();
+        let filter = if filter == Filter::Document && doc.is_none() {
+            Filter::All
+        } else {
+            filter
+        };
         if !self.open_menu(window, cx) {
-            return;
-        }
+        return;
+    }
         self.menu.page = Some(Page::Palette);
         let search = cx.new(SearchInput::new);
         let subscription = cx.subscribe(&search, |this, search, _: &Changed, cx| {
@@ -627,6 +655,10 @@ impl SheprdWindow {
             .snapshot
             .as_ref()
             .map(|snapshot| Target::capture(snapshot, selection));
+        let doc_entries = doc
+            .as_ref()
+            .map(|editor| doc::doc_entries(editor, self.config.documents.theme, cx))
+            .unwrap_or_default();
         let local_target = self
             .endpoints
             .iter()
@@ -659,6 +691,8 @@ impl SheprdWindow {
             selected: 0,
             scroll: UniformListScrollHandle::new(),
             target,
+            doc,
+            doc_entries,
             filter,
             agent_filter: AgentFilter::All,
             query: String::new(),
@@ -786,6 +820,11 @@ impl SheprdWindow {
                     )
                 }),
         );
+        let doc_offset = entries.len();
+        entries.extend(palette.doc_entries.iter().cloned().map(|mut entry| {
+            entry.parent = entry.parent.map(|parent| doc_offset + parent);
+            entry
+        }));
         if let Some(snapshot) = self
             .live
             .snapshot
@@ -873,6 +912,25 @@ impl SheprdWindow {
 
     pub(crate) fn refresh_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.update_palette_project(window, cx);
+        let doc_gone = self.menu.palette.as_ref().is_some_and(|palette| {
+            palette.doc.is_some()
+                && !palette
+                    .doc
+                    .as_ref()
+                    .is_some_and(|doc| self.doc_views.values().any(|candidate| candidate == doc))
+        });
+        if doc_gone && let Some(mut palette) = self.menu.palette.take() {
+            palette.doc = None;
+            palette.doc_entries.clear();
+            if palette.filter == Filter::Document {
+                palette.filter = Filter::All;
+            }
+            self.prepare_palette_entries(&mut palette, crate::worktree_notes::Notes::of(cx));
+            self.menu.palette = Some(palette);
+            self.rank_palette(Selection::Keep, cx);
+            cx.notify();
+            return;
+        }
         let Some(palette) = self.menu.palette.as_ref() else {
             return;
         };

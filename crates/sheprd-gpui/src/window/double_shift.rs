@@ -89,7 +89,7 @@ impl SheprdWindow {
             && self.split_drag.is_none()
             && self.scrollbar_drag.is_none();
         if self.shift_taps.changed(event, eligible, Instant::now()) {
-            self.open_palette(crate::palette::Filter::All, window, cx);
+            self.open_palette(self.palette_default_filter(window, cx), window, cx);
         }
     }
 }

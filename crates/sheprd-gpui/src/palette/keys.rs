@@ -104,8 +104,13 @@ impl SheprdWindow {
                 cx.notify();
             }
             PaletteKey::CycleFilter(direction) => {
-                let count = Filter::ALL.len();
-                let index = Filter::ALL
+                let filters: Vec<_> = Filter::ALL
+                    .iter()
+                    .copied()
+                    .filter(|filter| *filter != Filter::Document || palette.doc.is_some())
+                    .collect();
+                let count = filters.len();
+                let index = filters
                     .iter()
                     .position(|filter| *filter == palette.filter)
                     .unwrap_or(0);
@@ -113,7 +118,7 @@ impl SheprdWindow {
                     Direction::Up => (index + count - 1) % count,
                     Direction::Down => (index + 1) % count,
                 };
-                self.set_palette_filter(Filter::ALL[index], cx);
+                self.set_palette_filter(filters[index], cx);
             }
             PaletteKey::TogglePreview => {
                 self.menu.palette_preview = !self.menu.palette_preview;

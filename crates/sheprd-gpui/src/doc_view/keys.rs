@@ -504,7 +504,7 @@ impl DocEditor {
     /// Cmd-Enter on each selected line: a folded task gets a new task after
     /// its folded block; otherwise a task is checked or unchecked, a list
     /// item becomes a task, and other text becomes a task item.
-    fn cycle_task(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn cycle_task(&mut self, cx: &mut Context<Self>) {
         let at = stamps::stamp_time(cx);
         let line = self.caret_line();
         if self.selection.is_empty()
@@ -559,7 +559,7 @@ impl DocEditor {
     }
 
     /// Cancels or reopens every task in the selected lines.
-    fn cancel_task(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn cancel_task(&mut self, cx: &mut Context<Self>) {
         let at = stamps::stamp_time(cx);
         let mut edits = {
             let range = self.selection.range();

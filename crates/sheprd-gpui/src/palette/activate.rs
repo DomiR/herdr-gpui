@@ -40,6 +40,10 @@ impl SheprdWindow {
         if self.menu.palette.as_ref().is_none_or(Palette::busy) {
             return;
         }
+        if let Action::Doc(action) = action {
+            self.activate_doc(action, window, cx);
+            return;
+        }
         // Found by identity, so a note row counts as its workspace.
         let identity = action.identity();
         let remembered = self.menu.palette.as_ref().and_then(|palette| {
@@ -157,7 +161,7 @@ impl SheprdWindow {
                 | Action::NewProject(_)
                 | Action::Note { .. }
                 | Action::Core { .. }
-                | Action::Mod { .. } => unreachable!(),
+                | Action::Mod { .. }| Action::Doc(_) => unreachable!(),
             }
         })();
         match result {

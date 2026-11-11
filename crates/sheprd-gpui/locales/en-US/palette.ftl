@@ -4,6 +4,7 @@
 palette-filter-all = All
 palette-filter-navigation = Navigation
 palette-filter-commands = Commands
+palette-filter-document = Document
 palette-filter-projects = Projects
 palette-filter-notes = Notes
 # How many rows match the search, of all the palette lists.
@@ -14,6 +15,9 @@ palette-badge-command = GUI action
 palette-badge-herdr-command = Herdr command
 palette-badge-mod = Mod
 palette-badge-project = Project
+palette-badge-document = Document
+palette-badge-heading = Heading
+palette-badge-fold = Fold
 palette-not-on-screen = Not on screen. Press Enter to go there and watch it live.
 palette-loading-projects = Loading local projects...
 palette-no-results = No matching results. Try a shorter search.

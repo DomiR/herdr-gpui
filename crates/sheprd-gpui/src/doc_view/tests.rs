@@ -1,7 +1,9 @@
 //! Document tabs, headless: keys, todo interactions, folds, and the file.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use super::{DocEditor, DocFile, Docs, Look, editor, editor::Selection, is_markdown};
+use super::{
+    Command, DocEditor, DocFile, Docs, Look, Outline, editor, editor::Selection, is_markdown,
+};
 use crate::config::{Config, Theme};
 use gpui::{Entity, Pixels, Point, TestAppContext, VisualTestContext, point};
 use std::{path::PathBuf, time::Duration};
@@ -17,6 +19,7 @@ mod folding;
 mod move_keys;
 mod multi_cursor;
 mod marker_keys;
+mod palette;
 mod saved_tab;
 mod shift_enter;
 mod stamp_keys;
