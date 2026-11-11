@@ -8,9 +8,11 @@ use std::ops::Range;
 
 mod decorate;
 mod folds;
+mod tags;
 
 pub use decorate::{Decoration, decorations, editing_decorations};
 pub use folds::{Fold, FoldKind, folds};
+pub use tags::{TagKind, TagSpan, tags};
 
 /// The state of a Markdown task checkbox.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

@@ -3283,8 +3283,9 @@ Follow app theme under Settings > Appearance > Document theme, set
   counts on), and Enter on an empty item ends the list. Tab and Shift-Tab
   indent and outdent the selected items with their sub-items, Alt-Up and
   Alt-Down move an item with its sub-items past its sibling, and Backspace
-  right after a marker removes it. Each heading shows how many tasks under
-  it are done, leaving cancelled tasks out of the count.
+  right after a marker removes it. Arrow keys move over a task's marker as one
+  character, and Delete before a marker removes it too. Each heading shows
+  how many tasks under it are done, leaving cancelled tasks out of the count.
 - **Folding.** A heading folds its section, a list item its sub-items, and a
   code block its body: click the chevron beside it, or press Cmd-Alt-[ and
   Cmd-Alt-] to fold and unfold at the caret, and Cmd-Alt-Shift-[ and ] for

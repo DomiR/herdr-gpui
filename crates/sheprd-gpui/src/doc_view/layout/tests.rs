@@ -6,6 +6,8 @@ use sheprd_doc::markdown::TaskState;
 mod cancelled;
 mod document_theme;
 mod file_links;
+mod plaintasks_tags;
+mod plaintasks_text;
 
 fn look() -> Look {
     Look {

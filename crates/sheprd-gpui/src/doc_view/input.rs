@@ -154,7 +154,7 @@ impl EntityInputHandler for DocEditor {
         };
         // Composition steps are not undo steps of their own.
         self.insert(text, cx);
-        let start = range.start;
+        let start = self.selection.head.saturating_sub(text.len());
         if !text.is_empty() {
             self.marked = Some(start..start + text.len());
         }

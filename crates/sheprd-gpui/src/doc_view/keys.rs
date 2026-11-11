@@ -197,6 +197,7 @@ impl DocEditor {
                     .map_or(at, |marker| words::next_end(text, marker.end))
             }
         };
+        let at = self.snap_task_marker(at, matches!(key, "left" | "backspace"));
         match key {
             "left" | "right" => self.move_to(at, shift, cx),
             _ => {
@@ -247,11 +248,27 @@ impl DocEditor {
             .grapheme_indices(true)
             .map(|(at, _)| start + at)
             .collect();
+        if line.task().is_some() {
+            out.retain(|at| !(line.marker.start < *at && *at < line.marker.end));
+        }
         out.push(line.range.end);
         if line.is_bulleted_task() {
             out.retain(|at| !line.marker.contains(at));
         }
         out
+    }
+
+    fn snap_task_marker(&self, at: usize, left: bool) -> usize {
+        let line = &self.prepared.lines[markdown::line_at(&self.prepared.lines, at)];
+        if line.task().is_some() && line.marker.start < at && at < line.marker.end {
+            if left {
+                line.marker.start
+            } else {
+                line.marker.end
+            }
+        } else {
+            at
+        }
     }
 
     pub(super) fn previous_boundary(&self, cx: &Context<Self>) -> usize {
@@ -335,7 +352,7 @@ impl DocEditor {
             Some(found) => (found.0, Some(found.1)),
             None => (self.by_column(down, cx), self.goal_x),
         };
-        let at = self.caret_snap(at);
+        let at = self.snap_task_marker(self.caret_snap(at), false);
         let anchor = if extend { self.selection.anchor } else { at };
         self.select(Selection { anchor, head: at }, cx);
         self.goal_x = x;
@@ -370,8 +387,14 @@ impl DocEditor {
         if self.selection.is_empty() {
             let head = self.selection.head;
             let line = self.prepared.lines[self.caret_line()].clone();
-            // Backspace right after a list marker removes the marker.
-            if backward && line.is_item() && head == line.marker.end && head > line.marker.start {
+            // Backspace right after or Delete before a list marker removes it.
+            if (backward && line.is_item() && head == line.marker.end && head > line.marker.start)
+                || (!backward
+                    && line.is_item()
+                    && head == line.marker.start
+                    && head < line.marker.end)
+                || (line.task().is_some() && line.marker.start < head && head < line.marker.end)
+            {
                 self.apply(
                     vec![Edit::new(line.marker.clone(), "")],
                     line.marker.start,

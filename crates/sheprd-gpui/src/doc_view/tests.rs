@@ -16,6 +16,7 @@ mod fold_task_keys;
 mod folding;
 mod move_keys;
 mod multi_cursor;
+mod marker_keys;
 mod saved_tab;
 mod shift_enter;
 mod task_marker;

@@ -41,7 +41,6 @@ struct Colors {
     find: Hsla,
     find_current: Hsla,
     highlight: Hsla,
-    caret_row: Option<Hsla>,
     marker_style: MarkerStyle,
     markers: MarkerColors,
     underline: Hsla,
@@ -89,21 +88,9 @@ fn link_at(links: &[(Range<usize>, layout::Target)], source: usize) -> Option<&l
         .map(|(_, target)| target)
 }
 
-fn paint_overlay(overlay: &Overlay, bounds: Bounds<Pixels>, window: &mut Window) {
+fn paint_overlay(overlay: &Overlay, _bounds: Bounds<Pixels>, window: &mut Window) {
     let layout = &overlay.layout;
     let colors = overlay.colors;
-    if let Some(color) = colors.caret_row
-        && let Some(caret) = overlay.caret
-        && let Some(origin) = layout.position_for_index(caret)
-    {
-        window.paint_quad(fill(
-            Bounds::from_corners(
-                point(bounds.left(), origin.y),
-                point(bounds.right(), origin.y + layout.line_height()),
-            ),
-            color,
-        ));
-    }
     for (range, current) in &overlay.find_matches {
         let color = if *current {
             colors.find_current
@@ -188,7 +175,6 @@ impl DocEditor {
                 find: rgba((theme.palette[3] << 8) | 0x38).into(),
                 find_current: rgba((theme.palette[3] << 8) | 0x98).into(),
                 highlight: rgb(theme.primary_wash()).into(),
-                caret_row: Some(inks.caret_row),
                 marker_style: MarkerStyle::PlainTasks,
                 markers: MarkerColors {
                     border: inks.open_marker,
@@ -205,7 +191,6 @@ impl DocEditor {
             find: rgba((theme.palette[3] << 8) | 0x38).into(),
             find_current: rgba((theme.palette[3] << 8) | 0x98).into(),
             highlight: rgb(theme.primary_wash()).into(),
-            caret_row: None,
             marker_style: MarkerStyle::Checkbox,
             markers: MarkerColors {
                 border: rgb(theme.muted).into(),
@@ -322,6 +307,7 @@ impl DocEditor {
         let code = matches!(row.kind, Kind::Code | Kind::Fence);
         let checkbox = row.checkbox.clone();
         let links: Rc<[(Range<usize>, layout::Target)]> = row.links.clone().into();
+        let caret_row = caret.and(self.look.inks.map(|inks| inks.caret_row));
         let start = line.range.start;
         let cards = self.comment_cards(line_ix, cx);
         let mouse_layout = text_layout.clone();
@@ -338,9 +324,10 @@ impl DocEditor {
             .flex_row()
             .items_start()
             .pr(px(PAD))
-            .when(matches!(row.kind, Kind::Heading { .. }), |row| {
-                row.pt(px(6.))
-            })
+            .when(
+                matches!(row.kind, Kind::Heading { .. }) && self.look.inks.is_none(),
+                |row| row.pt(px(6.)),
+            )
             .child(
                 div()
                     .id(("doc-fold", line_ix))
@@ -350,6 +337,7 @@ impl DocEditor {
                     .flex()
                     .items_center()
                     .justify_center()
+                    .when_some(caret_row, |gutter, color| gutter.bg(color))
                     .when(fold, |gutter| {
                         gutter
                             .cursor_pointer()
@@ -539,11 +527,9 @@ impl DocEditor {
         links: &[(Range<usize>, layout::Target)],
         cx: &mut Context<Self>,
     ) {
-        if let Some((range, _)) = checkbox
-            && index >= range.start
-            && index <= range.end
-            && !event.modifiers.shift
-        {
+        let on_checkbox =
+            checkbox.is_some_and(|(range, _)| index >= range.start && index <= range.end);
+        if on_checkbox && !event.modifiers.shift {
             if event.modifiers.alt {
                 self.toggle_cancel_task(line, cx);
             } else {
@@ -580,6 +566,15 @@ impl DocEditor {
                 layout::Target::Url(_) => {}
             }
         }
+        let offset = if let Some(line_data) = self.prepared.lines.get(line)
+            && line_data.task().is_some()
+            && line_data.marker.start < offset
+            && offset < line_data.marker.end
+        {
+            line_data.marker.end
+        } else {
+            offset
+        };
         if primary && event.click_count == 1 && !event.modifiers.shift {
             self.add_cursor(super::editor::Selection::caret(offset), cx);
             self.selecting = false;
