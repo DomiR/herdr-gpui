@@ -94,10 +94,12 @@ impl SheprdWindow {
                     return;
                 }
                 palette.restore = None;
-                palette.selected = match direction {
-                    Direction::Up => (palette.selected + count - 1) % count,
-                    Direction::Down => (palette.selected + 1) % count,
-                };
+                palette.selected = super::sections::step(
+                    &palette.entries,
+                    &palette.filtered,
+                    palette.selected,
+                    direction == Direction::Down,
+                );
                 palette
                     .scroll
                     .scroll_to_item(palette.selected, ScrollStrategy::Center);

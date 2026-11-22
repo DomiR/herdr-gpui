@@ -1,6 +1,6 @@
 //! The palette paints prepared entries; input and daemon operations live elsewhere.
 
-use super::{Action, AgentFilter, Filter, Palette, preview};
+use super::{Action, AgentFilter, Filter, Palette, Scan, preview};
 use crate::direction::Logical;
 use crate::{SheprdWindow, i18n::fl};
 use gpui::{prelude::*, *};
@@ -77,8 +77,8 @@ impl SheprdWindow {
                     )
                     .child(div().flex_none().child(fl!(
                         "palette-count",
-                        shown = palette.filtered.len(),
-                        total = palette.entries.len(),
+                        shown = palette.shown_rows(),
+                        total = palette.total_rows(),
                     ))),
             )
             .when(palette.filter == Filter::Navigation, |header| {
@@ -131,6 +131,29 @@ impl SheprdWindow {
     ) -> Stateful<Div> {
         let hit = &palette.filtered[index];
         let entry = &palette.entries[hit.index];
+        let height = px(self.config.ui.line_height() * 2. + 20.);
+        if matches!(entry.action, Action::Section(_)) {
+            return div()
+                .id(index)
+                .debug_selector(move || format!("palette-row-{index}"))
+                .w_full()
+                .h(height)
+                .px(px(16.))
+                .pb(px(6.))
+                .row()
+                .items_end()
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(rgb(self.theme.muted))
+                .child(entry.label.clone());
+        }
+        // A project with no workspace yet reads quieter than an open one,
+        // and says what choosing it does once selected.
+        let project = matches!(entry.action, Action::Project(_));
+        let badge: SharedString = match (project, index == palette.selected) {
+            (true, true) => fl!("palette-open-hint").into(),
+            (true, false) => SharedString::default(),
+            (false, _) => entry.badge.clone(),
+        };
         // Ranked results need not keep entry order, so only an empty query nests.
         let depth = if palette.query.trim().is_empty() {
             hit.depth
@@ -152,7 +175,7 @@ impl SheprdWindow {
             .id(index)
             .debug_selector(move || format!("palette-row-{index}"))
             .w_full()
-            .h(px(self.config.ui.line_height() * 2. + 20.))
+            .h(height)
             .px(px(16.))
             .row()
             .items_center()
@@ -172,6 +195,7 @@ impl SheprdWindow {
                     .child(
                         div()
                             .truncate()
+                            .when(project, |label| label.text_color(rgb(self.theme.muted)))
                             .child(styled(&entry.label, &hit.highlights.label)),
                     )
                     .child(
@@ -181,12 +205,12 @@ impl SheprdWindow {
                             .child(styled(&entry.detail, &hit.highlights.detail)),
                     ),
             )
-            .when(!entry.badge.is_empty(), |row| {
+            .when(!badge.is_empty(), |row| {
                 row.child(
                     div()
                         .flex_none()
                         .text_color(rgb(self.theme.muted))
-                        .child(entry.badge.clone()),
+                        .child(badge),
                 )
             })
             .on_click(cx.listener(move |this, _, window, cx| {
@@ -328,7 +352,7 @@ impl SheprdWindow {
             .size_full()
             .min_h_0()
             .child(self.palette_header(palette, cx))
-            .when(palette.loading_projects, |panel| {
+            .when(palette.scan == Scan::Loading, |panel| {
                 panel.child(
                     div()
                         .flex_none()
@@ -409,6 +433,17 @@ impl SheprdWindow {
                         body.child(self.render_palette_preview(palette))
                     }),
             )
+            .when(palette.searches_elsewhere(), |panel| {
+                panel.child(
+                    div()
+                        .debug_selector(|| "palette-projects-elsewhere".into())
+                        .flex_none()
+                        .px(px(16.))
+                        .py(px(6.))
+                        .text_color(rgb(theme.muted))
+                        .child(fl!("palette-projects-elsewhere")),
+                )
+            })
             .child(
                 div()
                     .debug_selector(|| "palette-status".into())

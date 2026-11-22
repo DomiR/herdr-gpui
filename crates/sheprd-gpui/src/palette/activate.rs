@@ -13,6 +13,9 @@ impl SheprdWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if matches!(action, Action::Section(_)) {
+            return;
+        }
         // A click chooses a row without moving the selection there, so
         // select it now: Resume Palette reopens on the row actually chosen.
         if let Some(palette) = &mut self.menu.palette {
@@ -157,7 +160,8 @@ impl SheprdWindow {
                 | Action::NewProject(_)
                 | Action::Note { .. }
                 | Action::Core { .. }
-                | Action::Mod { .. } => unreachable!(),
+                | Action::Mod { .. }
+                | Action::Section(_) => unreachable!(),
             }
         })();
         match result {

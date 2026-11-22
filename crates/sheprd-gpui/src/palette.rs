@@ -38,38 +38,13 @@ mod render;
 mod resume;
 pub(crate) use resume::Resume;
 mod search;
+mod sections;
+mod settings;
+pub use settings::{PaletteConfig, ProjectConfig};
 
 use agent_filter::AgentFilter;
 use go_to::{destination_exists, go_to_entries, kept_go_to_entries, note_entries};
-
-#[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq)]
-#[serde(default)]
-pub struct PaletteConfig {
-    pub double_shift: bool,
-    pub project_roots: Vec<String>,
-}
-
-impl Default for PaletteConfig {
-    fn default() -> Self {
-        Self {
-            double_shift: true,
-            project_roots: Vec::new(),
-        }
-    }
-}
-
-impl PaletteConfig {
-    pub(crate) fn validate(&self) -> Result<()> {
-        if self.project_roots.len() > 16
-            || self.project_roots.iter().any(|root| {
-                root.trim().is_empty() || root.len() > 8192 || root.chars().any(char::is_control)
-            })
-        {
-            return Err(Error::ProjectRoots.into());
-        }
-        Ok(())
-    }
-}
+use sections::{Scan, Section};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum Filter {
@@ -112,17 +87,33 @@ impl Filter {
         }
     }
 
+    /// What the query field offers to search while this filter is shown.
+    fn placeholder(self) -> String {
+        match self {
+            Self::All => fl!("palette-placeholder"),
+            Self::Navigation => fl!("palette-placeholder-navigation"),
+            Self::Commands => fl!("palette-placeholder-commands"),
+            Self::Projects => fl!("palette-placeholder-projects"),
+            Self::Notes => fl!("palette-placeholder-notes"),
+        }
+    }
+
+    /// Projects are searched only in their own filter, which also lists the
+    /// workspaces already open so a project there is found as its workspace.
     fn accepts(self, action: &Action) -> bool {
-        self == Self::All
-            || self
-                == match action {
-                    Action::Native(_) | Action::Configured(..) | Action::Mod { .. } => {
-                        Self::Commands
-                    }
-                    Action::Go { .. } | Action::Core { .. } => Self::Navigation,
-                    Action::Project(_) | Action::NewProject(_) => Self::Projects,
-                    Action::Note { .. } => Self::Notes,
-                }
+        let own = match action {
+            Action::Native(_) | Action::Configured(..) | Action::Mod { .. } => Self::Commands,
+            Action::Go {
+                target: crate::NavigationTarget::Workspace(_),
+                ..
+            } if self == Self::Projects => return true,
+            Action::Go { .. } | Action::Core { .. } => Self::Navigation,
+            Action::Project(_) | Action::NewProject(_) | Action::Section(_) => {
+                return self == Self::Projects;
+            }
+            Action::Note { .. } => Self::Notes,
+        };
+        self == Self::All || self == own
     }
 }
 
@@ -156,6 +147,8 @@ enum Action {
         name: String,
         id: String,
     },
+    /// A heading of the Projects filter, never chosen.
+    Section(Section),
 }
 
 #[derive(Clone)]
@@ -227,6 +220,7 @@ enum Identity {
     Note(String, String),
     Core(crate::browser::TabId, Option<sheprd_backend::TerminalId>),
     Mod(String, String),
+    Section(Section),
 }
 
 impl SheprdWindow {
@@ -270,6 +264,7 @@ impl Action {
             } => Identity::Note(endpoint.clone(), workspace.clone()),
             Self::Core { tab, terminal } => Identity::Core(*tab, terminal.clone()),
             Self::Mod { name, id } => Identity::Mod(name.clone(), id.clone()),
+            Self::Section(section) => Identity::Section(*section),
         }
     }
 }
@@ -399,7 +394,8 @@ pub(super) struct Palette {
     query: String,
     error: Option<String>,
     projects: projects::Collection,
-    loading_projects: bool,
+    /// Projects are looked for only once their filter is first shown.
+    scan: Scan,
     project_task: Option<Task<()>>,
     _scan: projects::Cancellation,
     sources: Vec<Source>,
@@ -486,7 +482,7 @@ impl Palette {
         }
         self.selected = restored
             .or_else(|| kept.as_ref().and_then(position))
-            .unwrap_or(0);
+            .unwrap_or_else(|| sections::first_row(&self.entries, &self.filtered));
         self.scroll
             .scroll_to_item(self.selected, ScrollStrategy::Nearest);
     }
@@ -496,8 +492,8 @@ impl Palette {
     }
 }
 
-/// Ranks the `filter`'s rows. The flat project list has no order of its own
-/// to keep, so with no query its most frecent projects come first.
+/// Ranks the `filter`'s rows. Projects are listed under their headings,
+/// which are placed rather than ranked.
 fn rank_rows(
     filter: Filter,
     status: AgentFilter,
@@ -506,11 +502,15 @@ fn rank_rows(
     query: &search::Query,
     matcher: &mut nucleo_matcher::Matcher,
 ) -> Vec<search::Hit> {
-    let mut hits = status.rank(entries, candidates, query, matcher);
-    if filter == Filter::Projects && query.is_empty() {
-        hits.sort_by_key(|hit| std::cmp::Reverse(entries[hit.index].boost));
+    if filter != Filter::Projects {
+        return status.rank(entries, candidates, query, matcher);
     }
-    hits
+    let candidates = candidates
+        .into_iter()
+        .filter(|index| !matches!(entries[*index].action, Action::Section(_)))
+        .collect();
+    let hits = status.rank(entries, candidates, query, matcher);
+    sections::sectioned(entries, hits, query.is_empty())
 }
 
 impl SheprdWindow {
@@ -534,8 +534,15 @@ impl SheprdWindow {
         if let Some(palette) = &mut self.menu.palette {
             palette.filter = filter;
             palette.restore = None;
+            if filter == Filter::Projects && palette.scan == Scan::Waiting {
+                palette.scan = Scan::Loading;
+            }
+            palette.search.update(cx, |input, cx| {
+                input.set_placeholder(&filter.placeholder(), cx);
+            });
         }
         self.rank_palette(Selection::First, cx);
+        self.load_palette_projects(cx);
     }
 
     /// Ranks the newest entries against the query. Short lists are ranked
@@ -643,7 +650,7 @@ impl SheprdWindow {
                 })
             });
         search.update(cx, |input, cx| {
-            input.set_placeholder(&fl!("palette-placeholder"), cx);
+            input.set_placeholder(&filter.placeholder(), cx);
             input.set_frameless(cx);
             input.set_appearance(render::search_font(&self.config.ui), self.theme.clone(), cx);
             window.focus(&input.focus, cx);
@@ -664,7 +671,7 @@ impl SheprdWindow {
             query: String::new(),
             error: None,
             projects: projects::Collection::default(),
-            loading_projects: !self.config.palette.project_roots.is_empty(),
+            scan: Scan::initial(&self.config.palette, filter),
             project_task: None,
             _scan: projects::Cancellation::default(),
             sources: Vec::new(),
@@ -686,7 +693,7 @@ impl SheprdWindow {
         self.prepare_palette_entries(&mut palette, crate::worktree_notes::Notes::of(cx), cx);
         self.menu.palette = Some(palette);
         self.rank_palette(Selection::Keep, cx);
-        self.load_palette_projects(window, cx);
+        self.load_palette_projects(cx);
         cx.notify();
     }
 
@@ -843,7 +850,15 @@ impl SheprdWindow {
             );
         }
         entries.extend(self.mod_palette_entries());
-        entries.extend(palette.projects.projects.iter().map(|project| {
+        entries.extend([Section::Open.entry(), Section::NotOpen.entry()]);
+        // A project open in a workspace is listed as that workspace.
+        let open = self.open_project_roots(&sources);
+        let closed = palette
+            .projects
+            .projects
+            .iter()
+            .filter(|project| !open.contains(&project.path));
+        entries.extend(closed.map(|project| {
             let mut entry = Entry::new(
                 project.label.clone(),
                 fl!(
@@ -889,7 +904,7 @@ impl SheprdWindow {
                 palette._scan = projects::Cancellation::default();
                 palette.configuration = self.config.palette.clone();
                 palette.projects = projects::Collection::default();
-                palette.loading_projects = !self.config.palette.project_roots.is_empty();
+                palette.scan = Scan::initial(&self.config.palette, palette.filter);
                 self.prepare_palette_entries(
                     &mut palette,
                     crate::worktree_notes::Notes::of(cx),
@@ -897,7 +912,7 @@ impl SheprdWindow {
                 );
                 self.menu.palette = Some(palette);
                 self.rank_palette(Selection::Keep, cx);
-                self.load_palette_projects(window, cx);
+                self.load_palette_projects(cx);
                 cx.notify();
             }
             return;

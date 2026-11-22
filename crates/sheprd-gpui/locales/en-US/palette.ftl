@@ -8,7 +8,21 @@ palette-filter-projects = Projects
 palette-filter-notes = Notes
 # How many rows match the search, of all the palette lists.
 palette-count = { $shown } of { $total }
-palette-placeholder = Search workspaces, commands, agents, and projects...
+# What the query field searches, per filter. Projects are searched only in
+# their own filter.
+palette-placeholder = Search workspaces, commands, and agents...
+palette-placeholder-navigation = Search workspaces, tabs, and agents...
+palette-placeholder-commands = Search commands...
+palette-placeholder-projects = Search projects...
+palette-placeholder-notes = Search notes...
+# The Projects filter's headings: workspaces already open, then configured
+# project folders that have none yet.
+palette-section-open = Open in Herdr
+palette-section-not-open = Not open
+# The selected project's badge: Enter opens a workspace in it.
+palette-open-hint = Open ↵
+# Under a search in All or Navigation, when projects are configured.
+palette-projects-elsewhere = Projects are searched in their own filter: ⌃Tab to Projects.
 # What a row of each kind is, after its shortcut.
 palette-badge-command = GUI action
 palette-badge-herdr-command = Herdr command

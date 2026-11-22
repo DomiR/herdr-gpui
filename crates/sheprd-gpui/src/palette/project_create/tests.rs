@@ -236,6 +236,7 @@ fn staging_folders_are_hidden_unique_and_removed_when_dropped() -> anyhow::Resul
     // Discovery skips dot folders, so an unfinished clone cannot be opened.
     let found = projects::collect(
         &[root.path().to_string_lossy().into_owned()],
+        &[],
         &std::sync::atomic::AtomicBool::new(false),
     );
     assert!(found.projects.is_empty());

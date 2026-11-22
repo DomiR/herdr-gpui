@@ -1,7 +1,7 @@
 //! Project opening retains the local connection and palette identities through
 //! background validation and the correlated daemon response.
 
-use super::{Error, LocalTarget, ProjectOperation, project_create, projects};
+use super::{Error, LocalTarget, ProjectOperation, Scan, project_create, projects};
 use crate::{NavigationTarget, Result, SheprdWindow};
 use gpui::{Context, Window};
 use serde_json::{Value, json};
@@ -43,23 +43,26 @@ impl SheprdWindow {
         Ok(())
     }
 
-    pub(super) fn load_palette_projects(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// Looks for the configured projects once the Projects filter asked for
+    /// them, off the UI thread; a scan already running is left to finish.
+    pub(super) fn load_palette_projects(&mut self, cx: &mut Context<Self>) {
         let Some(palette) = &mut self.menu.palette else {
             return;
         };
-        if !palette.loading_projects {
+        if palette.scan != Scan::Loading || palette.project_task.is_some() {
             return;
         }
         let token = palette.search.clone();
         let config = self.config.palette.clone();
         let roots = config.project_roots.clone();
+        let listed = config.projects.clone();
         let cancelled = palette._scan.0.clone();
         let load = cx
             .background_executor()
-            .spawn(async move { projects::collect(&roots, &cancelled) });
-        palette.project_task = Some(cx.spawn_in(window, async move |this, cx| {
+            .spawn(async move { projects::collect(&roots, &listed, &cancelled) });
+        palette.project_task = Some(cx.spawn(async move |this, cx| {
             let collection = load.await;
-            let _ = this.update_in(cx, |this, _, cx| {
+            let _ = this.update(cx, |this, cx| {
                 if this.config.palette != config {
                     return;
                 }
@@ -71,7 +74,7 @@ impl SheprdWindow {
                     return;
                 }
                 palette.project_task = None;
-                palette.loading_projects = false;
+                palette.scan = Scan::Done;
                 palette.projects = collection;
                 this.prepare_palette_entries(
                     &mut palette,

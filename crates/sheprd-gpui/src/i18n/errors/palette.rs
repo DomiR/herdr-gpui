@@ -12,6 +12,7 @@ impl Localize for Error {
             Self::DestinationRemoved => fl!("error-palette-destination-removed"),
             Self::HostUnavailable => fl!("error-palette-host-unavailable"),
             Self::InvalidFrecency => fl!("error-palette-invalid-frecency"),
+            Self::ListedProjects => fl!("error-palette-listed-projects"),
             Self::LocalChanged => fl!("error-palette-local-changed"),
             Self::NoSession => fl!("error-palette-no-session"),
             Self::PaneRemoved => fl!("error-palette-pane-removed"),

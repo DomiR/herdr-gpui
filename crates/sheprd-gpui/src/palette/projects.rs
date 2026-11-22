@@ -1,6 +1,6 @@
 //! Local project discovery and path validation run only on background workers.
 
-use super::Error;
+use super::{Error, ProjectConfig};
 use crate::Result;
 use sheprd_client::protocol::ClientShellSnapshot;
 use std::{
@@ -106,11 +106,49 @@ pub(super) fn expand_root(root: &str) -> Result<PathBuf> {
     expand(root, |name| std::env::var_os(name), home.as_deref())
 }
 
-pub(super) fn collect(roots: &[String], cancelled: &AtomicBool) -> Collection {
+/// A folder listed as a project by itself, in plain form and named.
+fn listed(project: &ProjectConfig, home: Option<&Path>) -> Result<Project> {
+    let path = expand(&project.path, |name| std::env::var_os(name), home)?;
+    let canonical =
+        fs::canonicalize(&path).map_err(|error| crate::Error::from(error).at_path(&path))?;
+    if !canonical.is_dir() {
+        return Err(Error::ProjectRemoved.into());
+    }
+    let path = super::canonical::plain_form(canonical);
+    valid_path(&path)?;
+    let label = project.name.clone().unwrap_or_else(|| {
+        path.file_name().map_or_else(
+            || path.display().to_string(),
+            |name| name.to_string_lossy().into_owned(),
+        )
+    });
+    Ok(Project { path, label })
+}
+
+/// The listed projects, then each root's folders. A project both listed and
+/// inside a root keeps its listed name.
+pub(super) fn collect(
+    roots: &[String],
+    projects: &[ProjectConfig],
+    cancelled: &AtomicBool,
+) -> Collection {
     let home = crate::config::home().ok();
     let mut collection = Collection::default();
     let mut seen = HashSet::new();
     let mut visits = 0;
+    for project in projects {
+        if cancelled.load(Ordering::Relaxed) {
+            break;
+        }
+        match listed(project, home.as_deref()) {
+            Ok(project) => {
+                if seen.insert(project.path.clone()) {
+                    collection.projects.push(project);
+                }
+            }
+            Err(error) => collection.errors.push(error),
+        }
+    }
     for root in roots {
         if cancelled.load(Ordering::Relaxed) {
             break;

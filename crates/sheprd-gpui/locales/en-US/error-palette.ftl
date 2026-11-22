@@ -5,6 +5,8 @@ error-palette-connection-not-ready = The selected connection is not ready.
 error-palette-destination-removed = This agent or terminal no longer exists. Reopen the palette.
 error-palette-host-unavailable = This host is no longer connected. Reopen the palette.
 error-palette-invalid-frecency = Invalid saved palette history
+# palette.projects is a config key.
+error-palette-listed-projects = palette.projects must hold at most 256 projects, each a nonempty path of at most 8192 bytes and an optional name of at most 256
 error-palette-local-changed = The local connection changed. Reopen the palette.
 error-palette-no-session = No captured daemon session. Reopen the palette.
 error-palette-pane-removed = The original pane no longer exists in its tab. Reopen the palette.

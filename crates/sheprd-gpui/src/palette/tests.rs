@@ -10,11 +10,13 @@ mod core_panes;
 mod en_xa;
 mod frecency_ranking;
 mod go_to_search;
+mod listed_projects;
 /// Opening or making a virtual Mac, offered where machines run.
 mod machines;
 mod notes;
 mod plugin_selection;
 mod preview_layout;
+mod project_sections;
 mod resume;
 
 fn matches_query(text: &str, query: &str) -> bool {
@@ -118,6 +120,7 @@ fn command_badges_mark_daemon_commands_and_go_to_badges_mark_agent_status(cx: &m
                     Action::Core { terminal: None, .. } => "Tab",
                     Action::Core { .. } => "Terminal",
                     Action::Mod { .. } => "Mod",
+                    Action::Section(_) => "",
                 };
                 assert_eq!(entry.badge, expected, "{}", entry.label);
             }

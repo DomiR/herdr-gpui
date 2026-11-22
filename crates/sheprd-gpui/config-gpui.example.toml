@@ -221,6 +221,13 @@ double_shift = true
 # never on the selected SSH host. These settings do not read herdr-utils config.
 project_roots = []
 # Example override: project_roots = ["~/Code", "$HOME/Projects"]
+# Folders that are each a project by themselves, wherever they are: at most
+# 256, paths expanded as roots are, named for their folder unless name says
+# otherwise. Projects are looked for only once the Projects filter is shown,
+# and only that filter searches them; it lists the workspaces already open
+# first, then the projects that have none yet.
+projects = []
+# Example override: projects = [{ path = "~/Notes/garden", name = "garden" }]
 
 # Inherit shared [ui.toast] delivery, delay_seconds, and herdr.position.
 # Only delivery = "herdr" enables in-app toasts; "off", "terminal", and "system"

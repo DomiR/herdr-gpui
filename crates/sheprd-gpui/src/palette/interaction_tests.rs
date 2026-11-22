@@ -57,7 +57,8 @@ fn one_palette_combines_navigation_actions_commands_and_projects(cx: &mut TestAp
                 palette.selected_entry().unwrap().action,
                 Action::Configured(..)
             ));
-            view.filter_palette("projects herdr", cx);
+            view.set_palette_filter(Filter::Projects, cx);
+            view.filter_palette("herdr", cx);
             let palette = view.menu.palette.as_ref().unwrap();
             assert!(matches!(
                 palette.selected_entry().unwrap().action,
@@ -99,9 +100,9 @@ fn project_loading_is_incremental_and_config_changes_rescan_without_losing_query
     cx.update(|window, cx| {
         view.update(cx, |view, cx| {
             view.config.palette.project_roots = vec![root.path().to_string_lossy().into_owned()];
-            view.open_palette(Filter::All, window, cx);
+            view.open_palette(Filter::Projects, window, cx);
             let palette = view.menu.palette.as_ref().unwrap();
-            assert!(palette.loading_projects);
+            assert_eq!(palette.scan, Scan::Loading);
             assert!(
                 palette
                     .entries
@@ -114,7 +115,7 @@ fn project_loading_is_incremental_and_config_changes_rescan_without_losing_query
     cx.run_until_parked();
     view.read_with(cx, |view, _| {
         let palette = view.menu.palette.as_ref().unwrap();
-        assert!(!palette.loading_projects);
+        assert_eq!(palette.scan, Scan::Done);
         assert_eq!(palette.projects.projects.len(), 1);
         assert_eq!(palette.projects.projects[0].label, "herdr");
         assert_eq!(palette.query, "herdr");
@@ -141,7 +142,7 @@ fn a_closed_palettes_scan_cannot_fill_a_reopened_palette(cx: &mut TestAppContext
     cx.update(|window, cx| {
         view.update(cx, |view, cx| {
             view.config.palette.project_roots = vec![root.path().to_string_lossy().into_owned()];
-            view.open_palette(Filter::All, window, cx);
+            view.open_palette(Filter::Projects, window, cx);
             view.dismiss_menu(window, cx);
             view.config.palette.project_roots.clear();
             view.open_palette(Filter::Commands, window, cx);
@@ -151,7 +152,7 @@ fn a_closed_palettes_scan_cannot_fill_a_reopened_palette(cx: &mut TestAppContext
     view.read_with(cx, |view, _| {
         let palette = view.menu.palette.as_ref().unwrap();
         assert!(palette.projects.projects.is_empty());
-        assert!(!palette.loading_projects);
+        assert_eq!(palette.scan, Scan::Done);
         assert_eq!(palette.filter, Filter::Commands);
     });
 }

@@ -46,7 +46,7 @@ fn discovers_only_immediate_visible_folders_and_deduplicates_roots() -> anyhow::
     fs::write(root.path().join("file"), "")?;
     let missing = root.path().join("missing").to_string_lossy().into_owned();
     let name = root.path().to_string_lossy().into_owned();
-    let result = collect(&[missing, name.clone(), name], &AtomicBool::new(false));
+    let result = collect(&[missing, name.clone(), name], &[], &AtomicBool::new(false));
     assert_eq!(result.projects.len(), 1);
     assert_eq!(result.projects[0].label, "alpha");
     assert_eq!(result.errors.len(), 1);
@@ -55,6 +55,7 @@ fn discovers_only_immediate_visible_folders_and_deduplicates_roots() -> anyhow::
     validate(&result.projects[0])?;
     let cancelled = collect(
         &[root.path().to_string_lossy().into_owned()],
+        &[],
         &AtomicBool::new(true),
     );
     assert!(cancelled.projects.is_empty());
@@ -74,6 +75,7 @@ fn discovered_children_validate_when_only_the_root_is_plain() -> anyhow::Result<
     fs::create_dir(verbatim.join("dot."))?;
     let result = collect(
         &[root.path().to_string_lossy().into_owned()],
+        &[],
         &AtomicBool::new(false),
     );
     assert!(result.errors.is_empty(), "{:?}", result.errors);
@@ -97,6 +99,7 @@ fn limits_filesystem_work() -> anyhow::Result<()> {
     }
     let result = collect(
         &[root.path().to_string_lossy().into_owned()],
+        &[],
         &AtomicBool::new(false),
     );
     assert_eq!(result.projects.len(), MAX_PROJECTS);
@@ -138,6 +141,7 @@ fn skips_child_symlinks_and_rejects_a_replaced_directory() -> anyhow::Result<()>
     fs::create_dir(&path)?;
     let result = collect(
         &[root.path().to_string_lossy().into_owned()],
+        &[],
         &AtomicBool::new(false),
     );
     assert_eq!(result.projects.len(), 1);

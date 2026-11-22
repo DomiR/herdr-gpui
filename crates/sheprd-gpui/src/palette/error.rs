@@ -15,6 +15,10 @@ pub enum Error {
     HostUnavailable,
     #[error("Invalid saved palette history")]
     InvalidFrecency,
+    #[error(
+        "palette.projects must hold at most 256 projects, each a nonempty path of at most 8192 bytes and an optional name of at most 256"
+    )]
+    ListedProjects,
     #[error("The local connection changed. Reopen the palette.")]
     LocalChanged,
     #[error("No captured daemon session. Reopen the palette.")]

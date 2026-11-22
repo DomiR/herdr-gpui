@@ -16,6 +16,18 @@ fn project(label: &str, boost: u32) -> Entry {
     entry
 }
 
+fn command(label: &str, boost: u32) -> Entry {
+    let mut entry = Entry::new(
+        label.into(),
+        String::new(),
+        "GUI action",
+        Action::Native(Command::ClearPane),
+        None,
+    );
+    entry.boost = boost;
+    entry
+}
+
 fn labels(entries: &[Entry], hits: &[search::Hit]) -> Vec<String> {
     hits.iter()
         .map(|hit| entries[hit.index].label.to_string())
@@ -41,10 +53,13 @@ fn a_frecent_row_rises_among_matches_but_never_makes_a_match() {
         project("build-b", 32),
         project("other", 64),
     ];
-    assert_eq!(rows(Filter::All, &entries, "build"), ["build-b", "build-a"]);
+    assert_eq!(
+        rows(Filter::Projects, &entries, "build"),
+        ["build-b", "build-a"]
+    );
     let unboosted = [project("build-a", 0), project("build-b", 0)];
     assert_eq!(
-        rows(Filter::All, &unboosted, "build"),
+        rows(Filter::Projects, &unboosted, "build"),
         ["build-a", "build-b"]
     );
 }
@@ -59,7 +74,13 @@ fn only_the_flat_project_list_sorts_by_frecency_without_a_query() {
     ];
     assert_eq!(rows(Filter::Projects, &entries, ""), ["b", "d", "a", "c"]);
     // Elsewhere an empty query keeps entry order, so Go To keeps its tree.
-    assert_eq!(rows(Filter::All, &entries, ""), ["a", "b", "c", "d"]);
+    let commands = [
+        command("a", 0),
+        command("b", 40),
+        command("c", 0),
+        command("d", 40),
+    ];
+    assert_eq!(rows(Filter::All, &commands, ""), ["a", "b", "c", "d"]);
 }
 
 #[test]
