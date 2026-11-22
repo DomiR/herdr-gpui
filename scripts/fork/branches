@@ -11,3 +11,5 @@ feat/orchestrator-linear-followups
 feat/markdown-docs
 feat/sidebar-hide-numbers
 feat/confirm-close-tab-always
+fix/browser-focus-opt-in
+fix/browser-eval-background
