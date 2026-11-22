@@ -100,7 +100,8 @@ sheprd browser open http://localhost:3000
 - Opening the same page again from the same pane reuses and reloads its tab.
   After editing a file, run `sheprd browser reload` instead.
 - Browser commands never take the user's focus on their own: `open`,
-  `navigate`, `reload`, `text`, and `screenshot` leave the window on the
+  `navigate`, `reload`, `text`, `eval`, `logs`, `clear-data`, and
+  `screenshot` leave the window on the
   workspace and tab the user is in, and the keyboard where it is. Add
   `--focus` to `open`, `text`, or `screenshot` only when the user asked
   to see the page now. `--no-focus`, the old way to ask for this, is

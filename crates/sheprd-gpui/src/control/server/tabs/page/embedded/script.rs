@@ -2,7 +2,9 @@
 //! own script in a page, the console the page kept, and forgetting what
 //! WebKit stores for its site. Each asks the page once, when a window has
 //! made it, and answers when WebKit does. A script is never run twice.
-use super::{MAX_TEXT_JSON, holder, page_tab};
+//! Like `browser text`, they act in the background: a page no window has
+//! is made out of sight, and the user's view and keyboard stay put.
+use super::{MAX_TEXT_JSON, holder, page_tab, prepare};
 use crate::{
     browser::{
         TabId,
@@ -13,7 +15,7 @@ use crate::{
             Caller, ErrorCode, MAX_WAIT_SECONDS, Response,
             tabs::{ConsoleEntry, MAX_EVAL_SCRIPT_BYTES, PAGE_WAIT_SECONDS, Reply},
         },
-        server::{Watches, socket, tabs::reveal},
+        server::{Watches, socket},
     },
     window::main_window::MainWindow,
 };
@@ -44,9 +46,7 @@ fn ask_once<T: 'static>(
         Ok(tab) => tab,
         Err(response) => return incoming.respond(response),
     };
-    if holder(&caller, tab.id, cx).is_none()
-        && let Err(response) = reveal(&caller, &tab, cx)
-    {
+    if let Err(response) = prepare(&caller, &tab, false, cx) {
         return incoming.respond(response);
     }
     let tab_id = tab.id;
