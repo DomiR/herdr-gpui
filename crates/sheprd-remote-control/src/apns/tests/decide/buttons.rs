@@ -85,6 +85,7 @@ fn a_turn_start_has_no_previous_steps() {
         kind: EntryKind::User {
             text: "next".to_owned(),
             files: 0,
+            note: None,
         },
     });
     let live = decide(

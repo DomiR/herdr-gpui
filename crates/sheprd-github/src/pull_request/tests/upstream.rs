@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn upstream_matches_renamed_fork_branch_and_rejects_unrelated_heads() {
-    let head = super::super::fetch::upstream_head("pr/138", |key| {
+    let head = super::super::fetch::upstream_head("pr/138", &crate::Server::GitHub, |key| {
         Ok(match key {
             "branch.pr/138.remote" => Some("contributor".into()),
             "branch.pr/138.merge" => Some("refs/heads/feat/inline-ime-preedit".into()),
@@ -22,6 +22,7 @@ fn upstream_matches_renamed_fork_branch_and_rejects_unrelated_heads() {
     let parse = |nodes| {
         parse_graphql(
             graphql(nodes),
+            &crate::Server::GitHub,
             "example",
             "project",
             &head.branch,
@@ -52,20 +53,29 @@ fn upstream_matches_renamed_fork_branch_and_rejects_unrelated_heads() {
     truncated["data"]["repository"]["pullRequests"]["pageInfo"] =
         serde_json::json!({"hasNextPage":true});
     assert!(matches!(
-        parse_graphql(truncated, "example", "project", &head.branch, Some(&head)),
+        parse_graphql(
+            truncated,
+            &crate::Server::GitHub,
+            "example",
+            "project",
+            &head.branch,
+            Some(&head)
+        ),
         Err(Error::PullRequest(crate::pull_request::Error::Ambiguous))
     ));
 }
 
 #[test]
 fn no_upstream_preserves_origin_owner_and_local_branch_matching() {
-    let head = super::super::fetch::upstream_head("feature", |_| Ok(None)).unwrap();
+    let head = super::super::fetch::upstream_head("feature", &crate::Server::GitHub, |_| Ok(None))
+        .unwrap();
     assert!(head.is_none());
     let graphql =
         |nodes| serde_json::json!({"data":{"repository":{"pullRequests":{"nodes":nodes}}}});
     assert!(
         parse_graphql(
             graphql(response()),
+            &crate::Server::GitHub,
             "example",
             "project",
             "feature",
@@ -77,11 +87,25 @@ fn no_upstream_preserves_origin_owner_and_local_branch_matching() {
     let mut fork = response();
     fork[0]["headRepositoryOwner"] = serde_json::json!({"login":"stranger"});
     assert!(matches!(
-        parse_graphql(graphql(fork), "example", "project", "feature", None),
+        parse_graphql(
+            graphql(fork),
+            &crate::Server::GitHub,
+            "example",
+            "project",
+            "feature",
+            None
+        ),
         Err(Error::PullRequest(crate::pull_request::Error::Identity))
     ));
     assert!(matches!(
-        parse_graphql(graphql(response()), "example", "project", "pr/138", None),
+        parse_graphql(
+            graphql(response()),
+            &crate::Server::GitHub,
+            "example",
+            "project",
+            "pr/138",
+            None
+        ),
         Err(Error::PullRequest(crate::pull_request::Error::Identity))
     ));
 }
@@ -90,7 +114,7 @@ fn no_upstream_preserves_origin_owner_and_local_branch_matching() {
 fn unsupported_upstream_and_config_errors_do_not_fall_back() {
     for merge in ["refs/heads/feature", "refs/pull/138/head"] {
         assert!(
-            super::super::fetch::upstream_head("feature", |key| Ok(Some(
+            super::super::fetch::upstream_head("feature", &crate::Server::GitHub, |key| Ok(Some(
                 match key {
                     "branch.feature.remote" => "fork",
                     "branch.feature.merge" => merge,
@@ -103,7 +127,7 @@ fn unsupported_upstream_and_config_errors_do_not_fall_back() {
         );
     }
     assert!(matches!(
-        super::super::fetch::upstream_head("feature", |_| Err(
+        super::super::fetch::upstream_head("feature", &crate::Server::GitHub, |_| Err(
             crate::pull_request::Error::Cancelled.into()
         )),
         Err(Error::PullRequest(crate::pull_request::Error::Cancelled))

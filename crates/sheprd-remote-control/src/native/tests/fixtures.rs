@@ -3,7 +3,9 @@
 
 use super::*;
 use crate::{
-    control::pull_requests::{PullRequests, Tone, UnopenedBranch, WorkspacePullRequest},
+    control::pull_requests::{
+        PullRequests, Tone, UncommittedCheckout, UnopenedBranch, WorkspacePullRequest,
+    },
     hub::Summary,
     load::Load,
 };
@@ -64,6 +66,7 @@ fn transcript() -> Transcript {
             kind: EntryKind::User {
                 text: "Make it even out nested splits too.".into(),
                 files: 0,
+                note: None,
             },
         },
         Entry {
@@ -145,11 +148,21 @@ fn home() -> Home {
             branch: "worktree/spaces-tab".into(),
             commits: 3,
         }],
+        uncommitted: vec![UncommittedCheckout {
+            workspace_id: "w3".into(),
+            cwd: "/work-spaces-tab".into(),
+            branch: "worktree/spaces-tab".into(),
+        }],
     };
     let mut home = Home::project(Sources {
         checkouts: &Default::default(),
         recognized: &Default::default(),
         computer: "MacBook Pro",
+        // The chat and the terminal's agent are starred.
+        favorites: &crate::control::favorites::Favorites {
+            boot: Some("b".into()),
+            panes: vec!["p1".into(), "p2".into()],
+        },
         fingerprint: &"AB".repeat(32),
         layout: &layout,
         load: Some(Load {

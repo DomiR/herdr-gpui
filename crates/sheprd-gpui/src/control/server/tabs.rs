@@ -38,8 +38,10 @@ pub(super) fn serve(
         TabOp::Navigate { id, url } => incoming.respond(page::navigate(&caller, id, &url, cx)),
         TabOp::Back { id } => incoming.respond(page::history(&caller, id, false, cx)),
         TabOp::Forward { id } => incoming.respond(page::history(&caller, id, true, cx)),
-        TabOp::Text { id } => page::text(caller, id, incoming, watches, cx),
-        TabOp::Screenshot { id, path } => page::screenshot(caller, id, path, incoming, watches, cx),
+        TabOp::Text { id, focus } => page::text(caller, id, focus, incoming, watches, cx),
+        TabOp::Screenshot { id, path, focus } => {
+            page::screenshot(caller, id, path, focus, incoming, watches, cx);
+        }
         TabOp::Eval {
             id,
             script,
@@ -203,10 +205,7 @@ fn showing(caller: &Caller, tab: &Tab, cx: &App) -> Option<(MainWindow, usize)> 
 /// against its workspace, the tab is in front once the switch lands.
 fn reveal(caller: &Caller, tab: &Tab, cx: &mut App) -> Result<(), Response> {
     let Some((handle, index)) = showing(caller, tab, cx) else {
-        return Err(not_found(format!(
-            "No Sheprd window shows workspace {}, which tab {} belongs to",
-            tab.workspace_id, tab.id
-        )));
+        return Err(unlisted(tab));
     };
     handle
         .update(cx, |view, window, cx| {
@@ -218,6 +217,14 @@ fn reveal(caller: &Caller, tab: &Tab, cx: &mut App) -> Result<(), Response> {
             Ok(())
         })
         .unwrap_or_else(|_| Err(closed()))
+}
+
+/// What a request for `tab` hears when no window lists its workspace.
+fn unlisted(tab: &Tab) -> Response {
+    not_found(format!(
+        "No Sheprd window shows workspace {}, which tab {} belongs to",
+        tab.workspace_id, tab.id
+    ))
 }
 
 fn focus(caller: &Caller, id: u64, cx: &mut App) -> Response {

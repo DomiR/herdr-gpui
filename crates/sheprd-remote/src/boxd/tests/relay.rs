@@ -98,12 +98,15 @@ fn serve(exit: u64, status: u32) -> (String, mpsc::Receiver<Seen>) {
         frame.extend_from_slice(&(trailer.len() as u32).to_be_bytes());
         frame.extend_from_slice(trailer.as_bytes());
         chunk(&mut writer, &frame);
-        writer.write_all(b"0\r\n\r\n").unwrap();
+        // Report before the last write: the client may hang up once it has
+        // the trailer, and the write into the closed socket then fails on
+        // Windows (WSAECONNABORTED), which must not lose what was seen.
         let _ = sent.send(Seen {
             head,
             start: start.unwrap(),
             stdin,
         });
+        let _ = writer.write_all(b"0\r\n\r\n");
         // Close gracefully: end the reply, then read until the client hangs
         // up. Dropping the socket first can reset it on Windows, which takes
         // the reply's unread end with it.

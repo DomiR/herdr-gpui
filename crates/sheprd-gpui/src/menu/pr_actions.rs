@@ -23,7 +23,7 @@ impl SheprdWindow {
         self.pr_actions.track(target);
         let mut changed = self.pr_actions.poll();
         if self.pr_actions.take_settled() {
-            if self.menu.github.connected()
+            if self.main_signed_in()
                 && let Some(input) = self.git_input()
             {
                 self.sync_pr_scope();
@@ -35,12 +35,12 @@ impl SheprdWindow {
     }
 
     /// The token that reads the followed pull request's repository.
-    pub(crate) fn pr_token(&self) -> Option<std::sync::Arc<secrecy::SecretString>> {
+    pub(crate) fn pr_token(&self) -> Option<crate::github::ServerToken> {
         let tokens = self.pr_tokens()?;
-        Some(match self.pr_actions.target() {
-            Some(target) => tokens.for_owner(&target.owner).clone(),
-            None => tokens.main().clone(),
-        })
+        match self.pr_actions.target() {
+            Some(target) => tokens.for_owner(&target.server, &target.owner).cloned(),
+            None => tokens.main().cloned(),
+        }
     }
 
     pub(super) fn open_pr_review(&mut self) {

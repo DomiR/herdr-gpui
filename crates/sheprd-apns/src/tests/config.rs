@@ -29,7 +29,6 @@ fn config_json(sandbox: bool) -> String {
 fn absent_config_turns_the_feature_off() {
     let state = tempfile::tempdir().unwrap();
     assert!(Config::load(state.path()).unwrap().is_none());
-    assert!(Sender::load(state.path()).unwrap().is_none());
 }
 
 #[test]

@@ -9,8 +9,6 @@ local row = use "sheprd-row"
 local status_dot = use "sheprd-status-dot"
 local subhead = use "sheprd-subhead"
 
--- The tallest the list grows before it scrolls, leaving the worktrees room.
-local MOST = 280
 local LINK = "provider:sheprd"
 -- The status dot's slot, which the lines under a row's first step past.
 local DOT = 8
@@ -131,13 +129,14 @@ return mod {
 		for _, agent in sheprd.agents do
 			table.insert(rows, agent_row(agent, layout, theme))
 		end
+		-- It fills the pane the shell gives it, whose top edge resizes it.
 		return ui.column {
 			class = "sheprd-agents",
-			shrink = false,
+			grow = true,
 			gap = "none",
-			-- Sheprd's sidebar font: see src/theme.rs.
-			style = { background = theme.sidebar, font = "mono" },
-			ui.row { class = "sheprd-rule", height = 1, shrink = false, style = { background = theme.active } },
+			-- Sheprd's sidebar font (src/luau_window/theme.rs) at the size
+			-- step nearest its own (`sidebar_size`, src/sidebar/hosted.rs).
+			style = { background = theme.sidebar, font = "mono", size = theme.sidebar_size },
 			subhead {
 				text = "agents",
 				theme = theme,
@@ -153,9 +152,10 @@ return mod {
 					else nil,
 			},
 			ui.column {
-				max_height = MOST,
-				shrink = false,
+				grow = true,
 				scroll = true,
+				-- As Sheprd's own agents list, with no scrollbar.
+				scrollbar = false,
 				gap = "none",
 				ui.column { shrink = false, gap = "none", table.unpack(rows) },
 			},

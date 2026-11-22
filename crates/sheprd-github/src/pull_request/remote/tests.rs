@@ -5,10 +5,17 @@ use std::time::Duration;
 
 #[test]
 fn both_hosts_resolve_forks_and_ignore_non_github_or_duplicate_upstreams() {
-    let origin = || Ok(("contributor".into(), "project".into()));
+    let origin = || {
+        Ok(Repo {
+            server: Server::GitHub,
+            owner: "contributor".into(),
+            name: "project".into(),
+        })
+    };
     assert_eq!(
         base(origin(), Some("git@github.com:maintainer/project.git")).unwrap(),
         Base {
+            server: Server::GitHub,
             owner: "maintainer".into(),
             repo: "project".into(),
             remote: Remote::Upstream,
@@ -23,6 +30,7 @@ fn both_hosts_resolve_forks_and_ignore_non_github_or_duplicate_upstreams() {
         assert_eq!(
             base(origin(), upstream).unwrap(),
             Base {
+                server: Server::GitHub,
                 owner: "contributor".into(),
                 repo: "project".into(),
                 remote: Remote::Origin,

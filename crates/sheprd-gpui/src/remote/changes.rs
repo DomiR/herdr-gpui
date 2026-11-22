@@ -8,14 +8,13 @@ use crate::{
     pull_request::{CheckDetail, Input, Origin, Outcome, PullRequest, workspace_input},
     review::diff::{self, Body, Kind, Request, Scope as ReviewScope, Status},
 };
-use secrecy::SecretString;
 use sheprd_client::protocol::ClientShellWorkspace;
 use sheprd_github::{Tokens, check_log, pr_actions::Target};
 use sheprd_remote_control::control::changes::{
     Answer, Ask, ChangedFile, Check, CheckLog, Checks, DiffLine, Failure, FileDiff, FileList,
     FileStatus, LineKind, MAX_CHECKS, Scope, Shown, Wanted,
 };
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 /// The workspaces of one daemon session a phone may ask about.
 #[derive(Default)]
@@ -56,7 +55,7 @@ struct Checked {
 struct Logs {
     owner: String,
     repo: String,
-    token: Arc<SecretString>,
+    token: crate::github::ServerToken,
 }
 
 impl Source {
@@ -141,10 +140,12 @@ impl Checked {
         let logs = Target::for_reading(pr)
             .ok()
             .zip(tokens)
-            .map(|(target, tokens)| Logs {
-                token: tokens.for_owner(&target.owner).clone(),
-                owner: target.owner,
-                repo: target.repo,
+            .and_then(|(target, tokens)| {
+                Some(Logs {
+                    token: tokens.for_owner(&target.server, &target.owner)?.clone(),
+                    owner: target.owner,
+                    repo: target.repo,
+                })
             });
         Self {
             base: pr.base_ref_name.clone(),

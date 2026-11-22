@@ -4,7 +4,7 @@
 pub enum Error {
     // keep-sorted start
     #[error(
-        "This host is already being added, in another Add Device dialog or a \u{201c}Set up\u{201d} workspace that is still running. Finish or close it, then try again."
+        "This host is already being added in another Add Device dialog. Finish or close it, then try again."
     )]
     Adding,
     #[error("This host and session are already saved as \u{201c}{0}\u{201d}.")]

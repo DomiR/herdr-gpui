@@ -134,6 +134,7 @@ impl Localize for StartError {
                     agent = agent.display_name()
                 )
             }
+            Self::BriefRemote => fl!("error-chat-start-brief-remote"),
             Self::Disabled => fl!("error-chat-start-disabled"),
             Self::Line => fl!("error-chat-start-line"),
             Self::NotConnected => fl!("error-chat-start-not-connected"),

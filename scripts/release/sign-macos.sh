@@ -8,10 +8,16 @@ set -euo pipefail
 set -E
 trap 'printf "sign-macos.sh: failed at line %d\n" "$LINENO" >&2' ERR
 source "$(dirname -- "$0")/common.sh"
-[[ $# == 3 ]] || fail 'Usage: bash sign-macos.sh VERSION UNSIGNED_APP OUTPUT_DIR'
+[[ $# -ge 3 ]] || fail 'Usage: bash sign-macos.sh VERSION UNSIGNED_APP OUTPUT_DIR [EXECUTABLE...]'
 version_check "$1"
 [[ $(uname -s) == Darwin ]] || fail 'macOS required'
 [[ -d $2 && -d $3 ]] || fail 'App and existing output directory required'
+# Executables shipped outside the app, signed in place: sheprd-relay-agent's
+# Mac builds, which Sheprd copies onto other Macs over SSH.
+standalone=("${@:4}")
+for executable in ${standalone[@]+"${standalone[@]}"}; do
+    [[ -f $executable && ! -L $executable ]] || fail "Regular executable required: $executable"
+done
 for name in MACOS_CERTIFICATE_P12_BASE64 MACOS_CERTIFICATE_PASSWORD APPLE_API_PRIVATE_KEY APPLE_API_KEY_ID APPLE_API_ISSUER_ID MACOS_SIGNING_IDENTITY; do
     [[ -n ${!name:-} ]] || fail "Required environment variable: $name"
 done
@@ -102,6 +108,14 @@ done
 codesign --force --sign "$MACOS_SIGNING_IDENTITY" --keychain "$keychain" --options runtime --entitlements "$release_root/assets/macos/Sheprd.entitlements" --timestamp "$app/Contents/MacOS/sheprd"
 codesign --force --sign "$MACOS_SIGNING_IDENTITY" --keychain "$keychain" --options runtime --entitlements "$release_root/assets/macos/Sheprd.entitlements" --timestamp "$app"
 codesign --verify --deep --strict --verbose=2 "$app"
+# The same identity and hardened runtime, and no entitlements. They are never
+# quarantined, as they reach a Mac over SSH, so they are not notarized.
+for executable in ${standalone[@]+"${standalone[@]}"}; do
+    # A fixed identifier, not one from the versioned file name, so macOS
+    # knows every release's build as the same program.
+    codesign --force --sign "$MACOS_SIGNING_IDENTITY" --keychain "$keychain" --identifier "org.sheprd.$(basename "$executable" | sed -E 's/^sheprd-//; s/-[0-9]{8}\.[0-9]+-.*$//')" --options runtime --timestamp "$executable"
+    codesign --verify --strict --verbose=2 "$executable"
+done
 # Apple's notary and ticket services drop connections now and then ("The
 # network connection was lost"). Retry those calls; a rejected submission
 # still fails below, because notarytool exits 0 and jq checks the status.

@@ -1,7 +1,9 @@
 use super::*;
 use control::{ControlCommand, Invocation, RemoteCommand};
 
+mod add_link;
 mod addresses;
+mod push_status;
 mod relay_token;
 
 fn parse(args: &[&str]) -> Result<Invocation, CliError> {

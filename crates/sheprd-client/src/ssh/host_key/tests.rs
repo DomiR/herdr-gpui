@@ -1,5 +1,9 @@
 use super::*;
 
+mod proof;
+#[cfg(unix)]
+mod proxy;
+
 #[test]
 fn fingerprints_are_read_from_ssh_keygen_lines() {
     assert_eq!(
@@ -336,4 +340,58 @@ fn invalid_targets_are_refused_before_ssh_runs() {
         scan_host_key("-oProxyCommand=x"),
         Err(crate::Error::Ssh(Error::InvalidTarget))
     ));
+}
+
+#[test]
+fn known_keys_are_read_from_ssh_keygen_find_output() {
+    let output = b"# Host studio found: line 3\nstudio ssh-ed25519 AAAAC3Nz comment\n|1|c2FsdA==|aGFzaA== ecdsa-sha2-nistp256 AAAAE2Vj\n@cert-authority studio ssh-ed25519 AAAAca\n@revoked studio ssh-rsa AAAAold\n\n";
+    assert_eq!(
+        found_keys(output),
+        Found {
+            keys: vec![
+                "ssh-ed25519 AAAAC3Nz".to_owned(),
+                "ecdsa-sha2-nistp256 AAAAE2Vj".to_owned()
+            ],
+            revoked: vec!["ssh-rsa AAAAold".to_owned()],
+        }
+    );
+    assert_eq!(found_keys(b""), Found::default());
+}
+
+#[test]
+fn a_host_whose_key_is_not_checked_is_refused_its_known_keys() {
+    let target = "unchecked-fleet-test.example";
+    crate::set_host_keys(target, crate::HostKeys::Skip);
+    let listed = known_host_keys(target).map(|_| ());
+    let confirmed = confirm_host_key(target, "ssh-ed25519 AAAA").map(|_| ());
+    crate::set_host_keys(target, crate::HostKeys::Verify);
+    for result in [listed, confirmed] {
+        assert!(
+            matches!(result, Err(crate::Error::Ssh(Error::Unchecked))),
+            "{result:?}"
+        );
+    }
+}
+
+#[test]
+fn only_the_algorithms_of_the_key_to_confirm_are_offered() {
+    assert_eq!(host_key_algorithms("ssh-ed25519 AAAA"), Some("ssh-ed25519"));
+    assert_eq!(
+        host_key_algorithms("ssh-rsa AAAA"),
+        Some("rsa-sha2-512,rsa-sha2-256")
+    );
+    assert_eq!(host_key_algorithms("sk-ssh-ed25519@openssh.com AAAA"), None);
+    assert_eq!(host_key_algorithms(""), None);
+    let options = confirm_options(Path::new("/tmp/only"), "ssh-ed25519").join(" ");
+    for wanted in [
+        "UserKnownHostsFile=\"/tmp/only\"",
+        "GlobalKnownHostsFile=/dev/null",
+        "KnownHostsCommand=none",
+        "StrictHostKeyChecking=yes",
+        "HostKeyAlgorithms=ssh-ed25519",
+        "PubkeyAuthentication=no",
+        "ControlPath=none",
+    ] {
+        assert!(options.contains(wanted), "{wanted}");
+    }
 }

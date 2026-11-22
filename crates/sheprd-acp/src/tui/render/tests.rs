@@ -32,6 +32,7 @@ fn busy() -> View {
             kind: EntryKind::User {
                 text: "please fix the failing test in the parser module".to_owned(),
                 files: 0,
+                note: None,
             },
         },
         Entry {

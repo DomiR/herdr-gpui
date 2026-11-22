@@ -81,18 +81,6 @@ impl<T> Listening<T> {
     }
 }
 
-#[cfg(test)]
-impl<T> Listening<T> {
-    /// A relay that never listened, for tests of the dialog around it.
-    pub(crate) fn fixture() -> Self {
-        Self {
-            path: PathBuf::from("/nonexistent/setup.sock"),
-            cancelled: Arc::default(),
-            hand_over: None,
-        }
-    }
-}
-
 impl<T> Drop for Listening<T> {
     fn drop(&mut self) {
         if self.hand_over.is_some() {

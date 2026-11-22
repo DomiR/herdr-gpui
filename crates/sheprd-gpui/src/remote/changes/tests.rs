@@ -251,7 +251,7 @@ fn a_log_is_read_only_for_a_job_the_pull_request_lists_as_failing() {
     checked.logs = Some(Logs {
         owner: "o".into(),
         repo: "r".into(),
-        token: Arc::new(SecretString::from("token")),
+        token: crate::github::ServerToken::github(std::sync::Arc::new("token".into())),
     });
     checked.checks.iter_mut().for_each(|check| check.job = None);
     let source = Source {

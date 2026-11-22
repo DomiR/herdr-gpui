@@ -141,7 +141,7 @@ fn local_git_verification_rejects_wrong_checkout_branch_and_remote_before_gh() {
         fetch(&input, &"fixture".into(), || false)
             .unwrap_err()
             .to_string()
-            .contains("GitHub.com origins only")
+            .contains("GitHub Enterprise Server origins only")
     );
     let mut registry_input = input.clone();
     registry_input.checkout = None;
@@ -149,7 +149,7 @@ fn local_git_verification_rejects_wrong_checkout_branch_and_remote_before_gh() {
         fetch(&registry_input, &"fixture".into(), || false)
             .unwrap_err()
             .to_string()
-            .contains("GitHub.com origins only")
+            .contains("GitHub Enterprise Server origins only")
     );
     git(&[
         "config",
@@ -210,19 +210,29 @@ fn remote_host_drops_credentials_and_path() {
 fn github_origins_are_strictly_validated() {
     assert_eq!(
         crate::github_repo("git@github.com:Some-Owner/repo.git"),
-        Some(("some-owner".into(), "repo".into()))
+        Some(crate::Repo {
+            server: crate::Server::GitHub,
+            owner: "some-owner".into(),
+            name: "repo".into()
+        })
     );
     // Enterprise managed users own repositories under an `_shortcode` login.
     assert_eq!(
         crate::github_repo("https://github.com/fabienpenso_microsoft/repo"),
-        Some(("fabienpenso_microsoft".into(), "repo".into()))
+        Some(crate::Repo {
+            server: crate::Server::GitHub,
+            owner: "fabienpenso_microsoft".into(),
+            name: "repo".into()
+        })
     );
-    for remote in [
-        "https://github.com/a/b/c",
-        "https://github.com@evil.test/a/b",
-        "https://other.test/a/b",
-        "https://github.com/a/b?x",
-    ] {
+    for remote in ["https://github.com/a/b/c", "https://github.com/a/b?x"] {
         assert!(crate::github_repo(remote).is_none());
+    }
+    // The host alone names the server, never userinfo that looks like one.
+    for remote in ["https://github.com@evil.test/a/b", "https://evil.test/a/b"] {
+        assert_eq!(
+            crate::github_repo(remote).map(|repo| repo.server),
+            Some(crate::Server::Enterprise("evil.test".into()))
+        );
     }
 }

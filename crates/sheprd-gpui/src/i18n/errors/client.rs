@@ -120,6 +120,7 @@ impl Localize for Error {
                 server_version = server_version.as_str()
             ),
             Self::NoLocalSocket => fl!("error-client-no-local-socket"),
+            Self::OneShot(error) => error.localize(),
             Self::PartialFrameTimeout => fl!("error-client-partial-frame-timeout"),
             Self::PatchBeforeBaseline => fl!("error-client-patch-before-baseline"),
             Self::ProfileId => fl!("error-client-profile-id"),

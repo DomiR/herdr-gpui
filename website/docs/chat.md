@@ -167,6 +167,10 @@ Besides your words, a chat tells the agent two things it cannot see, in a note a
 
 Where you cannot open files on the agent's machine, as on a phone, the agent is asked to put pictures in the chat instead of giving a path: it saves a screenshot or a mockup as an image and links it, which attaches the picture to the message. HTML mockups are rendered to screenshots first.
 
+### Seeing what the agent was told
+
+**As sent** in a chat's header shows the conversation as the agent received it: above each of your messages, the note that went with it, dimmed and in the terminal font, with **Copy** beside it. When the chat switched agents, the conversation handed to the new one shows there too. A message that went alone shows nothing more. Click **As sent** again to hide the notes. The agent's own system prompt, such as Claude Code's, stays inside the agent, so the chat cannot show it. A chat restored from an agent's log shows the notes the log kept.
+
 ### Changing what the agent is told
 
 Every part of the note is a template you can replace. Copy the built-in file from [`crates/sheprd-acp/prompts`](https://github.com/sheprd-labs/sheprd/tree/main/crates/sheprd-acp/prompts) into `~/.config/herdr/chat-prompts/` on the machine the agent runs on and edit it; chats started afterwards use it, and an empty file brings the built-in text back.

@@ -2,6 +2,7 @@
 //! shared row and control builders in `ui`.
 mod chat;
 mod configuration;
+pub(in crate::settings_window) mod fleet;
 mod fonts;
 mod general;
 mod indicators;

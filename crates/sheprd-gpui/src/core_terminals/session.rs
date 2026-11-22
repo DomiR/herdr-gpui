@@ -328,11 +328,16 @@ impl SheprdWindow {
             .filter(|(tab, _)| self.core_terminals.host_of(*tab) == host)
             .map(|(_, terminal)| terminal.as_str());
         let snapshot = self.live_at(index).snapshot.as_deref();
+        let core = self
+            .core_terminals
+            .backend_of(&host)
+            .map(|backend| backend.core().hello().core.id.as_str());
         let agents = session
             .agents
             .iter()
             .map(|agent| crate::sidebar::CoreAgent {
                 agent,
+                core,
                 session,
                 snapshot,
                 info: TerminalId::new(agent.pane.as_str())

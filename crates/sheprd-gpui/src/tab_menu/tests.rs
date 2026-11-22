@@ -9,6 +9,7 @@ mod en_xa;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 mod moves;
 mod mute;
+mod naming;
 // Windows has no move for this machine's own agents, so never the row.
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 mod to_chat;

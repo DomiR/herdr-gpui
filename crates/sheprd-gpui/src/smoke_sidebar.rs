@@ -68,6 +68,17 @@ fn symbol_cascade(window: &mut Window, cx: &mut App) -> Result<&'static str> {
 }
 
 pub fn start_sidebar(handle: WindowHandle<SheprdWindow>, cx: &mut App) {
+    #[cfg(target_os = "macos")]
+    if std::env::var_os("HERDR_TEST_WINDOW_CLOSE").is_some() {
+        cx.spawn(async move |cx| {
+            if let Err(error) = crate::settings_window::verify_native_close(handle, cx).await {
+                eprintln!("WINDOW CLOSE native FAIL: {error:#}");
+                std::process::exit(1);
+            }
+        })
+        .detach();
+        return;
+    }
     if std::env::var_os("HERDR_TEST_TRACES_ONLY").is_some() {
         crate::traces::native::start(handle, cx);
         return;

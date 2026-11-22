@@ -2,7 +2,7 @@
 //! ([`sheprd_chat_protocol::Settings`]), set once the agent's new session
 //! opens.
 
-use sheprd_chat_protocol::{ConfigOption, OptionKind, OptionValue, Setting};
+use sheprd_chat_protocol::{ConfigOption, OptionKind, OptionValue, Rejection, Setting};
 
 use super::{Session, Update};
 
@@ -36,10 +36,18 @@ impl<R: FnMut(Update)> Session<R> {
                     .any(|option| option.id == id && holds(option, &value));
                 // A setting the agent does not take is refused here and
                 // left as the new session has it.
-                if !has && self.set_option(id, &value).is_ok() {
-                    return;
+                if has {
+                    continue;
                 }
-                continue;
+                match self.set_option(id, &value) {
+                    Ok(()) => return,
+                    // Sending failed the session: nothing more is sent.
+                    Err(Rejection::AgentUnavailable) => {
+                        self.config.settings = None;
+                        return;
+                    }
+                    Err(_) => continue,
+                }
             }
             if std::mem::take(&mut settings.auto_accept) {
                 self.set_auto_accept(true);
@@ -52,11 +60,18 @@ impl<R: FnMut(Update)> Session<R> {
                     .modes
                     .as_ref()
                     .is_some_and(|modes| modes.current != mode)
-                // An unknown mode is refused and the session's stays.
-                && self.set_mode(mode).is_ok()
             {
-                // Its answer comes back here, to end the carrying.
-                return;
+                match self.set_mode(mode) {
+                    // Its answer comes back here, to end the carrying.
+                    Ok(()) => return,
+                    // Sending failed the session: nothing more is sent.
+                    Err(Rejection::AgentUnavailable) => {
+                        self.config.settings = None;
+                        return;
+                    }
+                    // An unknown mode is refused and the session's stays.
+                    Err(_) => {}
+                }
             }
             self.config.settings = None;
             self.next_queued();

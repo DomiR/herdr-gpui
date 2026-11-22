@@ -5,9 +5,11 @@
 //! have one order and a client's catch-up can never interleave with a change.
 
 mod agent;
+mod briefs;
 mod carry;
 mod commands;
 mod harness;
+mod known;
 mod pictures;
 mod pull_requests;
 mod thread;
@@ -121,6 +123,10 @@ pub(crate) enum Update {
     /// A prompt just sent to the agent, as the transcript shows it, which
     /// names the pane and its tab.
     Prompt(String),
+    /// A new session of this built-in agent offered these settings, which
+    /// differ from those known for it: kept for its next start, or, when
+    /// empty, what was known forgotten.
+    Settings(Agent, crate::known::Settings),
 }
 
 pub(crate) struct Config {
@@ -136,6 +142,8 @@ pub(crate) struct Config {
     /// The conversation so far, for a continued session whose agent does
     /// not replay it.
     pub history: Option<Transcript>,
+    /// The settings each built-in agent offered last, shown while it starts.
+    pub known: crate::known::Known,
     /// Clients can attach, and the agent was told where: its
     /// `sheprd chat pr add` reaches this chat.
     pub listens: bool,
@@ -183,11 +191,14 @@ pub(crate) struct Session<R: FnMut(Update)> {
     acp_session: Option<wire::SessionId>,
     activity: Option<Activity>,
     asked: HashMap<PermissionId, Asked>,
+    briefs: briefs::Briefs,
     /// The whole commands of shell calls, which their titles cut short.
     commands: pull_requests::Commands,
     config: Config,
     /// What the agent has been told besides the person's words.
     context: Context,
+    /// Settings picked while the agent started, sent once its session opens.
+    deferred: Vec<known::Deferred>,
     /// The notice under the conversation this chat continued, decided when
     /// its first session opens and kept for the chat's life, whichever
     /// agent it switches to; `None` until then.
@@ -211,6 +222,9 @@ pub(crate) struct Session<R: FnMut(Update)> {
     /// queue does not carry it, as no client needs it.
     queued_origins: HashMap<CommandId, Origin>,
     ready: bool,
+    /// The note a replayed message from the person held and the entry
+    /// for their words that comes next takes.
+    replayed_note: Option<String>,
     report: R,
     seq: u64,
     subscribers: Vec<Subscriber>,
@@ -227,6 +241,13 @@ impl<R: FnMut(Update)> Session<R> {
         let mut told = crate::context::Told::default();
         if let Some(mut history) = config.history.take() {
             told = crate::context::hide(&mut history);
+            for entry in &mut history.entries {
+                if let sheprd_chat_protocol::EntryKind::User { text, files: 0, .. } =
+                    &mut entry.kind
+                {
+                    *text = crate::project::shown(text).to_owned();
+                }
+            }
             transcript.entries = history.entries;
             transcript.truncated = history.truncated;
             transcript.usage = history.usage;
@@ -235,6 +256,7 @@ impl<R: FnMut(Update)> Session<R> {
             available,
             current: config.harness,
         });
+        known::seed(&config.known, config.harness, &mut transcript);
         let thread = thread::Thread::new(config.harness, &transcript.entries);
         let projector = transcript
             .entries
@@ -264,9 +286,11 @@ impl<R: FnMut(Update)> Session<R> {
             acp_session: None,
             activity: None,
             asked: HashMap::new(),
+            briefs: briefs::Briefs::default(),
             commands: pull_requests::Commands::default(),
             config,
             context,
+            deferred: Vec::new(),
             divider: None,
             epoch: Uuid::new_v4(),
             handled: VecDeque::new(),
@@ -282,6 +306,7 @@ impl<R: FnMut(Update)> Session<R> {
             projector,
             queued_origins: HashMap::new(),
             ready: false,
+            replayed_note: None,
             report,
             seq: 0,
             subscribers: Vec::new(),
@@ -407,6 +432,7 @@ impl<R: FnMut(Update)> Session<R> {
         self.report_activity();
         self.pictures_after(&change);
         self.find_pull_requests(&change);
+        self.find_brief(&change);
     }
 
     fn emit_all(&mut self, changes: impl IntoIterator<Item = Change>) {
@@ -640,6 +666,8 @@ pub(crate) fn entry_size(entry: &sheprd_chat_protocol::Entry) -> usize {
                     .sum::<usize>()
         }
         EntryKind::Turn(_) => 32,
+        // What went ahead of the person's words travels with them.
+        EntryKind::User { text, note, .. } => text.len() + note.as_ref().map_or(0, String::len),
         kind => kind.text().map_or(0, str::len),
     }
 }

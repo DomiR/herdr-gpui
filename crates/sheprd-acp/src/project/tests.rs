@@ -8,6 +8,7 @@ mod activities;
 mod direct_subagents;
 mod edits;
 mod images;
+mod pasted;
 mod todos;
 mod tool_start;
 

@@ -86,6 +86,7 @@ fn an_earlier_turns_wizz_does_not_nudge_again() {
             EntryKind::User {
                 text: "on it".to_owned(),
                 files: 0,
+                note: None,
             },
         ],
         Privacy::Excerpt,

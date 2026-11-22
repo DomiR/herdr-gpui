@@ -13,6 +13,7 @@ use p256::SecretKey;
 use serde_json::json;
 use sheprd_apns::{DeviceToken, Host, Outcome, Priority, Push, PushType, seal};
 use sheprd_push_relay::{
+    attest::Verifier,
     credential::Issuer,
     handle::{Keyring, key_id},
     limit::Rates,
@@ -120,6 +121,7 @@ async fn nothing_of_a_push_reaches_the_disk_or_the_logs() {
         Keyring::new(key, None),
         Sqlite::open(dir.path().join("relay.sqlite")).unwrap(),
         Rates::default(),
+        Verifier::apple("ABCDE12345.so.pen.herdr.remote"),
     );
 
     let source: IpAddr = "203.0.113.9".parse().unwrap();

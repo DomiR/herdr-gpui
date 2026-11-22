@@ -22,10 +22,25 @@ class ArtworkTests(unittest.TestCase):
             "sheprd-icon-square.svg": ("square", False, False),
             "sheprd-icon-badge.svg": ("tile", False, True),
             "sheprd-github-app.svg": ("square", False, False),
+            "sheprd-github-app-transparent.svg": ("transparent", False, False),
         }
         for name, options in variants.items():
             with self.subTest(name=name):
                 self.assertEqual((ASSETS / name).read_text(), GENERATOR["artwork"](source, *options))
+
+    def test_github_app_transparent_exports_keep_alpha_and_upload_sizes(self):
+        for name, size in (
+            ("sheprd-github-app-transparent.png", (1024, 1024)),
+            ("sheprd-github-app-transparent-200.png", (200, 200)),
+        ):
+            with self.subTest(name=name):
+                png = (ASSETS / name).read_bytes()
+                self.assertEqual(png[:8], b"\x89PNG\r\n\x1a\n")
+                width, height, _, color_type, *_ = struct.unpack_from(">IIBBBBB", png, 16)
+                self.assertEqual((width, height), size)
+                self.assertEqual(color_type, 6)
+        svg = ET.parse(ASSETS / "sheprd-github-app-transparent.svg").getroot()
+        self.assertIsNone(svg.find(f"{SVG}rect"))
 
     def test_development_colors_preserve_the_cream_foreground(self):
         source = ET.parse(ASSETS / "sheprd-linux-worktree.svg").getroot()

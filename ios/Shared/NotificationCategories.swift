@@ -4,6 +4,9 @@ import UserNotifications
 /// Keys a shown notification's `userInfo` carries once opened.
 enum AlertKeys {
     static let computer = "computer"
+    /// The computer's notification decision (`SealedAlert.event`), which
+    /// a copy arriving again finds its first by.
+    static let event = "event"
     static let pane = "pane"
     static let permission = "permission"
     /// Set when the pane is a terminal's, which a tap opens.

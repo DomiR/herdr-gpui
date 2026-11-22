@@ -10,8 +10,26 @@ use gpui::{Context, Window};
 /// endpoint id; none means the selected one.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Action {
+    /// Scrolls the chat in `pane` to the prompt `entry`, a tick of its turns.
+    ChatTurn { pane: String, entry: u64 },
     /// Runs a command by its name in the catalog, as a shortcut does.
     Command(String),
+    /// Acts on a line of the device picker: its place among the lines the
+    /// keys reach, and the key that says it is still the same line.
+    DeviceLine {
+        ordinal: usize,
+        key: String,
+        action: crate::menu::LineAction,
+    },
+    /// Opens the device picker from the footer, or closes it.
+    DevicePicker,
+    /// Closes the device picker, as a click outside it or Escape does.
+    DevicePickerDismiss,
+    /// A key the open device picker took: `up`, `down`, `left`, `right`,
+    /// `enter`, `space`, `backspace`, or `escape`.
+    DevicePickerKey(String),
+    /// Opens the Devices overview, as the picker's activity card does.
+    DevicesOverview,
     /// Opens or closes the note on a workspace's checkout, at the pointer.
     EditNote {
         endpoint: Option<String>,
@@ -51,6 +69,11 @@ pub enum Action {
     SidebarWidth { phase: Drag, dx: f32 },
     /// Switches the agents list between grouped and by priority.
     ToggleAgentSort,
+    /// Opens the usage panel of the provider with this id, as a click on
+    /// its status bar segment does.
+    Usage(String),
+    /// Reads usage again, as the status bar's refresh button does.
+    UsageRefresh,
     /// Folds or unfolds a device's header.
     ToggleDevice(String),
     /// Folds or unfolds a repository's linked worktrees.
@@ -113,6 +136,7 @@ impl SheprdWindow {
     ) {
         let pointer = window.mouse_position();
         match action {
+            Action::ChatTurn { pane, entry } => self.go_to_chat_turn(&pane, entry, cx),
             Action::Command(name) => {
                 let found = sheprd_commands::COMMANDS
                     .iter()
@@ -122,6 +146,15 @@ impl SheprdWindow {
                     self.command(command, window, cx);
                 }
             }
+            Action::DeviceLine {
+                ordinal,
+                key,
+                action,
+            } => self.hosted_picker_line(ordinal, &key, action, window, cx),
+            Action::DevicePicker => self.hosted_picker_toggle(window, cx),
+            Action::DevicePickerDismiss => self.hosted_picker_dismiss(window, cx),
+            Action::DevicePickerKey(key) => self.hosted_picker_key(&key, window, cx),
+            Action::DevicesOverview => self.open_devices_overview(window, cx),
             Action::EditNote {
                 endpoint,
                 workspace,
@@ -143,6 +176,9 @@ impl SheprdWindow {
                 if let Some(endpoint) = self.hosted_endpoint(endpoint) {
                     self.navigate_endpoint(&endpoint, NavigationTarget::Workspace(&workspace), cx);
                 }
+                // As a click on the window's own row does: typing goes to the
+                // terminals shown, not to the layout's row that was clicked.
+                window.focus(&self.focus, cx);
             }
             Action::Menu(menu) => self.hosted_menu(menu, pointer, window, cx),
             Action::MoveWorkspace {
@@ -177,6 +213,8 @@ impl SheprdWindow {
                 cx.notify();
             }
             Action::ToggleDevice(id) => self.toggle_device(&id, cx),
+            Action::Usage(id) => self.open_hosted_usage(&id, pointer.x, window, cx),
+            Action::UsageRefresh => self.refresh_hosted_usage(cx),
             Action::ToggleRepository { endpoint, key } => {
                 if let Some(endpoint) = self.hosted_endpoint(endpoint) {
                     self.toggle_repository(&endpoint, &key, cx);
@@ -210,6 +248,7 @@ impl SheprdWindow {
             Some(target) => self.open_listed_agent(endpoint, &target, window, cx),
             None => {
                 self.navigate_endpoint(endpoint, NavigationTarget::Pane(id), cx);
+                window.focus(&self.focus, cx);
             }
         }
     }
@@ -255,7 +294,9 @@ impl SheprdWindow {
     }
 
     /// Resizes the sidebar from a host's drag of its edge, as dragging the
-    /// window's own edge does, and keeps the width when the drag ends.
+    /// window's own edge does, and keeps the width when the drag ends. From
+    /// the rail, or with the sidebar hidden, dragging it out past the least
+    /// width opens the sidebar there.
     fn drag_sidebar_edge(&mut self, phase: Drag, dx: f32, window: &Window, cx: &mut Context<Self>) {
         let viewport = f32::from(window.viewport_size().width);
         match phase {
@@ -267,18 +308,22 @@ impl SheprdWindow {
             }
             Drag::Down { reset: false } => {
                 let width = self.sidebar_mode().width(self.sidebar_width, viewport);
-                WIDTH_AT_PRESS.set(width);
+                WIDTH_AT_PRESS.set(Some(width.unwrap_or(0.)));
                 self.sidebar_modified = true;
             }
             Drag::Move => {
                 let Some(start) = WIDTH_AT_PRESS.get() else {
                     return;
                 };
-                let toward_end = crate::direction::toward_end(dx);
-                self.sidebar_width = Some(super::super::metrics::sidebar_width(
-                    Some(start + toward_end),
-                    viewport,
-                ));
+                let wanted = start + crate::direction::toward_end(dx);
+                if !self.sidebar_visible {
+                    if wanted < super::super::metrics::SIDEBAR_LEAST {
+                        return;
+                    }
+                    self.toggle_sidebar();
+                }
+                self.sidebar_width =
+                    Some(super::super::metrics::sidebar_width(Some(wanted), viewport));
             }
             Drag::Up => {
                 if WIDTH_AT_PRESS.take().is_some() {

@@ -11,6 +11,7 @@ fn an_explicit_unknown_core_pane_never_falls_back_to_herdr_ones_workspace(
                 call(ChatOp::New {
                     agent: Some("codex".into()),
                     pane: Some(pane.into()),
+                    prompt: None,
                 }),
                 cx,
             );

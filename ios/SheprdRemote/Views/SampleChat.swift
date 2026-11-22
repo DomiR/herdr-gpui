@@ -1,4 +1,5 @@
 #if DEBUG
+import Foundation
 import SheprdRemoteCore
 
 // A made-up chat for the simulator loop's `-sampleChat YES`, so screenshots
@@ -14,6 +15,9 @@ extension Transcript {
     static var sample: Transcript {
         var transcript = Transcript(agent: "Claude Code")
         transcript.status = .idle
+        // Other installed agents, so its session sheet offers a switch.
+        transcript.harnesses = try? JSONDecoder().decode(
+            Harnesses.self, from: Data(#"{"available":["claude","codex","gemini"],"current":"claude"}"#.utf8))
         transcript.entries = [
             Entry(id: 1, kind: .user(text: "Add a dark mode toggle to the settings screen.", files: 0)),
             Entry(id: 2, kind: .agent(text: "Done: Settings has an Appearance row with System, Light, and Dark.")),

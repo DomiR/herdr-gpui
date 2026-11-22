@@ -62,8 +62,10 @@ impl Reader {
                     .and_then(|token| pull_request::fetch(input, &token, || false))
             },
             |target, job| {
-                sheprd_github::cli::token()
-                    .and_then(|token| check_log::job_log(&token, &target.owner, &target.repo, job))
+                sheprd_github::cli::token().and_then(|token| {
+                    let token = sheprd_github::ServerToken::github(std::sync::Arc::new(token));
+                    check_log::job_log(&token, &target.owner, &target.repo, job)
+                })
             },
         )
     }
@@ -369,6 +371,7 @@ pub(crate) async fn badges(state: crate::web::Shared) {
                 // worker assembles badges; retain the latest same-boot hints.
                 if current.boot_id == snapshot.boot_id {
                     snapshot.unopened.clone_from(&current.unopened);
+                    snapshot.uncommitted.clone_from(&current.uncommitted);
                 }
                 if current.as_ref() == &snapshot {
                     return false;

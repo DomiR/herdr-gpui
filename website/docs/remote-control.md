@@ -119,6 +119,7 @@ On macOS, pairing over Bluetooth needs Sheprd allowed in System Settings > Priva
 | `sheprd remote` | Whether remote control is on and running: port, version, addresses, certificate authority fingerprint, and paired devices |
 | `sheprd remote devices` | Paired devices with their IDs, last seen, notifications, and the other machines each was paired with |
 | `sheprd remote pair [--address HTTPS_ORIGIN]` | Open the pairing dialog; you approve the phone there |
+| `sheprd remote add-link` | Open **Add Device > Nearby Sheprd** with another computer's pairing link, read from standard input (see [SSH hosts](ssh-hosts.md#another-computer-running-sheprd-on-another-network)); you choose **Pair** there |
 | `sheprd remote restart` | Restart the daemon from the binary beside the app |
 | `sheprd remote revoke DEVICE` | Ask in the window to revoke a device; you confirm there |
 

@@ -5,7 +5,6 @@ use std::path::PathBuf;
 #[test]
 fn every_enroll_variant_has_a_message() {
     assert_localized(&[
-        Error::ApnsSize,
         Error::Config {
             path: PathBuf::from("/home/ada/.config/herdr-remote/config.toml"),
             source: "expected `=`".into(),

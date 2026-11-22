@@ -73,6 +73,11 @@ pub(crate) struct Options {
     pub agent: AgentChoice,
     /// Listen for Sheprd and other clients.
     pub attach: bool,
+    /// A file holding the first prompt, another agent's brief, which this
+    /// program reads, removes, and sends once the session opens.
+    pub brief_file: Option<PathBuf>,
+    /// The agent that wrote the brief.
+    pub brief_from: Option<Agent>,
     /// Let a client switch to another installed agent until the first
     /// prompt reaches this one.
     pub choose: bool,
@@ -198,6 +203,11 @@ Options:
   --resume ID    Continue session ID, and stop rather than start a new one
                  when the agent cannot (Sheprd restores chats with it)
   --name NAME    The name to show for a custom command
+  --brief-file FILE
+                 Send FILE's text as the first prompt, marked as another
+                 agent's brief, then remove FILE (sheprd chat new --prompt)
+  --brief-from AGENT
+                 The agent that wrote the brief
   --headless     Draw nothing; clients such as Sheprd drive the session
   --no-attach    Do not listen for Sheprd
   -h, --help     Show this help
@@ -272,6 +282,8 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Parsed, 
             args: Vec::new(),
         },
         attach: true,
+        brief_file: None,
+        brief_from: None,
         choose: false,
         cwd: None,
         headless: false,
@@ -297,6 +309,17 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Parsed, 
                 options.require_load = true;
             }
             Some("--name") => options.name = Some(utf8(args.next(), "--name")?),
+            Some("--brief-file") => {
+                options.brief_file = Some(
+                    args.next()
+                        .ok_or(Error::MissingValue("--brief-file"))?
+                        .into(),
+                );
+            }
+            Some("--brief-from") => {
+                let name = utf8(args.next(), "--brief-from")?;
+                options.brief_from = Some(name.parse().map_err(|_| Error::UnknownAgent(name))?);
+            }
             Some("--") => {
                 let rest: Vec<OsString> = args.by_ref().collect();
                 options.agent = match agent {

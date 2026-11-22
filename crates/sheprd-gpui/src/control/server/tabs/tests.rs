@@ -10,6 +10,9 @@ use crate::{
 use gpui::{Entity, VisualTestContext};
 use std::{path::Path, sync::Arc};
 
+/// Page reads that act in the background unless asked to focus.
+#[cfg(any(target_os = "macos", windows))]
+mod background;
 mod machine;
 mod px0;
 mod review;

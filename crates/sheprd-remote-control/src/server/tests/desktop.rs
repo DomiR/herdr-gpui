@@ -14,11 +14,32 @@ fn desktop_pair_needs_a_name() {
         Invocation::DesktopPair {
             state_dir: Some(PathBuf::from("/s")),
             name: "Laptop".to_owned(),
+            link: false,
         }
     );
     assert!(matches!(
         parse(args(&["desktop-pair"])),
         Err(ParseError::Missing("--name"))
+    ));
+}
+
+#[test]
+fn desktop_pair_takes_a_link_from_stdin_when_asked() {
+    assert_eq!(
+        parse(args(&["desktop-pair", "--name", "Laptop", "--link"])).unwrap(),
+        Invocation::DesktopPair {
+            state_dir: None,
+            name: "Laptop".to_owned(),
+            link: true,
+        }
+    );
+    assert!(matches!(
+        parse(args(&[
+            "relay-connect",
+            "--link",
+            "r-0123456789abcdef.sheprd.invalid"
+        ])),
+        Err(ParseError::Unknown(_))
     ));
 }
 

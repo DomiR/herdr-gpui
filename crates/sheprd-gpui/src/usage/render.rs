@@ -286,7 +286,7 @@ pub(super) fn bar_windows(windows: &[Limit]) -> impl Iterator<Item = &Limit> {
     tightest.into_iter().map(|index| &windows[index])
 }
 
-fn color(severity: Severity, theme: &crate::config::Theme, normal: u32) -> u32 {
+pub(super) fn color(severity: Severity, theme: &crate::config::Theme, normal: u32) -> u32 {
     match severity {
         Severity::Normal => normal,
         Severity::Warning => theme.ink(theme.palette[3]),

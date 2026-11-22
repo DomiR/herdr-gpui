@@ -9,7 +9,8 @@
 //! keyed by `HKDF-SHA256(salt: ephemeral || device, ikm: ECDH, info)` with
 //! `info` as the associated data. The info names what is sealed: [`INFO`]
 //! for alerts, [`ADDRESSES_INFO`] for the addresses presence hands a phone,
-//! [`HANDLE_INFO`] for relay handles, so one cannot be passed off as another. CryptoKit's
+//! [`HANDLE_INFO`] for relay handles, [`ACTIVITY_INFO`] for Live Activity
+//! content sent through the relay, so one cannot be passed off as another. CryptoKit's
 //! `hkdfDerivedSymmetricKey(using:salt:sharedInfo:outputByteCount:)` derives
 //! the same key, which the shared fixture checks.
 
@@ -29,6 +30,8 @@ pub const INFO: &[u8] = b"herdr-remote-notify-v1";
 pub const ADDRESSES_INFO: &[u8] = b"herdr-remote-addresses-v1";
 /// Names a push relay handle.
 pub const HANDLE_INFO: &[u8] = b"sheprd-relay-handle-v1";
+/// Names the content of a Live Activity sent through the push relay.
+pub const ACTIVITY_INFO: &[u8] = b"sheprd-live-activity-v1";
 const POINT_LEN: usize = 65;
 const NONCE_LEN: usize = 12;
 

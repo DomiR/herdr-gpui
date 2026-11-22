@@ -262,8 +262,11 @@ class MakeSecretsTest(unittest.TestCase):
                     {"team_id": "ABCDE12345", "key_id": "XYZ9876543",
                      "topic": "so.pen.herdr.remote", "sandbox": True},
                 )
-            with open(os.path.join(out, "credential-secret"), encoding="utf-8") as file:
-                self.assertRegex(file.read().strip(), r"^[0-9a-f]{64}$")
+            for name in ("credential-secret", "dashboard-token"):
+                mode = stat.S_IMODE(os.stat(os.path.join(out, name)).st_mode)
+                self.assertEqual(mode & 0o077, 0, name)
+                with open(os.path.join(out, name), encoding="utf-8") as file:
+                    self.assertRegex(file.read().strip(), r"^[0-9a-f]{64}$", name)
             with open(os.path.join(out, "relay-key.pem"), encoding="utf-8") as file:
                 self.assertIn("BEGIN PRIVATE KEY", file.read())
 

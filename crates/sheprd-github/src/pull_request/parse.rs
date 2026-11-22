@@ -7,7 +7,7 @@
 //! says the repository has, not the one the remote asked with.
 
 use super::{MergeMethod, PullRequest, Result, State, clean, fetch::OUTPUT_LIMIT};
-use crate::Error;
+use crate::{Error, Server};
 
 /// The repository's name now, or the one asked with when GitHub gave none
 /// that can be trusted, which then holds the reply to that name.
@@ -44,6 +44,7 @@ pub(super) fn moved_head(
 
 pub(super) fn parse_graphql(
     response: serde_json::Value,
+    server: &Server,
     owner: &str,
     repo: &str,
     branch: &str,
@@ -80,6 +81,7 @@ pub(super) fn parse_graphql(
     }
     let mut result = parse_with_owner(
         &serde_json::to_string(&nodes).map_err(Error::json)?,
+        server,
         owner,
         repo,
         branch,
@@ -104,6 +106,7 @@ pub(super) fn parse_graphql(
 /// the same head identity checks as one found through a configured upstream.
 pub(super) fn parse_numbered(
     mut response: serde_json::Value,
+    server: &Server,
     owner: &str,
     repo: &str,
     number: u64,
@@ -116,13 +119,14 @@ pub(super) fn parse_numbered(
         return Ok(None);
     }
     response["data"]["repository"]["pullRequest"] = pr;
-    parse_by_number(response, owner, repo, number)
+    parse_by_number(response, server, owner, repo, number)
 }
 
 /// Any pull request of `owner/repo` by number, held to the same identity
 /// checks against its own head repository and branch.
 pub(super) fn parse_by_number(
     mut response: serde_json::Value,
+    server: &Server,
     owner: &str,
     repo: &str,
     number: u64,
@@ -148,15 +152,22 @@ pub(super) fn parse_by_number(
         branch: branch.to_owned(),
     };
     response["data"]["repository"]["pullRequests"] = serde_json::json!({"nodes": [pr]});
-    parse_graphql(response, owner, repo, &head.branch, Some(&head))
+    parse_graphql(response, server, owner, repo, &head.branch, Some(&head))
 }
 
 #[cfg(any(test, feature = "test-support"))]
 pub(super) fn parse(text: &str, owner: &str, repo: &str, branch: &str) -> Result {
-    parse_with_owner(text, owner, repo, branch, owner)
+    parse_with_owner(text, &Server::GitHub, owner, repo, branch, owner)
 }
 
-fn parse_with_owner(text: &str, owner: &str, repo: &str, branch: &str, head_owner: &str) -> Result {
+fn parse_with_owner(
+    text: &str,
+    server: &Server,
+    owner: &str,
+    repo: &str,
+    branch: &str,
+    head_owner: &str,
+) -> Result {
     if text.len() > OUTPUT_LIMIT {
         return Err(super::Error::Size.into());
     }
@@ -176,7 +187,7 @@ fn parse_with_owner(text: &str, owner: &str, repo: &str, branch: &str, head_owne
     let Some(mut pr) = current(values, |pr| pr.state == State::Open)? else {
         return Ok(None);
     };
-    let expected = format!("https://github.com/{owner}/{repo}/pull/{}", pr.number);
+    let expected = format!("{}/{owner}/{repo}/pull/{}", server.web_url(), pr.number);
     if pr.number == 0
         || pr.state == State::Unknown
         || !pr.url.eq_ignore_ascii_case(&expected)

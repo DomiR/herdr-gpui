@@ -73,6 +73,7 @@ fn bodies_are_prepared_once_per_revision() {
             kind: EntryKind::User {
                 text: "hi".into(),
                 files: 0,
+                note: None,
             },
         },
     ];

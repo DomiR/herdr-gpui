@@ -11,6 +11,7 @@ pub(crate) mod chat_title;
 mod convert;
 mod core;
 mod daemon;
+mod launcher;
 mod layout;
 mod new_workspace;
 mod observed;
@@ -23,7 +24,10 @@ pub(crate) use api::ApiMethod;
 pub(crate) use attach::TermHold;
 pub(crate) use chat::{Chat, Event, Summary, View};
 pub(crate) use convert::Error as ConvertError;
+#[cfg(test)]
+pub(crate) use core::project_spaces;
 pub(crate) use core::{Keeper, TabRef, arrangeable};
+pub(crate) use launcher::Launcher;
 #[cfg(test)]
 pub(crate) use layout::TerminalAgent;
 pub(crate) use layout::{Chat as ChatRow, Job, Layout, Terminal, TerminalPane, Workspace};
@@ -102,6 +106,8 @@ pub(crate) struct Hub {
     _daemon: daemon::Daemon,
     all: broadcast::Sender<(String, Event)>,
     api: api::Api,
+    /// Whether the chat program lets chats switch agents, as last asked.
+    asked: launcher::Asked,
     /// Where chat sockets live; `None` resolves from the environment.
     chat_dir: Option<PathBuf>,
     chats: Mutex<HashMap<String, (EndpointId, Arc<Chat>)>>,
@@ -172,6 +178,7 @@ impl Hub {
             _daemon: daemon,
             all,
             api,
+            asked: launcher::Asked::default(),
             chat_dir,
             chats: Mutex::new(HashMap::new()),
             core: Some(core),
@@ -263,6 +270,7 @@ impl Hub {
             api: api::Api::new(Some(
                 client_socket.unwrap_or_else(|| PathBuf::from("/nonexistent/herdr-client.sock")),
             )),
+            asked: launcher::Asked::default(),
             chat_dir,
             chats: Mutex::new(HashMap::new()),
             core: None,
@@ -294,6 +302,11 @@ impl Hub {
 
     pub(crate) fn watch_layout(&self) -> watch::Receiver<Arc<Layout>> {
         self.layout.clone()
+    }
+
+    /// The primary Herdr 1 session's own layout, whose boot favorites follow.
+    pub(crate) fn watch_primary(&self) -> watch::Receiver<Arc<Layout>> {
+        self.primary.clone()
     }
 
     /// Every step of every chat, tagged with its pane.
@@ -328,8 +341,7 @@ impl Hub {
         if sessions::in_wsl(workspace) {
             return Err(Error::WslChat);
         }
-        let program = self.program().ok_or(Error::ProgramMissing)?;
-        let program = program.as_path();
+        let launcher = self.launcher().await?;
         let layout = self.layout();
         let folder = layout
             .workspace(workspace)
@@ -337,22 +349,23 @@ impl Hub {
             .cwd
             .clone();
         if let Some(core) = self.core_for_work().await? {
-            let (cwd, program) = (cwd.unwrap_or(&folder).to_owned(), program.to_owned());
+            let cwd = cwd.unwrap_or(&folder).to_owned();
             // Labelled for its workspace, so Sheprd puts it in a tab there.
             let workspace = workspace.to_owned();
             return on_core(move || {
-                core.open_chat(agent, &program, &cwd, Some(place(&workspace, &folder)))
+                core.open_chat(agent, &launcher, &cwd, Some(place(&workspace, &folder)))
             })
             .await;
         }
         let response = self
             .call(
                 ApiMethod::TabCreate,
-                tab_params(workspace, cwd.unwrap_or(&folder), agent, program),
+                tab_params(workspace, cwd.unwrap_or(&folder), agent, &launcher.program),
             )
             .await?;
         let (_, pane) = created_tab(&response).ok_or(Error::Response)?;
-        self.run_line(&pane, &command_line(agent)).await?;
+        self.run_line(&pane, &command_line(&launcher, agent))
+            .await?;
         Ok(pane)
     }
 
@@ -724,21 +737,23 @@ async fn chat_listed_and_linked(
 /// The line typed into a new chat tab, the same as Sheprd types: the
 /// program comes from the tab's environment, so nothing typed depends on
 /// where it is installed.
-fn command_line(agent: Agent) -> String {
+fn command_line(launcher: &Launcher, agent: Agent) -> String {
+    let args = launcher.args(agent).join(" ");
     if cfg!(windows) {
-        format!("& $env:{PROGRAM_ENV} {agent}")
+        format!("& $env:{PROGRAM_ENV} {args}")
     } else {
-        format!(" sh -c 'exec \"${PROGRAM_ENV}\" {agent}'")
+        format!(" sh -c 'exec \"${PROGRAM_ENV}\" {args}'")
     }
 }
 
 /// The line for a pane made without the program in its environment.
-fn direct_command_line(program: &Path, agent: Agent) -> String {
-    let program = program.to_string_lossy();
+fn direct_command_line(launcher: &Launcher, agent: Agent) -> String {
+    let program = launcher.program.to_string_lossy();
+    let args = launcher.args(agent).join(" ");
     if cfg!(windows) {
-        format!("& '{}' {agent}", program.replace('\'', "''"))
+        format!("& '{}' {args}", program.replace('\'', "''"))
     } else {
-        format!(" {} {agent}", sheprd_client::shell_quote(&program))
+        format!(" {} {args}", sheprd_client::shell_quote(&program))
     }
 }
 

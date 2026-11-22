@@ -111,6 +111,7 @@ pub(crate) use server_keys::ActiveServerKeymap;
 pub(crate) struct SheprdWindow {
     // keep-sorted start
     pub(crate) _activation: Subscription,
+    pub(crate) _agent_favorites: Subscription,
     pub(crate) _appearance: Subscription,
     pub(crate) _browser_tabs: Subscription,
     pub(crate) _device_tags: Subscription,
@@ -130,6 +131,8 @@ pub(crate) struct SheprdWindow {
     pub(crate) active: bool,
     /// The activity bar's panel and filter.
     pub(crate) activity: sidebar::Activity,
+    /// Every device's favorite agents, as their daemons last answered.
+    pub(crate) agent_favorites: std::sync::Arc<crate::agent_favorites::Sets>,
     /// The coordinator group the agents panel is narrowed to, by name: a
     /// group outlives its coordinator's pane. None lists every group.
     pub(crate) agent_group: Option<String>,
@@ -160,6 +163,9 @@ pub(crate) struct SheprdWindow {
     /// Native views of the `herdr-acp` chats in this daemon's panes.
     /// The rail beside an agent chat, shared by every chat in the window.
     pub(crate) chat_rail_width: crate::panel_resize::PanelWidth,
+    /// Where the chats on screen laid out their entries, for a host's
+    /// ruler of their turns.
+    pub(crate) chat_turns: crate::chat::turns::Spots,
     pub(crate) chats: crate::chat::Chats,
     /// Snapshots of checkouts taken at agent turns, and the dialog listing them.
     pub(crate) checkpoints: crate::checkpoint::Checkpoints,
@@ -193,6 +199,9 @@ pub(crate) struct SheprdWindow {
     pub(crate) daemon_text: crate::release_notes::DaemonText,
     /// Notes waiting for their agents to be ready for them.
     pub(crate) deliveries: crate::agent_notes::Deliveries,
+    /// Whether the details pane a hosting layout draws beside the main view
+    /// is open; its toggle ends the title bar while hosted.
+    pub(crate) details_visible: bool,
     /// A press on a device's header that may lift it for reordering.
     pub(crate) device_drag: Option<sidebar::DeviceDrag>,
     /// The devices the sidebar lists.
@@ -450,6 +459,9 @@ pub(crate) struct SheprdWindow {
     pub(crate) theme_light: bool,
     /// Last title pushed to the OS, so the window is renamed only when it changes.
     pub(crate) title: String,
+    /// The width of the title bar's end (`titlebar_end`) as a host's
+    /// `titlebar` region last drew it, which the rightmost strip leaves free.
+    pub(crate) titlebar_width: f32,
     /// Toasts sliding in and out of their corners.
     pub(crate) toast_motion: toasts::motion::ToastMotion,
     pub(crate) toasts_hidden: bool,

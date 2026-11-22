@@ -18,6 +18,7 @@ fn an_approval_says_so_only_when_github_is_not_shared() {
         code: "428913".into(),
         hosts: Vec::new(),
         share_github,
+        fleet: None,
     };
     assert_eq!(
         serde_json::to_value(approve(false)).unwrap(),

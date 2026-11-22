@@ -182,3 +182,41 @@ fn a_workspace_kept_for_herdr_2_gets_its_badge_and_answers_under_the_daemons_boo
         );
     });
 }
+
+#[gpui::test]
+fn the_phone_hears_of_uncommitted_changes_until_they_are_committed(cx: &mut TestAppContext) {
+    let (view, cx) = cx.add_window_view(crate::sidebar::layout_tests::fixture_window);
+    let mut status = super::super::tests::status(0);
+    status.boot_id = "layout-test".into();
+    cx.update(|_, cx| {
+        cx.set_global(Supervisor {
+            health: Health::Running(status),
+            config: RemoteConfig {
+                enabled: true,
+                ..Default::default()
+            },
+            ..Supervisor::default()
+        })
+    });
+    view.update(cx, |view, cx| {
+        view.live.status = crate::state::ConnectionStatus::Connected;
+        let workspace = view.live.snapshot.as_ref().unwrap().workspaces[4].clone();
+        let input = crate::pull_request::workspace_input(&workspace, &Origin::Local).unwrap();
+        // This computer's own daemon, and no GitHub sign-in: the pencil
+        // needs none.
+        view.live.local_daemon_peer = true;
+        view.git.seed_probe(input.clone(), true, Instant::now());
+        view.publish_remote_pull_requests(cx);
+        assert!(!view.menu.github.connected());
+        let sent = cx.global::<Supervisor>().pull_requests.as_ref().unwrap();
+        let mark = sent.uncommitted.first().unwrap();
+        assert_eq!(mark.workspace_id, workspace.workspace_id);
+        assert_eq!(mark.cwd, workspace.new_workspace_cwd);
+
+        view.git.seed_probe(input, false, Instant::now());
+        cx.global_mut::<Supervisor>().pull_requests_checked = None;
+        view.publish_remote_pull_requests(cx);
+        let sent = cx.global::<Supervisor>().pull_requests.as_ref().unwrap();
+        assert!(sent.uncommitted.is_empty());
+    });
+}

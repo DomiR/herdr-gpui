@@ -33,10 +33,16 @@ impl Urgency {
 pub(crate) struct Topic(String);
 
 impl Topic {
-    /// A topic derived from a notification tag, so one chat's pushes replace
-    /// each other while the phone is offline, without the tag's text.
-    pub(crate) fn from_tag(tag: &str) -> Self {
-        let digest = Sha256::digest(tag.as_bytes());
+    /// A topic derived from a notification tag on `computer` (its CA
+    /// fingerprint), so one chat's pushes replace each other while the phone
+    /// is offline, without the tag's text, and the same pane on another
+    /// computer never replaces them.
+    pub(crate) fn from_tag(computer: &str, tag: &str) -> Self {
+        let mut hash = Sha256::new();
+        hash.update(computer.as_bytes());
+        hash.update([0]);
+        hash.update(tag.as_bytes());
+        let digest = hash.finalize();
         let mut text = vapid::B64.encode(digest);
         text.truncate(MAX_TOPIC);
         Self(text)
@@ -58,15 +64,18 @@ pub(crate) struct Delivery {
 
 impl Delivery {
     /// A question waits a day for the phone; a finished turn or an error is
-    /// stale after an hour. A clear is worth delivering only soon.
-    pub(crate) fn for_notification(notification: &Notification) -> Self {
+    /// stale after an hour. A clear is worth delivering only soon. The
+    /// topic is the notification's on `computer`.
+    pub(crate) fn for_notification(notification: &Notification, computer: &str) -> Self {
         let ttl_s = match (notification.clear, notification.kind) {
             (true, _) => 60 * 60,
             (false, Kind::Question | Kind::TerminalAsking) => 24 * 60 * 60,
             (false, Kind::Error | Kind::TerminalDone | Kind::TurnEnded) => 60 * 60,
+            // A test the user waits for on the phone: late is a failure.
+            (false, Kind::Test) => 60,
         };
         Self {
-            topic: Some(Topic::from_tag(&notification.tag)),
+            topic: Some(Topic::from_tag(computer, &notification.tag)),
             ttl_s,
             urgency: notification.urgency,
         }

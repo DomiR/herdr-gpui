@@ -14,6 +14,7 @@ fn desktop_daemon(_: &Path, request: &Request) -> Result<Response, control::Erro
             code: "428913".into(),
             app: None,
             ssh: true,
+            fleet: None,
         }),
         Request::Approve { allow: true, .. } => Response::Pairing(PairingState::Approved {
             device: DeviceId("d1".into()),

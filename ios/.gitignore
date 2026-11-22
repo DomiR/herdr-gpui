@@ -13,8 +13,12 @@ SheprdRemoteWatch/Info.plist
 # Xcode and SwiftPM build output.
 build/
 build-device/
+build-pkg/
 DerivedData/
 SheprdRemoteCore/.build/
 SheprdRemoteCore/.swiftpm/
 *.xcuserstate
 xcuserdata/
+
+# The fleet log library tools/build-fleet-ffi.sh builds from Rust.
+SheprdRemoteCore/Frameworks/

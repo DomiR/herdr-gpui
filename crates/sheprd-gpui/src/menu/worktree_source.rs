@@ -423,7 +423,7 @@ impl SheprdWindow {
         // issues without one, and its tab can only open once that is known.
         self.list_checkouts(cx);
         self.list_branches(cx);
-        if self.pr_profile().is_none() {
+        if !self.pr_signed_in() {
             self.list_repo_items();
         }
     }
@@ -445,8 +445,8 @@ impl SheprdWindow {
         let gitlab = self.worktree_on_gitlab();
         match tab.kind() {
             None => true,
-            Some(Kind::Issue) => gitlab || self.pr_profile().is_some(),
-            Some(Kind::PullRequest) => !gitlab && self.pr_profile().is_some(),
+            Some(Kind::Issue) => gitlab || self.pr_signed_in(),
+            Some(Kind::PullRequest) => !gitlab && self.pr_signed_in(),
         }
     }
 
@@ -498,7 +498,7 @@ impl SheprdWindow {
             if !source.checkouts.listed {
                 self.list_checkouts(cx);
             }
-            if self.pr_profile().is_some() || self.worktree_on_gitlab() {
+            if self.pr_signed_in() || self.worktree_on_gitlab() {
                 self.list_repo_items();
             }
         }

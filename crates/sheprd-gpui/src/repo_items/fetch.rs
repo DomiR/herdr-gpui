@@ -84,17 +84,21 @@ fn github(
     cancelled: impl Fn() -> bool,
     cooldown: &mut Option<Duration>,
 ) -> crate::Result<(Origin, Vec<Item>)> {
-    let origin = Origin::from(match &target.host {
+    let base = match &target.host {
         crate::pull_request::Origin::Local => {
             local_repository(&target.input, deadline, &cancelled)?
         }
         crate::pull_request::Origin::Ssh(host) => {
             remote_repository(host, &target.input, deadline, &cancelled)?
         }
-    });
+    };
     // The account that reads the listed repository's owner, which is the
     // upstream owner in a fork checkout.
-    let token = tokens.for_owner(&origin.owner).clone();
+    let token = tokens
+        .for_owner(&base.server, &base.owner)
+        .ok_or(sheprd_github::pull_request::Error::Origin)?
+        .clone();
+    let origin = Origin::read_on(base, token.server.clone());
     let timeout = deadline
         .checked_duration_since(Instant::now())
         .ok_or(sheprd_github::pull_request::Error::Timeout)?;

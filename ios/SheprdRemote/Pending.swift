@@ -127,6 +127,7 @@ extension Expected {
         case let .autoAccept(on): on ? "Turning on auto-accept" : "Turning off auto-accept"
         case .answer: "Answer"
         case .unqueue: "Removing a queued prompt"
+        case .agent: "Switching agent"
         }
     }
 }

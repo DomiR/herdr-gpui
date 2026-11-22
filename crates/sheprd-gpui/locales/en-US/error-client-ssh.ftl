@@ -10,6 +10,7 @@ error-client-ssh-output-limit = SSH startup output exceeds limit
 # $error is why, one of the error-client-ssh-failure messages.
 error-client-ssh-refused = SSH bridge closed: { $error }
 error-client-ssh-timeout = SSH discovery timed out
+error-client-ssh-unchecked = This host's SSH key is not checked
 error-client-ssh-unsupported = SSH port forwarding is not supported on this platform
 
 # Why SSH closed the bridge, shown after "SSH bridge closed:" or on its own.

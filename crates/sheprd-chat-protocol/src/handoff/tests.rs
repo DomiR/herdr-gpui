@@ -14,6 +14,7 @@ fn user(id: u64, text: &str) -> Entry {
         EntryKind::User {
             text: text.to_owned(),
             files: 0,
+            note: None,
         },
     )
 }

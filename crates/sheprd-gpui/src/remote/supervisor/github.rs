@@ -22,7 +22,7 @@ const RETRY: Duration = Duration::from_secs(5);
 const CHECK_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Checks a token with GitHub, answering the login it signs in. Blocking.
-pub(crate) type Check = fn(&SecretString) -> sheprd_github::Result<String>;
+pub(crate) type Check = fn(&sheprd_github::ServerToken) -> sheprd_github::Result<String>;
 
 /// Sheprd's main account as a window last saw it.
 #[derive(Clone)]
@@ -60,7 +60,7 @@ impl Default for Lending {
 }
 
 /// The login GitHub says `token` signs in, which proves it still works.
-fn check_with_github(token: &SecretString) -> sheprd_github::Result<String> {
+fn check_with_github(token: &sheprd_github::ServerToken) -> sheprd_github::Result<String> {
     #[derive(serde::Deserialize)]
     struct User {
         login: String,
@@ -210,7 +210,7 @@ pub(super) fn answers(
     let wanted = asks.iter().any(|ask| ask.host == GITHUB_COM);
     let lease = account
         .filter(|_| wanted)
-        .and_then(|account| match check(&account.token) {
+        .and_then(|account| match check(&sheprd_github::ServerToken::github(account.token.clone())) {
             // A token renewed to another account is not the one named.
             Ok(login) if login.eq_ignore_ascii_case(&account.login) => Some(Lease {
                 login: account.login.clone(),

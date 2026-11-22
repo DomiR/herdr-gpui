@@ -14,11 +14,16 @@
 // radio uses are compiled (and tested) without a caller.
 #![cfg_attr(not(any(target_os = "linux", windows)), allow(dead_code))]
 
+// keep-sorted start
 mod backend;
+mod bench;
+mod central;
 mod error;
 mod framing;
+mod ids;
 mod peripheral;
 mod protocol;
+// keep-sorted end
 
 pub use error::{Error, Result};
 
@@ -32,14 +37,19 @@ use std::{
 
 const USAGE: &str = "\
 Usage: sheprd-nearby [--no-bluetooth]
+       sheprd-nearby bench serve|run [OPTIONS]   (sheprd-nearby bench --help)
 
 Sheprd's Bluetooth helper for nearby pairing and presence with its phone
-app. Sheprd runs it and speaks newline-delimited JSON on stdio; it is
-not meant to be run by hand.
+app, and for finding another computer's Sheprd. Sheprd runs it and speaks
+newline-delimited JSON on stdio; it is not meant to be run by hand, except
+for `bench`, which measures Bluetooth between two computers.
 ";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().is_some_and(|arg| arg == "bench") {
+        return bench::main(&args[1..]);
+    }
     if args.iter().any(|arg| arg == "-V" || arg == "--version") {
         println!(
             "sheprd-nearby {}",
@@ -52,8 +62,8 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     let bluetooth = !args.iter().any(|arg| arg == "--no-bluetooth");
-    let out = Out;
-    let core: Shared = Arc::new(Mutex::new(Core::new(Core::random_seed())));
+    let out = Out::default();
+    let core: Shared = Arc::new(Mutex::new(Core::new(ids::random_seed())));
     let (commands, received) = mpsc::channel();
     // Sheprd's lines, read off the loop; the end of input means Sheprd
     // went away, and the loop ends with the channel.

@@ -40,7 +40,8 @@ pub mod windows;
 use windows as install;
 
 pub use release::{
-    HOST_TARGETS, RELEASES_PAGE, download_host_build, download_host_chat, release_page,
+    AGENT_TARGETS, HOST_TARGETS, RELEASES_PAGE, download_host_agent, download_host_build,
+    download_host_chat, release_page,
 };
 
 use std::{

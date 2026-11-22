@@ -16,10 +16,13 @@ files=(apns/config.json apns/AuthKey.p8 relay-key.pem credential-secret)
 for file in "${files[@]}"; do
   [ -f "$dir/$file" ] || { echo "no $dir/$file; make them with make-secrets.sh" >&2; exit 2; }
 done
-# The key before a rotation, so handles sealed to it still open.
-if [ -f "$dir/relay-key-previous.pem" ]; then
-  files+=(relay-key-previous.pem)
-fi
+# The key before a rotation, so handles sealed to it still open, and the
+# token that turns on /dashboard and /metrics. Both are optional.
+for optional in relay-key-previous.pem dashboard-token; do
+  if [ -f "$dir/$optional" ]; then
+    files+=("$optional")
+  fi
+done
 
 # start.sh unpacks them into a fresh directory under its lock, so a dropped
 # connection or a second install leaves the old secrets in place, and swaps

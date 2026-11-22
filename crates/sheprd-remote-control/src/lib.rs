@@ -16,6 +16,8 @@ pub mod core_target;
 pub mod desktop;
 mod error;
 #[cfg(feature = "server")]
+pub mod fleet;
+#[cfg(feature = "server")]
 mod hub;
 #[cfg(feature = "server")]
 mod load;

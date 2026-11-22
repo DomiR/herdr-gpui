@@ -7,7 +7,7 @@ import pathlib
 import re
 
 
-def base_names(version, legacy=False, host_chats=True):
+def base_names(version, legacy=False, host_chats=True, host_agents=True):
     if not re.fullmatch(r"[1-9][0-9]{7}\.[1-9][0-9]*", version):
         raise ValueError("Expected YYYYMMDD.COUNTER version")
     names = [f"Sheprd-{version}-universal-apple-darwin.dmg",
@@ -40,11 +40,21 @@ def base_names(version, legacy=False, host_chats=True):
     # (update-manifest.py pack-host-chats). No pre-rebrand release had it,
     # and releases published before it existed are verified without it
     # (--without-host-chats), as pre-rebrand ones are with --legacy-names.
-    return names + [host_chat_archive(version)] if host_chats else names
+    # sheprd-relay-agent's builds, which plain hosts run, came later the
+    # same way (pack-host-agents, --without-host-agents).
+    if host_chats:
+        names.append(host_chat_archive(version))
+    if host_agents:
+        names.append(host_agent_archive(version))
+    return names
 
 
 def host_chat_archive(version):
     return f"sheprd-acp-{version}-linux-musl.tar.gz"
+
+
+def host_agent_archive(version):
+    return f"sheprd-relay-agent-{version}.tar.gz"
 
 
 UPDATER_SIGNATURES = ("update-manifest.sig", "package-manifest.sig", "windows-manifest.sig",
@@ -76,8 +86,8 @@ def compact_checksums(version):
     return tuple(map(int, version.split("."))) >= (20261102, 2)
 
 
-def asset_names(version, legacy=False, host_chats=True):
-    bases = base_names(version, legacy, host_chats)
+def asset_names(version, legacy=False, host_chats=True, host_agents=True):
+    bases = base_names(version, legacy, host_chats, host_agents)
     suffixes = ("", ".sha256", ".sig", ".crt") if compact_checksums(version) else (
         "", ".sha256", ".sha512", ".sig", ".crt")
     names = [name + suffix for name in bases for suffix in suffixes]
@@ -123,7 +133,7 @@ def consolidate_checksums(directory, version, legacy=False):
         (directory / f"{name}.sha512").unlink()
 
 
-def verify_manifest(directory, version, legacy=False, optional=(), host_chats=True):
+def verify_manifest(directory, version, legacy=False, optional=(), host_chats=True, host_agents=True):
     """The published checksums, which list exactly this release's assets;
     those in `optional` may be missing, for a release published before they
     were added."""
@@ -133,7 +143,7 @@ def verify_manifest(directory, version, legacy=False, optional=(), host_chats=Tr
         if not match or match[2] in entries:
             raise ValueError("Malformed or duplicate checksum entry")
         entries[match[2]] = match[1]
-    expected = set(asset_names(version, legacy, host_chats))
+    expected = set(asset_names(version, legacy, host_chats, host_agents))
     missing = {name for name in expected - set(entries)
                if not any(name.startswith(base) for base in optional)}
     if missing or not set(entries) <= expected:
@@ -148,13 +158,16 @@ def main():
     parser.add_argument("directory", type=pathlib.Path)
     parser.add_argument("--without-host-chats", action="store_true",
                         help="verify a release published before the host chat archive existed")
+    parser.add_argument("--without-host-agents", action="store_true",
+                        help="verify a release published before the sheprd-relay-agent archive existed")
     parser.add_argument("--legacy-names", action="store_true",
                         help="use the exact pre-rebrand asset set for historical verification")
     args = parser.parse_args()
     directory, version = args.directory, args.version
     host_chats = not args.without_host_chats
-    names = asset_names(version, args.legacy_names, host_chats)
-    bases = base_names(version, args.legacy_names, host_chats)
+    host_agents = not args.without_host_agents
+    names = asset_names(version, args.legacy_names, host_chats, host_agents)
+    bases = base_names(version, args.legacy_names, host_chats, host_agents)
     if args.mode == "base-names":
         print("\n".join(bases))
         return
@@ -166,9 +179,10 @@ def main():
         check_aliases(directory, version, args.legacy_names)
         return
     if args.mode == "dmg":
-        # Promotion may publish a release built before the host chat archive.
+        # Promotion may publish a release built before the host chat or
+        # agent archives.
         entries = verify_manifest(directory, version, args.legacy_names,
-                                  optional=(host_chat_archive(version),))
+                                  optional=(host_chat_archive(version), host_agent_archive(version)))
         name = bases[0]
         check_files(directory, [name, "SHA256SUMS"])
         actual = digest(directory / name, "sha256")
@@ -200,7 +214,7 @@ def main():
                 output.write(f"{digest(directory / name, 'sha256')}  {name}\n")
     else:
         for name, expected in verify_manifest(directory, version, args.legacy_names,
-                                              host_chats=host_chats).items():
+                                              host_chats=host_chats, host_agents=host_agents).items():
             if digest(directory / name, "sha256") != expected:
                 raise ValueError(f"Checksum mismatch: {name}")
 

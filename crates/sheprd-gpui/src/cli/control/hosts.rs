@@ -8,6 +8,7 @@ pub enum PrCommand {
     Checks,
     Comments,
     Open,
+    Create,
     Quota,
     /// Open the merge dialog, which the user confirms.
     Merge,
@@ -96,6 +97,7 @@ pub(super) fn pr(args: &mut Args) -> Result<PrCommand, CliError> {
         Some("checks") => PrCommand::Checks,
         Some("comments") => PrCommand::Comments,
         Some("open") => PrCommand::Open,
+        Some("create") => PrCommand::Create,
         Some("quota") => PrCommand::Quota,
         Some("merge") => PrCommand::Merge,
         Some("queue") => {

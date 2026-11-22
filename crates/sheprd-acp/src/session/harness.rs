@@ -39,6 +39,7 @@ impl<R: FnMut(Update)> Session<R> {
             .config
             .harness
             .zip(self.acp_session.as_ref().map(|id| id.0.to_string()));
+        self.keep_leaving();
         let resume = self
             .thread
             .switch(leaving, self.transcript.last_entry_id(), agent);
@@ -75,6 +76,7 @@ impl<R: FnMut(Update)> Session<R> {
             available,
             current: Some(agent),
         });
+        super::known::seed(&self.config.known, Some(agent), &mut transcript);
         self.transcript = transcript;
         self.projector = self.projector.restart();
 

@@ -51,6 +51,7 @@ fn response() -> serde_json::Value {
 /// What a checkout with only a GitHub `origin` resolves to.
 fn origin_base(owner: &str, repo: &str) -> Base {
     Base {
+        server: crate::Server::GitHub,
         owner: owner.into(),
         repo: repo.into(),
         remote: Remote::Origin,

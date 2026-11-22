@@ -70,6 +70,21 @@
             else
               null;
           nearby = pkgs.callPackage ./macos/sheprd-nearby/package.nix { };
+          # The Moonframe checkout Cargo.lock pins; its hash is the one Cargo's
+          # vendoring checks too.
+          moonframeRev = lib.last (
+            lib.splitString "#"
+              (lib.findFirst (crate: crate.name == "moonframe") null
+                (lib.importTOML ./Cargo.lock).package
+              ).source
+          );
+          moonframeHash = "sha256-Pe7WMPgnEXCXldIHjls9e22H3r1arkEsVhSNCTNoQ5I=";
+          moonframeSrc = pkgs.fetchgit {
+            url = "https://github.com/moonframehq/moonframe";
+            rev = moonframeRev;
+            hash = moonframeHash;
+            fetchSubmodules = true;
+          };
         in
         rustPlatform.buildRustPackage {
           pname = "sheprd";
@@ -96,8 +111,22 @@
             lockFile = ./Cargo.lock;
             # All Moonframe crates share this pinned Git checkout, including
             # when the optional feature is off and Cargo only vendors it.
-            outputHashes."moonframe-0.3.1" = "sha256-DSroyTi58a5T15DKmZCs7v0vnYI6CtHxhaeMUw4xyYQ=";
+            outputHashes."moonframe-1.4.0" = moonframeHash;
+            # Sheprd's AccessKit fork, pinned in Cargo.toml's [patch.crates-io].
+            outputHashes."accesskit_macos-0.26.3" = "sha256-aBhgu63Zq/jiEEW/Tu0iiQr3srZfTjLMnAgohTMqUUk=";
           };
+          # Moonframe's crates compile in files from the root of its repository
+          # (the Luau types, its app, assets, skills, toolchain file) by paths
+          # that climb out of the crate. Vendored one crate per folder, those
+          # paths land in the vendor folder's parent, so put the files there.
+          preBuild = ''
+            moonframeRoot="$(dirname "''${cargoDepsCopy:-$NIX_BUILD_TOP/cargo-vendor-dir}")"
+            for entry in .claude app assets examples patterns rust-toolchain.toml types wit; do
+              if [ -e "${moonframeSrc}/$entry" ]; then
+                cp -R --no-preserve=mode "${moonframeSrc}/$entry" "$moonframeRoot/$entry"
+              fi
+            done
+          '';
           # The app starts chats with the sheprd-acp beside its executable,
           # runs the sheprd-remote-control beside it as a user service, runs
           # automations in the sheprd-automate there, and starts sheprd-nearby

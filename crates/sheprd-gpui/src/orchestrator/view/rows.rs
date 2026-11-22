@@ -278,7 +278,7 @@ impl<'a> Runs<'a> {
     }
 
     /// The newest run of each item key.
-    fn latest(&self) -> HashMap<&'a str, RunRow> {
+    pub(super) fn latest(&self) -> HashMap<&'a str, RunRow> {
         let mut latest: HashMap<&str, RunRow> = HashMap::new();
         for (index, run) in self.runs.iter().enumerate() {
             let Some(status) = self.status(index) else {

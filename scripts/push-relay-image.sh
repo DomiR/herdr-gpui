@@ -48,6 +48,7 @@ trap cleanup EXIT
   openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$secrets/apns/AuthKey.p8"
   openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$secrets/relay-key.pem"
   openssl rand -hex 32 > "$secrets/credential-secret"
+  openssl rand -hex 32 > "$secrets/dashboard-token"
   printf '{"team_id":"ABCDE12345","key_id":"XYZ9876543","topic":"so.pen.herdr.remote","sandbox":true}\n' \
     > "$secrets/apns/config.json"
 )
@@ -63,6 +64,19 @@ done
 if [[ $(curl -fsS "http://127.0.0.1:$port/healthz") != ok ]]; then
   docker logs "$container" >&2
   echo "$arch image did not answer /healthz" >&2
+  exit 1
+fi
+# /metrics answers only with the dashboard token.
+status=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/metrics")
+if [[ $status != 401 ]]; then
+  echo "$arch image answered /metrics without its token: HTTP $status" >&2
+  exit 1
+fi
+scrape=$(curl -fsS -H "Authorization: Bearer $(cat "$secrets/dashboard-token")" \
+  "http://127.0.0.1:$port/metrics") || scrape=""
+if [[ $scrape != *sheprd_push_relay_pushes_total* ]]; then
+  docker logs "$container" >&2
+  echo "$arch image did not serve /metrics with its token" >&2
   exit 1
 fi
 echo "$arch image starts and answers" >&2

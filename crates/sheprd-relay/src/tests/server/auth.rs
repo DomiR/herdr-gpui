@@ -8,7 +8,7 @@ const TOKEN: &str = "a dashboard token of enough length";
 fn a_short_token_is_refused() {
     assert!(matches!(
         Account::new(&"x".repeat(MIN_TOKEN - 1)),
-        Err(crate::Error::WeakSecret { .. })
+        Err(sheprd_dashboard::Error::WeakSecret { .. })
     ));
     assert!(Account::new(&"x".repeat(MIN_TOKEN)).is_ok());
 }

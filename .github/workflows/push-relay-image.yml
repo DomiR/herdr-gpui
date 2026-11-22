@@ -16,6 +16,7 @@ on:
     branches: [main]
     paths:
       - 'crates/sheprd-apns/**'
+      - 'crates/sheprd-dashboard/**'
       - 'crates/sheprd-push-relay/**'
       - 'Cargo.lock'
       - 'Cargo.toml'
@@ -29,6 +30,7 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'crates/sheprd-apns/**'
+      - 'crates/sheprd-dashboard/**'
       - 'crates/sheprd-push-relay/**'
       - 'Cargo.lock'
       - 'Cargo.toml'

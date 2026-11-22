@@ -15,6 +15,7 @@ fn profile(token: Arc<SecretString>) -> Result<Profile> {
         return Err(Error::Authentication);
     }
     Ok(Profile {
+        server: crate::Server::GitHub,
         login: "fixture".into(),
         avatar_url: String::new(),
         token,

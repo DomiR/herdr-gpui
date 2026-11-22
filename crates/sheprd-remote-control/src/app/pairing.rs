@@ -7,8 +7,14 @@
 //! dialog asks for another; once a phone claims it, the dialog shows the
 //! phone's name and matching code and waits for Allow or Deny.
 
+mod link;
+
+pub use link::{Link, LinkText};
+
 use super::qr::Qr;
-use crate::control::{self, ErrorCode, Offer, PairingId, PairingState, Request, Response};
+use crate::control::{
+    self, DeviceId, ErrorCode, Offer, PairingId, PairingState, Request, Response,
+};
 use std::{
     sync::Arc,
     time::{Duration, Instant},
@@ -40,11 +46,16 @@ pub enum Phase {
         /// `PairingState::Claimed::ssh`: another computer's Sheprd asks to
         /// open terminals here over SSH.
         ssh: bool,
+        /// `PairingState::Claimed::fleet`: that computer asks to join this
+        /// computer's fleet, or invites this computer into its own.
+        fleet: Option<control::fleet::bluetooth::Asked>,
         /// The answer given, once sent: `Some(true)` waits for the daemon
         /// to report the device approved.
         answer: Option<Answer>,
     },
     Approved {
+        /// The paired device, as the daemon names it.
+        device: DeviceId,
         device_name: String,
         /// Another computer, let in over SSH rather than to the chats.
         ssh: bool,
@@ -87,6 +98,11 @@ pub struct Pairing {
     hosts: Vec<control::hosts::HostId>,
     /// The dialog's "Share GitHub sign-in with this phone" switch.
     share_github: bool,
+    /// The fleet the dialog's fleet line agreed to, hex, when it showed
+    /// ticked: sent with an Allow, never with a Deny.
+    fleet: Option<String>,
+    /// The pairing link the dialog copies.
+    link: Link,
 }
 
 impl Pairing {
@@ -104,6 +120,8 @@ impl Pairing {
             preferred_address: None,
             hosts: Vec::new(),
             share_github: true,
+            fleet: None,
+            link: Link::None,
         }
     }
 
@@ -120,6 +138,12 @@ impl Pairing {
     /// The dialog's switch, read when the approval is sent.
     pub fn set_share_github(&mut self, share: bool) {
         self.share_github = share;
+    }
+
+    /// The fleet an approval agrees to, as the dialog's fleet line says:
+    /// `None` when it is unticked or not shown.
+    pub fn set_fleet(&mut self, fleet: Option<String>) {
+        self.fleet = fleet;
     }
 
     /// Select an address before the first offer arrives, for a CLI-opened dialog.
@@ -140,6 +164,23 @@ impl Pairing {
         *qr = Arc::new(next_qr);
         self.preferred_address = Some(address.to_owned());
         Ok(())
+    }
+
+    /// Where the pairing link stands.
+    pub fn link(&self) -> &Link {
+        &self.link
+    }
+
+    /// Asks the daemon for a pairing link for the QR showing.
+    pub fn ask_link(&mut self) {
+        if matches!(self.phase, Phase::Showing { .. }) {
+            self.link.ask();
+        }
+    }
+
+    /// The link the daemon made, once, for the dialog to copy.
+    pub fn take_link(&mut self, now: Instant) -> Option<String> {
+        self.link.take(now)
     }
 
     /// The pairing the daemon holds open for this dialog, if any.
@@ -184,7 +225,14 @@ impl Pairing {
                     Vec::new()
                 },
                 share_github: !*allow || self.share_github,
+                fleet: if *allow { self.fleet.clone() } else { None },
             },
+            Phase::Showing { offer, .. } if self.link == (Link::Asked { sent: false }) => {
+                self.link = Link::Asked { sent: true };
+                Request::PairLink {
+                    id: offer.id.clone(),
+                }
+            }
             Phase::Showing { offer, .. } | Phase::Claimed { offer, .. } if poll_due => {
                 Request::Pairing {
                     id: offer.id.clone(),
@@ -213,6 +261,11 @@ impl Pairing {
         self.in_flight = false;
         if matches!(ticket.request, Request::Pairing { .. }) {
             self.last_poll = Some(now);
+        }
+        // A link's refusal is the link's, never the pairing's.
+        if matches!(ticket.request, Request::PairLink { .. }) {
+            self.link.receive(result);
+            return;
         }
         let response = match result {
             Ok(response) => response,
@@ -311,6 +364,7 @@ impl Pairing {
                     code,
                     app,
                     ssh,
+                    fleet,
                 },
             ) => Phase::Claimed {
                 offer,
@@ -318,15 +372,21 @@ impl Pairing {
                 code,
                 app,
                 ssh,
+                fleet,
                 answer: None,
             },
             (
                 Phase::Claimed {
                     device_name, ssh, ..
                 },
-                PairingState::Approved { .. },
-            ) => Phase::Approved { device_name, ssh },
-            (Phase::Showing { .. }, PairingState::Approved { .. }) => Phase::Approved {
+                PairingState::Approved { device },
+            ) => Phase::Approved {
+                device,
+                device_name,
+                ssh,
+            },
+            (Phase::Showing { .. }, PairingState::Approved { device }) => Phase::Approved {
+                device,
                 device_name: "The device".into(),
                 ssh: false,
             },
@@ -389,6 +449,8 @@ impl Pairing {
         self.epoch += 1;
         self.in_flight = false;
         self.last_poll = None;
+        // A new pairing: the old one's link no longer claims anything.
+        self.link = Link::None;
     }
 
     /// How long the QR has left, and that as a share of its lifetime.

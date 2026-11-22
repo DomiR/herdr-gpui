@@ -64,9 +64,14 @@ final class GitHubDirect {
     }
 
     /// The title a listed pull request had, for a screen opened from it.
-    func title(for route: PullRequestRoute) -> String? {
+    func title(for route: PullRequestRoute) -> String? { listed(route)?.title }
+
+    /// The listed pull request `route` names. GitHub reads owners and
+    /// repositories in any case, so a chat's `Sheprd-Labs/Sheprd` finds the
+    /// list's `sheprd-labs/sheprd`.
+    func listed(_ route: PullRequestRoute) -> GitHubSearchPull? {
         let all = (lists.lists?.mine ?? []) + (lists.lists?.reviewRequested ?? [])
-        return all.first { PullRequestRoute($0) == route }?.title
+        return all.first { $0.names(route) }
     }
 
     /// Follows the phone's own sign-in, once, to drop what was read with

@@ -4,9 +4,12 @@
 //! which the daemon starts, updates, and ends with `liveactivity` pushes,
 //! and chat notifications sealed to the device.
 //!
-//! The credentials, the HTTP/2 sender, and the sealing live in `sheprd_apns`.
-//! The daemon's sender uses the user's own key (`STATE_DIR/apns/AuthKey.p8`)
-//! and `config.json`; without them the feature is off.
+//! The credentials, the HTTP/2 sender, the relay client, and the sealing
+//! live in `sheprd_apns`. [`Delivery`] picks how pushes leave: through the
+//! push relay when `[remote] push_relay` allows it
+//! (`docs/apns-relay-plan.md`), else not at all. The daemon has no APNs key
+//! of its own and never posts to Apple: the iOS app has one publisher, and
+//! only the push relay holds the key APNs takes for it.
 //!
 //! - [`decide`]: pure, from the same inputs as [`crate::push::decide`],
 //!   whether a chat change starts, updates, or ends the chat's activity.
@@ -15,38 +18,58 @@
 //! - [`Pacer`]: holds back step updates so a busy turn does not spend the
 //!   phone's Live Activity budget.
 //! - [`Registration`]: the push tokens one device sent, kept in the device
-//!   store's opaque slot as JSON.
+//!   store's opaque slot as JSON; each a relay handle or, from an older
+//!   app, a plain token, which is kept but never sent to ([`Recipient`]).
 //! - [`alert`]: chat notifications for the native app, sealed to the
-//!   device with [`seal`] so APNs relays only ciphertext.
+//!   device with [`seal`] so the relay and APNs carry only ciphertext.
+//! - `relayed`: Live Activity payloads sealed the same way, for the relay.
+//! - [`push_relay_revoke`]: an unpaired device's push relay handles,
+//!   revoked at the push relay.
+//! - [`Ledger`]: how the last push of each kind went, for Sheprd.
 //!
-//! A device only ever supplies hex tokens: the host is one of Apple's two,
-//! chosen by the user's config, so a paired device cannot make the daemon
+//! A device only ever supplies hex tokens, or relay handles with the name
+//! of an environment. The host is one of the two relays compiled in,
+//! `push.sheprd.org` and `push-sandbox.sheprd.org` for Xcode builds, chosen
+//! by the handle's environment, so a paired device cannot make the daemon
 //! post anywhere else.
 
 pub(crate) mod alert;
 mod decide;
+mod delivery;
+mod ledger;
 mod pacer;
 mod payload;
+pub(crate) mod push_relay_revoke;
+mod recipient;
 mod redact;
+mod relayed;
 mod terminal;
 mod tokens;
 
 pub(crate) use decide::{computer_id, decide};
+#[cfg(test)]
+pub(crate) use delivery::Relays;
+pub(crate) use delivery::{Delivery, Sent};
+pub(crate) use ledger::{Kind, Ledger};
 pub(crate) use pacer::Pacer;
 #[cfg(test)]
 pub(crate) use payload::ATTRIBUTES_TYPE;
 pub(crate) use payload::{Alert, Attributes, ContentState, Event, Live, Phase};
-pub(crate) use sheprd_apns::{DeviceToken, Outcome, Priority, Push, PushType, Sender, seal};
+pub(crate) use recipient::Handle;
+pub(crate) use recipient::Recipient;
+pub(crate) use sheprd_apns::{DeviceToken, Priority, Push, PushType, seal};
 pub(crate) use terminal::decide as decide_terminal;
 #[cfg(test)]
 pub(crate) use tokens::ActivityToken;
-pub(crate) use tokens::Registration;
+pub(crate) use tokens::{Registration, Update};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     // keep-sorted start
     #[error(transparent)]
     Apns(#[from] sheprd_apns::Error),
+    #[error("a push relay handle must be a key id and sealed base64url, at most 2048 bytes")]
+    Handle,
     #[error("could not encode the APNs payload")]
     Json(#[from] serde_json::Error),
     #[error("the notification key is not a P-256 point in base64url")]
@@ -61,25 +84,6 @@ pub enum Error {
 }
 
 pub(crate) type Result<T> = std::result::Result<T, Error>;
-
-/// A sender with a made-up key and team, which never connects until it
-/// sends, for other modules' tests.
-#[cfg(test)]
-#[allow(clippy::expect_used)]
-pub(crate) fn sender_for_tests() -> Sender {
-    let key = p256::ecdsa::SigningKey::from(
-        p256::SecretKey::from_slice(&[7; 32]).expect("a valid scalar"),
-    );
-    let config = sheprd_apns::Config::from_parts(
-        "ABCDE12345",
-        "XYZ9876543",
-        "so.pen.herdr.remote",
-        true,
-        key,
-    )
-    .expect("a valid config");
-    Sender::new(config).expect("a sender")
-}
 
 #[cfg(test)]
 mod tests;

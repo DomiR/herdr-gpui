@@ -39,6 +39,7 @@ pub(super) fn apply(transcript: &mut Transcript, listed: bool) {
             kind: EntryKind::User {
                 text: "Ship the rail section, merge the follow-up once CI passes, and answer the review on the docs PR.".into(), // i18n: data
                 files: 0,
+                note: None,
             },
         },
         shell(2, "push", "`git push -u origin feat/chat-rail-pull-requests`", "To github.com:sheprd-labs/sheprd.git\n * [new branch] feat/chat-rail-pull-requests"), // i18n: data

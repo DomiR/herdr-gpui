@@ -7,6 +7,7 @@ mod batch;
 mod browser;
 mod chat;
 mod exec;
+mod fleet;
 mod hosts;
 mod machine_agent;
 #[cfg(feature = "mcp")]
@@ -27,8 +28,9 @@ pub use crate::control::{
 pub use app::{AppCommand, UiCommand, WindowCommand};
 pub use batch::BatchCommand;
 pub use browser::{BrowserCommand, Placement, ScriptSource};
-pub use chat::{ChatCommand, ChatPrCommand};
+pub use chat::{BriefSource, ChatCommand, ChatPrCommand};
 pub use exec::ExecCommand;
+pub use fleet::FleetCommand;
 pub use hosts::{
     AutomationCommand, CloudCommand, HostCommand, PortsCommand, PrCommand, SecurityCommand,
 };
@@ -115,6 +117,8 @@ pub enum ControlCommand {
     Security(SecurityCommand),
     Automation(AutomationCommand),
     Remote(RemoteCommand),
+    /// The fleet: what the daemon keeps, and Settings > Fleet's questions.
+    Fleet(FleetCommand),
     /// The mods the window runs; `check` runs here.
     Mod(ModCommand),
     Search {
@@ -253,6 +257,10 @@ pub const FAMILIES: &[(&str, &str)] = &[
     (
         "remote",
         "Remote control from a phone: status, pairing, and paired devices",
+    ),
+    (
+        "fleet",
+        "Your computers and phones as one fleet: members, hosts, removing",
     ),
     (
         "mod",
@@ -425,6 +433,7 @@ fn command(family: &'static str, args: &mut Args) -> Result<ControlCommand, CliE
         "security" => ControlCommand::Security(hosts::security(args)?),
         "automation" => ControlCommand::Automation(hosts::automation(args)?),
         "remote" => ControlCommand::Remote(remote::remote(args)?),
+        "fleet" => ControlCommand::Fleet(fleet::fleet(args)?),
         "mod" => ControlCommand::Mod(mods::command(args)?),
         "search" => {
             let files = match args.verb().as_ref().and_then(|verb| verb.to_str()) {

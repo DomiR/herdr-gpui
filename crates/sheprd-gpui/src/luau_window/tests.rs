@@ -22,6 +22,11 @@ fn each_message_becomes_its_action() {
     assert_eq!(of("panel"), Some(Action::Panel("x".into())));
     assert_eq!(of("toggle_device"), Some(Action::ToggleDevice("x".into())));
     assert_eq!(of("select_device"), Some(Action::SelectDevice("x".into())));
+    assert_eq!(of("usage"), Some(Action::Usage("x".into())));
+    assert_eq!(
+        action(&Data::map([("usage_refresh", true.into())])),
+        Some(Action::UsageRefresh)
+    );
 }
 
 #[test]
@@ -141,9 +146,31 @@ fn a_dropped_row_and_a_dragged_edge_become_their_actions() {
 #[test]
 fn a_plain_launch_opens_the_luau_window_and_commands_stay_the_apps() {
     let args = |list: &[&str]| -> Vec<std::ffi::OsString> { list.iter().map(Into::into).collect() };
-    assert!(super::wanted(&args(&[])));
-    assert!(super::wanted(&args(&["--check"])));
-    assert!(!super::wanted(&args(&["browser", "open", "x.html"])));
-    assert!(!super::wanted(&args(&["--socket", "/tmp/c.sock"])));
-    assert!(!super::wanted(&args(&["--session", "work"])));
+    let kept = || true;
+    assert!(super::wanted(&args(&[]), kept));
+    assert!(super::wanted(&args(&["--check"]), kept));
+    assert!(!super::wanted(&args(&["--classic"]), kept));
+    assert!(!super::wanted(&args(&["browser", "open", "x.html"]), kept));
+    assert!(!super::wanted(&args(&["--socket", "/tmp/c.sock"]), kept));
+    assert!(!super::wanted(&args(&["--session", "work"]), kept));
 }
+
+#[test]
+fn the_setting_chooses_only_for_a_plain_launch() {
+    let args = |list: &[&str]| -> Vec<std::ffi::OsString> { list.iter().map(Into::into).collect() };
+    assert!(!super::wanted(&args(&[]), || false));
+    // `--check` loads the layout without a window, whichever one the user keeps.
+    assert!(super::wanted(&args(&["--check"]), || false));
+}
+
+#[test]
+fn option_at_launch_opens_the_other_window() {
+    assert!(super::choose(true, false));
+    assert!(!super::choose(true, true));
+    assert!(!super::choose(false, false));
+    assert!(super::choose(false, true));
+}
+
+mod devices;
+mod keys;
+mod turns;

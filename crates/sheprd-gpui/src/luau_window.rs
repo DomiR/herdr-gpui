@@ -1,7 +1,8 @@
-//! All of Sheprd in a window Moonframe lays out from `moonframe/app/main.luau`,
-//! so the layout around it can change without a rebuild: the `moonframe`
-//! feature, off by default. A build with it opens this window on a plain
-//! launch; see [`wanted`].
+//! All of Sheprd in a window Moonframe lays out from `moonframe/app/main.luau`:
+//! the `moonframe` feature, on by default. A build with it opens this window
+//! on a plain launch unless the user chose the classic one; see [`wanted`].
+//! Release builds run the layout compiled into the binary; `moonframe-studio`
+//! reads it from this checkout instead, so saving a file reloads it.
 
 use {
     crate::embed::{Action, Drag, Host, HostedState, Menu, Region, Sizes, Stamp, Startup},
@@ -23,6 +24,21 @@ use {
 
 mod theme;
 
+/// Moonframe's name for the app, which names its folders: `~/.config/sheprd`
+/// (the user's copies of the layout's files), `~/.cache/sheprd` (the layout
+/// written out to run) and `~/.local/state/sheprd` (where the window was, and
+/// each mod's state). The classic window keeps its own under `herdr`, so
+/// neither reads or writes the other's. Moonframe finds these through `HOME`
+/// or the XDG variables, which Windows does not set for apps it starts.
+const NAME: &str = "sheprd";
+/// The layout, compiled in: a release has no checkout to read it from.
+#[cfg(not(feature = "moonframe-studio"))]
+#[derive(moonframe::rust_embed::RustEmbed)]
+#[crate_path = "moonframe::rust_embed"]
+#[folder = "moonframe/app"]
+#[exclude = ".DS_Store"]
+#[exclude = "*/.DS_Store"]
+struct Layout;
 /// How often state is read anyway: the machine's load, the activity counts
 /// and Git's marks change without the window saying so.
 const REFRESH: Duration = Duration::from_secs(2);
@@ -196,11 +212,19 @@ fn action(message: &Data) -> Option<Action> {
             })
         })
         .or_else(|| sidebar_width(message))
+        .or_else(|| device_line(message))
+        .or_else(|| chat_turn(message))
+        .or_else(|| flag("device_picker").map(|_| Action::DevicePicker))
+        .or_else(|| flag("device_picker_dismiss").map(|_| Action::DevicePickerDismiss))
+        .or_else(|| text("device_key").map(Action::DevicePickerKey))
+        .or_else(|| flag("devices_overview").map(|_| Action::DevicesOverview))
         .or_else(|| text("toggle_device").map(Action::ToggleDevice))
         .or_else(|| text("select_device").map(Action::SelectDevice))
         .or_else(|| flag("fold_all").map(Action::FoldAll))
         .or_else(|| flag("toggle_agent_sort").map(|_| Action::ToggleAgentSort))
         .or_else(|| flag("open_build_pr").map(|_| Action::OpenBuildPullRequest))
+        .or_else(|| text("usage").map(Action::Usage))
+        .or_else(|| flag("usage_refresh").map(|_| Action::UsageRefresh))
 }
 
 /// A drag of the sidebar's edge: `pointer = { sidebar_width = true }` sends
@@ -219,6 +243,37 @@ fn sidebar_width(message: &Data) -> Option<Action> {
     Some(Action::SidebarWidth { phase, dx })
 }
 
+/// A tick of a chat's turns: `chat_turn` names its pane, and the timeline
+/// adds the prompt's entry id as `revision`.
+fn chat_turn(message: &Data) -> Option<Action> {
+    let pane = message.get("chat_turn").and_then(Data::as_str)?.to_owned();
+    let entry = message
+        .get("revision")
+        .and_then(Data::as_str)?
+        .parse()
+        .ok()?;
+    Some(Action::ChatTurn { pane, entry })
+}
+
+/// A device picker line's click or hover: `device_line` is its ordinal,
+/// `key` its identity, and `how` what was done to it.
+fn device_line(message: &Data) -> Option<Action> {
+    let ordinal = message.get("device_line").and_then(Data::as_f64)?;
+    if ordinal < 0.0 || ordinal.fract() != 0.0 {
+        return None;
+    }
+    let key = message.get("key").and_then(Data::as_str)?.to_owned();
+    let action = message
+        .get("how")
+        .and_then(Data::as_str)
+        .and_then(crate::menu::LineAction::named)?;
+    Some(Action::DeviceLine {
+        ordinal: ordinal as usize,
+        key,
+        action,
+    })
+}
+
 /// What is read before the event loop, and the host the first region makes.
 struct Shared {
     actions: Receiver<Action>,
@@ -230,14 +285,52 @@ struct Shared {
     woken: Receiver<()>,
 }
 
-/// Whether this launch opens the Luau window: a plain launch, or Moonframe's
-/// own `--check` of the layout. Anything else (a `sheprd` command for the
-/// running app, `--socket`, `--session`) is the app's, as without the feature.
-pub(crate) fn wanted(args: &[std::ffi::OsString]) -> bool {
+/// Whether this launch opens the Luau window: a plain launch while `chosen`
+/// says the user keeps it, or Moonframe's own `--check` of the layout.
+/// Anything else (a `sheprd` command for the running app, `--classic`,
+/// `--socket`, `--session`) is the app's, as without the feature.
+pub(crate) fn wanted(args: &[std::ffi::OsString], chosen: impl FnOnce() -> bool) -> bool {
     match args {
-        [] => true,
+        [] => chosen(),
         [first, ..] => first == "--check",
     }
+}
+
+/// Whether this plain launch opens the Luau window: the `moonframe_window`
+/// setting under `[features]`, or the other window while ⌥ Option is held
+/// as the app starts, to try one without changing the setting. The setting
+/// is read as the first frame's settings are, writing nothing; a file that
+/// does not parse leaves the default, and the app reports it.
+pub(crate) fn chosen() -> bool {
+    // A launch from Finder or a desktop launcher may lack the login shell's
+    // `XDG_CONFIG_HOME`; without adopting it first, this would read another
+    // folder's settings and miss `moonframe_window = false`. Both startups
+    // adopt it again, which then finds it already set.
+    crate::login_env::adopt_config_home();
+    let kept = crate::config::Config::load_startup().map_or_else(
+        |_| crate::config::Features::default().moonframe_window,
+        |config| config.features.moonframe_window,
+    );
+    choose(kept, other_window_held())
+}
+
+/// The window a launch opens: the one the setting keeps, or the other.
+fn choose(kept: bool, other: bool) -> bool {
+    kept != other
+}
+
+/// Whether ⌥ Option is down as the app starts, read from the keyboard's
+/// state, so a launch from Finder, the Dock or `open` can ask for it.
+#[cfg(target_os = "macos")]
+fn other_window_held() -> bool {
+    use objc2_app_kit::{NSEvent, NSEventModifierFlags};
+    NSEvent::modifierFlags_class().contains(NSEventModifierFlags::Option)
+}
+
+/// Elsewhere a launch has no key to read; `--classic` and the setting choose.
+#[cfg(not(target_os = "macos"))]
+fn other_window_held() -> bool {
+    false
 }
 
 /// Runs the app in the Luau window until it quits. The app's private entry
@@ -276,20 +369,33 @@ pub(crate) fn run() -> ExitCode {
         wake,
         woken,
     }));
-    Moonframe::new("sheprd-moonframe")
-        .title("Sheprd")
-        .app_id("dev.sheprd.moonframe")
-        .version(env!("CARGO_PKG_VERSION"))
-        .app_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/moonframe/app"))
+    // Sheprd's identity: its name in the menu bar and its release version. The
+    // id is what Moonframe gives its windows, the Wayland app ID and X11
+    // WM_CLASS that Sheprd's desktop entry matches; the bundle and the
+    // notifications keep the bundle's own (`APP_ID`).
+    let moonframe = Moonframe::new(NAME)
+        .title(crate::constants::WINDOW_TITLE)
+        .app_id(crate::constants::LINUX_APP_ID)
+        .version(crate::constants::APP_VERSION)
+        // The sparkles: ask an agent to change the layout or add something.
+        // Over the compiled-in layout it writes to `~/.config/sheprd`, the
+        // user's copies, never the release's own files.
+        .keep(["feedback"]);
+    // The sources, so saving reloads and the agent edits them in place.
+    #[cfg(feature = "moonframe-studio")]
+    let moonframe = moonframe.app_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/moonframe/app"));
+    #[cfg(not(feature = "moonframe-studio"))]
+    let moonframe = moonframe
+        .project_dir(env!("CARGO_MANIFEST_DIR"))
+        .embedded_app::<Layout>();
+    moonframe
         .icon(ICON_PNG)
         .assets(crate::embed::assets())
-        // Sheprd's own menu bar, as its window has it; Moonframe adds its
+        // Sheprd's own menu bar, as its window has it, with Moonframe's
         // Developer menu.
         .menus(crate::embed::menus)
         // Sheprd's log file, which its Logs window reads, beside stderr.
         .log_layer(crate::embed::log_layer())
-        // The sparkles: ask an agent to change the layout or add something.
-        .keep(["feedback"])
         .native("sheprd", move || bridge.clone())
         .native("sheprd_load", move || load.clone())
         .native("sheprd_theme", move || theme.clone())
@@ -299,10 +405,16 @@ pub(crate) fn run() -> ExitCode {
         .run()
 }
 
+/// The key context of every Sheprd region, which Moonframe knows: its Escape
+/// binding leaves a terminal's alone.
+const TERMINAL_CONTEXT: &str = "Terminal";
+
 /// One region of the main window, where Luau placed it.
 struct SheprdRegion {
     /// Over the whole window, for the main region; see `render`.
     overlay: Option<AnyView>,
+    /// The main region's watch on the keyboard; see `keep_terminal_focus`.
+    _focus: Vec<Subscription>,
     _sizes: Option<Subscription>,
     view: AnyView,
 }
@@ -318,9 +430,11 @@ impl SheprdRegion {
         let name = init.props().get("region").and_then(Data::as_str);
         let region = match name {
             Some("activity") => Some(Region::ActivityBar),
+            Some("devices") => Some(Region::Devices),
             Some("header") => Some(Region::Header),
             Some("sidebar") => Some(Region::Sidebar),
             Some("status") => Some(Region::StatusBar),
+            Some("titlebar") => Some(Region::TitleBar),
             _ => None,
         };
         let view = match region {
@@ -339,9 +453,12 @@ impl SheprdRegion {
                 if last.replace(sizes) != Some(sizes) {
                     messenger.send(Data::map([
                         ("activity_bar", f64::from(sizes.activity_bar).into()),
+                        ("devices", f64::from(sizes.devices).into()),
                         ("header", f64::from(sizes.header).into()),
+                        ("height", f64::from(sizes.height).into()),
                         ("left", f64::from(sizes.left).into()),
                         ("status_bar", f64::from(sizes.status_bar).into()),
+                        ("titlebar", f64::from(sizes.titlebar).into()),
                     ]));
                 }
             };
@@ -353,6 +470,10 @@ impl SheprdRegion {
             })
         });
         let overlay = region.is_none().then(|| host.region(Region::Overlay, cx));
+        let focus = match region {
+            None => keep_terminal_focus(host.focus_handle(cx), window, cx),
+            Some(_) => Vec::new(),
+        };
         if region.is_none() {
             let shared = shared.borrow();
             take_actions(host.clone(), shared.actions.clone(), window, cx);
@@ -367,10 +488,53 @@ impl SheprdRegion {
         }
         Self {
             overlay,
+            _focus: focus,
             _sizes: sizes,
             view,
         }
     }
+}
+
+/// Keeps the keyboard on the terminals, as Sheprd's own window does: they
+/// take it when the window opens, and whenever it would rest on nothing or
+/// on what merely holds them. Moonframe focuses its window, which contains
+/// the terminals, at start and on a click anywhere in the layout, which
+/// would leave typing going nowhere until the terminal is clicked. A field
+/// in the layout, or one of Sheprd's own, has a focus of its own that does
+/// not contain the terminals, and keeps the keyboard.
+fn keep_terminal_focus(
+    terminal: FocusHandle,
+    window: &mut Window,
+    cx: &mut Context<SheprdRegion>,
+) -> Vec<Subscription> {
+    reclaim_focus(terminal.clone(), window, cx);
+    let (out, lost, active) = (terminal.clone(), terminal.clone(), terminal);
+    vec![
+        cx.on_focus_out(&out.clone(), window, move |_, _, window, cx| {
+            reclaim_focus(out.clone(), window, cx);
+        }),
+        cx.on_focus_lost(window, move |_, window, cx| {
+            reclaim_focus(lost.clone(), window, cx);
+        }),
+        cx.observe_window_activation(window, move |_, window, cx| {
+            if window.is_window_active() {
+                reclaim_focus(active.clone(), window, cx);
+            }
+        }),
+    ]
+}
+
+/// Once the focus settles, gives it to `terminal` if it rests on nothing or
+/// on something containing it.
+fn reclaim_focus(terminal: FocusHandle, window: &mut Window, cx: &mut Context<SheprdRegion>) {
+    window.defer(cx, move |window, cx| {
+        let idle = window
+            .focused(cx)
+            .is_none_or(|focused| focused != terminal && focused.contains(&terminal, window));
+        if idle {
+            window.focus(&terminal, cx);
+        }
+    });
 }
 
 /// Does what mods ask as it arrives: a click must not wait for a tick.
@@ -451,9 +615,18 @@ fn host(shared: &RefCell<Shared>, window: &mut Window, cx: &mut App) -> Host {
             // Before the host installs: from then on Sheprd's own changes to
             // its menus (a layout picked, the language) rebuild Moonframe's bar.
             crate::embed::keep_menus(moonframe::refresh_menus, cx);
+            cx.bind_keys(terminal_keys());
             Host::new(startup.take(), window, cx)
         })
         .clone()
+}
+
+/// Moonframe draws its windows inside the toolkit's `Root`, which binds Tab
+/// and Shift-Tab to move between controls. Over Sheprd's regions they reach
+/// the terminal instead, as in Sheprd's own window: its shell completes on
+/// them. Sheprd's own fields still see them as keys.
+fn terminal_keys() -> [KeyBinding; 2] {
+    ["tab", "shift-tab"].map(|key| KeyBinding::new(key, NoAction, Some(TERMINAL_CONTEXT)))
 }
 
 impl HostView for SheprdRegion {}
@@ -474,7 +647,7 @@ impl Render for SheprdRegion {
         });
         // `Terminal` keeps Moonframe's Escape off: it belongs to the terminal.
         div()
-            .key_context("Terminal")
+            .key_context(TERMINAL_CONTEXT)
             .size_full()
             .child(self.view.clone())
             .children(overlay)

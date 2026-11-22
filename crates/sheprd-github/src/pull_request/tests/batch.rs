@@ -12,6 +12,7 @@ fn target(owner: &str, ask: Ask) -> (Input, Target) {
             branch: "local".into(),
         },
         Target {
+            server: crate::Server::GitHub,
             owner: owner.into(),
             repo: "project".into(),
             ask,
@@ -80,7 +81,7 @@ fn each_alias_parses_as_a_single_lookup() {
         "squashMergeAllowed": true,
         "pullRequests": {"pageInfo": {"hasNextPage": false}, "nodes": nodes},
     }}});
-    let pr = crate::pull_request::batch::parse(answer, &target)
+    let pr = crate::pull_request::batch::parse(answer, &target, &crate::Server::GitHub)
         .unwrap()
         .unwrap();
     assert_eq!(pr.number, 8);

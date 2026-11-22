@@ -347,6 +347,7 @@ private struct WorkspaceRow: View {
                 if let counts { Text(counts).font(.caption).foregroundStyle(.secondary) }
             }
             Spacer(minLength: 4)
+            if workspace.uncommitted == true { UncommittedMark() }
             WorkspacePullRequestBadge(workspace: workspace)
         }
     }
@@ -427,6 +428,21 @@ struct UnopenedPill: View {
             .padding(.horizontal, 7).padding(.vertical, 2)
             .background(Color.yellow.opacity(0.15), in: .capsule)
             .accessibilityLabel(commits == 1 ? "1 commit, no pull request" : "\(commits) commits, no pull request")
+    }
+}
+
+/// Uncommitted changes in a checkout: the pencil in a yellow square that
+/// Sheprd's sidebar draws.
+struct UncommittedMark: View {
+    var size: CGFloat = 20
+
+    var body: some View {
+        Image(systemName: "pencil").font(.system(size: size * 0.55, weight: .semibold))
+            .foregroundStyle(.yellow)
+            .frame(width: size, height: size)
+            .background(Color.yellow.opacity(0.15), in: .rect(cornerRadius: size * 0.28))
+            .overlay(RoundedRectangle(cornerRadius: size * 0.28).strokeBorder(Color.yellow.opacity(0.55), lineWidth: 1))
+            .accessibilityLabel("Uncommitted changes")
     }
 }
 

@@ -10,6 +10,7 @@ mod dialog_layout;
 mod dispatch;
 mod en_xa;
 mod issues;
+mod kept_close;
 // Only POSIX clients script other hosts, so only they dispatch.
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 mod kept_dispatch;
@@ -99,6 +100,7 @@ pub(crate) fn submit_focus_change(
                 dirty: true,
                 unpushed: true,
                 unknown: false,
+                ..Default::default()
             }),
         )
     });

@@ -243,6 +243,17 @@ exact, case-sensitive alternatives, not prefix wildcards:
 | Schema 3, Windows | `Herdr-VERSION-TARGET-setup.exe` | `Sheprd-VERSION-TARGET-setup.exe` |
 | Schema 4, musl host builds | `herdr-remote-control-VERSION-TARGET` | `sheprd-remote-control-VERSION-TARGET` |
 
+Two later families have no legacy names and travel packed: their signed
+manifest and its signature lead one archive, and the build is checked against
+the manifest before it is read or leaves this computer. Schema 5
+(`host-chat-manifest.json`) lists the musl host builds' `sheprd-acp` in
+`sheprd-acp-VERSION-linux-musl.tar.gz`; schema 6 (`host-agent-manifest.json`)
+lists `sheprd-relay-agent-VERSION-TARGET` for `x86_64` and `aarch64` musl Linux
+and both Mac architectures in `sheprd-relay-agent-VERSION.tar.gz`. The Mac
+builds are signed with the release's Developer ID before their manifest is
+written. Sheprd copies the agent onto a machine it shares as a fleet's plain
+host (`docs/relay-plan.md`, Fleet). No manifest answers for another family.
+
 The manifest and signature filenames (`update-`, `package-`, `windows-`, and
 `host-manifest.json` / `.sig`), schemas, size limits and target/count bounds stay
 unchanged. Each target has one asset per format: a manifest cannot list both
@@ -499,11 +510,12 @@ size, and hash checks and never changes the legacy manifest.
 5. In the separate protected OIDC job, combine these with both Linux artifact
    sets (manual tarball, `.deb`, `.rpm`, Arch package, updater archive and
    static host build), both signed Windows zips and installers, and the locked
-   six-target SBOM. Require the exact twenty-seven-file base set, then checksum,
-   Sigstore-sign and attest all twenty-seven files. Each has four sidecars
-   (`.sha256`, `.sha512`, `.sig`, `.crt`); `SHA256SUMS` covers all 135 files.
+   six-target SBOM. Require the exact twenty-nine-file base set, then checksum,
+   Sigstore-sign and attest all twenty-nine files. Each has three sidecars
+   (`.sha256`, `.sig`, `.crt`), `SHA512SUMS` lists their SHA-512 with the six
+   package aliases', and `SHA256SUMS` covers all 123 files.
 6. The protected publication job refuses existing tags/releases, creates a
-   `vVERSION` tag at the validated SHA and a draft, uploads all 136 assets, then
+   `vVERSION` tag at the validated SHA and a draft, uploads all 124 assets, then
    re-downloads and verifies the exact set and hashes before publication. The
    separately approved Homebrew job uses only the verified published DMG.
 

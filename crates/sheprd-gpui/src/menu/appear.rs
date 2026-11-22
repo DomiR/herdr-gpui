@@ -206,7 +206,9 @@ impl SheprdWindow {
             .menu
             .appear
             .leaving(now)
-            .filter(|_| self.menu.page.is_none());
+            .filter(|_| self.menu.page.is_none())
+            // A layout that draws the device picker closes its own.
+            .filter(|(page, _)| !(self.hosted && *page == Page::Devices));
         let page = leaving.map(|(page, left)| {
             // Drawn as it was: its own fields and page back in the menu for
             // the length of this one draw, which only reads them.

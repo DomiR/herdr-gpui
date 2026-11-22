@@ -74,6 +74,17 @@ impl Keyring {
         }
     }
 
+    /// The key new handles are sealed to, as its id and its SEC1 point in
+    /// base64url, as [`key_id`] hashes it, for phones that attest.
+    #[must_use]
+    pub fn current(&self) -> Option<(String, String)> {
+        let (id, key) = self.keys.first()?;
+        Some((
+            id.clone(),
+            URL_SAFE_NO_PAD.encode(key.public_key().to_sec1_bytes()),
+        ))
+    }
+
     /// The handle in `text`, or `None` for anything but a well-formed handle
     /// sealed to one of these keys. Callers learn no more than that.
     #[must_use]

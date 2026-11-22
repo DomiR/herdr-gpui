@@ -64,6 +64,7 @@ fn since(change: &Change) -> u32 {
         Change::Activity { .. } => 1,
         Change::Harnesses { .. } => 2,
         Change::PullRequest { .. } => 3,
+        Change::Brief { .. } => 4,
         _ => 0,
     }
 }

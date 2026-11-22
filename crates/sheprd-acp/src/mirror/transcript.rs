@@ -281,7 +281,11 @@ impl Projection {
             return;
         }
         let kind = match role {
-            Role::User => EntryKind::User { text, files: 0 },
+            Role::User => EntryKind::User {
+                text: crate::project::shown(&text).to_owned(),
+                files: 0,
+                note: None,
+            },
             Role::Agent => EntryKind::Agent { text },
             Role::Thought => EntryKind::Thought { text },
         };

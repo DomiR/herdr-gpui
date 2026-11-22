@@ -1,15 +1,6 @@
--- The activity bar: Sheprd's panels, with the counts it reports.
-local ICONS = {
-	automations = "clock",
-	issues = "circle-dot",
-	overview = "activity",
-	ports = "plug",
-	pull_requests = "git-pull-request",
-	security = "shield",
-	tasks = "list-checks",
-	usage = "chart-line",
-	workspaces = "square-terminal",
-}
+-- The activity bar: Sheprd's panels, with the counts it reports, in Sheprd's
+-- own icons: each panel's comes with it (`icon`, an `app-` name Moonframe
+-- loads from Sheprd's assets), the same file Sheprd's own bar draws.
 
 -- A count as Sheprd's bar draws it: a pill over the icon's corner, in the
 -- accent while it holds something not yet seen, else muted, and `99+` past
@@ -61,7 +52,8 @@ local function button(id: string, icon: string, label: string?, count: any, unse
 			height = 32,
 			shrink = false,
 			style = { background = if selected and theme.accent then `{theme.accent}30` else nil, radius = 8, margin = { left = 2 } },
-			ui.icon { icon, class = "activity-icon", style = { color = if selected then theme.foreground else theme.muted } },
+			-- "title" over Sheprd's 12px UI text is its bar's 17px icons.
+			ui.icon { name = icon, size = "title", class = "activity-icon", style = { color = if selected then theme.foreground else theme.muted } },
 			if count then bubble(count, unseen, theme) else false,
 		},
 	}
@@ -79,7 +71,7 @@ return mod {
 		local theme = app.sheprd_theme or {}
 		local rows = {}
 		for _, panel in sheprd.panels do
-			table.insert(rows, button(panel.id, ICONS[panel.id] or "circle", panel.label, panel.count, panel.unseen == true, panel.id == sheprd.panel, { panel = panel.id }, theme))
+			table.insert(rows, button(panel.id, panel.icon, panel.label, panel.count, panel.unseen == true, panel.id == sheprd.panel, { panel = panel.id }, theme))
 		end
 		return ui.column {
 			class = "sheprd-activity",
@@ -88,7 +80,30 @@ return mod {
 			style = { background = theme.sidebar, border = "right", border_color = theme.active, padding = { y = 6 } },
 			ui.column { gap = "none", table.unpack(rows) },
 			ui.spacer(),
-			button("settings", "settings", "Settings", nil, false, false, { command = "settings" }, theme),
+			-- The sparkles (Moonframe's built-in feedback mod, which draws its
+			-- own button and dialog): say what to change, and an agent changes
+			-- this layout, asking before each edit. Over a release's
+			-- compiled-in layout it edits the user's copies in
+			-- `~/.config/sheprd`; with no `app.acp` there is no agent.
+			if app.acp then ui.row {
+				class = "activity-feedback",
+				align = "center",
+				gap = "none",
+				height = 36,
+				shrink = false,
+				ui.row { width = 3, shrink = false },
+				ui.column {
+					align = "center",
+					justify = "center",
+					width = 32,
+					height = 32,
+					shrink = false,
+					style = { margin = { left = 2 } },
+					ui.mount "feedback",
+				},
+			} else false,
+			-- Sheprd's `icons/settings.svg`, as its own bar draws it.
+			button("settings", "app-settings", "Settings", nil, false, false, { command = "settings" }, theme),
 		}
 	end,
 }

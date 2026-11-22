@@ -119,6 +119,7 @@ fn entries() -> Vector {
                 EntryKind::User {
                     text: "Look at this\n\u{1f4ce} shot.png".into(),
                     files: 1,
+                    note: None,
                 },
             ),
         },

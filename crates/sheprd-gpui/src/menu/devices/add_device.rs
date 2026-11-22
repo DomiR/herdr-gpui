@@ -1,21 +1,33 @@
-//! The Add Device dialog: its form, the host check and save that run off the
-//! UI thread, and the local workspace that carries a setup needing prompts.
+//! The Add Device form and background host checks and saves.
 
 use super::{Page, discover::Discovery, setup};
 
 mod offer;
+mod progress;
 
 use crate::i18n::fl;
 use crate::{
-    NavigationTarget, SheprdWindow,
+    SheprdWindow,
     search_input::{Changed, SearchInput},
 };
 use gpui::{prelude::*, *};
 pub(super) use offer::Offer;
-use sheprd_client::{
-    HostKeys, HostProbe, Method, NewHostKey, SshFailure,
-    protocol::{ClientKeyCode, ClientKeyKind, ClientPaneInputEvent},
-};
+use sheprd_client::protocol::{ClientKeyCode, ClientKeyKind, ClientPaneInputEvent};
+use sheprd_client::{HostKeys, HostProbe, NewHostKey, SshFailure};
+
+pub(crate) fn enter() -> ClientPaneInputEvent {
+    ClientPaneInputEvent::Key {
+        code: ClientKeyCode::Enter,
+        modifiers: 0,
+        kind: ClientKeyKind::Press,
+        repeat_count: 1,
+        shifted_codepoint: None,
+        generated_text: None,
+        tracks_release: false,
+        physical_key_id: None,
+        windows_record: None,
+    }
+}
 
 pub(in crate::menu) struct Setup {
     pub(super) fields: [Entity<SearchInput>; 3],
@@ -65,24 +77,11 @@ pub(super) enum Step {
     TrustKey(setup::Request, NewHostKey),
     /// Setup needs prompts, so the user decides whether to run it locally.
     Confirm(setup::Request, Offer),
-    /// Checking the catalog on disk again before opening the setup workspace
-    /// for the offer the user accepted.
+    // Only interactive setup verifies, and Windows cannot host it yet.
+    #[cfg(unix)]
     Verifying(setup::Request, Offer),
-    /// Waiting for the window to show this computer's Herdr, whose surface
-    /// must be active before it creates a workspace (see `create_setup_space`).
-    Activating(setup::Request, setup::TerminalSetup, Offer),
-    /// Waiting for the local daemon to create the setup workspace.
-    Opening(setup::Request, LocalSpace),
-}
-
-/// The local workspace request whose root pane will run the setup command.
-pub(super) struct LocalSpace {
-    pub(super) request: String,
-    pub(super) boot: String,
-    /// The relay command the workspace's shell runs, and the setup it shows.
-    pub(super) setup: setup::TerminalSetup,
-    /// What the user accepted, so a retry after a failure runs it again.
-    pub(super) offer: Offer,
+    #[cfg(unix)]
+    Running(setup::Request, progress::Progress),
 }
 
 impl SheprdWindow {
@@ -157,6 +156,18 @@ impl SheprdWindow {
         let Some(form) = &self.menu.device_setup else {
             return false;
         };
+        #[cfg(unix)]
+        if let Step::Running(_, progress) = &form.step {
+            if progress.response.read(cx).is_composing() {
+                return false;
+            }
+            match event.keystroke.key.as_str() {
+                "escape" => self.dismiss_menu(window, cx),
+                "enter" => self.respond_to_device_setup(None, cx),
+                _ => return false,
+            }
+            return true;
+        }
         if matches!(form.step, Step::SavedWarning(_)) {
             if matches!(event.keystroke.key.as_str(), "enter" | "escape") {
                 self.dismiss_menu(window, cx);
@@ -216,6 +227,10 @@ impl SheprdWindow {
         let Some(setup) = &self.menu.device_setup else {
             return frame(div(), cx);
         };
+        #[cfg(unix)]
+        if let Step::Running(request, progress) = &setup.step {
+            return frame(self.render_device_progress(request, progress, cx), cx);
+        }
         if let Step::SavedWarning(warning) = setup.step {
             return frame(self.render_device_saved_warning(warning, cx), cx);
         }
@@ -300,10 +315,12 @@ impl SheprdWindow {
                 request.target(),
                 setup.claim.as_ref().map(setup::Claim::user),
             )),
+            #[cfg(unix)]
             Step::Verifying(request, _) => {
                 Some(fl!("add-device-verifying", target = request.target()))
             }
-            Step::Activating(..) | Step::Opening(..) => Some(fl!("add-device-opening")),
+            #[cfg(unix)]
+            Step::Running(..) => None,
         };
         if let Some(status) = status {
             body = body.child(
@@ -344,7 +361,7 @@ impl SheprdWindow {
             Step::Confirm(..) if cfg!(windows) => footer.child(cancel),
             Step::Confirm(_, offer) => footer.child(cancel).child(
                 button("device-setup-submit", offer.action().into(), true)
-                    .on_click(cx.listener(|this, _, _, cx| this.open_setup_space(cx))),
+                    .on_click(cx.listener(|this, _, _, cx| this.start_device_setup(cx))),
             ),
             Step::AwaitingLocalNetwork(_) => footer
                 .children(self.local_network_settings_button("device-setup-settings", cx))
@@ -410,7 +427,7 @@ impl SheprdWindow {
             Step::Form => {}
             // Windows offers no terminal setup; the question says what to run.
             Step::Confirm(..) if cfg!(windows) => return,
-            Step::Confirm(..) => return self.open_setup_space(cx),
+            Step::Confirm(..) => return self.start_device_setup(cx),
             _ => return,
         }
         let request = setup::Request::new(
@@ -634,293 +651,11 @@ impl SheprdWindow {
         }
     }
 
-    /// Check the catalog on disk once more, then ask the local daemon for a
-    /// workspace whose root pane runs the setup (see `poll_device_setup`).
-    fn open_setup_space(&mut self, cx: &mut Context<Self>) {
-        let Some(form) = &mut self.menu.device_setup else {
-            return;
-        };
-        let Step::Confirm(request, offer) = &form.step else {
-            return;
-        };
-        let (request, offer) = (request.clone(), *offer);
-        let claim = form.claim.take();
-        form.step = Step::Verifying(request.clone(), offer);
-        form.error = None;
-        let background = cx.background_executor().spawn(async move {
-            // A failed probe left no claim; take one now.
-            let claim = match claim {
-                Some(claim) => setup::verify_unsaved(&request, &claim).map(|()| claim),
-                None => setup::claim(&request),
-            }?;
-            // The setup runs here, with the user's login environment, which
-            // can block the first time it is read.
-            let terminal = setup::terminal_setup(&request, offer == Offer::InstallKey);
-            Ok::<_, crate::Error>((claim, terminal))
-        });
-        form.task = Some(cx.spawn(async move |this, cx| {
-            let result = background.await;
-            let _ = this.update(cx, |this, cx| this.setup_space_verified(result, cx));
-        }));
-        cx.notify();
-    }
-
-    pub(super) fn setup_space_verified(
-        &mut self,
-        result: crate::Result<(setup::Claim, crate::Result<setup::TerminalSetup>)>,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(Setup {
-            step: Step::Verifying(request, offer),
-            ..
-        }) = &self.menu.device_setup
-        else {
-            return;
-        };
-        let (request, offer) = (request.clone(), *offer);
-        let (claim, terminal) = match result {
-            Ok(verified) => verified,
-            Err(error) => {
-                tracing::warn!(
-                    category = "device_setup",
-                    "Device setup verification failed"
-                );
-                if !self.refuse_duplicate(&error, cx) {
-                    self.set_device_error(Some(fl!(
-                        "add-device-open-failed",
-                        error = error.to_string()
-                    )));
-                    if let Some(form) = &mut self.menu.device_setup {
-                        form.step = Step::Confirm(request, offer);
-                    }
-                    cx.notify();
-                }
-                return;
-            }
-        };
-        let Some(form) = &mut self.menu.device_setup else {
-            return;
-        };
-        form.claim = Some(claim);
-        let setup = match terminal {
-            Ok(setup) => setup,
-            Err(error) => return self.fail_setup_space(request, offer, &error, cx),
-        };
-        // Herdr refuses commands from a connection whose surface is inactive,
-        // as Local's is while the window shows another device, so the window
-        // moves to Local first; it ends there anyway once the setup opens.
-        // Switching closes every dialog, so this one is put back over Local.
-        let (page, form) = (self.menu.page, self.menu.device_setup.take());
-        let selected = self.select_endpoint(crate::endpoint::LOCAL, cx);
-        (self.menu.page, self.menu.device_setup) = (page, form);
-        if !selected {
-            return self.fail_setup_space(request, offer, &crate::Error::NotConnected, cx);
-        }
-        if let Some(form) = &mut self.menu.device_setup {
-            form.step = Step::Activating(request, setup, offer);
-        }
-        self.create_setup_space(cx);
-    }
-
-    /// Asks the local daemon for the setup workspace once the window has
-    /// queued Local's surface activation. The request follows it on the same
-    /// ordered connection, so Herdr handles it with the surface active.
-    pub(super) fn create_setup_space(&mut self, cx: &mut Context<Self>) {
-        let Some(Setup {
-            step: Step::Activating(..),
-            ..
-        }) = &self.menu.device_setup
-        else {
-            return;
-        };
-        let local = &self.endpoints[0];
-        let connected = local.live.status.is_connected();
-        if self.selected_endpoint == 0 && connected && !local.surface_requested() {
-            // The next poll activates the surface.
-            return;
-        }
-        let result = (|| {
-            if self.selected_endpoint != 0 {
-                return Err(crate::Error::StaleConnection);
-            }
-            let boot = local
-                .live
-                .snapshot
-                .as_ref()
-                .filter(|_| connected)
-                .map(|snapshot| snapshot.boot_id.clone())
-                .ok_or(crate::Error::NotConnected)?;
-            let Some(Setup {
-                step: Step::Activating(request, ..),
-                ..
-            }) = &self.menu.device_setup
-            else {
-                return Err(crate::Error::StaleConnection);
-            };
-            local
-                .connection
-                .request_dialog(
-                    &boot,
-                    Method::WorkspaceCreate,
-                    serde_json::json!({
-                        "focus": true,
-                        // Written into the daemon, which every client
-                        // shows, so it is not in this window's language.
-                        "label": format!("Set up {}", request.label()), // i18n: data
-                    }),
-                )
-                .map(|id| (id, boot))
-        })();
-        let Some(form) = &mut self.menu.device_setup else {
-            return;
-        };
-        let Step::Activating(request, setup, offer) = std::mem::replace(&mut form.step, Step::Form)
-        else {
-            return;
-        };
-        match result {
-            Ok((id, boot)) => {
-                form.step = Step::Opening(
-                    request,
-                    LocalSpace {
-                        request: id,
-                        boot,
-                        setup,
-                        offer,
-                    },
-                );
-                cx.notify();
-            }
-            Err(error) => self.fail_setup_space(request, offer, &error, cx),
-        }
-    }
-
-    /// Back to the question, keeping the claim for a retry.
-    fn fail_setup_space(
-        &mut self,
-        request: setup::Request,
-        offer: Offer,
-        error: &crate::Error,
-        cx: &mut Context<Self>,
-    ) {
-        tracing::warn!(category = "device_setup", "Setup workspace failed");
-        if let Some(form) = &mut self.menu.device_setup {
-            form.step = Step::Confirm(request, offer);
-        }
-        self.set_device_error(Some(fl!(
-            "add-device-open-failed",
-            error = error.to_string()
-        )));
-        cx.notify();
-    }
-
-    /// Runs the setup command in the workspace the local daemon created, then
-    /// shows it. The command is typed into the pane's shell: the endpoint API
-    /// has no method that starts a command in a pane.
     pub(crate) fn poll_device_setup(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.poll_saved_device(window, cx) {
-            return;
+        // Windows has no interactive setup to poll once nothing was saved.
+        if !self.poll_saved_device(window, cx) {
+            #[cfg(unix)]
+            self.poll_device_progress(window, cx);
         }
-        self.create_setup_space(cx);
-        let Some(Setup {
-            step: Step::Opening(_, space),
-            ..
-        }) = &self.menu.device_setup
-        else {
-            return;
-        };
-        let local = &self.endpoints[0];
-        let fail = |this: &mut Self, error: String, cx: &mut Context<Self>| {
-            tracing::warn!(category = "device_setup", "Setup workspace failed");
-            if let Some(form) = &mut this.menu.device_setup
-                && let Step::Opening(request, space) = &form.step
-            {
-                form.step = Step::Confirm(request.clone(), space.offer);
-            }
-            this.set_device_error(Some(fl!("add-device-open-failed", error = error)));
-            cx.notify();
-        };
-        let current = local.live.status.is_connected()
-            && local
-                .live
-                .snapshot
-                .as_ref()
-                .is_some_and(|snapshot| snapshot.boot_id == space.boot);
-        if !current {
-            return fail(self, crate::Error::StaleConnection.to_string(), cx);
-        }
-        let Some((id, Some(result))) = &local.live.dialog_response else {
-            return;
-        };
-        if id != &space.request {
-            return;
-        }
-        let response = match result {
-            Ok(response) => response,
-            Err(error) => return fail(self, error.to_string(), cx),
-        };
-        if let Some(error) = response.get("error") {
-            let (code, message) = crate::menu::endpoint_error(error);
-            return fail(self, format!("{code}: {message}"), cx);
-        }
-        let result = &response["result"];
-        let created = (result["type"] == "workspace_created")
-            .then(|| {
-                Some((
-                    result["workspace"]["workspace_id"].as_str()?,
-                    result["root_pane"]["pane_id"].as_str()?,
-                ))
-            })
-            .flatten()
-            .filter(|(workspace, pane)| !workspace.is_empty() && !pane.is_empty());
-        let Some((workspace, pane)) = created else {
-            return fail(self, fl!("add-device-unexpected-response"), cx);
-        };
-        let (workspace, pane) = (workspace.to_owned(), pane.to_owned());
-        let sent = local
-            .connection
-            .handle
-            .as_ref()
-            .ok_or(crate::Error::NotConnected)
-            .and_then(|handle| {
-                Ok(handle.send_input(
-                    &space.boot,
-                    &pane,
-                    [
-                        ClientPaneInputEvent::TextCommit(space.setup.command.clone()),
-                        enter(),
-                    ],
-                )?)
-            });
-        if let Err(error) = sent {
-            return fail(self, error.to_string(), cx);
-        }
-        // The setup outlives this dialog: its relay keeps waiting, and keeps
-        // the host claimed until the setup ends, however it ends, so this
-        // process cannot start a second add meanwhile, nor stay locked out.
-        if let Some(form) = self.menu.device_setup.as_mut()
-            && let Step::Opening(_, space) = &mut form.step
-            && let Some(claim) = form.claim.take()
-        {
-            space.setup.relay.keep(claim);
-        }
-        let local = local.id.clone();
-        self.dismiss_menu(window, cx);
-        self.navigate_endpoint(&local, NavigationTarget::Workspace(&workspace), cx);
-    }
-}
-
-/// The Enter key, which submits a line typed into a pane's shell.
-pub(crate) fn enter() -> ClientPaneInputEvent {
-    ClientPaneInputEvent::Key {
-        code: ClientKeyCode::Enter,
-        modifiers: 0,
-        kind: ClientKeyKind::Press,
-        repeat_count: 1,
-        shifted_codepoint: None,
-        generated_text: None,
-        tracks_release: false,
-        physical_key_id: None,
-        windows_record: None,
     }
 }

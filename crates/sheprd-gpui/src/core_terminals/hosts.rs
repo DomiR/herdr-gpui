@@ -169,6 +169,21 @@ impl CoreTerminals {
             .unwrap_or_default()
     }
 
+    /// The tabs of the kept workspace `workspace` on `scope`'s host that
+    /// this window has shown.
+    pub(crate) fn workspace_tabs(&self, scope: &Scope, workspace: &str) -> Vec<TabId> {
+        self.tabs
+            .iter()
+            .filter(|(_, shown)| {
+                shown
+                    .workspace
+                    .as_ref()
+                    .is_some_and(|(kept, id)| kept == scope && id == workspace)
+            })
+            .map(|(tab, _)| *tab)
+            .collect()
+    }
+
     /// The tab and terminal `view` shows, if it is one of the tabs' panes.
     pub(crate) fn view_key(&self, view: &Entity<CoreTerminalView>) -> Option<(TabId, TerminalId)> {
         self.views

@@ -1,6 +1,7 @@
 //! A fresh, cancellable preflight owned by one close dialog. Unknown status
 //! requires the same explicit consent as work that has not been published.
 // i18n: migrated
+use std::path::Path;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -11,7 +12,7 @@ use std::time::{Duration, Instant};
 use gpui::App;
 use sheprd_client::protocol::{ClientShellSnapshot, ClientShellWorktree};
 
-use super::workspace::WorkspaceTarget;
+use super::workspace::{Source, WorkspaceTarget};
 use crate::i18n::fl;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -32,11 +33,73 @@ pub(super) fn checking() -> String {
     fl!("workspace-close-checking")
 }
 
+/// The repository and branch the worker read from the folder itself.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct Seen {
+    key: String,
+    branch: String,
+}
+
+impl Seen {
+    /// Whether `dir` is still that repository on that branch, read afresh.
+    // shortcut: two quick Git reads on the UI thread under a one second bound
+    // at submission; move them to a background task if they ever show lag.
+    pub(super) fn is_current(&self, dir: &str) -> bool {
+        sheprd_vcs::git::identity(dir, Instant::now() + Duration::from_secs(1), &|| false)
+            .ok()
+            .flatten()
+            .is_some_and(|now| {
+                now.key == self.key && now.branch.as_deref() == Some(self.branch.as_str())
+            })
+    }
+}
+
 #[derive(Default)]
 pub(super) struct Report {
     pub dirty: bool,
     pub unpushed: bool,
     pub unknown: bool,
+    /// Set for an app-kept folder whose identity the check could read.
+    pub seen: Option<Seen>,
+}
+
+/// What one check probes: a Herdr 1 checkout the daemon described, or an
+/// app-kept folder the worker identifies itself.
+enum Probe {
+    Input(sheprd_github::Result<crate::pull_request::Input>),
+    Folder(sheprd_github::Result<String>),
+}
+
+/// An app-kept folder's status. Its repository and branch come from the
+/// folder now, never from the session's slower identity cache.
+fn folder_status(
+    dir: &str,
+    deadline: Instant,
+    cancelled: &impl Fn() -> bool,
+) -> crate::Result<(bool, bool, Seen)> {
+    use sheprd_github::pull_request::Error as Pull;
+    if !Path::new(dir).is_absolute() {
+        return Err(sheprd_github::Error::from(Pull::AbsolutePath).into());
+    }
+    let identity = sheprd_vcs::git::identity(dir, deadline, cancelled)?
+        .ok_or_else(|| crate::Error::from(sheprd_github::Error::from(Pull::Metadata)))?;
+    let branch = identity
+        .branch
+        .ok_or_else(|| crate::Error::from(sheprd_github::Error::from(Pull::Branch)))?;
+    let input = crate::pull_request::Input {
+        checkout: Some(dir.to_owned()),
+        repo_key: Some(identity.key.clone()),
+        branch: branch.clone(),
+    };
+    let (dirty, unpushed) = crate::git::close_status(&input, deadline, cancelled)?;
+    Ok((
+        dirty,
+        unpushed,
+        Seen {
+            key: identity.key,
+            branch,
+        },
+    ))
 }
 
 impl Report {
@@ -98,12 +161,26 @@ impl CloseCheck {
             .iter()
             .take(128)
             .map(|checkout| {
-                crate::pull_request::repository_input(
+                Probe::Input(crate::pull_request::repository_input(
                     checkout.worktree.as_ref(),
                     checkout.branch.as_deref(),
-                )
+                ))
             })
             .collect();
+        Self::spawn(checkouts, inputs, local, cx)
+    }
+
+    /// App-kept folders belong to the selected host, independently of any
+    /// Herdr 1 connection. The worker verifies their repository and branch.
+    pub fn start_kept(target: &WorkspaceTarget, local: bool, cx: &App) -> Self {
+        let probe = match &target.source {
+            Source::Directory(cwd) => Probe::Folder(Ok(cwd.clone())),
+            _ => Probe::Folder(Err(sheprd_github::pull_request::Error::Metadata.into())),
+        };
+        Self::spawn(Vec::new(), vec![probe], local, cx)
+    }
+
+    fn spawn(checkouts: Vec<Checkout>, probes: Vec<Probe>, local: bool, cx: &App) -> Self {
         let mut report = Report {
             unknown: checkouts.len() > 128,
             ..Report::default()
@@ -114,24 +191,41 @@ impl CloseCheck {
         cx.background_executor()
             .spawn(async move {
                 let deadline = Instant::now() + Duration::from_secs(15);
-                for input in inputs {
-                    if cancellation.load(Ordering::Relaxed) {
+                let cancelled = || cancellation.load(Ordering::Relaxed);
+                for probe in probes {
+                    if cancelled() {
                         return;
                     }
-                    let status = input.map_err(crate::Error::from).and_then(|input| {
-                        if !local {
-                            return Err(
-                                sheprd_github::pull_request::Error::UntrustedEndpoint.into()
-                            );
+                    let status = match probe {
+                        Probe::Input(input) => {
+                            input.map_err(crate::Error::from).and_then(|input| {
+                                if !local {
+                                    return Err(
+                                        sheprd_github::pull_request::Error::UntrustedEndpoint
+                                            .into(),
+                                    );
+                                }
+                                let (dirty, unpushed) =
+                                    crate::git::close_status(&input, deadline, &cancelled)?;
+                                Ok((dirty, unpushed, None))
+                            })
                         }
-                        Ok(crate::git::close_status(&input, deadline, &|| {
-                            cancellation.load(Ordering::Relaxed)
-                        })?)
-                    });
+                        Probe::Folder(dir) => dir.map_err(crate::Error::from).and_then(|dir| {
+                            if !local {
+                                return Err(
+                                    sheprd_github::pull_request::Error::UntrustedEndpoint.into()
+                                );
+                            }
+                            let (dirty, unpushed, seen) =
+                                folder_status(&dir, deadline, &cancelled)?;
+                            Ok((dirty, unpushed, Some(seen)))
+                        }),
+                    };
                     match status {
-                        Ok((dirty, unpushed)) => {
+                        Ok((dirty, unpushed, seen)) => {
                             report.dirty |= dirty;
                             report.unpushed |= unpushed;
+                            report.seen = seen;
                         }
                         Err(_) => report.unknown = true,
                     }

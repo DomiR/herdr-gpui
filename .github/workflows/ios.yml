@@ -15,6 +15,11 @@ on:
       # The daemon's wire types, which write the Swift tests' fixtures.
       - 'crates/sheprd-remote-control/src/native.rs'
       - 'crates/sheprd-remote-control/src/native/**'
+      # The fleet log the app links, built from Rust.
+      - 'crates/sheprd-fleet-ffi/**'
+      - 'crates/sheprd-remote-control/src/control/fleet.rs'
+      - 'crates/sheprd-remote-control/src/control/fleet/**'
+      - 'Cargo.lock'
       - '.github/workflows/ios.yml'
   pull_request:
     # ready_for_review starts the run a draft skipped.
@@ -27,6 +32,11 @@ on:
       # The daemon's wire types, which write the Swift tests' fixtures.
       - 'crates/sheprd-remote-control/src/native.rs'
       - 'crates/sheprd-remote-control/src/native/**'
+      # The fleet log the app links, built from Rust.
+      - 'crates/sheprd-fleet-ffi/**'
+      - 'crates/sheprd-remote-control/src/control/fleet.rs'
+      - 'crates/sheprd-remote-control/src/control/fleet/**'
+      - 'Cargo.lock'
       - '.github/workflows/ios.yml'
   workflow_dispatch:
 
@@ -63,6 +73,12 @@ jobs:
           [ "${sdk%%.*}" -ge 27 ] || { echo "::error::iOS SDK $sdk is older than 27"; exit 1; }
       - name: Install XcodeGen
         run: brew install xcodegen
+      - name: Build the fleet log library from Rust
+        # The phone replays its own copy of the fleet log with the same Rust
+        # code as every computer (ios/tools/build-fleet-ffi.sh).
+        run: |
+          command -v rustup >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none; echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"; export PATH="$HOME/.cargo/bin:$PATH"; }
+          sh ios/tools/build-fleet-ffi.sh
       - name: Swift package tests (fixtures shared with the daemon's Rust tests)
         run: cd ios/SheprdRemoteCore && swift test
       - name: Unsigned simulator build of the app and its extensions
@@ -105,6 +121,10 @@ jobs:
           [ "${sdk%%.*}" -ge 27 ] || { echo "::error::iOS SDK $sdk is older than 27"; exit 1; }
       - name: Install XcodeGen
         run: brew install xcodegen
+      - name: Build the fleet log library from Rust
+        run: |
+          command -v rustup >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none; echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"; export PATH="$HOME/.cargo/bin:$PATH"; }
+          sh ios/tools/build-fleet-ffi.sh
       - name: Archive and upload
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}

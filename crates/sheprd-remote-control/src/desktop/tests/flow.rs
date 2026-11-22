@@ -42,14 +42,14 @@ async fn ssh_server() -> SocketAddr {
 
 /// The other computer: its daemon listening on a relay on loopback, with
 /// Pair device open and desktops let in to a stand-in SSH server.
-struct Other {
-    dir: tempfile::TempDir,
-    pairing: crate::control::PairingId,
-    state: Shared,
+pub(super) struct Other {
+    pub(super) dir: tempfile::TempDir,
+    pub(super) pairing: crate::control::PairingId,
+    pub(super) state: Shared,
     _stop: watch::Sender<bool>,
 }
 
-async fn other() -> Other {
+pub(super) async fn other() -> Other {
     let (http, _, _) = relay().await;
     let dir = tempfile::tempdir().unwrap();
     let mut state = state(dir.path());
@@ -91,7 +91,7 @@ async fn other() -> Other {
 
 /// The other computer's user, once asked, allows the claim with the code
 /// its dialog shows.
-async fn allow(other: &Other) {
+pub(super) async fn allow(other: &Other) -> String {
     for _ in 0..200 {
         let pairing = other
             .state
@@ -109,7 +109,7 @@ async fn allow(other: &Other) {
             if let Some(relay) = &other.state.relay {
                 relay.devices_changed();
             }
-            return;
+            return code;
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
@@ -124,7 +124,7 @@ fn exchange_with(other: &Other) -> Opened {
 }
 
 /// An `ssh-ed25519` public key line.
-fn ssh_key() -> String {
+pub(super) fn ssh_key() -> String {
     let bytes = [
         &11u32.to_be_bytes()[..],
         b"ssh-ed25519",
@@ -148,8 +148,9 @@ async fn a_nearby_desktop_off_the_network_pairs_and_reaches_ssh_through_a_relay(
         keys: &keys,
         name: "Laptop",
         ssh_key: &ssh_key,
+        fleet: None,
     };
-    let (allowed, ()) = tokio::join!(claim::claim(&opened, &claimant, || {}), allow(&other));
+    let (allowed, _) = tokio::join!(claim::claim(&opened, &claimant, |_| {}), allow(&other));
     let allowed = allowed.unwrap();
     assert_eq!(
         allowed.login.host_keys,
@@ -213,6 +214,7 @@ async fn a_denied_desktop_learns_so_and_gets_no_key_in() {
         keys: &keys,
         name: "Laptop",
         ssh_key: &ssh_key,
+        fleet: None,
     };
     let deny = async {
         for _ in 0..200 {
@@ -234,7 +236,7 @@ async fn a_denied_desktop_learns_so_and_gets_no_key_in() {
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
     };
-    let (result, ()) = tokio::join!(claim::claim(&opened, &claimant, || {}), deny);
+    let (result, ()) = tokio::join!(claim::claim(&opened, &claimant, |_| {}), deny);
     assert!(matches!(result, Err(Error::Denied)), "{result:?}");
     assert!(!other.dir.path().join("authorized_keys").exists());
 }
@@ -260,8 +262,9 @@ async fn a_claim_is_refused_before_its_token_is_spent_while_ssh_is_off() {
         keys: &keys,
         name: "Laptop",
         ssh_key: &ssh_key,
+        fleet: None,
     };
-    let result = claim::claim(&opened, &claimant, || {}).await;
+    let result = claim::claim(&opened, &claimant, |_| {}).await;
     assert!(
         matches!(&result, Err(Error::Claim(reason)) if reason.contains("Remote Login")),
         "{result:?}"

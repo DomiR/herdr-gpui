@@ -1,26 +1,13 @@
-//! Device setups that need prompts run as this app's children, on a terminal
-//! the app owns, and a daemon workspace only shows them.
-//!
-//! macOS Local Network privacy judges a process by its responsible code
-//! (Apple's TN3179). A process this app starts is the app's: it shares the
-//! permission the user gave Herdr. A process in a Herdr daemon's pane is not:
-//! a daemon started outside this app leaves each one responsible for itself,
-//! so a third-party tool such as Homebrew's `ssh` there is refused a LAN host
-//! with "no route to host", without an alert and without an entry the user
-//! could turn on, while Apple's own tools are let through. Running the setup
-//! here keeps the user's own `ssh`, configuration, agent, and security key,
-//! and the prompts, confirmations, and host trust of `ssh-copy-id` and
-//! `herdr machine add`, unchanged.
-//!
-//! The pane runs this executable with [`ATTACH`], which relays its terminal
-//! over a private socket to [`host`]; the setup itself starts through
-//! [`SESSION`]. The setup ends with this app: quitting it hangs the setup up
-//! as closing a terminal would.
+//! Device setup runs on an app-owned terminal so SSH inherits the app's macOS
+//! Local Network permission. Add Device consumes its bounded output and sends
+//! explicit responses through `gui`; no daemon workspace is involved.
+//! The attach helper remains available for previously launched setups.
 // i18n: migrated
 
 mod attach;
 mod error;
 mod frame;
+pub(crate) mod gui;
 mod host;
 mod session;
 

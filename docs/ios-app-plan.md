@@ -647,17 +647,24 @@ stored value when present and keeps it when absent.
 
 `notify_key` is base64url without padding of the 65-byte uncompressed P-256
 point the app opens alerts with. Anything else is refused. A device with
-both, on a daemon with the user's APNs key, gets every chat notification
-through APNs and none through Web Push. APNs refusing the token
-(`BadDeviceToken`, `Unregistered`) drops `alert`.
+both, on a daemon with the push relay on, gets every chat notification
+through APNs and none through Web Push. Since computers push only through the
+push relay (`docs/apns-relay-plan.md`), `alert` is a relay handle; a plain
+token like the one above, from an older app, is kept but never sent to. A
+`gone` reply drops `alert`.
 
 **A shown alert** is push type `alert`, topic the bundle id,
-`apns-collapse-id` the chat's tag (at most 64 bytes), and priority 10 for a
-question, 5 otherwise:
+`apns-collapse-id` the pairing's scope and the chat's tag (at most 64
+bytes, digested when longer), and priority 10 for a question, 5 otherwise.
+Pane ids are unique only on one computer, so the collapse id and the thread
+start with the scope: 16 hex digits of a digest of the notify key the phone
+gave that computer, which tells the phone's computers apart without naming
+any to APNs or the push relay. The extension sets the shown thread from the
+sealed `computer` and `pane`.
 
 ```json
 { "aps": { "alert": { "title": "Sheprd", "body": "New activity" },
-           "mutable-content": 1, "thread-id": "w1:p2",
+           "mutable-content": 1, "thread-id": "SCOPE/w1:p2",
            "interruption-level": "time-sensitive", "sound": "default" },
   "sealed": "BASE64URL" }
 ```
@@ -684,6 +691,11 @@ field order:
   keeps the last count from each computer and sets the badge to their sum.
 - `permission` appears only for a permission request, with at most four
   options in the agent's order.
+- `event` is the daemon's id for the notification decision (32 hex digits),
+  the same in every copy of it. The extension keeps the ids it showed in the
+  last two days (at most 128, `SeenAlerts`, in the App Group), and a copy
+  that arrives again replaces the first silently, so the phone shows and
+  buzzes once. Older daemons leave it out.
 - The privacy setting decides what `body` quotes.
 - `body` is shortened, ending in `…`, until the whole payload fits 4 KB.
 
@@ -695,7 +707,7 @@ field order:
 ```
 
 Its plaintext has `"clear": true`, and the app removes the chat's
-notifications (`thread-id` = `pane`).
+notifications (those whose `computer` and `pane` match).
 
 **Live Activity buttons.** `content-state` also carries:
 - in the question phase, `permission` (the waiting permission's id) and

@@ -3,7 +3,10 @@ use uuid::Uuid;
 
 mod alerts;
 mod badge;
+mod own_session;
 mod presence;
+mod relay;
+mod relay_off;
 mod terminals;
 
 #[test]

@@ -80,6 +80,22 @@ impl Authority {
         })
     }
 
+    /// The certificate of the CA kept in `state_dir/tls/`, if any, read
+    /// without its key and never created: what names this computer as a
+    /// fleet host. Blocking.
+    pub(crate) fn stored_certificate(state_dir: &Path) -> Result<Option<CertificateDer<'static>>> {
+        let cert_path = state_dir.join(TLS_DIR).join(CA_CERT_FILE);
+        let Some(pem) = read_optional(&cert_path)? else {
+            return Ok(None);
+        };
+        CertificateDer::from_pem_slice(pem.as_bytes())
+            .map(Some)
+            .map_err(|source| Error::Pem {
+                path: cert_path,
+                source,
+            })
+    }
+
     /// A new CA for `host`, valid from `now`, with its key as PEM.
     pub(super) fn create(host: Option<&str>, now: SystemTime) -> Result<(Self, String)> {
         let key = KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256).map_err(Error::Certificate)?;

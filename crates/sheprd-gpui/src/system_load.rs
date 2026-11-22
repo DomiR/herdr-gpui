@@ -9,6 +9,7 @@
 
 mod error;
 mod gpu;
+mod hosted;
 mod render;
 mod sample;
 

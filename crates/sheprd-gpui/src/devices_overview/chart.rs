@@ -28,7 +28,7 @@ const STEP_GAP: f32 = 1.;
 
 /// The full two hours, oldest first: steps the window has not seen yet are
 /// None on the left, so the axis means the same from the first minute.
-pub(super) fn padded<T>(values: Vec<T>) -> Vec<Option<T>> {
+pub(crate) fn padded<T>(values: Vec<T>) -> Vec<Option<T>> {
     let slots = STEPS + 1;
     let skip = values.len().saturating_sub(slots);
     let missing = slots.saturating_sub(values.len());

@@ -2,33 +2,16 @@
 //! label: no address, route, or session appears in a series.
 
 use serde::Serialize;
+pub use sheprd_dashboard::metrics::Login;
+use sheprd_dashboard::{
+    labels,
+    metrics::{family, labelled, series, single},
+};
 use std::{
     fmt::Write as _,
     sync::atomic::{AtomicU64, Ordering::Relaxed},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
-
-/// Declares a label set once: the enum, its `ALL` list, and each label.
-macro_rules! labels {
-    ($(#[$meta:meta])* $name:ident { $($variant:ident => $label:literal,)+ }) => {
-        $(#[$meta])*
-        #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-        pub enum $name { $($variant,)+ }
-
-        impl $name {
-            pub const ALL: &[Self] = &[$(Self::$variant,)+];
-
-            #[must_use]
-            pub const fn label(self) -> &'static str {
-                match self { $(Self::$variant => $label,)+ }
-            }
-
-            const fn index(self) -> usize {
-                self as usize
-            }
-        }
-    };
-}
 
 labels! {
     /// What a socket is for.
@@ -94,16 +77,6 @@ labels! {
         Budget => "budget",
         Session => "session",
         Total => "total",
-    }
-}
-
-labels! {
-    /// How a dashboard login went.
-    Login {
-        Blocked => "blocked",
-        Failed => "failed",
-        Limited => "limited",
-        Succeeded => "succeeded",
     }
 }
 
@@ -496,40 +469,4 @@ pub struct Totals {
     pub sessions_ended: u64,
     pub throttled_ms: u64,
     pub uptime_secs: u64,
-}
-
-fn labelled<L: Copy>(
-    all: &[L],
-    value: impl Fn(L) -> u64,
-    label: fn(L) -> &'static str,
-) -> Vec<(&'static str, u64)> {
-    all.iter()
-        .map(|item| (label(*item), value(*item)))
-        .collect()
-}
-
-fn family(out: &mut String, name: &str, kind: &str, help: &str) {
-    let _ = writeln!(out, "# HELP {name} {help}\n# TYPE {name} {kind}");
-}
-
-fn single(out: &mut String, name: &str, kind: &str, help: &str, value: u64) {
-    family(out, name, kind, help);
-    let _ = writeln!(out, "{name} {value}");
-}
-
-#[allow(clippy::too_many_arguments)]
-fn series<L: Copy, V: std::fmt::Display>(
-    out: &mut String,
-    name: &str,
-    kind: &str,
-    help: &str,
-    key: &str,
-    all: &[L],
-    label: fn(L) -> &'static str,
-    value: impl Fn(L) -> V,
-) {
-    family(out, name, kind, help);
-    for item in all {
-        let _ = writeln!(out, "{name}{{{key}=\"{}\"}} {}", label(*item), value(*item));
-    }
 }

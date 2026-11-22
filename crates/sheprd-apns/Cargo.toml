@@ -1,5 +1,5 @@
 [package]
-description            = "Sends pushes to the Apple Push Notification service, for the daemon's own key and the push relay"
+description            = "Sends pushes to the Apple Push Notification service, for the push relay, and the daemon's client of it"
 edition.workspace      = true
 license.workspace      = true
 name                   = "sheprd-apns"

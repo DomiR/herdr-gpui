@@ -9,8 +9,15 @@ requests that touch platform code or dependencies, or ask for it with a
 label, run every platform over the whole workspace, so a release still
 requires the full matrix on main (scripts/release/check-ci.py).
 
+Windows, the slowest hosted platform, runs only for what a Windows build
+reads: Windows files, cfg gates but those on macOS alone, dependencies, the
+toolchain, CI selection, or the `windows` or `full-ci` label. A pull request
+that needs every platform for macOS code leaves Windows to the merge queue
+and main.
+
 Prints GitHub step outputs:
   full           `true` for every platform and the whole workspace
+  windows        `true` when Windows runs too (never without `full`)
   cargo_scope    `--workspace`, `-p NAME ...`, or empty when no crate changed
   gpui           `true` when sheprd-gpui is in scope
 """
@@ -38,6 +45,21 @@ PLATFORM_PATH = re.compile(r"(^|[/_.-])(windows|win32|macos|darwin)([/_.-]|$)|\.
 PLATFORM_CFG = re.compile(
     r"\bcfg(!|_attr)?\(.*\b(windows|macos|target_os|target_vendor|target_family|unix)\b"
     r"|CARGO_CFG_TARGET_(OS|VENDOR|FAMILY)\b")
+# What a Windows build reads beyond what every platform does.
+WINDOWS_LABELS = frozenset({"full-ci", "windows"})
+WINDOWS_PATH = re.compile(r"(^|[/_.-])(windows|win32)([/_.-]|$)|\.ps1$", re.IGNORECASE)
+# A gate Windows can match: one that names it, Unix, the target family, or a
+# negation (`not(target_os = "macos")` is Windows too). A gate naming only
+# macOS, Apple, or Darwin is invisible to a Windows build.
+APPLE_ONLY = re.compile(r"\b(macos|ios|darwin|apple)\b")
+WINDOWS_VISIBLE = re.compile(r"\b(windows|unix|target_family|not)\b|CARGO_CFG_TARGET_(OS|FAMILY)\b")
+
+
+def windows_line(line):
+    return bool(PLATFORM_CFG.search(line)) and (WINDOWS_VISIBLE.search(line) is not None
+                                                 or APPLE_ONLY.search(line) is None)
+
+
 # Outside a crate, what no crate builds or tests read: Markdown but the
 # skills the app embeds, the website but the relay list sheprd-relay's tests
 # check, the hosted site, and other workflows. Anything else there reaches
@@ -97,7 +119,12 @@ def plan(event, labels, changed, diff_lines, members, dependents):
                    for path in changed)
             or any(PLATFORM_CFG.search(line) for line in diff_lines))
     if full:
-        return {"full": "true", "cargo_scope": "--workspace", "gpui": "true"}
+        windows = (event != "pull_request" or changed is None
+                   or bool(WINDOWS_LABELS & set(labels))
+                   or any(path in FULL_PATHS or BUILD_PATH.search(path) or WINDOWS_PATH.search(path)
+                          for path in changed)
+                   or any(windows_line(line) for line in diff_lines))
+        return {"full": "true", "windows": str(windows).lower(), "cargo_scope": "--workspace", "gpui": "true"}
     seeds = set()
     everything = False
     for path in changed:
@@ -109,7 +136,8 @@ def plan(event, labels, changed, diff_lines, members, dependents):
             everything = True
     scope = set(dependents) if everything else reach(seeds, dependents)
     cargo_scope = "--workspace" if everything else " ".join(f"-p {name}" for name in sorted(scope))
-    return {"full": "false", "cargo_scope": cargo_scope, "gpui": str("sheprd-gpui" in scope).lower()}
+    return {"full": "false", "windows": "false", "cargo_scope": cargo_scope,
+            "gpui": str("sheprd-gpui" in scope).lower()}
 
 
 def git(*args):

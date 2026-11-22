@@ -99,6 +99,7 @@ fn talking(agent: Agent) -> ServerMessage {
         kind: EntryKind::User {
             text: "hello".to_owned(),
             files: 0,
+            note: None,
         },
     });
     ServerMessage::Snapshot { cursor, transcript }

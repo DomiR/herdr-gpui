@@ -27,6 +27,7 @@ fn user(seq: u64) -> Step {
         EntryKind::User {
             text: "look".into(),
             files: 1,
+            note: None,
         },
     )
 }

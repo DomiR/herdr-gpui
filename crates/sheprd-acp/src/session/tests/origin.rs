@@ -123,6 +123,7 @@ fn said(id: u64, text: &str) -> Entry {
         kind: EntryKind::User {
             text: text.to_owned(),
             files: 0,
+            note: None,
         },
     }
 }
@@ -148,7 +149,7 @@ fn continued() -> Harness {
 }
 
 #[test]
-fn a_restored_chat_hides_its_notes() {
+fn a_restored_chat_keeps_its_notes_apart_from_the_words() {
     let harness = continued();
     let users: Vec<_> = harness
         .transcript()
@@ -156,7 +157,11 @@ fn a_restored_chat_hides_its_notes() {
         .iter()
         .filter(|entry| matches!(entry.kind, EntryKind::User { .. }))
         .collect();
-    assert_eq!(users, [&said(1, "show me the mockups")]);
+    let mut expected = said(1, "show me the mockups");
+    if let EntryKind::User { note, .. } = &mut expected.kind {
+        *note = Some(said_on_phone());
+    }
+    assert_eq!(users, [&expected]);
 }
 
 #[test]

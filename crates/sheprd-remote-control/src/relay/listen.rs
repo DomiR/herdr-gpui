@@ -7,7 +7,7 @@ use crate::web::Shared;
 use sheprd_relay::{
     Endpoint,
     client::{self, Listener},
-    wire::Key,
+    wire::{Key, MAX_DIAL_KEYS},
 };
 use std::{sync::Arc, time::Duration};
 use tokio::sync::watch;
@@ -128,13 +128,55 @@ async fn add_pairing(relays: &Relays, listener: &mut Listener) {
     }
 }
 
-/// The dial keys of every paired device that gave one.
+/// The dial keys of every paired device that gave one, and of the
+/// fleet's other computers, within what a relay takes.
 fn dial_keys(state: &Shared) -> Vec<Key> {
-    state
+    let paired: Vec<Key> = state
         .auth()
         .devices()
         .records()
         .iter()
         .filter_map(|record| record.relay.as_ref()?.dial_key())
-        .collect()
+        .collect();
+    // The fleet's other computers, which reach SSH here or pass removals
+    // (`crate::fleet`).
+    let fleet = state
+        .fleet
+        .as_ref()
+        .map(|fleet| crate::fleet::grants::dial_keys(fleet))
+        .unwrap_or_default();
+    let (keys, left_out) = combined(paired, fleet);
+    if left_out > 0 {
+        tracing::warn!(
+            left_out,
+            "more paired devices than a relay takes beside the fleet; some cannot dial in"
+        );
+    }
+    keys
+}
+
+/// `paired` and `fleet` within [`MAX_DIAL_KEYS`], and how many paired
+/// keys did not fit. The fleet's are kept first: there are at most
+/// `MAX_COMPUTERS` of them, which every grant the fleet gives relies on,
+/// and they never take the whole list, so paired devices keep the rest
+/// in their order.
+pub(super) fn combined(paired: Vec<Key>, fleet: Vec<Key>) -> (Vec<Key>, usize) {
+    let mut keys: Vec<Key> = Vec::with_capacity(MAX_DIAL_KEYS);
+    for key in fleet.into_iter().take(MAX_DIAL_KEYS) {
+        if !keys.contains(&key) {
+            keys.push(key);
+        }
+    }
+    let mut left_out = 0;
+    for key in paired {
+        if keys.contains(&key) {
+            continue;
+        }
+        if keys.len() < MAX_DIAL_KEYS {
+            keys.push(key);
+        } else {
+            left_out += 1;
+        }
+    }
+    (keys, left_out)
 }

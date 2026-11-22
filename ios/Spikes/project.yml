@@ -45,7 +45,6 @@ targets:
       properties:
         aps-environment: development
         com.apple.security.application-groups: [group.so.pen.herdr-spikes]
-        keychain-access-groups: [group.so.pen.herdr-spikes]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: so.pen.herdr-spikes
@@ -67,7 +66,6 @@ targets:
       path: Notifications/SheprdSpikesNotifications.entitlements
       properties:
         com.apple.security.application-groups: [group.so.pen.herdr-spikes]
-        keychain-access-groups: [group.so.pen.herdr-spikes]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: so.pen.herdr-spikes.notifications
@@ -90,7 +88,6 @@ targets:
       path: Widgets/SheprdSpikesWidgets.entitlements
       properties:
         com.apple.security.application-groups: [group.so.pen.herdr-spikes]
-        keychain-access-groups: [group.so.pen.herdr-spikes]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: so.pen.herdr-spikes.widgets

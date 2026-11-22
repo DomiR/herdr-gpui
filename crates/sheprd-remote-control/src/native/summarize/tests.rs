@@ -16,9 +16,14 @@ fn a_summary_is_dated_when_its_transcript_was_read() {
 #[test]
 fn a_failure_is_dated_when_its_transcript_was_read() {
     assert_eq!(
-        finished(Err(row_summary::Error::TimedOut), 100),
+        finished(
+            Err(row_summary::Error::from(
+                sheprd_client::one_shot::Error::TimedOut
+            )),
+            100
+        ),
         RowSummary::Failed {
-            reason: row_summary::Error::TimedOut.to_string(),
+            reason: row_summary::Error::from(sheprd_client::one_shot::Error::TimedOut).to_string(),
             at_ms: 100,
         }
     );

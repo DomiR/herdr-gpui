@@ -1,0 +1,55 @@
+{
+  "type": "chat_changes",
+  "pane": "p1",
+  "changes": [
+    {
+      "cursor": {
+        "epoch": "01234567-89ab-cdef-0123-456789abcdef",
+        "seq": 45
+      },
+      "change": {
+        "change": "pull_request",
+        "pull_request": {
+          "actions": [
+            "created"
+          ],
+          "number": 1490,
+          "repo": "sheprd-labs/sheprd",
+          "url": "https://github.com/sheprd-labs/sheprd/pull/1490"
+        }
+      }
+    },
+    {
+      "cursor": {
+        "epoch": "01234567-89ab-cdef-0123-456789abcdef",
+        "seq": 46
+      },
+      "change": {
+        "change": "pull_request",
+        "pull_request": {
+          "number": 1489,
+          "repo": "sheprd-labs/sheprd",
+          "url": "https://github.com/sheprd-labs/sheprd/pull/1489"
+        }
+      }
+    },
+    {
+      "cursor": {
+        "epoch": "01234567-89ab-cdef-0123-456789abcdef",
+        "seq": 47
+      },
+      "change": {
+        "change": "pull_request",
+        "pull_request": {
+          "actions": [
+            "pushed",
+            "created"
+          ],
+          "number": 1490,
+          "repo": "Sheprd-Labs/Sheprd",
+          "url": "https://github.com/Sheprd-Labs/Sheprd/pull/1490"
+        }
+      }
+    }
+  ]
+}

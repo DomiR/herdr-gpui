@@ -23,6 +23,7 @@ zbus = { default-features = false, features = ["async-io", "blocking-api"], work
 [target.'cfg(windows)'.dependencies]
 windows = { features = [
     "Devices_Bluetooth",
+    "Devices_Bluetooth_Advertisement",
     "Devices_Bluetooth_GenericAttributeProfile",
     "Devices_Radios",
     "Foundation",

@@ -53,6 +53,17 @@ pub(crate) struct WorkspaceTarget {
     pub(super) muted: bool,
 }
 
+impl WorkspaceTarget {
+    pub(crate) fn id(&self) -> &str {
+        &self.id
+    }
+
+    /// Who renames it: Herdr 1's daemon, or the app.
+    pub(crate) fn keeper(&self) -> sheprd_session::Keeper {
+        self.keeper
+    }
+}
+
 /// How a worktree request tells the daemon which repository it is for.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum Source {
@@ -797,6 +808,9 @@ impl SheprdWindow {
         {
             self.menu.target = Some(target);
         }
+        if action == WorkspaceAction::Rename {
+            self.offer_naming(crate::naming::Field::Workspace);
+        }
         let note = (action == WorkspaceAction::Note).then(|| self.note_draft(cx));
         let Some(target) = &self.menu.target else {
             return;
@@ -861,16 +875,24 @@ impl SheprdWindow {
             cx.notify();
             return;
         }
-        if action == WorkspaceAction::Close
-            && target.keeper == sheprd_session::Keeper::Herdr1
-            && let Some(snapshot) = &self.live.snapshot
-        {
-            self.menu.close_check = Some(super::workspace_close::CloseCheck::start(
-                snapshot,
-                target,
-                self.selected_endpoint == 0 && self.live.local_daemon_peer,
-                cx,
-            ));
+        if action == WorkspaceAction::Close {
+            use super::workspace_close::CloseCheck;
+            self.menu.close_check = if target.keeper == sheprd_session::Keeper::App {
+                Some(CloseCheck::start_kept(
+                    target,
+                    !self.selected_is_remote(),
+                    cx,
+                ))
+            } else {
+                self.live.snapshot.as_ref().map(|snapshot| {
+                    CloseCheck::start(
+                        snapshot,
+                        target,
+                        self.selected_endpoint == 0 && self.live.local_daemon_peer,
+                        cx,
+                    )
+                })
+            };
         }
         if action == WorkspaceAction::DeleteWorktree && target.keeper == sheprd_session::Keeper::App
         {
@@ -902,7 +924,7 @@ impl SheprdWindow {
             .into_iter()
             .map(|(action, _)| action)
             .collect();
-        if self.pr_profile().is_some() && self.menu.pr.value.is_some() {
+        if self.pr_signed_in() && self.menu.pr.value.is_some() {
             actions.push(WorkspaceMenuAction::PullRequest);
         }
         actions

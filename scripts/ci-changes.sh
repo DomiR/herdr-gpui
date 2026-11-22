@@ -9,7 +9,8 @@
 # Windows packaging and installer check, which is too slow to run for every
 # change and covers only what the Windows release artifacts are made from,
 # `windows_native=` for the Windows GUI tests, `macos_release=` for the macOS
-# release builds, and `website=` for the Python-only sheprd.org and docs
+# release builds, `relay_agent=` for the sheprd-relay-agent builds each
+# release ships, and `website=` for the Python-only sheprd.org and docs
 # checks. A website-only change runs those and none of the native jobs.
 #
 # Every hosted job shares one account-wide runner limit, and macOS jobs a
@@ -20,7 +21,7 @@ set -euo pipefail
 if [[ "$EVENT" == workflow_dispatch ]] ||
    [[ ! "$BASE" =~ ^[0-9a-f]{40}$ ]] ||
    ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
-  printf 'code=true\nwindows_package=true\nwindows_native=true\nmacos_release=true\nwebsite=true\n'
+  printf 'code=true\nwindows_package=true\nwindows_native=true\nmacos_release=true\nrelay_agent=true\nwebsite=true\n'
   exit 0
 fi
 
@@ -93,9 +94,20 @@ macos_release=$(changed \
   ':(glob)**/Cargo.toml' Cargo.lock rust-toolchain.toml .cargo \
   ':(glob)crates/*/*.rs' crates/sheprd-gpui/tests/cli.rs crates/sheprd-gpui/tests/cli \
   scripts/ci-changes.sh .github/workflows/ci.yml)
+# sheprd-relay-agent's release builds (scripts/release/build-agent.sh) run
+# for what the agent is built from: its crate and the two it depends on,
+# minus their unit tests, which the checks run, and the build's own inputs.
+relay_agent=$(changed \
+  crates/sheprd-relay-agent crates/sheprd-relay crates/sheprd-tunnel \
+  Cargo.toml Cargo.lock rust-toolchain.toml .cargo \
+  scripts/release/build-agent.sh scripts/release/common.sh \
+  scripts/ci-changes.sh .github/workflows/ci.yml \
+  ':(exclude)**/*.md' \
+  ':(exclude,glob)crates/**/tests/**' ':(exclude,glob)crates/**/tests.rs' \
+  ':(exclude,glob)crates/**/*_tests.rs' ':(exclude,glob)crates/**/*_tests/**')
 # The docs link into READMEs, docs/ and the example config, so any Markdown or
 # build input can break a page; the check takes seconds.
 website=$(changed website site docs ':(glob)**/*.md' .github/workflows/ci.yml)
 [[ "$code" == true ]] && website=true
-printf 'code=%s\nwindows_package=%s\nwindows_native=%s\nmacos_release=%s\nwebsite=%s\n' \
-  "$code" "$windows_package" "$windows_native" "$macos_release" "$website"
+printf 'code=%s\nwindows_package=%s\nwindows_native=%s\nmacos_release=%s\nrelay_agent=%s\nwebsite=%s\n' \
+  "$code" "$windows_package" "$windows_native" "$macos_release" "$relay_agent" "$website"

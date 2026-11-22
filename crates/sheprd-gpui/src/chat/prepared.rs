@@ -5,7 +5,7 @@
 //! call's output and file changes summarized.
 
 use super::{
-    rich::Fence,
+    rich::{Breaks, Fence},
     visual::{MAX_DIAGRAM_SOURCE, Source, VisualId, Visuals},
 };
 use crate::{
@@ -43,7 +43,12 @@ fn cut_note() -> String {
 /// Markdown prose as rich blocks, or as lines when it is too large to be
 /// rich.
 fn prose(text: &str, visuals: &mut Visuals) -> Part {
-    match super::rich::parse(text, visuals) {
+    prose_with(text, Breaks::Soft, visuals)
+}
+
+/// [`prose`], choosing what a single newline becomes.
+fn prose_with(text: &str, breaks: Breaks, visuals: &mut Visuals) -> Part {
+    match super::rich::parse_with(text, breaks, visuals) {
         Some(blocks) => Part::Rich(blocks.into()),
         None => Part::Text(message_lines(text)),
     }
@@ -524,11 +529,16 @@ fn message(text: &str, author: Author, visuals: &mut Visuals) -> Vec<Part> {
         .sum();
     let cut = end < text.len();
     let text = &text[..end];
+    // A person's newline is a line they meant; an agent's may only wrap.
+    let breaks = match author {
+        Author::User => Breaks::Hard,
+        Author::Agent => Breaks::Soft,
+    };
     let mut parts = Vec::new();
     let mut markdown = String::new();
     let flush = |text: &mut String, parts: &mut Vec<Part>, visuals: &mut Visuals| {
         if !text.trim().is_empty() {
-            parts.push(prose(text, visuals));
+            parts.push(prose_with(text, breaks, visuals));
         }
         text.clear();
     };
@@ -648,7 +658,7 @@ fn message(text: &str, author: Author, visuals: &mut Visuals) -> Vec<Part> {
         }
     }
     if !markdown.trim().is_empty() || parts.is_empty() {
-        parts.push(prose(&markdown, visuals));
+        parts.push(prose_with(&markdown, breaks, visuals));
     }
     parts.extend(screen.map(Part::Screen));
     if cut {

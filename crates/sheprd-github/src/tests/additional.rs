@@ -3,6 +3,7 @@ use crate::{Account, device::organizations};
 
 fn pasted_profile() -> Profile {
     Profile {
+        server: crate::Server::GitHub,
         login: "fabien_microsoft".into(),
         avatar_url: String::new(),
         token: Arc::new("github_pat_fixture".into()),

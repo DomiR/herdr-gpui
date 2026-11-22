@@ -17,6 +17,9 @@ impl Localize for app::Error {
             }
             Self::Control(error) => error.localize(),
             Self::Enroll(error) => error.localize(),
+            Self::Favorites(app::favorites::Error::Pane { pane }) => {
+                fl!("error-remote-control-favorite-pane", pane = pane.as_str())
+            }
             Self::GitHubHost { host } => {
                 fl!("error-remote-control-github-host", host = host.as_str())
             }
@@ -109,7 +112,6 @@ impl Localize for enroll::Error {
     fn localize(&self) -> String {
         match self {
             // keep-sorted start
-            Self::ApnsSize => fl!("error-remote-control-enroll-apns-size"),
             Self::Config { path, .. } => fl!(
                 "error-remote-control-enroll-config",
                 path = path.display().to_string()

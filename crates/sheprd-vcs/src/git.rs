@@ -9,6 +9,7 @@
 //! Commit, push, and pull request creation are explicit user actions and are
 //! never retried or replayed automatically.
 mod ahead;
+mod create_pr;
 mod error;
 mod identity;
 pub mod restack;
@@ -16,10 +17,9 @@ pub mod restack;
 pub use ahead::Ahead;
 pub use error::Error;
 pub use identity::{Identity, identity};
-use secrecy::SecretString;
 use sheprd_github::{
     Tokens,
-    pull_request::{Input, base_repository, clean, local_checkout, run, run_bytes},
+    pull_request::{Input, clean, local_checkout, run, run_bytes},
 };
 use std::{
     collections::VecDeque,
@@ -743,7 +743,7 @@ fn perform(
         Action::Push => push(&checkout, &input.branch, deadline, cancelled),
         Action::CreatePullRequest => {
             let token = token.ok_or(sheprd_github::Error::Authentication)?;
-            create_pull_request(&checkout, &input.branch, &token, deadline, cancelled)
+            create_pr::create_pull_request(&checkout, &input.branch, &token, deadline, cancelled)
         }
         Action::Restack { below, base } => {
             restack::restack(&checkout, &input.branch, &below, &base, deadline, cancelled)
@@ -804,96 +804,6 @@ fn push(
     Ok(Outcome {
         message: format!("Pushed {branch} to origin"),
         url: None,
-        restacked: None,
-    })
-}
-
-fn create_pull_request(
-    checkout: &str,
-    branch: &str,
-    tokens: &Tokens,
-    deadline: Instant,
-    cancelled: &impl Fn() -> bool,
-) -> crate::Result<Outcome> {
-    // A fork checkout opens its pull request against `upstream`, from the
-    // branch pushed to its own `origin` below. The fork's owner opens it, so
-    // that owner's account sends the mutation.
-    let base = base_repository(checkout, deadline, cancelled)?;
-    let head = base.head(branch)?;
-    let token: &SecretString = tokens.for_owner(base.fork_owner.as_deref().unwrap_or(&base.owner));
-    let title = clean(&git(
-        checkout,
-        &["log", "-1", "--pretty=format:%s"],
-        "read the commit subject",
-        deadline,
-        cancelled,
-    )?);
-    let title: String = title.trim().chars().take(TITLE_LIMIT).collect();
-    if title.is_empty() {
-        return Err(Error::PullRequestTitle.into());
-    }
-    // The head ref must exist on GitHub before a pull request can reference it.
-    git(
-        checkout,
-        &["push", "--set-upstream", "origin", branch],
-        "push",
-        deadline,
-        cancelled,
-    )?;
-    let mut cooldown = None;
-    let repository = sheprd_github::graphql(
-        "create_pr_repository",
-        token,
-        REPOSITORY_QUERY,
-        serde_json::json!({"owner": base.owner, "repo": base.repo}),
-        API_TIMEOUT,
-        cancelled,
-        &mut cooldown,
-    )?;
-    let id = repository["data"]["repository"]["id"]
-        .as_str()
-        .filter(|id| !id.is_empty())
-        .ok_or(sheprd_github::Error::from(
-            sheprd_github::pull_request::Error::Repository,
-        ))?
-        .to_owned();
-    let default_branch = repository["data"]["repository"]["defaultBranchRef"]["name"]
-        .as_str()
-        .filter(|name| !name.is_empty())
-        .ok_or(sheprd_github::Error::from(
-            sheprd_github::pull_request::Error::Repository,
-        ))?
-        .to_owned();
-    if base.is_own_base(branch, &default_branch) {
-        return Err(Error::PullRequestBase.into());
-    }
-    let created = sheprd_github::graphql(
-        "create_pr",
-        token,
-        CREATE_MUTATION,
-        serde_json::json!({
-            "repository": id, "base": default_branch, "head": head, "title": title, "body": ""
-        }),
-        API_TIMEOUT,
-        cancelled,
-        &mut cooldown,
-    )?;
-    parse_created(&created, &base.owner, &base.repo)
-}
-
-fn parse_created(response: &serde_json::Value, owner: &str, repo: &str) -> crate::Result<Outcome> {
-    let pr = &response["data"]["createPullRequest"]["pullRequest"];
-    let number = pr["number"].as_u64().filter(|number| *number > 0);
-    let url = pr["url"].as_str().unwrap_or_default();
-    let expected = number.map(|number| format!("https://github.com/{owner}/{repo}/pull/{number}"));
-    if expected.as_deref() != Some(url) {
-        return Err(
-            sheprd_github::Error::from(sheprd_github::pull_request::Error::Identity).into(),
-        );
-    }
-    Ok(Outcome {
-        message: format!("Opened pull request #{}", number.unwrap_or_default()),
-        url: expected,
         restacked: None,
     })
 }
@@ -978,14 +888,26 @@ pub fn close_status(
         cancelled,
     )?
     .is_empty();
-    let unpushed = !git(
+    // A branch with no commit yet has nothing to publish, and its dirty
+    // result must survive: only a missing HEAD is tolerated here.
+    let unpushed = match git(
         &checkout,
-        &["rev-list", "--max-count=1", "HEAD", "--not", "--remotes"],
-        "check unpushed commits",
+        &["rev-parse", "--verify", "--quiet", "HEAD^{commit}"],
+        "check for a first commit",
         deadline,
         cancelled,
-    )?
-    .is_empty();
+    ) {
+        Ok(_) => !git(
+            &checkout,
+            &["rev-list", "--max-count=1", "HEAD", "--not", "--remotes"],
+            "check unpushed commits",
+            deadline,
+            cancelled,
+        )?
+        .is_empty(),
+        Err(crate::Error::Git(Error::Failed { .. })) => false,
+        Err(error) => return Err(error),
+    };
     Ok((dirty, unpushed))
 }
 

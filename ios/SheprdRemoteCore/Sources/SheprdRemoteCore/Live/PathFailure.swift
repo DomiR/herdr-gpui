@@ -76,10 +76,36 @@ public enum PathFailure {
         return "\(code.localizedDescription) (\(code.domain) \(code.code)) after \(seconds(elapsed))"
     }
 
+    /// The header naming one call, which the daemon's request log shows
+    /// too, so a failure the phone reports can be matched with what the
+    /// computer saw of it, or the absence of anything.
+    public static let tagHeader = "X-Sheprd-Request"
+
+    /// A short random name for a call: eight hex digits, nothing about
+    /// the person or what the call carries.
+    public static func newTag() -> String {
+        String(UInt32.random(in: .min ... .max), radix: 16).leftPadded(to: 8)
+    }
+
+    /// How a report names a call: its tag, the address it went to, and
+    /// when it began by the phone's clock, to the millisecond, as the
+    /// daemon's log is in UTC to the microsecond.
+    public static func call(tag: String, origin: String, began: Date) -> String {
+        let format = ISO8601DateFormatter()
+        format.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return "call \(tag) at \(origin) begun \(format.string(from: began))"
+    }
+
     /// `elapsed` to a tenth of a second, as logs show it.
     public static func seconds(_ elapsed: Duration) -> String {
         let parts = elapsed.components
         let value = Double(parts.seconds) + Double(parts.attoseconds) / 1e18
         return value.formatted(.number.precision(.fractionLength(1)).locale(Locale(identifier: "en_US_POSIX"))) + "s"
+    }
+}
+
+private extension String {
+    func leftPadded(to width: Int) -> String {
+        String(repeating: "0", count: max(0, width - count)) + self
     }
 }

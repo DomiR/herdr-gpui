@@ -15,25 +15,49 @@ fn same_repository() -> serde_json::Value {
 
 #[test]
 fn any_pull_request_is_found_by_number_and_checked_against_its_own_head() {
-    let pr = parse_by_number(numbered(same_repository()), "example", "project", 8)
-        .unwrap()
-        .unwrap();
+    let pr = parse_by_number(
+        numbered(same_repository()),
+        &crate::Server::GitHub,
+        "example",
+        "project",
+        8,
+    )
+    .unwrap()
+    .unwrap();
     assert_eq!(pr.number, 8);
     assert_eq!(pr.url, "https://github.com/example/project/pull/8");
     assert_eq!(pr.merge_methods, [crate::pull_request::MergeMethod::Merge]);
     // The number asked for is the one answered.
     assert!(matches!(
-        parse_by_number(numbered(same_repository()), "example", "project", 9),
+        parse_by_number(
+            numbered(same_repository()),
+            &crate::Server::GitHub,
+            "example",
+            "project",
+            9
+        ),
         Err(Error::PullRequest(crate::pull_request::Error::Identity))
     ));
     assert!(
-        parse_by_number(numbered(serde_json::Value::Null), "example", "project", 8)
-            .unwrap()
-            .is_none()
+        parse_by_number(
+            numbered(serde_json::Value::Null),
+            &crate::Server::GitHub,
+            "example",
+            "project",
+            8
+        )
+        .unwrap()
+        .is_none()
     );
     // Another repository's pull request does not pass for this one's.
     assert!(matches!(
-        parse_by_number(numbered(same_repository()), "example", "other", 8),
+        parse_by_number(
+            numbered(same_repository()),
+            &crate::Server::GitHub,
+            "example",
+            "other",
+            8
+        ),
         Err(Error::PullRequest(crate::pull_request::Error::Identity))
     ));
 }

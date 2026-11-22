@@ -56,6 +56,7 @@ fn a_user_message_never_plays_an_effect() {
         kind: EntryKind::User {
             text: "::confetti\n:::slam\nme\n:::".into(),
             files: 0,
+            note: None,
         },
     }];
     let mut prepared = Prepared::default();

@@ -14,37 +14,46 @@ import SheprdRemoteCore
 ///                 "pane": "w1-p3", "workspace": "sheprd" }
 /// ```
 ///
-/// The fields are decoded flat through `ChatActivityFacts`, so the keys are
-/// declared once, in `SheprdRemoteCore`, where `swift test` checks them
-/// against the daemon's fixtures.
+/// A computer pushing through the push relay seals both instead, each as
+/// `{"sealed": "…"}` (`ActivitySealable`), and only this phone's notify key
+/// for that computer opens them (`opened()`). The fields are decoded flat
+/// through `ChatActivityFacts`, so the keys are declared once, in
+/// `SheprdRemoteCore`, where `swift test` checks them against the daemon's
+/// fixtures.
 struct ChatActivityAttributes: ActivityAttributes {
-    typealias ContentState = ChatActivityState
+    typealias ContentState = ActivitySealable<ChatActivityState>
 
-    var facts: ChatActivityFacts
-
-    var computer: String { facts.computer }
-    /// The computer's CA fingerprint, uppercase hex without separators: what
-    /// links and push tokens are routed by.
-    var computerId: String { facts.computerId }
-    var workspace: String { facts.workspace }
-    var chatTitle: String { facts.chatTitle }
-    var agent: String { facts.agent }
-    var pane: String { facts.pane }
+    var content: ActivitySealable<ChatActivityFacts>
 
     init(facts: ChatActivityFacts) {
-        self.facts = facts
+        content = .plain(facts)
     }
 
     init(from decoder: Decoder) throws {
-        facts = try ChatActivityFacts(from: decoder)
+        content = try ActivitySealable(from: decoder)
     }
 
     func encode(to encoder: Encoder) throws {
-        try facts.encode(to: encoder)
+        try content.encode(to: encoder)
     }
 
-    /// The link the activity opens: the app turns it into the chat's page.
-    var link: ChatLink {
-        facts.link
+    /// The attributes, opened when sealed, for routing the activity's
+    /// tokens; `nil` when no key opens them for the computer they name.
+    func facts(keys: [SealedChatActivity.Key]) -> ChatActivityFacts? {
+        SealedChatActivity.facts(content, keys: keys)?.0
+    }
+
+    /// What to draw, or `nil` for the fixed cover. While this phone uses
+    /// the push relay, only sealed content shows. The keys are read only
+    /// for sealed content, so plain content (the debug sample, or an older
+    /// computer's) costs no keychain read per render.
+    func opened(_ state: ContentState) -> SealedChatActivity.Opened? {
+        let sealed = content.plain == nil || state.plain == nil
+        return SealedChatActivity.open(
+            attributes: content,
+            state: state,
+            keys: sealed ? NotifyKey.activityKeys() : [],
+            allowsPlain: !PushRelaySetting.isOn
+        )
     }
 }

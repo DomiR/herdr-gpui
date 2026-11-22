@@ -1,0 +1,28 @@
+# The fleet log (`sheprd-remote-control`'s `control::fleet`) for the iOS app,
+# behind a narrow C interface, so the phone replays and checks its own copy
+# with the same rules as every computer (docs/relay-plan.md, Fleet, phase 5).
+# `ios/tools/build-fleet-ffi.sh` builds it into an XCFramework.
+[package]
+description            = "The fleet log for the iOS app, behind a narrow C interface"
+edition.workspace      = true
+license.workspace      = true
+name                   = "sheprd-fleet-ffi"
+publish.workspace      = true
+rust-version.workspace = true
+version.workspace      = true
+
+[lib]
+# The static library the app links; the rlib for this crate's tests.
+crate-type = ["rlib", "staticlib"]
+
+[lints]
+workspace = true
+
+[dependencies]
+serde.workspace                 = true
+serde_json.workspace            = true
+sheprd-remote-control.workspace = true
+thiserror.workspace             = true
+
+[dev-dependencies]
+p256.workspace = true

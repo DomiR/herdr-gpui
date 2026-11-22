@@ -100,6 +100,7 @@ fn no_line_is_wider_than_asked() {
         kind: EntryKind::User {
             text: "a fairly long prompt that has to wrap more than once".to_owned(),
             files: 0,
+            note: None,
         },
     };
     for line in plain(&entry(&item, 12)) {

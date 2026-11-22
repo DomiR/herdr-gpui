@@ -92,6 +92,11 @@ async fn saved_and_daemon_owned_workspaces_answer_without_desktop_or_herdr_one()
                 boot_id: "core-only".into(),
                 entries: vec![],
                 unopened: vec![hint.clone()],
+                uncommitted: vec![crate::control::pull_requests::UncommittedCheckout {
+                    workspace_id: hint.workspace_id.clone(),
+                    cwd: hint.cwd.clone(),
+                    branch: hint.branch.clone(),
+                }],
             },
         },
     );
@@ -103,6 +108,8 @@ async fn saved_and_daemon_owned_workspaces_answer_without_desktop_or_herdr_one()
     assert_eq!(home["github"], true);
     assert_eq!(home["workspaces"][0]["pull_request"]["number"], 42);
     assert_eq!(home["workspaces"][1]["unopened_commits"], 3);
+    assert_eq!(home["workspaces"][1]["uncommitted"], true);
+    assert!(home["workspaces"][0].get("uncommitted").is_none());
     for path in ["/f/checks/core:saved", "/f/checks/core:saved/123"] {
         let (status, ..) = send(&state, get(path)).await;
         assert_eq!(status, StatusCode::UNAUTHORIZED);

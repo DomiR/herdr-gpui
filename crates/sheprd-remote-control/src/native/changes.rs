@@ -118,7 +118,7 @@ async fn ask_sheprd(
 
 /// How long a phone's change to a Herdr 2 tab waits for Sheprd, which
 /// makes it at once.
-const LAYOUT_WAIT: Duration = Duration::from_secs(10);
+pub(crate) const LAYOUT_WAIT: Duration = Duration::from_secs(10);
 /// A workspace close may have to end many terminals before the desktop
 /// answers the phone.
 const WORKSPACE_CLOSE_WAIT: Duration = Duration::from_secs(30);

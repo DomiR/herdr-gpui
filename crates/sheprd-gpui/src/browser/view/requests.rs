@@ -323,6 +323,38 @@ impl SheprdWindow {
         self.browser.pages.contains(id)
     }
 
+    /// Whether tab `id`'s page is still being built, and why it could not
+    /// be made if it could not: what a native check reports when a page
+    /// never arrives.
+    #[cfg(all(windows, feature = "integration-test"))]
+    pub(crate) fn page_progress(&self, id: TabId) -> (bool, Option<SharedString>) {
+        (
+            self.browser.pages.is_building(id),
+            self.browser.failed.get(&id).cloned(),
+        )
+    }
+
+    /// Makes tab `id`'s page without showing it, for a request that reads
+    /// the page in the background: it stays hidden, as a page of a tab not
+    /// in front does, until the user shows its tab, and the window's view
+    /// and keyboard stay as they were. A page that cannot be made records
+    /// why, as one made for a shown tab does.
+    pub(crate) fn make_requested_page(
+        &mut self,
+        id: TabId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(tab) = super::store(cx).and_then(|store| store.get(id)).cloned() else {
+            return;
+        };
+        // An editor's page waits for its server; its provider makes it.
+        if tab.place.is_editor() {
+            return;
+        }
+        self.create_page(&tab, window, cx);
+    }
+
     /// Loads `location` in tab `id`'s page, if this window has made it or
     /// is building it.
     pub(crate) fn load_requested_page(&mut self, id: TabId, location: &crate::browser::Location) {
@@ -362,6 +394,12 @@ impl SheprdWindow {
 
 #[cfg(target_os = "macos")]
 impl SheprdWindow {
+    /// Whether tab `id`'s page is on screen here: shown, and laid out last
+    /// frame.
+    pub(crate) fn page_on_screen(&self, id: TabId) -> bool {
+        self.browser.pages.is_shown(id) && self.browser.pages.drawn_at(id).is_some()
+    }
+
     /// Takes a picture of tab `id`'s page as it shows now, handed to `done`
     /// as TIFF bytes. Whether one was asked for: the page must be on
     /// screen, where it was laid out last frame.
@@ -373,7 +411,7 @@ impl SheprdWindow {
         let Some(page) = self.browser.pages.page(id) else {
             return false;
         };
-        if !self.browser.pages.is_shown(id) {
+        if !self.page_on_screen(id) {
             return false;
         }
         let Some(bounds) = self.browser.pages.drawn_at(id) else {

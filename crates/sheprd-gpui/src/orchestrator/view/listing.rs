@@ -203,6 +203,11 @@ impl OrchestratorView {
                 .iter()
                 .any(|repo| repo.key == *key && repo.outside_git())
         });
+        let open = self.detail.as_ref().map(|detail| &detail.key);
+        if self.revealed.as_ref() != open || self.tab != Tab::PullRequests {
+            self.revealed = None;
+        }
+        let revealed = self.revealed.as_deref();
         for (index, repo) in self.repos.iter_mut().enumerate() {
             let found = crate::orchestrator::naming::found_runs(
                 &repo.snapshot.items,
@@ -253,6 +258,20 @@ impl OrchestratorView {
                         .holds(opened, rows::status_of(item, statuses), login)
                 });
             }
+            if let Some(key) = revealed
+                && let Some(at) = items
+                    .iter()
+                    .position(|item| item.pull_request.is_some() && item.key.canonical() == key)
+                && !pulls.iter().any(|row| row.item == at)
+            {
+                pulls.push(ItemRow {
+                    repo: 0,
+                    item: at,
+                    depth: 0,
+                    children: None,
+                    run: runs.latest().get(key).copied(),
+                });
+            }
             let mut tasks = if self.tab == Tab::Tasks {
                 rows::task_rows(
                     items,
@@ -293,7 +312,7 @@ impl OrchestratorView {
                     .backends
                     .contains(&self.row_item(row).key.source.provider)
         };
-        let lists: Vec<Vec<ItemRow>> = self
+        let mut lists: Vec<Vec<ItemRow>> = self
             .repos
             .iter()
             .map(|repo| {
@@ -318,6 +337,22 @@ impl OrchestratorView {
                 kept
             })
             .collect();
+        // The revealed pull request, when the pills hide it from every
+        // checkout, comes from the first listing it. One a picked checkout
+        // lists stays that checkout's row, which its open page reads.
+        let is_revealed =
+            |row: &ItemRow| revealed == Some(self.row_item(row).key.canonical().as_str());
+        if revealed.is_some()
+            && !lists.iter().flatten().any(is_revealed)
+            && let Some(row) = self
+                .repos
+                .iter()
+                .flat_map(|repo| &repo.pull_request_rows)
+                .find(|row| is_revealed(row))
+            && let Some(list) = lists.get_mut(row.repo)
+        {
+            list.push(*row);
+        }
         let merged = rows::merge(lists, |row| self.row_item(row), self.sort);
         let (merged, holders) = rows::dedupe(merged, |row| self.row_item(row).key.canonical());
         self.holders = holders;
@@ -350,6 +385,17 @@ impl OrchestratorView {
         self.number_chars = number_chars;
         self.lines = lines;
         self.revision += 1;
+        // A pill picked since may show the revealed pull request from
+        // another checkout: its open page follows its row, and loads the
+        // pull request there.
+        if let Some(key) = self.revealed.clone() {
+            let before = self.active;
+            self.activate(&key);
+            if self.active != before {
+                self.reload_pull_request();
+                self.follow_pull_request();
+            }
+        }
         if self.selected.is_none() || !self.selection_listed() {
             self.selected = self.keys().into_iter().next();
         }

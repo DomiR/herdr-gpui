@@ -9,6 +9,7 @@ fn user(id: u64, text: &str) -> Entry {
         id: EntryId(id),
         kind: EntryKind::User {
             files: 0,
+            note: None,
             text: text.to_owned(),
         },
     }

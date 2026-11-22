@@ -117,7 +117,7 @@ fn the_loop_advertises_and_answers_the_phone_it_names() {
     commands.send(Command::Presence(false)).unwrap();
     drop(commands);
     let recorder = Recorder::default();
-    serve(&core, &recorder, &received, &Out);
+    serve(&core, &recorder, &received, &Out::default(), drop);
     assert_eq!(
         *recorder.calls.lock().unwrap(),
         ["refresh true", "notify dev Presence 2", "refresh false"]

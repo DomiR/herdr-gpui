@@ -160,6 +160,7 @@ impl Exchange<'_> {
         token: &[u8; SECRET_LEN],
         origins: &[String],
         relay: Option<&crate::relay::Info>,
+        fleet: Option<&crate::control::fleet::bluetooth::Hint>,
         aes_nonce: &[u8; AES_NONCE_LEN],
     ) -> Result<Revealed> {
         let daemon_point = self.daemon.public_key().to_sec1_bytes();
@@ -180,6 +181,7 @@ impl Exchange<'_> {
                 token: encode(token),
                 origins,
                 relay,
+                fleet,
             })
             .map_err(|_| Error::NearbyCrypto)?,
         );
@@ -277,6 +279,7 @@ impl StartedSession {
         token: &[u8; SECRET_LEN],
         origins: &[String],
         relay: Option<&crate::relay::Info>,
+        fleet: Option<&crate::control::fleet::bluetooth::Hint>,
     ) -> Result<(NearbyRevealed, String)> {
         let phone_nonce: [u8; SECRET_LEN] =
             decode_fixed(phone_nonce).map_err(|_| Error::NearbyCrypto)?;
@@ -289,7 +292,7 @@ impl StartedSession {
             daemon_nonce: &self.nonce,
             fingerprint: &fingerprint,
         }
-        .reveal(token, origins, relay, &aes_nonce)?;
+        .reveal(token, origins, relay, fleet, &aes_nonce)?;
         Ok((
             NearbyRevealed {
                 nonce: encode(&self.nonce),
@@ -319,4 +322,8 @@ pub(crate) struct Offer<'a> {
     pub(crate) origins: &'a [String],
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) relay: Option<&'a crate::relay::Info>,
+    /// This computer's fleet, while it is a computer member: a desktop
+    /// pairing with it may join it (`fleet::bluetooth`). Phones ignore it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) fleet: Option<&'a crate::control::fleet::bluetooth::Hint>,
 }

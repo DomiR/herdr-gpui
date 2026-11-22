@@ -5,6 +5,7 @@
 use crate::{
     ansi::{self, Color, Style},
     control::{
+        favorites::Favorites,
         github::valid_login,
         pull_requests::{PullRequests, Tone, WorkspacePullRequest},
         tags::ComputerTags,
@@ -86,6 +87,10 @@ pub(crate) struct Workspace {
     /// Commits on its branch that no pull request carries yet.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) unopened_commits: Option<u64>,
+    /// Its checkout has uncommitted changes, untracked files included;
+    /// false from older apps and servers.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) uncommitted: bool,
     /// The GitHub repository its checkout is on, for a phone to read
     /// GitHub itself; absent when its remote is not on a GitHub host, until
     /// first read, and from older servers.
@@ -155,6 +160,9 @@ pub(crate) struct Chat {
     pub(crate) title: String,
     pub(crate) agent: Option<String>,
     pub(crate) status: AgentStatus,
+    /// Starred on some device (`control::favorites`); lists show it first.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) favorite: bool,
     /// Absent until the daemon's connection to the chat is up.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) summary: Option<ChatSummary>,
@@ -256,6 +264,9 @@ pub(crate) struct Pane {
 pub(crate) struct TerminalAgent {
     pub(crate) name: Option<String>,
     pub(crate) status: AgentStatus,
+    /// Its pane was starred on some device (`control::favorites`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) favorite: bool,
     /// The pane it runs in; absent from older servers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) pane: Option<String>,
@@ -399,6 +410,17 @@ fn unopened_commits(
         .map(|entry| entry.commits)
 }
 
+/// Whether Sheprd found uncommitted changes in `workspace`'s checkout in
+/// the same boot.
+fn uncommitted(pull_requests: &PullRequests, boot: &str, workspace: &hub::Workspace) -> bool {
+    pull_requests.boot_id == boot
+        && pull_requests.uncommitted.iter().any(|entry| {
+            entry.workspace_id == workspace.id
+                && entry.cwd == workspace.cwd
+                && Some(entry.branch.as_str()) == workspace.branch.as_deref()
+        })
+}
+
 impl From<Summary> for ChatSummary {
     fn from(summary: Summary) -> Self {
         Self {
@@ -416,7 +438,7 @@ impl From<Summary> for ChatSummary {
     }
 }
 
-fn chat(row: &ChatRow, summaries: &mut HashMap<String, Summary>) -> Chat {
+fn chat(row: &ChatRow, summaries: &mut HashMap<String, Summary>, favorites: &Favorites) -> Chat {
     let summary = summaries.remove(&row.pane);
     // Herdr may know an ACP chat only as `acp`, without the display name
     // `herdr-acp` reported; the chat's own transcript names its agent.
@@ -438,11 +460,12 @@ fn chat(row: &ChatRow, summaries: &mut HashMap<String, Summary>) -> Chat {
         title,
         agent,
         status: row.status,
+        favorite: favorites.contains(&row.pane),
         summary: summary.map(ChatSummary::from),
     }
 }
 
-fn terminal(terminal: &hub::Terminal) -> Terminal {
+fn terminal(terminal: &hub::Terminal, favorites: &Favorites) -> Terminal {
     Terminal {
         tab: terminal.tab.clone(),
         label: terminal.label.clone(),
@@ -463,6 +486,7 @@ fn terminal(terminal: &hub::Terminal) -> Terminal {
         agent: terminal.agent.as_ref().map(|agent| TerminalAgent {
             name: agent.name.clone(),
             status: agent.status,
+            favorite: favorites.contains(&agent.pane),
             pane: Some(agent.pane.clone()),
             title: agent.title.clone(),
             changed_ms: agent.changed_ms,
@@ -482,6 +506,7 @@ pub(crate) struct Sources<'a> {
     /// What each folder's checkout is on, as last read.
     pub(crate) checkouts: &'a HashMap<String, Checkout>,
     pub(crate) computer: &'a str,
+    pub(crate) favorites: &'a Favorites,
     pub(crate) fingerprint: &'a str,
     pub(crate) layout: &'a Layout,
     pub(crate) load: Option<Load>,
@@ -518,6 +543,7 @@ impl Home {
         let Sources {
             checkouts,
             computer,
+            favorites,
             fingerprint,
             layout,
             load,
@@ -547,6 +573,7 @@ impl Home {
                     }
                 }),
                 unopened_commits: unopened_commits(pull_requests, &layout.boot, workspace),
+                uncommitted: uncommitted(pull_requests, &layout.boot, workspace),
                 github: (!hub::in_wsl(&workspace.id))
                     .then(|| checkouts.get(&workspace.cwd))
                     .flatten()
@@ -554,9 +581,13 @@ impl Home {
                 chats: workspace
                     .chats
                     .iter()
-                    .map(|row| chat(row, &mut summaries))
+                    .map(|row| chat(row, &mut summaries, favorites))
                     .collect(),
-                terminals: workspace.terminals.iter().map(terminal).collect(),
+                terminals: workspace
+                    .terminals
+                    .iter()
+                    .map(|row| terminal(row, favorites))
+                    .collect(),
             })
             .collect();
         Self {

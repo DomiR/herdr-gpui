@@ -13,6 +13,7 @@ fn user(id: u64) -> Entry {
         id,
         EntryKind::User {
             files: 0,
+            note: None,
             text: format!("prompt {id}"),
         },
     )

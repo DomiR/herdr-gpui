@@ -62,6 +62,9 @@ sheprd-github.workspace        = true
 # Relay addresses in `[remote] relays`; with `server`, listening on them
 # (`client`), so paired phones reach this computer from anywhere.
 sheprd-relay.workspace         = true
+# The fleet access file a plain host's agent takes, and the removal frames
+# daemons and agents share (`control::fleet`); no runtime.
+sheprd-relay-agent.workspace   = true
 # Checking the far computer's signed answer to a phone's relay keys
 # (`control::host_relay`), which Sheprd does too; already in its graph
 # through `sheprd-relay`.
@@ -129,6 +132,10 @@ x509-parser    = { optional = true, workspace = true }
 futures-util.workspace      = true
 # A real relay on loopback, for the daemon's relay tests.
 sheprd-relay                = { features = ["client", "server"], workspace = true }
+# A plain host's agent on loopback, taking removals from the daemon.
+sheprd-relay-agent          = { features = ["runtime"], workspace = true }
 roxmltree.workspace         = true
+# A paused clock, so tests bound the daemon's own waits and not load.
+tokio                       = { features = ["test-util"], workspace = true }
 tokio-tungstenite.workspace = true
 tower.workspace             = true

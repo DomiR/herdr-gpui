@@ -27,8 +27,11 @@
 //! `summary` in the finished one, and `previous` (the steps before `step`)
 //! once there are some; every optional key may be absent.
 
-use super::{Error, Priority, Push, PushType, Result};
+use super::Priority;
+#[cfg(test)]
+use super::{Error, Result};
 use serde::{Deserialize, Serialize};
+#[cfg(test)]
 use serde_json::{Map, Value, json};
 use sheprd_chat_protocol::PermissionOption;
 
@@ -165,22 +168,19 @@ impl Live {
         self.state.phase == Phase::Question
     }
 
-    /// The push for this change at `now_s` (seconds since the Unix epoch).
-    pub(crate) fn push(&self, now_s: u64) -> Result<Push> {
-        Ok(Push {
-            body: self.payload(now_s)?,
-            collapse_id: None,
-            priority: if self.urgent() {
-                Priority::High
-            } else {
-                Priority::Low
-            },
-            push_type: PushType::LiveActivity,
-        })
+    pub(crate) fn priority(&self) -> Priority {
+        if self.urgent() {
+            Priority::High
+        } else {
+            Priority::Low
+        }
     }
 
-    /// The JSON payload, sent at `timestamp_s` (seconds since the Unix
-    /// epoch), which ActivityKit uses to drop out-of-order updates.
+    /// The payload in the clear, at `timestamp_s` (seconds since the Unix
+    /// epoch). Nothing sends it: pushes go through the relay sealed
+    /// (`relayed`), and the phone opens them to this `content-state` and
+    /// `attributes`, which the Swift fixtures check it against.
+    #[cfg(test)]
     pub(crate) fn payload(&self, timestamp_s: u64) -> Result<Vec<u8>> {
         let mut aps = Map::new();
         aps.insert("timestamp".into(), json!(timestamp_s));

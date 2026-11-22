@@ -1,13 +1,18 @@
-//! The platform's Bluetooth peripheral: BlueZ over D-Bus on Linux, WinRT's
-//! GATT server on Windows, and on anything else a report that Bluetooth is
-//! unsupported, after which the helper only reads its input until it ends.
+//! The platform's Bluetooth: BlueZ over D-Bus on Linux, WinRT on Windows,
+//! and on anything else a report that Bluetooth is unsupported, after which
+//! the helper only reads its input until it ends. Each platform plays both
+//! roles: the peripheral phones and other computers pair with, and the
+//! central that scans for another computer's Sheprd ([`central`]).
 
 use crate::{
-    Result,
+    Result, central,
     peripheral::{self, Backend, Shared},
     protocol::{Channel, Command, Out},
 };
-use std::sync::mpsc::Receiver;
+use std::{
+    sync::mpsc::{self, Receiver},
+    thread,
+};
 
 /// The nearby service and its characteristics, as the phone looks for them.
 #[cfg(any(target_os = "linux", windows))]
@@ -35,9 +40,13 @@ pub(crate) fn run(
     out: &Out,
 ) -> Result<()> {
     if !bluetooth {
-        peripheral::serve(core, &Off, commands, out);
+        // As the macOS helper does without Bluetooth, scanning's commands
+        // are read and dropped.
+        peripheral::serve(core, &Off, commands, out, drop);
         return Ok(());
     }
+    let scanner = start_central(out);
+    let scan = |command| scanner.command(command);
     #[cfg(target_os = "linux")]
     let started = linux::Linux::start(core.clone(), out.clone());
     #[cfg(windows)]
@@ -45,12 +54,12 @@ pub(crate) fn run(
     #[cfg(any(target_os = "linux", windows))]
     {
         match started {
-            Ok(backend) => peripheral::serve(core, &backend, commands, out),
+            Ok(backend) => peripheral::serve(core, &backend, commands, out, scan),
             // Sheprd hears why, and the radio as unavailable; the
             // commands are still read so it never blocks writing them.
             Err(error) => {
                 out.emit(&crate::protocol::Event::error(&error));
-                peripheral::serve(core, &Off, commands, out);
+                peripheral::serve(core, &Off, commands, out, scan);
             }
         }
         Ok(())
@@ -60,14 +69,40 @@ pub(crate) fn run(
         out.emit(&crate::protocol::Event::State {
             state: crate::protocol::Radio::Unsupported,
         });
-        peripheral::serve(core, &Off, commands, out);
+        peripheral::serve(core, &Off, commands, out, scan);
         Ok(())
     }
 }
 
+/// Starts the scanning side on a thread of its own; its radio opens at the
+/// first `scan`.
+pub(crate) fn start_central(out: &Out) -> central::Inbox {
+    let (sender, messages) = mpsc::channel();
+    let inbox = central::Inbox::new(sender);
+    let (reports, out) = (inbox.clone(), out.clone());
+    thread::spawn(move || central::run(&messages, &reports, &out, open_central));
+    inbox
+}
+
+#[cfg(target_os = "linux")]
+fn open_central(inbox: &central::Inbox) -> Result<linux::central::Scanner> {
+    linux::central::Scanner::open(inbox.clone())
+}
+
+#[cfg(windows)]
+fn open_central(inbox: &central::Inbox) -> Result<windows::central::Scanner> {
+    windows::central::Scanner::open(inbox.clone())
+}
+
+#[cfg(not(any(target_os = "linux", windows)))]
+fn open_central(inbox: &central::Inbox) -> Result<Off> {
+    inbox.send(central::Input::Radio(crate::protocol::Radio::Unsupported));
+    Ok(Off)
+}
+
 /// No radio: commands still change what would be advertised, so `info`
-/// and the idle reports behave, but nothing reaches a phone.
-struct Off;
+/// and the idle reports behave, but nothing reaches a phone or a computer.
+pub(crate) struct Off;
 
 impl Backend for Off {
     fn refresh(&self, _advertise: bool) {}
@@ -77,4 +112,8 @@ impl Backend for Off {
     fn idle_seconds(&self) -> Option<u64> {
         None
     }
+}
+
+impl central::Link for Off {
+    fn act(&self, _action: central::Action) {}
 }

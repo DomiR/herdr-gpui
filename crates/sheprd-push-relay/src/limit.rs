@@ -18,10 +18,13 @@ pub struct Rate {
     pub per_minute: u32,
 }
 
-/// The limits on `/v1/push` and `/v1/revoke`. The daemon's pacer holds a chat
+/// The limits on the relay's routes. The daemon's pacer holds a chat
 /// to one update per ten seconds, so these only stop what is not a daemon.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Rates {
+    /// Per source, for `/v1/challenge` and `/v1/attest` together: a phone
+    /// attests once per key, but many phones can share a carrier's address.
+    pub attest: Rate,
     pub device: Rate,
     pub handle: Rate,
     /// Per device, on top of the rest. Each revocation is kept until its
@@ -35,6 +38,10 @@ pub struct Rates {
 impl Default for Rates {
     fn default() -> Self {
         Self {
+            attest: Rate {
+                burst: 60,
+                per_minute: 30,
+            },
             device: Rate {
                 burst: 60,
                 per_minute: 120,

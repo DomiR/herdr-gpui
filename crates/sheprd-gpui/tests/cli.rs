@@ -98,6 +98,7 @@ fn help_succeeds_and_documents_connection_options() {
             "--session NAME",
             "--dev",
             "--build-info",
+            "--classic",
         ] {
             assert!(help.contains(option), "missing {option}: {help}");
         }

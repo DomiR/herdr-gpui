@@ -12,6 +12,7 @@ fn document_prompt_body_keeps_normal_text_below_its_speaker_label(cx: &mut TestA
         kind: EntryKind::User {
             text: "A normal prompt".into(),
             files: 0,
+            note: None,
         },
     };
     let measured = Rc::new(RefCell::new(None));

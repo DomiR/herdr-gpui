@@ -14,6 +14,7 @@ fn claimed_daemon(_: &Path, request: &Request) -> Result<Response, control::Erro
             code: "428913".into(),
             app: None,
             ssh: false,
+            fleet: None,
         }),
         Request::Approve { allow: true, .. } => Response::Pairing(PairingState::Approved {
             device: DeviceId("d1".into()),
@@ -55,5 +56,6 @@ fn turning_the_switch_off_pairs_without_sharing_github(cx: &mut TestAppContext) 
         code: "428913".into(),
         hosts: Vec::new(),
         share_github: false,
+        fleet: None,
     }));
 }

@@ -28,7 +28,7 @@ pub(super) fn alerts(view: &SheprdWindow) -> Response {
     let note = if cut {
         Some("Showing only some of the alerts and reports; GitHub lists the rest".to_owned())
     } else if security.read_at().is_none() {
-        Some(if view.main_tokens().is_none() {
+        Some(if !view.main_signed_in() {
             "Sign in to GitHub in Sheprd to read Dependabot alerts".to_owned()
         } else {
             "Sheprd has not read the alerts yet".to_owned()

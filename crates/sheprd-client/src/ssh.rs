@@ -28,7 +28,10 @@ pub(crate) mod mux;
 mod unverified;
 pub use error::Error;
 pub use failure::SshFailure;
-pub use host_key::{HostKeyFingerprint, HostKeyScan, NewHostKey, scan_host_key, trust_host_key};
+pub use host_key::{
+    HostKeyFingerprint, HostKeyScan, NewHostKey, confirm_host_key, known_host_keys, scan_host_key,
+    trust_host_key,
+};
 pub use unverified::{HostKeys, MAX_UNVERIFIED_HOSTS, set_host_keys, set_unverified_hosts};
 pub(crate) mod powershell;
 mod serve;

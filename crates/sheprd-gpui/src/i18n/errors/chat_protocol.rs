@@ -4,7 +4,9 @@
 
 use super::Localize;
 use crate::i18n::fl;
-use sheprd_chat_protocol::{Error, MAX_ACTIVITIES, MAX_ACTIVITY_TEXT, MAX_PULL_REQUESTS};
+use sheprd_chat_protocol::{
+    Error, MAX_ACTIVITIES, MAX_ACTIVITY_TEXT, MAX_BRIEFS, MAX_PULL_REQUESTS,
+};
 
 impl Localize for Error {
     fn localize(&self) -> String {
@@ -17,6 +19,15 @@ impl Localize for Error {
                 fl!(
                     "error-chat-protocol-activity-text",
                     bytes = MAX_ACTIVITY_TEXT
+                )
+            }
+            Self::Brief(sheprd_chat_protocol::brief::Error::Limit) => {
+                fl!("error-chat-protocol-brief-limit", count = MAX_BRIEFS)
+            }
+            Self::Brief(sheprd_chat_protocol::brief::Error::NotPrompt(id)) => {
+                fl!(
+                    "error-chat-protocol-brief-not-prompt",
+                    id = format!("{id:?}")
                 )
             }
             Self::DuplicatePermission(id) => {

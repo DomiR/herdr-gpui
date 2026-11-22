@@ -9,7 +9,7 @@ fn validates_setup_fields_before_launch() -> Result<()> {
         ));
     }
     // An empty label is not an error: the target names the device.
-    assert_eq!(Request::new("host", "", "")?.label(), "host");
+    assert_eq!(Request::new("host", "", "")?.label, "host");
     assert!(Request::new("host", "Label", "../session").is_err());
     assert!(Request::new("host", "Label", ".").is_err());
     assert!(Request::new("host", "Label", "dev.session").is_ok());
@@ -206,7 +206,7 @@ fn a_host_saved_by_another_client_meanwhile_keeps_only_the_first_profile() -> Re
 #[test]
 fn an_empty_label_names_the_device_after_its_target() -> Result<()> {
     assert_eq!(
-        Request::new("penso@10.0.0.9", "  ", "")?.label(),
+        Request::new("penso@10.0.0.9", "  ", "")?.label,
         "penso@10.0.0.9"
     );
     assert_eq!(device_label("", "ssh://penso@box:22")?, "penso@box:22");
@@ -270,6 +270,8 @@ fn save_failures_keep_only_the_final_diagnostic_line() {
     assert_eq!(last_line(b""), "");
 }
 
+#[cfg(unix)]
+mod path;
 #[cfg(unix)]
 mod server_restart;
 #[cfg(unix)]

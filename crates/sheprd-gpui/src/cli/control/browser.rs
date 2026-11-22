@@ -12,6 +12,8 @@ pub enum BrowserCommand {
         /// A web address or a local file, told apart when it runs.
         target: String,
         workspace: Option<String>,
+        /// `--focus`: switch the window to the tab. Without it the tab is
+        /// added in the background.
         focus: bool,
         /// `--beside` or `--tab`; otherwise chosen by what the page is.
         placement: Option<Placement>,
@@ -39,8 +41,10 @@ pub enum BrowserCommand {
     Forward {
         id: u64,
     },
+    /// `focus`, from `--focus`, shows the tab first.
     Text {
         id: u64,
+        focus: bool,
     },
     /// Runs a script in the page, waiting up to `wait` seconds for it.
     Eval {
@@ -56,9 +60,12 @@ pub enum BrowserCommand {
     ClearData {
         id: u64,
     },
+    /// `focus`, from `--focus`, shows the tab first; without it only a
+    /// page on screen can be pictured.
     Screenshot {
         id: u64,
         path: std::path::PathBuf,
+        focus: bool,
     },
     Zoom {
         id: u64,
@@ -133,6 +140,26 @@ fn zoom_change(value: Option<OsString>) -> Result<ZoomChange, CliError> {
     })
 }
 
+/// Takes `--focus` and `--no-focus`, the default, from a page command's
+/// arguments, wherever they are, leaving the rest in order.
+fn focus_flag(args: impl Iterator<Item = OsString>) -> (bool, std::vec::IntoIter<OsString>) {
+    let mut focus = false;
+    let rest: Vec<OsString> = args
+        .filter(|arg| match arg.to_str() {
+            Some("--focus") => {
+                focus = true;
+                false
+            }
+            Some("--no-focus") => {
+                focus = false;
+                false
+            }
+            _ => true,
+        })
+        .collect();
+    (focus, rest.into_iter())
+}
+
 /// The rest of a command that takes no more arguments.
 fn none_left(
     command: BrowserCommand,
@@ -154,16 +181,20 @@ pub(super) fn parse(args: &mut Args) -> Result<BrowserCommand, CliError> {
         Some("example") => return none_left(BrowserCommand::Example, args),
         Some("reload") => return none_left(BrowserCommand::Reload, args),
         Some("list") => return none_left(BrowserCommand::List, args),
-        Some(verb @ ("close" | "back" | "forward" | "text" | "clear-data")) => {
+        Some(verb @ ("close" | "back" | "forward" | "clear-data")) => {
             let id = tab_id(args.next())?;
             let command = match verb {
                 "close" => BrowserCommand::Close { id },
                 "back" => BrowserCommand::Back { id },
                 "forward" => BrowserCommand::Forward { id },
-                "clear-data" => BrowserCommand::ClearData { id },
-                _ => BrowserCommand::Text { id },
+                _ => BrowserCommand::ClearData { id },
             };
             return none_left(command, args);
+        }
+        Some("text") => {
+            let (focus, mut args) = focus_flag(args);
+            let id = tab_id(args.next())?;
+            return none_left(BrowserCommand::Text { id, focus }, args);
         }
         Some("eval") => return eval(args),
         Some("logs") => {
@@ -189,6 +220,7 @@ pub(super) fn parse(args: &mut Args) -> Result<BrowserCommand, CliError> {
             return none_left(BrowserCommand::Zoom { id, change }, args);
         }
         Some("screenshot") => {
+            let (focus, mut args) = focus_flag(args);
             let id = tab_id(args.next())?;
             let path = args.next().ok_or(CliError::MissingArgument {
                 command: "browser screenshot",
@@ -198,6 +230,7 @@ pub(super) fn parse(args: &mut Args) -> Result<BrowserCommand, CliError> {
                 BrowserCommand::Screenshot {
                     id,
                     path: path.into(),
+                    focus,
                 },
                 args,
             );
@@ -222,11 +255,13 @@ pub(super) fn parse(args: &mut Args) -> Result<BrowserCommand, CliError> {
         Some("open") => {}
         _ => return Err(CliError::UnknownBrowserCommand(command)),
     }
-    let (mut target, mut workspace, mut focus) = (None, None, true);
+    // In the background unless asked: the user may be typing elsewhere.
+    let (mut target, mut workspace, mut focus) = (None, None, false);
     let mut placement = None;
     while let Some(arg) = args.next() {
         match arg.to_str() {
             Some("--help" | "-h") => return Ok(BrowserCommand::Help),
+            Some("--focus") => focus = true,
             Some("--no-focus") => focus = false,
             Some("--beside") => placement = Some(Placement::Beside),
             Some("--tab") => placement = Some(Placement::Tab),

@@ -13,8 +13,8 @@ fn http_remotes_with_userinfo_resolve_to_the_owner() {
             for repo in ["repo", "repo.git"] {
                 let remote = format!("{scheme}{userinfo}github.com/Some-Owner/{repo}");
                 assert_eq!(
-                    github_repo(&remote),
-                    Some(("some-owner".to_owned(), "repo".to_owned())),
+                    github_repo(&remote).map(|repo| repo.owner),
+                    Some("some-owner".to_owned()),
                     "{remote}"
                 );
             }
@@ -29,8 +29,8 @@ fn ssh_remotes_are_unchanged() {
         "ssh://git@github.com/Some-Owner/repo.git",
     ] {
         assert_eq!(
-            github_repo(remote),
-            Some(("some-owner".to_owned(), "repo".to_owned())),
+            github_owner(remote),
+            Some("some-owner".to_owned()),
             "{remote}"
         );
     }
@@ -57,6 +57,6 @@ fn userinfo_never_moves_the_host_off_github() {
         "https://user@github.com/owner/repo/extra",
         "https://user@github.com/owner/repo?query",
     ] {
-        assert_eq!(github_repo(remote), None, "{remote}");
+        assert_eq!(github_owner(remote), None, "{remote}");
     }
 }

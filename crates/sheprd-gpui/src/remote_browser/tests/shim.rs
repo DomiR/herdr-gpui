@@ -1,5 +1,8 @@
 use super::*;
 use crate::remote_browser::install::SHIM;
+
+/// `browser open` switches to the tab only when asked.
+mod focus;
 use std::{
     os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
@@ -101,7 +104,7 @@ fn an_open_reaches_the_window_as_typed() {
         request.action,
         Action::Open {
             address: "localhost:3000/app?x=1".into(),
-            focus: true
+            focus: false
         }
     );
 }

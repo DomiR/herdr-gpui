@@ -5,6 +5,7 @@
 
 mod access;
 mod details;
+mod hosted;
 mod icons;
 mod panel;
 mod render;

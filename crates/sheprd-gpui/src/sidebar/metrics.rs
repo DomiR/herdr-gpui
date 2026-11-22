@@ -5,6 +5,8 @@ use crate::config::FontConfig;
 use std::time::Duration;
 
 pub(super) const SIDEBAR_WIDTH: f32 = 232.;
+/// The narrowest the expanded sidebar gets.
+pub(super) const SIDEBAR_LEAST: f32 = 160.;
 /// How long the pointer rests on a workspace row before its menu opens, so the
 /// same actions a right click offers are reachable without one.
 pub(super) const HOVER_MENU_DELAY: Duration = Duration::from_millis(600);
@@ -56,7 +58,7 @@ pub(super) fn sidebar_width(preferred: Option<f32>, window_width: f32) -> f32 {
     // Keep useful label space and reserve at least 240 logical pixels for the terminal.
     preferred
         .unwrap_or(SIDEBAR_WIDTH)
-        .clamp(160., 480.)
+        .clamp(SIDEBAR_LEAST, 480.)
         .min((window_width - 240.).max(0.))
 }
 

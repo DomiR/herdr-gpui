@@ -23,6 +23,11 @@ pub(super) enum Row {
     Restack,
 }
 
+pub(super) struct CreateTarget {
+    input: crate::pull_request::Input,
+    pane: Option<(crate::browser::TabId, sheprd_backend::TerminalId)>,
+}
+
 impl Row {
     pub(super) fn icon(self) -> &'static str {
         match self {
@@ -77,7 +82,7 @@ impl SheprdWindow {
         self.git.set_counted(
             self.config.sidebar_style.change_counts == crate::config::ChangeCounts::Local,
         );
-        self.git.set_read_ahead(self.menu.github.connected());
+        self.git.set_read_ahead(self.main_signed_in());
         self.git
             .track_listed(self.listed_git_inputs(), self.active, now);
         changed |= self.git.poll(now);
@@ -181,7 +186,7 @@ impl SheprdWindow {
         self.menu.reset();
         self.menu.anchor = anchor;
         self.menu.page = Some(Page::Git);
-        if self.menu.github.connected()
+        if self.main_signed_in()
             && let Some(input) = self.git_input()
         {
             self.sync_pr_scope();
@@ -207,6 +212,42 @@ impl SheprdWindow {
         }
     }
 
+    pub(crate) fn ask_pr_create(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if self.menu.page.is_some()
+            || self.git.running().is_some()
+            || self.pr_actions.running().is_some()
+        {
+            return false;
+        }
+        let Some(input) = self
+            .git_input()
+            .filter(|input| self.git.tracked() == Some(input))
+        else {
+            return false;
+        };
+        let pane = self.shown_core_pane(cx);
+        if self.shows_core_tab() != pane.is_some()
+            || pane.as_ref().is_some_and(|(tab, terminal)| {
+                self.core_pane_git_input(*tab, terminal).as_ref() != Some(&input)
+            })
+        {
+            return false;
+        }
+        let anchor = if self.zen_active() {
+            point(window.viewport_size().width - px(24.), px(24.))
+        } else {
+            self.git_anchor.get()
+        };
+        self.open_git_menu_on_pull_request(anchor, window, cx);
+        if self.menu.page != Some(Page::Git) {
+            return false;
+        }
+        self.menu.asked_by_command = true;
+        self.menu.git_create_target = Some(CreateTarget { input, pane });
+        cx.notify();
+        true
+    }
+
     /// How many commits the focused branch holds that no pull request
     /// carries, once a finished lookup can say so. Reading never schedules work.
     pub(crate) fn git_unopened_commits(&self) -> Option<u64> {
@@ -216,9 +257,10 @@ impl SheprdWindow {
             origin: crate::pull_request::Origin::Local,
             login: self.main_tokens()?.key(),
         };
-        (self.menu.github.connected()
-            && self.menu.pr_cache.unopened_input(&view, input, &ahead.head))
-        .then_some(ahead.commits)
+        self.menu
+            .pr_cache
+            .unopened_input(&view, input, &ahead.head)
+            .then_some(ahead.commits)
     }
 
     /// The pull request already prefetched for the focused branch, in whatever
@@ -233,16 +275,12 @@ impl SheprdWindow {
             origin: crate::pull_request::Origin::Local,
             login: self.main_tokens()?.key(),
         };
-        self.menu
-            .github
-            .connected()
-            .then(|| self.menu.pr_cache.peek_input(&view, input))
-            .flatten()
+        self.menu.pr_cache.peek_input(&view, input)
     }
 
     /// A GitHub lookup for the focused branch is in flight or about to be.
     fn git_pull_request_loading(&self) -> bool {
-        self.menu.github.connected()
+        self.main_signed_in()
             && self
                 .git
                 .tracked()
@@ -302,6 +340,17 @@ impl SheprdWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if let Some(target) = self.menu.git_create_target.as_ref()
+            && (self.git_input().as_ref() != Some(&target.input)
+                || self.git.tracked() != Some(&target.input)
+                || self.shown_core_pane(cx) != target.pane
+                || target.pane.as_ref().is_some_and(|(tab, terminal)| {
+                    self.core_pane_git_input(*tab, terminal).as_ref() != Some(&target.input)
+                }))
+        {
+            self.dismiss_menu(window, cx);
+            return;
+        }
         // One explicit operation at a time, Git or GitHub.
         if self.git.running().is_some() || self.pr_actions.running().is_some() {
             return;
@@ -382,6 +431,7 @@ impl SheprdWindow {
                 self.menu.git_selected = Some(rows[index].0);
                 cx.notify();
             }
+            "enter" if self.menu.asked_by_command => {}
             "enter" => {
                 if let Some(row) = self
                     .menu

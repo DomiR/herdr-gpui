@@ -67,7 +67,7 @@ pub mod pin;
 pub mod quic;
 pub mod route;
 #[cfg(feature = "server")]
-pub mod secret;
+pub use sheprd_dashboard::secret;
 #[cfg(feature = "server")]
 mod serve;
 pub mod socket;

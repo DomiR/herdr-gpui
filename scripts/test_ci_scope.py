@@ -41,8 +41,9 @@ class CiScopeTest(unittest.TestCase):
     def plan(self, changed, event="pull_request", labels=(), lines=()):
         return SCOPE.plan(event, labels, changed, lines, self.members, self.dependents)
 
-    def assert_full(self, outputs):
-        self.assertEqual(outputs, {"full": "true", "cargo_scope": "--workspace", "gpui": "true"})
+    def assert_full(self, outputs, windows="true"):
+        self.assertEqual(outputs, {"full": "true", "windows": windows, "cargo_scope": "--workspace",
+                                   "gpui": "true"})
 
     def test_reads_every_dependency_kind_and_rename(self):
         self.assertEqual(self.members["crates/relay"], "relay")
@@ -89,9 +90,9 @@ class CiScopeTest(unittest.TestCase):
         self.assert_full(self.plan(None))
 
     def test_platform_labels_run_everything(self):
-        for label in ("windows", "macos", "full-ci"):
+        for label, windows in (("windows", "true"), ("macos", "false"), ("full-ci", "true")):
             with self.subTest(label=label):
-                self.assert_full(self.plan(["crates/relay/src/main.rs"], labels=["bug", label]))
+                self.assert_full(self.plan(["crates/relay/src/main.rs"], labels=["bug", label]), windows)
         self.assertEqual(self.plan(["crates/relay/src/main.rs"], labels=["linux"])["full"], "false")
 
     def test_dependencies_and_toolchain_run_everything(self):
@@ -103,22 +104,35 @@ class CiScopeTest(unittest.TestCase):
                 self.assert_full(self.plan([path]))
 
     def test_platform_paths_run_everything(self):
-        for path in ("crates/sheprd-gpui/src/avatars/cache/windows.rs", "macos/sheprd-nearby/main.swift",
-                     "crates/sheprd-gpui/windows.manifest", "crates/client/src/macos_keychain.rs",
+        for path in ("crates/sheprd-gpui/src/avatars/cache/windows.rs", "crates/sheprd-gpui/windows.manifest",
                      ".github/workflows/ci.yml", "scripts/ci-scope.py", "scripts/ci-changes.sh",
-                     "scripts/set-display-resolution.ps1"):
+                     "scripts/set-display-resolution.ps1", "crates/client/src/win32_console.rs"):
             with self.subTest(path=path):
                 self.assert_full(self.plan([path]))
+        # macOS code needs every platform but Windows, which no build of it reads.
+        for path in ("macos/sheprd-nearby/main.swift", "crates/client/src/macos_keychain.rs",
+                     "crates/sheprd-gpui/src/darwin/menu.rs"):
+            with self.subTest(path=path):
+                self.assert_full(self.plan([path]), windows="false")
         for path in ("crates/client/src/window.rs", "crates/client/src/windowing.rs"):
             with self.subTest(path=path):
                 self.assertEqual(self.plan([path])["full"], "false")
 
     def test_platform_cfg_lines_run_everything(self):
-        for line in ('+#[cfg(windows)]', '-#[cfg(target_os = "macos")]', '+    if cfg!(unix) {',
+        for line in ('+#[cfg(windows)]', '+    if cfg!(unix) {', '+#[cfg(not(target_os = "macos"))]',
                      '+#[cfg(all(test, not(windows)))]', '+#[cfg_attr(windows, allow(dead_code))]',
+                     '+#[cfg(target_os = "linux")]', '+#[cfg(target_family = "unix")]',
                      '-    if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {'):
             with self.subTest(line=line):
                 self.assert_full(self.plan(["crates/client/src/lib.rs"], lines=[line]))
+        # Gates a Windows build never matches leave Windows out.
+        for line in ('-#[cfg(target_os = "macos")]', '+#[cfg(any(target_os = "macos", target_os = "ios"))]',
+                     '+#[cfg(target_vendor = "apple")]'):
+            with self.subTest(line=line):
+                self.assert_full(self.plan(["crates/client/src/lib.rs"], lines=[line]), windows="false")
+        # One Windows-visible line among macOS ones brings Windows back.
+        self.assert_full(self.plan(["crates/client/src/lib.rs"],
+                                   lines=['+#[cfg(target_os = "macos")]', '+#[cfg(unix)]']))
         self.assertEqual(self.plan(["crates/client/src/lib.rs"],
                                    lines=['+#[cfg(test)]', '+// a window opens'])["full"], "false")
 

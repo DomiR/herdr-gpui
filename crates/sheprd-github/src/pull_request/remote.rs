@@ -3,6 +3,7 @@
 //! `upstream` remote and pushes to its own `origin`.
 
 use super::fetch::{git, origin_repository};
+use crate::{Repo, Server};
 use std::time::Instant;
 
 /// A Git remote this client reads pull request refs from.
@@ -25,12 +26,13 @@ impl Remote {
 /// The repository a checkout's pull requests are opened against.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Base {
+    pub server: Server,
     pub owner: String,
     pub repo: String,
     pub remote: Remote,
     /// For an `upstream` base, the owner of the GitHub fork behind `origin`,
     /// where this checkout's own branches are pushed. `None` when `origin` is
-    /// not on GitHub.com, or when the base is `origin` itself.
+    /// not on the base's server, or when the base is `origin` itself.
     pub fork_owner: Option<String>,
 }
 
@@ -56,9 +58,10 @@ impl Base {
 }
 
 /// A GitHub `upstream` remote when the checkout has one that names another
-/// repository than origin, otherwise origin. An `upstream` that is not on
-/// GitHub.com, or that names origin's own repository, is ignored rather than
-/// fatal, so such checkouts keep the ordinary same-repository path.
+/// repository than origin, otherwise origin. An `upstream` that names
+/// origin's own repository, or that is on neither GitHub.com nor origin's
+/// server, is ignored rather than fatal, so such checkouts keep the ordinary
+/// same-repository path.
 pub fn base_repository(
     checkout: &str,
     deadline: Instant,
@@ -100,35 +103,37 @@ pub fn remote_repository(
     base(origin, upstream.as_deref())
 }
 
-fn base(origin: crate::Result<(String, String)>, upstream: Option<&str>) -> crate::Result<Base> {
-    if let Some((owner, repo)) = upstream.and_then(crate::github_repo)
-        && !origin
+fn base(origin: crate::Result<Repo>, upstream: Option<&str>) -> crate::Result<Base> {
+    let on_origins_server = |upstream: &Repo| {
+        origin
             .as_ref()
-            .is_ok_and(|origin| same_repository(origin, (&owner, &repo)))
+            .is_ok_and(|origin| origin.server.same(&upstream.server))
+    };
+    if let Some(upstream) = upstream.and_then(crate::github_repo)
+        && (upstream.server == Server::GitHub || on_origins_server(&upstream))
+        && !origin.as_ref().is_ok_and(|origin| origin.same(&upstream))
     {
         let fork_owner = origin
             .ok()
-            .map(|(fork, _)| fork)
-            .filter(|fork| !fork.eq_ignore_ascii_case(&owner));
+            .filter(|fork| fork.server.same(&upstream.server))
+            .map(|fork| fork.owner)
+            .filter(|fork| !fork.eq_ignore_ascii_case(&upstream.owner));
         return Ok(Base {
-            owner,
-            repo,
+            server: upstream.server,
+            owner: upstream.owner,
+            repo: upstream.name,
             remote: Remote::Upstream,
             fork_owner,
         });
     }
-    let (owner, repo) = origin?;
+    let origin = origin?;
     Ok(Base {
-        owner,
-        repo,
+        server: origin.server,
+        owner: origin.owner,
+        repo: origin.name,
         remote: Remote::Origin,
         fork_owner: None,
     })
-}
-
-/// GitHub owner and repository names are case-insensitive.
-fn same_repository((owner, repo): &(String, String), other: (&str, &str)) -> bool {
-    owner.eq_ignore_ascii_case(other.0) && repo.eq_ignore_ascii_case(other.1)
 }
 
 #[cfg(test)]

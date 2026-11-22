@@ -57,6 +57,38 @@ Accepting the setup opens a new workspace on your local Herdr and runs the setup
 
 **Skip host key verification (dangerous)**, off by default, connects without checking the host's key, now and on every later connection. It is meant for hosts that keep no key to check, such as the `*.coder` aliases `coder config-ssh` writes. The choice is saved under `[ssh] skip_host_key_verification` in the local config, by target. To verify the host again, delete the target from that list, or remove the device and add it again with the box clear.
 
+## Another computer running Sheprd, on another network
+
+Two computers that both run Sheprd, with no network path between them (no shared Wi-Fi, no Tailscale, no public address), can still reach each other through a [relay](relays.md). The computer you add must have remote control on and listen on a relay; yours only dials it. Pairing is the one step that needs a trusted way in, and there are two:
+
+- **Bluetooth, when the two are side by side.** On the computer to add, open **Remote control > Pair device**. On yours, open **Add Device… > Nearby Sheprd**, and pick the computer from the list.
+- **A pairing link, from anywhere.** On the computer to add, open **Remote control > Pair device** and choose **Copy link**. Send the link to yourself, then paste it on your computer in **Add Device… > Nearby Sheprd** and choose **Pair**. From a script, `sheprd remote add-link < link.txt` fills in that field; you still choose **Pair**.
+
+Either way, both screens then show the same six-digit code. Check that they match and choose **Allow** on the computer you are adding. Sheprd then checks Herdr there through the relay and saves it as a device. If either computer is in a fleet, the page also offers to bring the other into it.
+
+### How safe a pairing link is
+
+A link works once, for two minutes, and only while **Pair device** stays open. Anyone holding it during that time can ask to pair, so treat it like a password:
+
+- **Send it only to yourself**, over something private: a message to yourself, a note, your own mail. Do not post it where others can read it.
+- **Nothing is granted without Allow.** The computer you are adding shows who is asking and a code. If the name is not your computer, or the code is not the one your screen shows, choose **Deny**.
+- **A stolen link mostly fails.** If someone claims it before you, your own claim voids the pairing for both. An old copy left in a chat is spent or expired.
+- **The relay cannot pretend to be the other computer.** The link names that computer's keys and certificate, and your Sheprd checks them, so the relay only ever carries encrypted bytes.
+
+Bluetooth is the stronger of the two: its code exchange stays safe even if someone listens in, where a link is only as private as the way you sent it. Use Bluetooth when the two computers are side by side.
+
+What **Allow** grants is one line in the added computer's `~/.ssh/authorized_keys`, accepted only from that computer itself, so only its own relay sessions can use it. Revoking the device in **Remote control** removes the line.
+
+### How the two recognize each other afterwards
+
+Every later connection passes three checks, in order:
+
+1. **The relay.** The added computer tells its relays which devices may reach it. Any other device hears that it is offline, and never reaches it.
+2. **An end-to-end encrypted tunnel**, with post-quantum key exchange. Your computer checks the other's keys, kept from pairing, and the other admits only devices it allowed.
+3. **SSH inside the tunnel**, with the host keys learned at pairing checked strictly, and your computer's own SSH key.
+
+Only the connections Sheprd itself makes go through the relay. `git` over SSH, and an `ssh` you type in a terminal, still go direct.
+
 ## Managing saved hosts
 
 Each device's header in the Spaces list starts with a mark: a monitor for this machine, a provider logo for a cloud device, and a terminal for an SSH host or WSL distribution. A host whose name ends in `.coder` shows the Coder logo, and a `*.ts.net` name or Tailscale address shows the Tailscale logo. Turn off **Show device icons** under Settings > Sidebar, or set `show_device_icons = false`, to hide the marks.

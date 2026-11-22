@@ -25,7 +25,8 @@ pub(crate) async fn connect(state_dir: &Path, host: &str) -> Result<()> {
 }
 
 /// The tunnel to `host`, through the first relay that lets this computer
-/// through, and the relay connection carrying it.
+/// through, and the relay connection carrying it. A machine the fleet
+/// shares is told first that the session carries SSH.
 pub(crate) async fn open(
     state_dir: &Path,
     host: &str,
@@ -39,6 +40,25 @@ pub(crate) async fn open(
     })
     .await
     .map_err(|_| Error::Cancelled)??;
+    let (connection, mut tunnel) = open_record(&record, &keys).await?;
+    if record.opening {
+        use tokio::io::AsyncWriteExt as _;
+        let (state, hash) = (state_dir.to_owned(), tunnel.hash);
+        let opening = tokio::task::spawn_blocking(move || {
+            crate::fleet::opening(&state, crate::control::fleet::removal::PURPOSE_SSH, &hash)
+        })
+        .await
+        .map_err(|_| Error::Cancelled)??;
+        tunnel.io.write_all(&opening).await.map_err(Error::Splice)?;
+    }
+    Ok((connection, tunnel))
+}
+
+/// The tunnel to the machine `record` describes, dialed with `keys`.
+pub(crate) async fn open_record(
+    record: &Record,
+    keys: &Keys,
+) -> Result<(quinn::Connection, sheprd_tunnel::stream::Tunnel)> {
     let identity = record.tunnel_identity()?;
     let route = RouteId::parse(&record.route).ok_or(Error::RelayInfo)?;
     let mut last = None;

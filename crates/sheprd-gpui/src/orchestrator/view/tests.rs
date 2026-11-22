@@ -32,6 +32,7 @@ mod pr_empty;
 mod pr_standing;
 mod pr_status;
 mod project_filter;
+mod rail_reveal;
 mod refresh;
 mod repo_name;
 mod review_requested;

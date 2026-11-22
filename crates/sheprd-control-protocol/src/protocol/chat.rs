@@ -15,6 +15,10 @@ pub enum ChatOp {
         /// caller's own, else the focused one.
         #[serde(default)]
         pane: Option<String>,
+        /// A brief the chat starts with, sent as its first prompt and shown
+        /// as another agent's, at most [`MAX_BRIEF`] bytes.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        prompt: Option<String>,
     },
     /// Moves a pane's terminal agent into a chat in the same pane and
     /// conversation: stops its CLI, then continues its session in the chat.
@@ -25,6 +29,14 @@ pub enum ChatOp {
     },
     /// The person's text shortcuts, which every chat's composer offers.
     Shortcuts,
+    /// Stars (`on`) or unstars (`off`) a pane's agent, which the agents
+    /// panel and phones then list first. Any agent, not only a chat's.
+    Favorite {
+        switch: Switch,
+        /// The pane, else the caller's own, else the focused one.
+        #[serde(default)]
+        pane: Option<String>,
+    },
     /// Shows the chat view over a pane (`on`), or its terminal (`off`).
     View {
         switch: Switch,
@@ -32,6 +44,18 @@ pub enum ChatOp {
         #[serde(default)]
         pane: Option<String>,
     },
+}
+
+/// The longest brief `chat new` carries, in bytes: one of newlines, which
+/// JSON doubles, still fits [`MAX_MESSAGE`](crate::protocol::MAX_MESSAGE),
+/// and it is under the longest prompt a chat takes. A client checks the
+/// encoded request as well, for text that escapes longer.
+pub const MAX_BRIEF: usize = 96 * 1024;
+
+/// Whether `prompt` is a brief `chat new` may carry: not blank, and at most
+/// [`MAX_BRIEF`] bytes.
+pub fn valid_brief(prompt: &str) -> bool {
+    !prompt.trim().is_empty() && prompt.len() <= MAX_BRIEF
 }
 
 /// Who owns input in the conversation pane.
@@ -81,6 +105,11 @@ pub enum Reply {
     View {
         pane_id: String,
         shown: bool,
+    },
+    /// Whether the pane's agent is a favorite now.
+    Favorite {
+        pane_id: String,
+        favorite: bool,
     },
     /// The chat's tab was asked for; it attaches once its program reports.
     Started {

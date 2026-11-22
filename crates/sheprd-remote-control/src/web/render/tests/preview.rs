@@ -86,10 +86,10 @@ fn demo_transcript() -> Transcript {
         })
         .collect();
     transcript.entries = vec![
-        entry(1, EntryKind::User { text: "Add the remote control plan".into(), files: 0 }),
+        entry(1, EntryKind::User { text: "Add the remote control plan".into(), files: 0, note: None}),
         entry(2, EntryKind::Agent { text: "Done.".into() }),
         entry(3, EntryKind::Turn(TurnSummary { duration_ms: 125_000, ended_ms: None, end: TurnEnd::Done, tokens: None })),
-        entry(4, EntryKind::User { text: "Write the plan in docs/ and give me mockups".into(), files: 0 }),
+        entry(4, EntryKind::User { text: "Write the plan in docs/ and give me mockups".into(), files: 0, note: None}),
         entry(5, EntryKind::Tool(Tool {
             call_id: "1".into(),
             content: vec![ToolContent::Diff { new: "axum = \"0.8\"\ntokio = \"1\"".into(), old: Some("rustls = \"0.23\"".into()), path: "Cargo.toml".into() }],
@@ -220,6 +220,7 @@ fn write_preview_pages() {
             })
             .collect(),
         unopened: Vec::new(),
+        uncommitted: Vec::new(),
     };
     let lists = Lists {
         pull_requests: Some(&pull_requests),

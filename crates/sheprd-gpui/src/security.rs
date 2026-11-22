@@ -62,6 +62,27 @@ pub enum Error {
     Unread,
 }
 
+/// The account that reads `owner`'s repositories. Security reads go to
+/// GitHub.com only.
+fn github_token<'a>(
+    tokens: &'a crate::github::Tokens,
+    owner: &str,
+) -> Result<&'a crate::github::ServerToken, Error> {
+    tokens
+        .for_owner(&crate::github::Server::GitHub, owner)
+        .ok_or_else(|| {
+            Error::Github(Box::new(crate::Error::GitHub(
+                sheprd_github::Error::Authentication,
+            )))
+        })
+}
+
+/// Whether `tokens` hold a GitHub.com account, the only server Security
+/// reads; an Enterprise Server account alone reads nothing here.
+fn reads_github(tokens: &crate::github::Tokens) -> bool {
+    tokens.serves(&crate::github::Server::GitHub)
+}
+
 impl Error {
     /// Whether GitHub refused for the account's spent quota.
     fn rate_limited(&self) -> bool {
@@ -244,7 +265,7 @@ impl SheprdWindow {
         let specs: Vec<_> = self
             .repo_specs()
             .into_iter()
-            .filter(|spec| spec.request.token.is_some())
+            .filter(|spec| spec.request.token.as_ref().is_some_and(reads_github))
             .collect();
         if specs.is_empty() {
             // Nothing left to read: the last read's repositories are no

@@ -57,8 +57,9 @@ pub struct Config {
 }
 
 impl Config {
-    /// Reads `STATE_DIR/apns/config.json` and the key beside it: `None`
-    /// when there is no config. Blocking file I/O.
+    /// Reads `DIR/apns/config.json` and the key beside it, as the push
+    /// relay keeps them in its secrets directory: `None` when there is no
+    /// config. Blocking file I/O.
     pub fn load(state_dir: &Path) -> Result<Option<Self>> {
         let path = config_path(state_dir);
         let bytes = match read_bounded(&path) {

@@ -147,7 +147,8 @@ impl Repo {
                 .map_or(repository, |(owner, _)| owner)
         });
         match (&self.request.token, owner) {
-            (Some(tokens), Some(owner)) => Some(tokens.login_for(owner)),
+            (Some(tokens), Some(owner)) => crate::github::Server::of_host(&remote?.source.host)
+                .and_then(|server| tokens.login_for(&server, owner)),
             _ => self.login.as_deref(),
         }
     }

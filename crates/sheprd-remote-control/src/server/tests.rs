@@ -8,8 +8,15 @@ mod bonjour;
 mod control_socket;
 mod desktop;
 mod enroll;
+mod fleet;
+#[cfg(unix)]
+mod fleet_joins;
 mod github;
 mod idle;
+mod push_relay;
+mod push_relay_revoke;
+mod push_status;
+mod push_status_verb;
 mod relay_enroll;
 mod relay_options;
 mod shutdown;

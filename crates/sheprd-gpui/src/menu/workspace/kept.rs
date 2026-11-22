@@ -79,6 +79,11 @@ pub(super) fn items(
     items
 }
 
+/// Whether a cached value that was known has since become another.
+fn changed<T: PartialEq>(old: &Option<T>, new: &Option<T>) -> bool {
+    old.is_some() && old != new
+}
+
 impl WorkspaceTarget {
     /// A target for a workspace the app keeps.
     fn kept(workspace: &sheprd_session::Workspace) -> Self {
@@ -163,7 +168,85 @@ impl SheprdWindow {
                 }
                 self.rename_kept_workspace(&id, &text, cx);
             }
-            WorkspaceAction::Close => self.close_kept_workspace(&id, window, cx),
+            WorkspaceAction::Close => {
+                // All submissions, including Enter and automatic close, must
+                // still address the checked workspace on the same host.
+                let seen = self
+                    .menu
+                    .close_check
+                    .as_ref()
+                    .and_then(|check| check.report.as_ref())
+                    .and_then(|report| report.seen.clone());
+                let current = (|| {
+                    if !self.menu_target_current() {
+                        return Err(crate::Error::StaleConnection);
+                    }
+                    let sessions = self.sessions(self.selected_endpoint);
+                    let workspace = sessions
+                        .core
+                        .as_ref()
+                        .and_then(|core| core.workspace(&id))
+                        .ok_or(crate::Error::StaleWorkspace)?;
+                    let target = self
+                        .menu
+                        .target
+                        .as_ref()
+                        .ok_or(crate::Error::StaleWorkspace)?;
+                    let current = WorkspaceTarget::kept(workspace);
+                    // The session's identity cache fills in later than the
+                    // dialog opens. Once the check itself read the folder, a
+                    // cache that merely learns a value is no change; the
+                    // fresh read below decides.
+                    let moved = if seen.is_some() {
+                        changed(&target.worktree, &current.worktree)
+                            || changed(&target.branch, &current.branch)
+                    } else {
+                        target.worktree != current.worktree || target.branch != current.branch
+                    };
+                    if target.source != current.source || moved {
+                        return Err(crate::Error::WorkspaceCheckoutChanged);
+                    }
+                    Ok(())
+                })();
+                if let Err(error) = current {
+                    self.menu.error = Some(error.localize());
+                    cx.notify();
+                    return;
+                }
+                if self
+                    .menu
+                    .input
+                    .as_ref()
+                    .is_some_and(|input| input.marked.is_some())
+                    || !self.menu.close_check.as_ref().is_some_and(|check| {
+                        check.allows(&text, self.config.confirm_close_workspace)
+                    })
+                {
+                    return;
+                }
+                // A branch switched since the check makes its report, and
+                // any consent typed for it, stale: look again, start over.
+                if let Some(seen) = &seen {
+                    let fresh = match self.menu.target.as_ref().map(|target| &target.source) {
+                        Some(Source::Directory(dir)) => seen.is_current(dir),
+                        _ => false,
+                    };
+                    if !fresh {
+                        let local = !self.selected_is_remote();
+                        if let Some(target) = &self.menu.target {
+                            self.menu.close_check =
+                                Some(crate::menu::workspace_close::CloseCheck::start_kept(
+                                    target, local, cx,
+                                ));
+                        }
+                        self.menu.input = None;
+                        self.menu.error = Some(crate::Error::WorkspaceCheckoutChanged.localize());
+                        cx.notify();
+                        return;
+                    }
+                }
+                self.close_kept_workspace(&id, window, cx);
+            }
             WorkspaceAction::NewWorktree => {
                 let ask = self
                     .menu

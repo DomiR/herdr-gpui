@@ -2,7 +2,7 @@
 # $status is how Herdr's command exited, in the system's words; $detail is
 # what it printed.
 
-error-devices-adding = This host is already being added, in another Add Device dialog or a “Set up” workspace that is still running. Finish or close it, then try again.
+error-devices-adding = This host is already being added in another Add Device dialog. Finish or close it, then try again.
 # $label is the name the device was saved under.
 error-devices-exists = This host and session are already saved as “{ $label }”.
 error-devices-remove = Removing the device failed ({ $status })

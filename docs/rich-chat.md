@@ -710,8 +710,13 @@ is out of their reach: the agent pushes and fetches over HTTPS with the
 GitHub CLI's credentials rather than SSH, and stops rather than turning
 off signing when a commit needs a key (`phone.md` and `remote.md`; the
 iPhone and iPad app's `phone-app.md` follows `phone.md`, so says it once
-through it). The transcript shows only the person's
-words. An older program ignores the field, and an older client sends none.
+through it). An older program ignores the origin field, and an older client sends none.
+The transcript shows only the person's words, and keeps what went ahead of
+them in the user entry's optional `note`: the note and, on a live prompt, a
+handed-over conversation; on a replay or a restored log, the note alone. The
+desktop chat's **As sent** header switch (`chat/view/sent.rs`) draws it above
+each prompt. Clients that predate `note` skip it, as serde ignores the
+unknown field, so no revision gates it.
 
 The note's texts are templates (`context/prompts.rs`): the built-in ones in
 `crates/sheprd-acp/prompts`, compiled in, each replaced by a non-empty file
@@ -756,6 +761,26 @@ skipped, and a refused one leaves a warning in the chat while the rest
 still go. The program keeps the variable from its agent, so a chat that
 agent starts carries its own. A program on an SSH host older than this
 ignores the variable and starts with the agent's defaults.
+
+### Starting a chat with a brief
+
+An agent that hands another a task starts it with the task:
+`sheprd chat new [AGENT] --prompt TEXT` or `--prompt-file PATH` (`-` reads
+standard input), at most 96 KB of UTF-8 (control protocol 19). The CLI reads
+the file; the app writes the text, off the UI thread, to a new private
+(`0600`) file in the temporary folder and starts `sheprd-acp` with
+`--brief-file PATH`, plus `--brief-from AGENT` when the caller is a chat
+(its own agent, whichever agent the new chat runs). A Herdr tab's typed
+line reads the path from `SHEPRD_BRIEF_FILE` in the tab's environment, as
+it reads the program's own path, so the line never holds the file's name;
+a Herdr 2 terminal gets the options in its argv. `sheprd-acp` sends the
+brief as the chat's first prompt and marks it as the agent's, which clients
+show as a brief rather than the person's words, and deletes the file. A
+start that fails deletes it too.
+
+A brief is not yet sent to a chat on an SSH host or another machine's
+Herdr 2: the file is on this machine, so `chat new` refuses with exit 8
+rather than starting the chat without it.
 
 ## Existing CLI sessions
 

@@ -17,6 +17,8 @@ Usage: sheprd-push-relay --secrets DIR [--store STORE] [--listen ADDRESS] [--beh
   --secrets DIR      Holds apns/config.json, apns/AuthKey.p8, relay-key.pem,
                      optionally relay-key-previous.pem, and credential-secret
                      (32 or more bytes as hex). All private to this user.
+                     With dashboard-token there too (24 or more characters),
+                     /dashboard and /metrics are served behind that token.
   --store STORE      Where revocations live: memory (default), sqlite:FILE, or
                      postgres, which reads postgres-url from the secrets and
                      trusts postgres-ca.pem there if there is one. Pushes keep

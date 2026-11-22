@@ -2,6 +2,8 @@
 use super::*;
 use sheprd_remote_control::control::DeviceId;
 
+mod push_status;
+
 fn device(id: &str, name: &str) -> Device {
     Device {
         id: DeviceId(id.into()),

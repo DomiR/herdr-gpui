@@ -121,6 +121,7 @@ pub(super) fn list(
         .rsplit_once('/')
         .unwrap_or(("", &project.source.repository));
     let origin = Origin {
+        server: Default::default(),
         owner: owner.to_owned(),
         repo: repo.to_owned(),
         remote: project.remote,

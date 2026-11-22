@@ -6,6 +6,7 @@ pub mod app;
 pub mod chat;
 pub mod cloud;
 pub mod events;
+pub mod fleet;
 pub mod hosts;
 pub mod mods;
 pub mod remote;
@@ -34,7 +35,9 @@ pub enum Placement {
 /// family's `machine` requests, and the `machine` kind in `tab list`.
 /// 15: `machine` `agent`, `exec`, `screenshot`, `click`, `type`, and `key`.
 /// 16: `via` on the caller and on feedback, for requests `sheprd mcp` relays.
-pub const PROTOCOL_VERSION: u32 = 16;
+/// 17: `chat` `favorite`.
+/// 18: `fleet`. 19: `chat` `new` `prompt`.
+pub const PROTOCOL_VERSION: u32 = 19;
 
 /// Older apps and clients know only tabs, so a tab is left off the wire.
 fn is_tab(placement: &Placement) -> bool {
@@ -69,6 +72,7 @@ macro_rules! relay {
             Request::Chat(call) => $($borrow)+ call.caller.via,
             Request::Cloud(call) => $($borrow)+ call.caller.via,
             Request::Remote(call) => $($borrow)+ call.caller.via,
+            Request::Fleet(call) => $($borrow)+ call.caller.via,
             Request::Mod(call) => $($borrow)+ call.caller.via,
         }
     };
@@ -115,6 +119,8 @@ pub enum Request {
     Remote(Call<remote::RemoteOp>),
     #[serde(rename = "mod")]
     Mod(Call<mods::ModOp>),
+    #[serde(rename = "fleet")]
+    Fleet(Call<fleet::FleetOp>),
 }
 
 /// A `herdr-gpui://` link the shell started a second copy of the app with.
@@ -145,6 +151,7 @@ impl Request {
             Self::Settings(call) => call.op.wait_seconds(),
             Self::Cloud(call) => call.op.wait_seconds(),
             Self::Remote(call) => call.op.wait_seconds(),
+            Self::Fleet(call) => call.op.wait_seconds(),
             _ => 0,
         };
         wait.min(MAX_WAIT_SECONDS)
@@ -235,7 +242,8 @@ impl Via {
 pub struct BrowserOpen {
     pub page: Page,
     pub caller: Caller,
-    /// Whether the window switches to the tab.
+    /// Whether the window switches to the tab. `sheprd browser open` asks
+    /// only with `--focus`; otherwise the tab is added in the background.
     pub focus: bool,
     #[serde(default, skip_serializing_if = "is_tab")]
     pub placement: Placement,
@@ -359,6 +367,9 @@ pub enum Response {
     },
     Mod {
         reply: mods::Reply,
+    },
+    Fleet {
+        reply: fleet::Reply,
     },
     Error {
         code: ErrorCode,

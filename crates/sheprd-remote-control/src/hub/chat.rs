@@ -117,15 +117,7 @@ pub(crate) fn first_prompt(transcript: &Transcript) -> Option<String> {
 }
 
 /// The first `limit` characters of `text` on one line.
-pub(crate) fn excerpt(text: &str, limit: usize) -> String {
-    let line: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    if line.chars().count() <= limit {
-        return line;
-    }
-    let mut cut: String = line.chars().take(limit.saturating_sub(1)).collect();
-    cut.push('…');
-    cut
-}
+pub(crate) use sheprd_chat_protocol::excerpt::one_line as excerpt;
 
 #[derive(Default)]
 struct State {

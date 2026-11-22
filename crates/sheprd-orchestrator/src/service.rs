@@ -542,12 +542,15 @@ impl Worker {
         let Some((owner, repo)) = remote.source.repository.split_once('/') else {
             return;
         };
+        let Some(token) = token.for_host(&remote.source.host, owner) else {
+            return;
+        };
         let cancelled = self.cancelled.clone();
         let result = sheprd_github::pull_request::by_number(
             owner,
             repo,
             number,
-            token.for_owner(owner),
+            token,
             || cancelled.load(Ordering::Relaxed),
             &mut self.cooldown,
         );
@@ -724,7 +727,7 @@ impl Worker {
         }
         let store = Store::open(&path)?;
         self.snapshot.access = Some(store.access());
-        self.snapshot.sources = statuses(&info);
+        self.snapshot.sources = statuses(&info, self.request.token.as_ref());
         self.site = Some(Site {
             host: host.clone(),
             target: self.request.target.clone(),
@@ -814,7 +817,7 @@ impl Worker {
                 Err(error) => tracing::debug!(%error, "Cannot read the branches"),
             }
         }
-        for (key, supported) in sources(&info) {
+        for (key, supported) in sources(&info, self.request.token.as_ref()) {
             if self.cancelled() {
                 return;
             }
@@ -938,7 +941,7 @@ impl Worker {
             return;
         };
         if recognize(&mut info, cli) {
-            self.snapshot.sources = statuses(&info);
+            self.snapshot.sources = statuses(&info, self.request.token.as_ref());
             self.snapshot.repo = Some(info);
         }
     }

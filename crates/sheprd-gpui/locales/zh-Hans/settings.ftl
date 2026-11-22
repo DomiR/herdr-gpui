@@ -73,7 +73,7 @@ settings-lead-code = 通过 Visual Studio Code 服务器，在终端旁查看代
 settings-lead-integrations = Herdr 可以启动并跟踪的智能体。
 settings-lead-plugins = 在侧边栏中显示插件提供的信息。
 settings-lead-cloud-devices = 使用云账号创建主机，并将它们添加为设备。
-settings-lead-remote-control = 通过本地网络的 HTTPS 连接或 Tailscale，在手机上使用聊天功能。
+settings-lead-remote-control = 让手机通过本地网络、Tailscale 或中继使用这台电脑的聊天、终端和通知。Fleet 依赖于它。
 settings-lead-configuration = 查看这些设置对应的配置文件。保存后的更改会自动加载。
 
 settings-theme-mode = 外观

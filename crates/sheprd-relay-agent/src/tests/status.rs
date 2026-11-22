@@ -25,6 +25,7 @@ fn the_route_status_reports_is_the_one_the_agent_listens_on() {
     let dir = tempfile::tempdir().unwrap();
     let report = Report::read(dir.path(), SystemTime::now()).unwrap();
     let agent = Agent::load(Options {
+        authorized_keys: None,
         forward: "127.0.0.1:22".parse().unwrap(),
         relays: Vec::new(),
         state_dir: dir.path().to_owned(),
@@ -78,6 +79,7 @@ fn the_report_reads_back_as_json() {
 async fn a_stopped_agent_removes_its_status() {
     let dir = tempfile::tempdir().unwrap();
     let options = Options {
+        authorized_keys: None,
         forward: "127.0.0.1:22".parse().unwrap(),
         relays: Vec::new(),
         state_dir: dir.path().to_owned(),
@@ -159,6 +161,7 @@ fn concurrent_changes_to_the_desktops_are_never_lost() {
 fn a_second_agent_on_the_same_state_directory_refuses_to_start() {
     let dir = tempfile::tempdir().unwrap();
     let options = || Options {
+        authorized_keys: None,
         forward: "127.0.0.1:22".parse().unwrap(),
         relays: Vec::new(),
         state_dir: dir.path().to_owned(),

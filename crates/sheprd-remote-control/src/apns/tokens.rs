@@ -1,7 +1,8 @@
 //! The push tokens one device registers: its app's push-to-start token,
 //! which starts an activity while the app is closed, one token per
 //! activity it shows, which updates and ends it, and its alert token with
-//! the key sealed alerts are opened with. The device store keeps a
+//! the key sealed alerts are opened with. Each may be a push relay handle
+//! instead of a token ([`Recipient`]). The device store keeps a
 //! [`Registration`] as opaque JSON, as it keeps a Web Push subscription.
 //!
 //! `POST /api/apns` takes the same shape:
@@ -11,11 +12,20 @@
 //!   "alert": "9f02…", "notify_key": "BHk3…", "activity_detail": "generic" }
 //! ```
 //!
+//! A missing `push_to_start`, `alert`, or `notify_key` keeps what the device
+//! registered before. An explicit `null` for `push_to_start` or `alert`
+//! clears it ([`Update`]): the app sends that when its push relay is turned
+//! off, so the computer stops pushing through the handles it held even when
+//! the phone could not revoke them at the push relay. Older daemons read
+//! `null` as missing, and older apps never send it.
+//!
 //! The app sends `activity_detail` only when the phone keeps its activities
 //! generic, so a phone on the default still registers with older daemons,
-//! which refuse a key they do not know.
+//! which refuse a key they do not know. Through the relay, each token is a
+//! handle object instead (`recipient`), and `notify_key` is also what Live
+//! Activity content is sealed to.
 
-use super::{DeviceToken, Error, Result};
+use super::{Error, Recipient, Result, recipient::Handle};
 use crate::app::config::ActivityDetail;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use p256::PublicKey;
@@ -68,12 +78,12 @@ impl From<NotifyKey> for String {
     }
 }
 
-/// The token that updates the activity for the chat in `pane`.
+/// The token or handle that updates the activity for the chat in `pane`.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ActivityToken {
     pub(crate) pane: String,
-    pub(crate) token: DeviceToken,
+    pub(crate) token: Recipient,
 }
 
 /// Everything one device registered.
@@ -87,20 +97,21 @@ pub(crate) struct Registration {
     pub(crate) activity_detail: ActivityDetail,
     /// The app's own device token, for alerts.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) alert: Option<DeviceToken>,
-    /// The key alerts to `alert` are sealed to.
+    pub(crate) alert: Option<Recipient>,
+    /// The key alerts to `alert` are sealed to, and through the relay,
+    /// Live Activity content.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) notify_key: Option<NotifyKey>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) push_to_start: Option<DeviceToken>,
+    pub(crate) push_to_start: Option<Recipient>,
 }
 
 impl Registration {
-    /// Reads a `POST /api/apns` body, checking its bounds.
+    /// Reads a `POST /api/apns` body, checking its bounds, without what it
+    /// clears ([`Update::parse`] keeps that).
+    #[cfg(test)]
     pub(crate) fn parse(body: &[u8]) -> Result<Self> {
-        let registration: Self = serde_json::from_slice(body)?;
-        registration.check()?;
-        Ok(registration)
+        Update::parse(body).map(|update| update.registration)
     }
 
     /// Reads what the device store kept; anything unreadable is nothing.
@@ -128,8 +139,28 @@ impl Registration {
 
     /// Where sealed alerts go: the alert token and the key to seal to,
     /// once the device registered both.
-    pub(crate) fn alerts(&self) -> Option<(&DeviceToken, &PublicKey)> {
+    pub(crate) fn alerts(&self) -> Option<(&Recipient, &PublicKey)> {
         Some((self.alert.as_ref()?, self.notify_key.as_ref()?.key()))
+    }
+
+    /// Every relay handle this registration holds, each once: what
+    /// unpairing the device revokes at the relay. Plain tokens are left
+    /// out: nothing is ever sent to them.
+    pub(crate) fn handles(&self) -> Vec<Handle> {
+        let mut handles: Vec<Handle> = Vec::new();
+        let recipients = self
+            .push_to_start
+            .iter()
+            .chain(&self.alert)
+            .chain(self.activities.iter().map(|activity| &activity.token));
+        for recipient in recipients {
+            if let Recipient::Handle(handle) = recipient
+                && !handles.contains(handle)
+            {
+                handles.push(handle.clone());
+            }
+        }
+        handles
     }
 
     fn check(&self) -> Result<()> {
@@ -180,17 +211,29 @@ impl Registration {
         self.activities.reverse();
     }
 
+    /// Applies a `POST /api/apns` body: [`Self::merge`], then drops the
+    /// recipients it cleared with an explicit `null`.
+    pub(crate) fn apply(&mut self, update: Update) {
+        self.merge(update.registration);
+        if update.clears_push_to_start {
+            self.push_to_start = None;
+        }
+        if update.clears_alert {
+            self.alert = None;
+        }
+    }
+
     /// The token for the chat in `pane`'s activity.
-    pub(crate) fn activity(&self, pane: &str) -> Option<&DeviceToken> {
+    pub(crate) fn activity(&self, pane: &str) -> Option<&Recipient> {
         self.activities
             .iter()
             .find(|activity| activity.pane == pane)
             .map(|activity| &activity.token)
     }
 
-    /// Forgets `token` after APNs called it invalid; `true` when it was
-    /// there.
-    pub(crate) fn forget(&mut self, token: &DeviceToken) -> bool {
+    /// Forgets `token` after APNs or the relay called it gone; `true` when
+    /// it was there.
+    pub(crate) fn forget(&mut self, token: &Recipient) -> bool {
         let before = self.activities.len();
         self.activities.retain(|activity| &activity.token != token);
         let mut forgot = self.activities.len() != before;
@@ -210,5 +253,30 @@ impl Registration {
         let before = self.activities.len();
         self.activities.retain(|activity| activity.pane != pane);
         self.activities.len() != before
+    }
+}
+
+/// A `POST /api/apns` body: what it registers, and which recipients it
+/// clears with an explicit `null` rather than leaving out.
+#[derive(Debug)]
+pub(crate) struct Update {
+    registration: Registration,
+    clears_alert: bool,
+    clears_push_to_start: bool,
+}
+
+impl Update {
+    /// Reads a `POST /api/apns` body, checking its bounds.
+    pub(crate) fn parse(body: &[u8]) -> Result<Self> {
+        let object: serde_json::Map<String, serde_json::Value> = serde_json::from_slice(body)?;
+        let cleared = |key: &str| object.get(key).is_some_and(serde_json::Value::is_null);
+        let (clears_alert, clears_push_to_start) = (cleared("alert"), cleared("push_to_start"));
+        let registration = Registration::deserialize(serde_json::Value::Object(object))?;
+        registration.check()?;
+        Ok(Self {
+            registration,
+            clears_alert,
+            clears_push_to_start,
+        })
     }
 }

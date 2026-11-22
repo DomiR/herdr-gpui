@@ -26,7 +26,7 @@ async fn both_sides_agree_on_the_code_and_the_sealed_token() {
     let (mut exchange, start) = Exchange::start().unwrap();
     let reveal = exchange.reveal(&bluetooth(&state, &start)).unwrap();
     let opened = exchange.open(&bluetooth(&state, &reveal)).unwrap();
-    assert_eq!(opened.code.len(), 6);
+    assert_eq!(opened.code.as_ref().map(String::len), Some(6));
     assert_eq!(
         opened.fingerprint.to_vec(),
         crate::auth::nearby::fingerprint_bytes(&state.fingerprint)

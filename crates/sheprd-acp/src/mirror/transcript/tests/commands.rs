@@ -81,6 +81,7 @@ fn words_around_a_tag_stay_the_persons() {
         transcript.entries[0].kind,
         EntryKind::User {
             files: 0,
+            note: None,
             text: text.into()
         }
     );
@@ -101,6 +102,7 @@ fn text_beside_an_envelope_keeps_the_message_the_persons() {
             transcript.entries[0].kind,
             EntryKind::User {
                 files: 0,
+                note: None,
                 text: text.into()
             },
             "{text}"

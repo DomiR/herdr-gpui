@@ -28,12 +28,13 @@ use axum::{
         ConnectInfo, FromRequestParts, Path, Request, State,
         ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade},
     },
-    http::{HeaderMap, HeaderValue, StatusCode},
+    http::{HeaderMap, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
     routing::get,
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+pub use sheprd_dashboard::same_origin;
 use std::{
     net::{IpAddr, SocketAddr},
     sync::Arc,
@@ -124,31 +125,6 @@ async fn refuse_cross_site(request: Request, next: Next) -> Response {
         return StatusCode::FORBIDDEN.into_response();
     }
     next.run(request).await
-}
-
-/// Whether a request comes from the relay's own pages, or from no page at
-/// all. Browsers send `Sec-Fetch-Site`, or at least `Origin`, on every
-/// cross-site form post and WebSocket; a client that sends neither, such
-/// as `curl` or Sheprd, is not a browser being used against its owner.
-#[must_use]
-pub fn same_origin(headers: &HeaderMap) -> bool {
-    let text = |name| {
-        headers
-            .get(name)
-            .and_then(|value: &HeaderValue| value.to_str().ok())
-    };
-    if let Some(site) = text("sec-fetch-site") {
-        return matches!(site, "same-origin" | "none");
-    }
-    let Some(origin) = text("origin") else {
-        return true;
-    };
-    let host = text("host").unwrap_or_default();
-    let origin_host = origin
-        .strip_prefix("https://")
-        .or_else(|| origin.strip_prefix("http://"));
-    origin_host
-        .is_some_and(|origin_host| !host.is_empty() && origin_host.eq_ignore_ascii_case(host))
 }
 
 async fn info(State(shared): State<Shared>) -> Json<Info> {

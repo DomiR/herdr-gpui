@@ -25,25 +25,28 @@ use zbus::{
     zvariant::{ObjectPath, OwnedObjectPath, OwnedValue, Value},
 };
 
-const BLUEZ: &str = "org.bluez";
+pub(super) mod central;
+
+pub(super) const BLUEZ: &str = "org.bluez";
 const APP: &str = "/org/herdr/nearby";
 const SERVICE_PATH: &str = "/org/herdr/nearby/service0";
 const INFO_PATH: &str = "/org/herdr/nearby/service0/info";
 const PAIR_PATH: &str = "/org/herdr/nearby/service0/pair";
 const PRESENCE_PATH: &str = "/org/herdr/nearby/service0/presence";
 const ADVERT_PATH: &str = "/org/herdr/nearby/advert0";
-const CHARACTERISTIC: &str = "org.bluez.GattCharacteristic1";
+pub(super) const CHARACTERISTIC: &str = "org.bluez.GattCharacteristic1";
 /// What a notification carries beyond the ATT header.
 const ATT_HEADER: usize = 3;
 
-type Properties = HashMap<String, OwnedValue>;
-type Managed = HashMap<OwnedObjectPath, HashMap<String, Properties>>;
+pub(super) type Properties = HashMap<String, OwnedValue>;
+pub(super) type Managed = HashMap<OwnedObjectPath, HashMap<String, Properties>>;
 
 pub(super) struct Linux {
     conn: blocking::Connection,
     adapter: OwnedObjectPath,
     /// Whether the advertisement is registered with BlueZ.
     advertising: Mutex<bool>,
+    out: Out,
 }
 
 impl Linux {
@@ -118,11 +121,12 @@ impl Linux {
                 HashMap::<&str, Value<'_>>::new(),
             ),
         )?;
-        watch(&conn, &adapter, core, out)?;
+        watch(&conn, &adapter, core, out.clone())?;
         Ok(Self {
             conn,
             adapter,
             advertising: Mutex::new(false),
+            out,
         })
     }
 
@@ -167,7 +171,9 @@ impl Backend for Linux {
         };
         match result {
             Ok(()) => *advertising = advertise,
-            Err(error) => Out.emit(&Event::error(format_args!("advertising: {error}"))),
+            Err(error) => self
+                .out
+                .emit(&Event::error(format_args!("advertising: {error}"))),
         }
     }
 
@@ -186,7 +192,8 @@ impl Backend for Linux {
                 &(CHARACTERISTIC, changed, Vec::<&str>::new()),
             );
             if let Err(error) = sent {
-                Out.emit(&Event::error(format_args!("notify: {error}")));
+                self.out
+                    .emit(&Event::error(format_args!("notify: {error}")));
                 return;
             }
         }

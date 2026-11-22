@@ -5,11 +5,7 @@ pub(crate) mod capped;
 
 use crate::{
     Error, Options, Result,
-    dashboard::{
-        self,
-        auth::Account,
-        lockout::{Lockout, Verdict},
-    },
+    dashboard::{self, auth::Account, lockout::Lockout},
     endpoint::QuicInfo,
     guard::{Cidr, parse_list},
     hub::{Access, Hub},
@@ -20,7 +16,7 @@ use crate::{
 use axum::{
     Router,
     extract::{ConnectInfo, State},
-    http::{StatusCode, header},
+    http::header,
     response::{IntoResponse, Response},
     routing::get,
     serve::ListenerExt,
@@ -28,6 +24,7 @@ use axum::{
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use capped::Capped;
 use secrecy::ExposeSecret;
+use sheprd_dashboard::{bearer, metrics::CONTENT_TYPE};
 use std::{
     net::{IpAddr, SocketAddr},
     sync::Arc,
@@ -122,27 +119,14 @@ async fn metrics(State(state): State<MetricsState>, request: axum::extract::Requ
             .extensions()
             .get::<ConnectInfo<SocketAddr>>()
             .map_or(IpAddr::from([0, 0, 0, 0]), |info| info.0.ip());
-        let now = std::time::Instant::now();
-        if let Verdict::Blocked(_) = lockout.attempt(caller, now) {
-            return StatusCode::TOO_MANY_REQUESTS.into_response();
+        if let Err(status) = bearer(&lockout, caller, request.headers(), |given| {
+            token.matches(given)
+        }) {
+            return status.into_response();
         }
-        let given = request
-            .headers()
-            .get(header::AUTHORIZATION)
-            .and_then(|value| value.to_str().ok())
-            .and_then(|value| value.strip_prefix("Bearer "))
-            .unwrap_or_default();
-        // `attempt` counted this try as wrong; a right one clears it.
-        if !token.matches(given.as_bytes()) {
-            return StatusCode::UNAUTHORIZED.into_response();
-        }
-        lockout.succeed(caller);
     }
     (
-        [(
-            header::CONTENT_TYPE,
-            "text/plain; version=0.0.4; charset=utf-8",
-        )],
+        [(header::CONTENT_TYPE, CONTENT_TYPE)],
         hub.metrics.render() + &banned_now(&hub),
     )
         .into_response()
@@ -291,7 +275,8 @@ pub async fn serve(options: Options) -> Result<()> {
         .as_ref()
         .map(ExposeSecret::expose_secret)
         .map(|token| {
-            strong(token, "the metrics token").and_then(|()| Secret::new(token.as_bytes()))
+            strong(token, "the metrics token")?;
+            Ok::<_, Error>(Secret::new(token.as_bytes())?)
         })
         .transpose()?;
     let listener = bind(options.listen).await?;

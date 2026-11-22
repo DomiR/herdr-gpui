@@ -46,7 +46,9 @@ fn branch_of(pr: &Value) -> String {
 #[test]
 fn a_pull_request_read_through_the_old_name_is_found_under_the_new_one() {
     let reply = by_number(moved_pr(), "new-owner/new-name");
-    let pr = parse_by_number(reply, OLD.0, OLD.1, 8).unwrap().unwrap();
+    let pr = parse_by_number(reply, &crate::Server::GitHub, OLD.0, OLD.1, 8)
+        .unwrap()
+        .unwrap();
     assert_eq!(pr.url, "https://github.com/new-owner/new-name/pull/8");
 }
 
@@ -56,7 +58,15 @@ fn a_branch_with_an_upstream_on_the_old_name_keeps_its_pull_request() {
     let branch = branch_of(&pr);
     let head = head_on(OLD.0, OLD.1, &branch);
     let reply = by_branch(pr, "new-owner/new-name");
-    let found = parse_graphql(reply, OLD.0, OLD.1, &branch, Some(&head)).unwrap();
+    let found = parse_graphql(
+        reply,
+        &crate::Server::GitHub,
+        OLD.0,
+        OLD.1,
+        &branch,
+        Some(&head),
+    )
+    .unwrap();
     assert_eq!(found.map(|pr| pr.number), Some(8));
 }
 
@@ -65,7 +75,7 @@ fn a_branch_without_an_upstream_keeps_its_pull_request() {
     let pr = moved_pr();
     let branch = branch_of(&pr);
     let reply = by_branch(pr, "new-owner/new-name");
-    let found = parse_graphql(reply, OLD.0, OLD.1, &branch, None).unwrap();
+    let found = parse_graphql(reply, &crate::Server::GitHub, OLD.0, OLD.1, &branch, None).unwrap();
     assert_eq!(found.map(|pr| pr.number), Some(8));
 }
 
@@ -92,7 +102,7 @@ fn a_forks_head_keeps_its_own_name_when_the_upstream_moves() {
 fn a_pull_request_of_another_repository_is_still_refused() {
     let reply = by_number(moved_pr(), "someone-else/project");
     assert!(matches!(
-        parse_by_number(reply, OLD.0, OLD.1, 8),
+        parse_by_number(reply, &crate::Server::GitHub, OLD.0, OLD.1, 8),
         Err(Error::PullRequest(crate::pull_request::Error::Identity))
     ));
 }
@@ -108,7 +118,7 @@ fn a_reply_without_a_usable_name_is_held_to_the_name_asked_with() {
         let mut reply = by_number(moved_pr(), "");
         reply["data"]["repository"]["nameWithOwner"] = name;
         assert!(matches!(
-            parse_by_number(reply, OLD.0, OLD.1, 8),
+            parse_by_number(reply, &crate::Server::GitHub, OLD.0, OLD.1, 8),
             Err(Error::PullRequest(crate::pull_request::Error::Identity))
         ));
     }
@@ -126,6 +136,7 @@ fn every_lookup_query_asks_for_the_current_name() {
         branch: "local".into(),
     };
     let target = Target {
+        server: crate::Server::GitHub,
         owner: OLD.0.into(),
         repo: OLD.1.into(),
         ask: Ask::Number(8),

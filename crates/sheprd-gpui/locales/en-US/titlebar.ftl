@@ -5,6 +5,8 @@ titlebar-back = Back
 titlebar-forward = Forward
 # The button that shows or hides the sidebar, as a screen reader names it.
 titlebar-sidebar = Sidebar
+# The button that shows or hides the details pane beside the terminals.
+titlebar-details = Details
 # The account picture's button; the second while an account needs signing
 # in again.
 titlebar-accounts = Accounts

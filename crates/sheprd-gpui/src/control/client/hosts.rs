@@ -36,6 +36,7 @@ pub(super) fn pr(command: PrCommand, context: &Context) -> crate::Result<Output>
         PrCommand::Status | PrCommand::Checks => HostOp::Pr,
         PrCommand::Comments => HostOp::PrComments,
         PrCommand::Open => HostOp::PrOpen,
+        PrCommand::Create => HostOp::PrCreate {},
         PrCommand::Quota => HostOp::PrQuota,
         PrCommand::Merge => HostOp::PrMerge,
         PrCommand::Queue(change) => HostOp::PrQueue { change },

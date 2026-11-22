@@ -1,8 +1,8 @@
 import SheprdRemoteCore
 import SwiftUI
 
-/// One paired computer's page: where the phone reaches it, its alerts and
-/// certificate, and pairing again or forgetting it. Settings' rows and the
+/// One paired computer's page: where the phone reaches it, its alerts, push
+/// delivery and test push, its certificate, and pairing again or forgetting it. Settings' rows and the
 /// Workspaces header menu open it.
 struct ComputerScreen: View {
     @Environment(AppModel.self) private var model
@@ -10,6 +10,7 @@ struct ComputerScreen: View {
     @Environment(\.dismiss) private var dismiss
     let device: String
     @State private var forgetting: Computer?
+    @AppStorage(PushRelaySetting.key, store: PushRelaySetting.store) private var pushRelay = true
 
     var body: some View {
         if let computer = model.computers.first(where: { $0.device == device }) {
@@ -88,10 +89,25 @@ struct ComputerScreen: View {
                 }
             }
             Section {
-                Toggle("Hold alerts at the desk", isOn: Binding(
+                Toggle("Hold Alerts at the Desk", isOn: Binding(
                     get: { computer.presence },
                     set: { model.setPresence($0, for: computer) }
                 ))
+                LabeledContent("Push", value: PushRelaySection.label(
+                    model.tokens.delivery[computer.fingerprint],
+                    reached: !model.tokens.unreached.contains(computer.fingerprint),
+                    pushRelay: pushRelay
+                ))
+                VStack(alignment: .leading, spacing: 4) {
+                    Button("Send Test Push") {
+                        Task { await model.pushTests.send(to: computer) }
+                    }
+                    if let status = model.pushTests.status[computer.fingerprint] {
+                        Text(PushTests.text(status)).font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
+            } header: {
+                Text("Notifications")
             } footer: {
                 Text("Over Bluetooth, \(name) knows when you are near it and holds phone alerts while you use it.")
             }

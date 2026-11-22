@@ -1,17 +1,21 @@
 //! Live Activities for the iOS companion: each chat change the APNs rules
 //! call for is paced per chat, then sent to every device that registered
 //! tokens: the push-to-start token to start an activity, the activity's own
-//! token to update or end it. A token APNs calls invalid is forgotten.
-//! What each device gets is cut to what the computer and that phone allow
-//! just before sending, so a held update follows the phone's latest choice.
+//! token to update or end it. A token APNs calls invalid, or a handle the
+//! relay calls gone, is forgotten. What each device gets is cut to what the
+//! computer and that phone allow just before sending, so a held update
+//! follows the phone's latest choice; through the relay it is then sealed.
+//! Each update is sent once, on its own task: one the relay cannot take is
+//! dropped, never queued.
 
 use super::notifier::waiting;
 use crate::{
-    apns::{DeviceToken, Event, Live, Outcome, Pacer, Registration, decide, decide_terminal},
+    apns::{Delivery, Event, Live, Pacer, Recipient, Registration, Sent, decide, decide_terminal},
     control::DeviceId,
     push::{Chat, Moved, SeenAgent},
     web::{State, now_ms},
 };
+use p256::PublicKey;
 use sheprd_chat_protocol::{Change, Status, Transcript};
 use std::{collections::HashMap, sync::Arc};
 
@@ -43,7 +47,7 @@ impl LiveActivities {
         before: &Transcript,
         change: &Change,
     ) {
-        if state.apns.is_none() {
+        if state.apns.is_off() {
             return;
         }
         let layout = state.hub.layout();
@@ -86,7 +90,7 @@ impl LiveActivities {
         agent: Option<&SeenAgent<'_>>,
         now: u64,
     ) {
-        if state.apns.is_none() {
+        if state.apns.is_off() {
             return;
         }
         let Some(live) = decide_terminal(moved, agent, &state.computer, &state.fingerprint, now)
@@ -100,7 +104,7 @@ impl LiveActivities {
 
     /// Sends the updates the pacer held back whose time came.
     pub(super) fn tick(&mut self, state: &Arc<State>) {
-        if state.apns.is_none() {
+        if state.apns.is_off() {
             return;
         }
         for live in self.pacer.due(now_ms()) {
@@ -120,10 +124,16 @@ impl LiveActivities {
             // Whatever was held is older than this, or was for the activity
             // a start replaces.
             self.held.remove(&key);
-            match route(&live, &registration) {
+            match route(&live, &registration, &state.apns) {
                 Route::Send(token) => {
                     let shown = shown(state, live.clone(), &registration);
-                    send(state, key.0, token.clone(), shown);
+                    send(
+                        state,
+                        key.0,
+                        token.clone(),
+                        notify_key(&registration),
+                        shown,
+                    );
                 }
                 Route::Hold => {
                     self.held.insert(
@@ -155,7 +165,10 @@ impl LiveActivities {
             let found = registrations
                 .iter()
                 .find(|(registered, _)| registered == device)
-                .and_then(|(_, registration)| Some((registration, registration.activity(pane)?)));
+                .and_then(|(_, registration)| {
+                    let token = registration.activity(pane)?;
+                    state.apns.reaches(token).then_some((registration, token))
+                });
             let Some((registration, token)) = found else {
                 return true;
             };
@@ -166,6 +179,7 @@ impl LiveActivities {
                 state,
                 device.clone(),
                 token.clone(),
+                notify_key(registration),
                 shown(state, live, registration),
             );
             false
@@ -179,10 +193,15 @@ fn shown(state: &State, live: Live, registration: &Registration) -> Live {
     live.redacted(state.privacy, detail)
 }
 
+/// The key the phone behind `registration` opens sealed content with.
+fn notify_key(registration: &Registration) -> Option<PublicKey> {
+    registration.notify_key.as_ref().map(|key| *key.key())
+}
+
 /// What to do with an update for one device.
 #[derive(Debug, Eq, PartialEq)]
 enum Route<'a> {
-    Send(&'a DeviceToken),
+    Send(&'a Recipient),
     /// Wait for the activity's own token.
     Hold,
     Skip,
@@ -190,19 +209,19 @@ enum Route<'a> {
 
 /// A start goes to the push-to-start token; an update or end to the
 /// activity's token, or waits for it on a device that can start
-/// activities, which may be showing one whose token is on its way.
-fn route<'a>(live: &Live, registration: &'a Registration) -> Route<'a> {
+/// activities, which may be showing one whose token is on its way. Only
+/// recipients `delivery` reaches count: the push relay's handles, never a
+/// plain token.
+fn route<'a>(live: &Live, registration: &'a Registration, delivery: &Delivery) -> Route<'a> {
+    let reached = |token: Option<&'a Recipient>| token.filter(|token| delivery.reaches(token));
+    let starts = reached(registration.push_to_start.as_ref()).is_some();
     let token = match live.event {
-        Event::Start { .. } => registration.push_to_start.as_ref(),
-        _ => registration.activity(&live.pane),
+        Event::Start { .. } => reached(registration.push_to_start.as_ref()),
+        _ => reached(registration.activity(&live.pane)),
     };
     match token {
         Some(token) => Route::Send(token),
-        None if registration.push_to_start.is_some()
-            && !matches!(live.event, Event::Start { .. }) =>
-        {
-            Route::Hold
-        }
+        None if starts && !matches!(live.event, Event::Start { .. }) => Route::Hold,
         None => Route::Skip,
     }
 }
@@ -245,21 +264,24 @@ pub(super) fn registrations(state: &State) -> Vec<(DeviceId, Registration)> {
         .collect()
 }
 
-/// Sends `live` to `device` with `token`; forgets a token APNs calls
-/// invalid, and an activity that ended.
-fn send(state: &Arc<State>, device: DeviceId, token: DeviceToken, live: Live) {
+/// Sends `live` to `device` with `token`, sealed to `key` through the
+/// relay; forgets a token or handle that is gone, and an activity that
+/// ended.
+fn send(
+    state: &Arc<State>,
+    device: DeviceId,
+    token: Recipient,
+    key: Option<PublicKey>,
+    live: Live,
+) {
     let state = state.clone();
     tokio::spawn(async move {
-        let Some(sender) = &state.apns else {
-            return;
-        };
-        let now_s = now_ms() / 1000;
-        let outcome = match live.push(now_s) {
-            Ok(push) => sender.post(&token, &push, now_s).await.ok(),
-            Err(_) => None,
-        };
+        let sent = state.apns.live(&token, key.as_ref(), &live, now_ms()).await;
+        state
+            .pushes
+            .record(crate::apns::Kind::LiveActivity, &sent, now_ms());
         let ended = matches!(live.event, Event::End { .. });
-        let gone = outcome == Some(Outcome::Gone);
+        let gone = sent == Sent::Gone;
         if !gone && !ended {
             return;
         }

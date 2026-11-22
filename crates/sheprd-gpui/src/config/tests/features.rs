@@ -41,3 +41,12 @@ fn feature_preferences_write_under_the_features_table() -> anyhow::Result<()> {
     }
     Ok(())
 }
+
+#[test]
+fn the_moonframe_window_is_kept_where_moonframe_finds_its_folders() -> anyhow::Result<()> {
+    // Windows starts apps without `HOME`, which Moonframe's folders need.
+    assert_eq!(Features::default().moonframe_window, cfg!(not(windows)));
+    let config = Config::parse("[features]\nmoonframe_window = false")?;
+    assert!(!config.features.moonframe_window);
+    Ok(())
+}

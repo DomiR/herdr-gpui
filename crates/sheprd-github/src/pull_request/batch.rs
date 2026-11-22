@@ -9,8 +9,7 @@ use super::{
     parse::{current, moved_head},
     parse_graphql, parse_numbered,
 };
-use crate::{Error, Tokens};
-use secrecy::SecretString;
+use crate::{Error, Server, ServerToken, Tokens};
 use serde_json::{Value, json};
 use std::{
     fmt::Write as _,
@@ -86,7 +85,13 @@ pub(super) fn fetch_batch(
         |input, deadline| target(input, origin, origins, deadline, &cancelled),
         &mut batch,
     );
-    for (login, token, targets) in by_token(targets, tokens) {
+    let (groups, unread) = by_token(targets, tokens);
+    batch.found.extend(
+        unread
+            .into_iter()
+            .map(|input| (input, Err(super::Error::Origin.into()))),
+    );
+    for (login, token, targets) in groups {
         if paused.contains(&login) {
             batch
                 .held
@@ -117,28 +122,29 @@ pub(super) fn fetch_batch(
 }
 
 /// One account's login and token, and the targets it reads.
-pub(super) type Group = (String, Arc<SecretString>, Vec<(Input, Target)>);
+pub(super) type Group = (String, ServerToken, Vec<(Input, Target)>);
 
 /// The targets each account reads, in the order their first one came: a
 /// request carries one token, so each account's repositories are asked in
-/// requests of their own.
-pub(super) fn by_token(targets: Vec<(Input, Target)>, tokens: &Tokens) -> Vec<Group> {
+/// requests of their own. Checkouts on a server no account signed in to are
+/// returned apart and never asked about.
+pub(super) fn by_token(targets: Vec<(Input, Target)>, tokens: &Tokens) -> (Vec<Group>, Vec<Input>) {
     let mut groups: Vec<Group> = Vec::new();
+    let mut unread = Vec::new();
     for (input, target) in targets {
-        let token = tokens.for_owner(&target.owner);
+        let Some((token, login)) = tokens.reader(&target.server, &target.owner) else {
+            unread.push(input);
+            continue;
+        };
         match groups
             .iter_mut()
-            .find(|(_, known, _)| Arc::ptr_eq(known, token))
+            .find(|(_, known, _)| Arc::ptr_eq(&known.token, &token.token))
         {
             Some((_, _, group)) => group.push((input, target)),
-            None => groups.push((
-                tokens.login_for(&target.owner).to_owned(),
-                token.clone(),
-                vec![(input, target)],
-            )),
+            None => groups.push((login.to_owned(), token.clone(), vec![(input, target)])),
         }
     }
-    groups
+    (groups, unread)
 }
 
 /// Identifies each checkout until `deadline`. A checkout Git cannot identify
@@ -247,7 +253,7 @@ pub(super) fn ask(
 fn answer_for(
     response: Value,
     target: &Target,
-    token: &SecretString,
+    token: &ServerToken,
     cancelled: &impl Fn() -> bool,
     network: Option<&mut Option<Duration>>,
 ) -> Option<Result> {
@@ -259,7 +265,7 @@ fn answer_for(
     {
         return network.map(|cooldown| crowded(target, branch, head, token, cancelled, cooldown));
     }
-    Some(parse(response, target))
+    Some(parse(response, target, &token.server))
 }
 
 /// A branch name more than [`HEAD_LIMIT`] pull requests share across forks:
@@ -269,7 +275,7 @@ fn crowded(
     target: &Target,
     branch: &str,
     head: &Head,
-    token: &SecretString,
+    token: &ServerToken,
     cancelled: &impl Fn() -> bool,
     cooldown: &mut Option<Duration>,
 ) -> Result {
@@ -308,7 +314,7 @@ fn crowded(
         return Ok(None);
     }
     response["data"]["repository"]["pullRequests"] = json!({"nodes": [pr]});
-    parse_graphql(response, owner, repo, branch, Some(head))
+    parse_graphql(response, &token.server, owner, repo, branch, Some(head))
 }
 
 /// The listed pull request from `head` its branch stands for, if any.
@@ -334,12 +340,15 @@ pub(super) fn matching_number(heads: &Value, head: &Head) -> crate::Result<Optio
     Ok(current(heads, |pr| pr["state"] == "OPEN")?.and_then(|pr| pr["number"].as_u64()))
 }
 
-pub(super) fn parse(response: Value, target: &Target) -> Result {
+/// `target`'s answer, read from `server`, the server its account signed in
+/// to.
+pub(super) fn parse(response: Value, target: &Target, server: &Server) -> Result {
+    let (owner, repo) = (target.owner.as_str(), target.repo.as_str());
     match &target.ask {
         Ask::Branch { branch, head } => {
-            parse_graphql(response, &target.owner, &target.repo, branch, head.as_ref())
+            parse_graphql(response, server, owner, repo, branch, head.as_ref())
         }
-        Ask::Number(number) => parse_numbered(response, &target.owner, &target.repo, *number),
+        Ask::Number(number) => parse_numbered(response, server, owner, repo, *number),
     }
 }
 

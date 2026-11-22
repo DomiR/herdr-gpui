@@ -2,6 +2,8 @@
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     // keep-sorted start
+    #[error(transparent)]
+    Bench(#[from] crate::bench::Error),
     #[cfg(target_os = "linux")]
     #[error("BlueZ refused: {0}")]
     Bluez(#[from] zbus::fdo::Error),

@@ -43,12 +43,12 @@ pub(super) enum Row {
 
 /// What one row paints. Both kinds share one shape so they cannot drift apart.
 pub(super) struct Spec {
-    label: SharedString,
-    detail: SharedString,
+    pub(in crate::menu) label: SharedString,
+    pub(in crate::menu) detail: SharedString,
     /// Running locally, or connected remotely.
-    online: bool,
-    checked: bool,
-    enabled: bool,
+    pub(in crate::menu) online: bool,
+    pub(in crate::menu) checked: bool,
+    pub(in crate::menu) enabled: bool,
 }
 
 impl Entry {

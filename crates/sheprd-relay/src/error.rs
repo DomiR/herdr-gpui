@@ -11,6 +11,9 @@ pub enum Error {
         #[source]
         source: io::Error,
     },
+    #[cfg(feature = "server")]
+    #[error(transparent)]
+    Dashboard(#[from] sheprd_dashboard::Error),
     #[error(transparent)]
     Directory(#[from] crate::directory::Error),
     #[error(transparent)]

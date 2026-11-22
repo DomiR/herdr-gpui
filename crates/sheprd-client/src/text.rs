@@ -5,32 +5,7 @@ use crate::protocol::{ClientShellSnapshot, ClientShellTab};
 /// Strip only a leading agent paste envelope, never ordinary markup inside a
 /// title. A wrapper-only/truncated transport marker is not a useful caption.
 pub fn caption(text: &str) -> Option<&str> {
-    let original = text;
-    let text = text.trim();
-    if text.is_empty() || text == "</pasted_content>" {
-        return None;
-    }
-    let Some(rest) = text.strip_prefix("<pasted_content") else {
-        return Some(original);
-    };
-    if rest
-        .chars()
-        .next()
-        .is_some_and(|c| c != '>' && !c.is_ascii_whitespace())
-    {
-        return Some(original);
-    }
-    let end = text
-        .as_bytes()
-        .iter()
-        .take(512)
-        .position(|byte| *byte == b'>')?;
-    let body = text[end + 1..].trim();
-    let body = body
-        .strip_suffix("</pasted_content>")
-        .unwrap_or(body)
-        .trim();
-    (!body.is_empty()).then_some(body)
+    sheprd_chat_protocol::display::unwrap_paste(text)
 }
 
 /// A tab's display label, with a useful fallback for an agent transport marker.

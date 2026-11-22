@@ -53,6 +53,8 @@ pub enum Error {
     Convert(#[from] crate::herdr::convert::Error),
     #[error(transparent)]
     CoreBridge(#[from] crate::core_bridge::Error),
+    #[error(transparent)]
+    OneShot(#[from] crate::one_shot::Error),
     #[error("terminal input write timed out; reconnect required")]
     InputWriteTimeout,
     #[error("invalid client command: snapshot boot ID required")]

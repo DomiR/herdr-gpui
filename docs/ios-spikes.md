@@ -10,10 +10,11 @@ Extension and a widget extension, plus `mac/`, the Mac's Bluetooth side),
 | --- | --- | --- |
 | Sealed notifications: daemon seals, phone opens | **Works** | Rust (`apns::tests::seal`) produces byte for byte the payload CryptoKit sealed in `Fixtures/seal.json`; Swift `SealTests` opens it and refuses a changed byte, another device's key, and a truncated payload. |
 | Key in an App Group keychain access group | **Works on the simulator** | The spike app made and read back its key-agreement key in `group.so.pen.herdr-spikes` (ad-hoc signed build, no team prefix). |
-| Notification Service Extension opens a push | **Not shown on the simulator; needs a device** | `simctl push` delivered the notification, but with provisional authorization (the only kind granted without a tap) alerts are disabled and the system did not run the extension; the notification kept its placeholder text. |
+| Notification Service Extension opens a push | **Works on an iPhone 15 Pro** (2026-11-20) | A sealed alert sent through the APNs sandbox with the relay's sandbox key arrived decrypted on the lock screen: the extension read the Secure Enclave key from the App Group's keychain group. On the simulator, with provisional authorization, the system did not run the extension. |
 | Live Activity with `Button(intent:)` | **Starts; tap needs a device** | `Activity.request` succeeded with the widget extension's `LiveActivityIntent` buttons. A headless simulator cannot tap the lock screen, and its screenshots did not show the island. |
 | Intent calls the computer over pinned TLS | **Builds; needs a device** | `SpikeAnswerIntent.call()` uses the app's pinning; "Run the intent here" runs it in the app. |
-| Live Activity the widget extension must open | **Builds; needs a device** | `Shared/SealedProbe.swift` seals each update to the phone's Secure Enclave key, and `Widgets/SealedProbeWidget.swift` opens it to draw it. Compiled for iOS; not yet run. |
+| Live Activity the widget extension must open | **Works on a locked iPhone 15 Pro, from a file, not the keychain** (2026-11-20) | The process that draws a Live Activity gets `errSecNotAvailable` (-25291) from the keychain, so the probe failed. With the Secure Enclave key's handle also written to the App Group container (`completeUntilFirstUserAuthentication`), `Widgets/SealedProbeWidget.swift` opened updates #1 to #6 on the lock screen in 5 to 7 ms, with 22 to 23 MB free. The handle is only usable by this phone's Secure Enclave, so the file holds nothing a keychain item would protect better. |
+| App Attest on a device | **Works; verified as the relay will** (2026-11-20, iPhone 15 Pro) | The Attest tab made a key in 111 ms, attested it in 1,616 ms (5,900 bytes, with a 3,978-byte receipt), and signed an assertion in 36 ms (203 bytes). `attest-check.py` passed every step: chain to Apple's App Attest root, the nonce over the challenge, key id, `rpIdHash` for `TEAM.so.pen.herdr-spikes`, counter 0, credential id, and the assertion's signature and counter. A development build attests in the `appattestdevelop` environment; how a TestFlight build attests still needs a TestFlight upload. |
 | Sealed Live Activity payload size | **Fits, except all-emoji text** | `seal-activity-push.swift`: the largest update is 3,574 of 4,096 bytes and the largest start 2,525, with 3-byte text. Figures in `docs/apns-relay-plan.md`. |
 | Bluetooth peripheral on the Mac from Rust | **Possible, but not recommended** | In `objc2-core-bluetooth` 0.3.2 every Core Bluetooth method is an `unsafe fn`, and delegate conformances are `unsafe impl`. A Rust peripheral would be dozens of unsafe calls, against the repository's safe-Rust rule. |
 | Bluetooth peripheral on the Mac in Swift | **Builds; needs the user's permission and an iPhone** | `ios/Spikes/mac/Peripheral.swift`: GATT service, echo characteristic, L2CAP channel. `run.sh` wraps it in an app bundle with `NSBluetoothAlwaysUsageDescription`, which macOS requires before Bluetooth access. |
@@ -54,8 +55,8 @@ an iPhone on iOS 26, and this Mac.
 3. **Sealed notifications**
    - In the Notify tab, Register, allow notifications, and copy the key and
      the APNs token.
-   - Send `swift ios/Spikes/seal-push.swift KEY` as a sandbox push with the
-     daemon's APNs key (or the Push Notifications Console).
+   - Send `swift ios/Spikes/seal-push.swift KEY` as a sandbox push from the
+     Push Notifications Console.
    - The banner must show the decrypted title and body, which proves the
      extension can use the Secure Enclave key from the shared group.
 4. **Live Activity button**

@@ -74,7 +74,6 @@ fn a_host_job_without_a_host_fails_without_running_anything() {
         },
         target: None,
         via: "MacBook Pro".into(),
-        apns: None,
     };
     assert!(matches!(
         pair(&job, &AtomicBool::new(false)),

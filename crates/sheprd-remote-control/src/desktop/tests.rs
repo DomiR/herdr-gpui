@@ -1,7 +1,7 @@
 //! A desktop adds a nearby computer with no network path between them:
 //! the code exchange as Bluetooth would carry it ([`exchange`]), the
 //! records kept ([`record`]), and the whole flow through a real relay on
-//! loopback ([`flow`]).
+//! loopback ([`flow`]), also from a pairing link ([`link_flow`]).
 
 use super::*;
 use crate::{
@@ -12,6 +12,8 @@ use crate::{
 mod exchange;
 #[cfg(unix)]
 mod flow;
+#[cfg(unix)]
+mod link_flow;
 mod record;
 
 /// What the other computer's Sheprd does with a frame it reads over

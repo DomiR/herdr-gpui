@@ -20,6 +20,7 @@ mod messages;
 mod pane_job;
 mod pictures;
 mod projection;
+mod pull_request_fixture;
 mod reducer;
 mod socket;
 mod tab_actions;

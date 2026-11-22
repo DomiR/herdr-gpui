@@ -47,16 +47,19 @@ pub(crate) struct Pairing {
 }
 
 impl Pairing {
-    /// Starts `desktop-pair` naming this computer `name`. Blocking: run it
-    /// off the UI thread.
-    pub(crate) fn spawn(name: &str) -> Result<Self, Error> {
+    /// Starts `desktop-pair` naming this computer `name`, over Bluetooth,
+    /// or from the pairing `link` pasted, which it reads from its input,
+    /// never its command line. Blocking: run it off the UI thread.
+    pub(crate) fn spawn(name: &str, link: Option<&str>) -> Result<Self, Error> {
         let program = crate::bundled::locate(crate::remote::service::PROGRAM)
             .ok_or(Error::Missing(crate::remote::service::PROGRAM))?;
         let state_dir: PathBuf = crate::remote::state_dir().map_err(|_| Error::NoStateDir)?;
-        let mut child = sheprd_client::new_command(program)
-            .arg("desktop-pair")
-            .arg("--name")
-            .arg(name)
+        let mut command = sheprd_client::new_command(program);
+        command.arg("desktop-pair").arg("--name").arg(name);
+        if link.is_some() {
+            command.arg("--link");
+        }
+        let mut child = command
             .arg("--state-dir")
             .arg(state_dir)
             .stdin(Stdio::piped())
@@ -88,6 +91,14 @@ impl Pairing {
             }
         });
         let (inputs, lines) = mpsc::sync_channel::<String>(QUEUE);
+        if let Some(link) = link {
+            let line = serde_json::to_string(&PairInput::Link {
+                link: link.to_owned(),
+            })
+            .map_err(|_| Error::Pipe("standard"))?;
+            // The queue is empty: this cannot be full.
+            let _ = inputs.try_send(line);
+        }
         thread::spawn(move || {
             let mut stdin = stdin;
             for line in lines {
@@ -121,6 +132,21 @@ impl Pairing {
         };
         if let Err(TrySendError::Full(_)) = self.inputs.try_send(line) {
             tracing::warn!("a nearby frame was dropped: the pairing is not reading");
+        }
+    }
+}
+
+impl Pairing {
+    /// Hands the child what its claim asks of the fleet; it claims then.
+    pub(crate) fn claim(
+        &self,
+        fleet: Option<sheprd_remote_control::control::fleet::bluetooth::ClaimFleet>,
+    ) {
+        let Ok(line) = serde_json::to_string(&PairInput::Claim { fleet }) else {
+            return;
+        };
+        if self.inputs.try_send(line).is_err() {
+            tracing::warn!("the nearby claim could not be handed to the pairing");
         }
     }
 }

@@ -1,0 +1,1 @@
+language-name = 日本語

@@ -51,6 +51,7 @@ pub(super) fn entries() -> Vec<Entry> {
             kind: EntryKind::User {
                 text: "Check why the attach socket drops after a daemon restart, and keep the dev server up so I can try it.".into(), // i18n: data
                 files: 0,
+                note: None,
             },
         },
         Entry {

@@ -10,10 +10,17 @@ pub enum RemoteCommand {
         address: Option<String>,
     },
     Devices,
+    /// How iPhone pushes leave the daemon: off, or through the push relay,
+    /// and whether the last of each kind worked. Read-only.
+    PushStatus,
     /// Open the confirmation for revoking a device, by ID or name.
     Revoke {
         device: String,
     },
+    /// Open Add Device > Nearby Sheprd with another computer's pairing
+    /// link, read from standard input when the command runs; the user
+    /// clicks Pair there.
+    AddLink,
     /// Restart the daemon from the binary beside the app.
     Restart,
     /// Keep this computer's listen token for a relay, read from standard
@@ -34,7 +41,16 @@ pub(super) fn remote(args: &mut Args) -> Result<RemoteCommand, CliError> {
         Some("pair") => RemoteCommand::Pair {
             address: args.text_option("--address")?,
         },
+        // A word is most likely the link itself: refused without echoing
+        // it, as the leftover check would.
+        Some("add-link") if args.positional().is_some() => {
+            return Err(CliError::InvalidValue(
+                "argument: pipe the pairing link on standard input instead",
+            ));
+        }
+        Some("add-link") => RemoteCommand::AddLink,
         Some("devices" | "list") => RemoteCommand::Devices,
+        Some("push-status") => RemoteCommand::PushStatus,
         Some("restart") => RemoteCommand::Restart,
         // A name may be typed unquoted, as `remote revoke Fabien's iPhone`.
         Some("revoke") => RemoteCommand::Revoke {

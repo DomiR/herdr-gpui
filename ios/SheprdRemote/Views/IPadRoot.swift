@@ -249,10 +249,16 @@ private struct AttentionList: View {
         switch row {
         case let .chat(item):
             let route = Route.chat(item.key, title: item.chat.title)
-            ChatRowLabel(item: item).tag(route).contextMenu { windowButton(route) }
+            ChatRowLabel(item: item).tag(route).contextMenu {
+                windowButton(route)
+                if let favorite = row.favoriteTarget { FavoriteMenuButton(target: favorite) }
+            }
         case let .agent(item):
             if let route = item.route {
-                AgentTerminalRowLabel(item: item).tag(route).contextMenu { windowButton(route) }
+                AgentTerminalRowLabel(item: item).tag(route).contextMenu {
+                    windowButton(route)
+                    if let favorite = row.favoriteTarget { FavoriteMenuButton(target: favorite) }
+                }
             }
         }
     }

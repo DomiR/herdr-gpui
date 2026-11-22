@@ -151,7 +151,7 @@ fn a_phone_keeps_its_activities_generic_until_it_says_otherwise() {
     assert_eq!(generic.activity_detail, ActivityDetail::Generic);
 
     let mut stored = Registration {
-        push_to_start: Some(DeviceToken::parse(&"ab".repeat(32)).unwrap()),
+        push_to_start: Some(token(0xab)),
         ..Registration::default()
     };
     stored.merge(generic);
@@ -179,8 +179,8 @@ fn a_detail_choice_alone_registers_nothing() {
 fn printing_a_registration_shows_no_token() {
     let hex = "ab".repeat(32);
     let registration = Registration {
-        alert: Some(DeviceToken::parse(&hex).unwrap()),
-        push_to_start: Some(DeviceToken::parse(&hex).unwrap()),
+        alert: Some(token(0xab)),
+        push_to_start: Some(token(0xab)),
         ..Registration::default()
     };
     let printed = format!("{registration:?}");

@@ -226,6 +226,209 @@ fn lists_host<'a>(name: &str, files: impl IntoIterator<Item = &'a PathBuf>) -> R
     Ok(false)
 }
 
+/// The host keys the known hosts files `ssh` checks for `target` list
+/// under its name, `TYPE BASE64`: the keys a strictly checked session to it
+/// accepts, so a key a host reports about itself can be held to them. A
+/// `@cert-authority` line is no host key, and a key any file marks
+/// `@revoked` is left out wherever else it is listed. Refuses a target the
+/// user chose not to check ([`super::HostKeys::Skip`]): its sessions accept
+/// any key. Blocks on `ssh -G` and `ssh-keygen`: call it from a background
+/// thread.
+pub fn known_host_keys(target: &str) -> Result<Vec<String>> {
+    validate_target(target)?;
+    strictly_checked(target)?;
+    let known = known_hosts(target)?;
+    let (mut keys, mut revoked) = (Vec::new(), Vec::new());
+    for file in known.files().filter(|file| file.is_file()) {
+        let mut command = crate::environment::command("ssh-keygen");
+        command.args(["-F", &known.name, "-f"]).arg(file);
+        let (status, output) = super::run(&mut command, Duration::from_secs(5), || false)?;
+        match status.code() {
+            Some(0) => {
+                let found = found_keys(&output);
+                keys.extend(found.keys);
+                revoked.extend(found.revoked);
+            }
+            Some(1) => {}
+            _ => return Err(crate::Error::RemoteCommand(status)),
+        }
+    }
+    keys.retain(|key| !revoked.contains(key));
+    keys.dedup();
+    Ok(keys)
+}
+
+/// Refuses a target whose sessions do not check its host key.
+fn strictly_checked(target: &str) -> Result<()> {
+    match super::HostKeys::of(target) {
+        super::HostKeys::Verify => Ok(()),
+        super::HostKeys::Skip => Err(Error::Unchecked.into()),
+    }
+}
+
+/// Whether `target` proves it holds `key` (`TYPE BASE64`) in an SSH key
+/// exchange: `ssh` connects with that key alone known under the target's
+/// name, checking strictly and offering only its algorithms, and
+/// authenticates with nothing, so no credential is offered and no command
+/// runs. What a host reports about its own keys can then be held to the key
+/// it actually negotiated. `false` for a key of a type it cannot offer.
+/// Blocks on SSH: call it from a background thread.
+pub fn confirm_host_key(target: &str, key: &str) -> Result<bool> {
+    validate_target(target)?;
+    strictly_checked(target)?;
+    let Some(algorithms) = host_key_algorithms(key) else {
+        return Ok(false);
+    };
+    let known = known_hosts(target)?;
+    let scratch = tempfile::Builder::new()
+        .prefix("herdr-host-key-")
+        .tempdir()?;
+    let only = scratch.path().join("known_hosts");
+    std::fs::write(&only, format!("{} {key}\n", known.name))?;
+    // `ssh`'s own log, in the private scratch directory: a proxy it runs
+    // writes to the stderr they share, never here.
+    let log = scratch.path().join("ssh.log");
+    let mut command = crate::environment::command("ssh");
+    command
+        .arg("-E")
+        .arg(&log)
+        .args(confirm_options(&only, algorithms))
+        .args(crate::relay_host::options(target))
+        .args(super::POLICY)
+        .args(["-o", "ClearAllForwardings=yes", "--", target, "true"]);
+    proven(&mut command, &log)
+}
+
+/// The most of `ssh`'s own log read; a probe's is a few kilobytes.
+const MAX_PROBE_LOG: u64 = 256 * 1024;
+
+/// Runs `command`, an `ssh` writing its own log to `log` (`-E`), and
+/// whether that log shows the key exchange completed and no host key
+/// check failed. Only `ssh` writes there: what a `ProxyCommand` or a
+/// `ProxyJump` hop prints goes to the stderr they share, which proves
+/// nothing either way, so a proxy cannot print the proof itself. Fails
+/// closed: a log that does not read, or is too long, proves nothing.
+fn proven(command: &mut std::process::Command, log: &Path) -> Result<bool> {
+    command.stderr(Stdio::piped());
+    let (_, _, stderr) = super::run_with_stderr(command, Duration::from_secs(20), || false)?;
+    let Ok(file) = std::fs::File::open(log) else {
+        return Ok(false);
+    };
+    let mut logged = Vec::new();
+    let read = file.take(MAX_PROBE_LOG + 1).read_to_end(&mut logged);
+    if read.is_err() || logged.len() as u64 > MAX_PROBE_LOG {
+        return Ok(false);
+    }
+    Ok(!host_key_refused(&logged) && !host_key_refused(&stderr) && key_exchange_completed(&logged))
+}
+
+/// Whether `ssh` said the host key check failed: never a confirmation,
+/// whatever else it logged.
+fn host_key_refused(text: &[u8]) -> bool {
+    String::from_utf8_lossy(text).contains("Host key verification failed")
+}
+
+/// Lines `ssh` logs at `DEBUG1` only once a key exchange completed: the
+/// server signed it with the host key the strict check accepted, and the
+/// keys it sets were taken in use. Nothing before that, whatever the
+/// server sends, makes `ssh` print them.
+const KEY_EXCHANGE_DONE: [&str; 2] = [
+    "debug1: SSH2_MSG_NEWKEYS received",
+    "debug1: SSH2_MSG_SERVICE_ACCEPT received",
+];
+
+/// Whether `log`, `ssh`'s own at `DEBUG1`, shows a completed key
+/// exchange: a whole line `ssh` writes itself. Text a server sends (a
+/// banner, a disconnect reason) reaches stderr only after a prefix of
+/// `ssh`'s own and with control characters escaped, so it can neither
+/// start such a line nor end one; an exit code or an error message is no
+/// proof at all, so anything else is `false`.
+fn key_exchange_completed(log: &[u8]) -> bool {
+    String::from_utf8_lossy(log)
+        .split('\n')
+        .map(|line| line.trim_end_matches('\r'))
+        .any(|line| KEY_EXCHANGE_DONE.contains(&line))
+}
+
+/// The host key algorithms that prove a key of `key`'s type.
+fn host_key_algorithms(key: &str) -> Option<&'static str> {
+    match key.split_ascii_whitespace().next()? {
+        "ssh-ed25519" => Some("ssh-ed25519"),
+        "ecdsa-sha2-nistp256" => Some("ecdsa-sha2-nistp256"),
+        "ecdsa-sha2-nistp384" => Some("ecdsa-sha2-nistp384"),
+        "ecdsa-sha2-nistp521" => Some("ecdsa-sha2-nistp521"),
+        "ssh-rsa" => Some("rsa-sha2-512,rsa-sha2-256"),
+        _ => None,
+    }
+}
+
+/// Options for [`confirm_host_key`], ahead of everything else so they win:
+/// `only` is the sole known hosts file, nothing else may vouch for a key,
+/// and every authentication method is off.
+fn confirm_options(only: &Path, algorithms: &str) -> Vec<String> {
+    [
+        // What shows the key exchange completed ([`key_exchange_completed`]).
+        "LogLevel=DEBUG1".into(),
+        format!("UserKnownHostsFile=\"{}\"", option_path(only)),
+        "GlobalKnownHostsFile=/dev/null".into(),
+        "KnownHostsCommand=none".into(),
+        "StrictHostKeyChecking=yes".into(),
+        "CheckHostIP=no".into(),
+        "VerifyHostKeyDNS=no".into(),
+        "UpdateHostKeys=no".into(),
+        format!("HostKeyAlgorithms={algorithms}"),
+        "PubkeyAuthentication=no".into(),
+        "PasswordAuthentication=no".into(),
+        "KbdInteractiveAuthentication=no".into(),
+        "GSSAPIAuthentication=no".into(),
+        "HostbasedAuthentication=no".into(),
+        "ControlPath=none".into(),
+        "ForwardAgent=no".into(),
+        "PermitLocalCommand=no".into(),
+        "RemoteCommand=none".into(),
+        "Tunnel=no".into(),
+    ]
+    .into_iter()
+    .flat_map(|option| ["-o".into(), option])
+    .collect()
+}
+
+/// What `ssh-keygen -F` printed: host keys, and keys marked revoked.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct Found {
+    keys: Vec<String>,
+    revoked: Vec<String>,
+}
+
+/// `TYPE BASE64` of each entry `ssh-keygen -F` printed, sorted by marker:
+/// none is a host key, `@revoked` a revoked key, and any other marker
+/// (`@cert-authority`) no host key at all.
+fn found_keys(output: &[u8]) -> Found {
+    let mut found = Found::default();
+    for line in String::from_utf8_lossy(output).lines().map(str::trim) {
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let mut fields = line.split_ascii_whitespace();
+        let marker = if line.starts_with('@') {
+            fields.next()
+        } else {
+            None
+        };
+        let (Some(_), Some(kind), Some(blob)) = (fields.next(), fields.next(), fields.next())
+        else {
+            continue;
+        };
+        let key = format!("{kind} {blob}");
+        match marker {
+            None => found.keys.push(key),
+            Some("@revoked") => found.revoked.push(key),
+            Some(_) => {}
+        }
+    }
+    found
+}
+
 fn known_hosts(target: &str) -> Result<KnownHosts> {
     let mut command = crate::environment::command("ssh");
     command

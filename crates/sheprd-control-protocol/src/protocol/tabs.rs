@@ -51,6 +51,11 @@ pub enum TabOp {
     /// The page's visible text, as the user would select it.
     Text {
         id: u64,
+        /// Show the tab first, switching the window to its workspace.
+        /// Without it the page is read where it is, out of sight if need
+        /// be, and the user's view and keyboard stay where they are.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        focus: bool,
     },
     /// Run `script` in the page and hand back its value as JSON, waiting
     /// up to `wait_seconds` for a promise it returns.
@@ -75,6 +80,10 @@ pub enum TabOp {
     Screenshot {
         id: u64,
         path: String,
+        /// Show the tab first, switching the window to its workspace.
+        /// Without it only a page already on screen is pictured.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        focus: bool,
     },
     /// How large a page tab draws its page.
     Zoom {

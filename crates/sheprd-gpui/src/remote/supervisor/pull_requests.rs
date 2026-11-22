@@ -9,7 +9,7 @@ use crate::{
 use gpui::Context;
 use sheprd_client::protocol::{ClientShellWorkspace, ClientShellWorktree};
 use sheprd_remote_control::control::pull_requests::{
-    MAX_PULL_REQUESTS, UnopenedBranch, WorkspacePullRequest,
+    MAX_PULL_REQUESTS, UncommittedCheckout, UnopenedBranch, WorkspacePullRequest,
 };
 
 impl SheprdWindow {
@@ -65,15 +65,15 @@ impl SheprdWindow {
         let view = self
             .endpoint_pr_view(0)
             .filter(|view| view.origin == Origin::Local);
-        let tokens = self
-            .endpoint_pr_profile(0)
-            .map(|profile| self.tokens_over(profile));
+        let tokens =
+            Some(self.tokens_over(self.endpoint_pr_profile(0))).filter(|tokens| !tokens.is_empty());
         let mut sources = Sources {
             boot_id: boot.clone(),
             ..Sources::default()
         };
         let mut entries = Vec::new();
         let mut unopened = Vec::new();
+        let mut uncommitted = Vec::new();
         for workspace in workspaces {
             let workspace = &workspace;
             let checkout = view
@@ -89,6 +89,20 @@ impl SheprdWindow {
                 workspace.workspace_id.clone(),
                 Source::new(workspace.clone(), found.as_deref(), tokens.as_ref()),
             );
+            // The pencil the sidebar's row draws for this checkout, which
+            // needs no GitHub sign-in.
+            if let Some((tree, branch)) = workspace.worktree.as_ref().zip(workspace.branch.as_ref())
+                && self.git.dirty(&tree.key, branch) == Some(true)
+            {
+                let mark = UncommittedCheckout {
+                    workspace_id: workspace.workspace_id.clone(),
+                    cwd: workspace.new_workspace_cwd.clone(),
+                    branch: branch.clone(),
+                };
+                if mark.valid() && uncommitted.len() < MAX_PULL_REQUESTS {
+                    uncommitted.push(mark);
+                }
+            }
             let Some((view, tree, branch)) = checkout else {
                 continue;
             };
@@ -130,10 +144,12 @@ impl SheprdWindow {
         }
         entries.sort_by(|left, right| left.workspace_id.cmp(&right.workspace_id));
         unopened.sort_by(|left, right| left.workspace_id.cmp(&right.workspace_id));
+        uncommitted.sort_by(|left, right| left.workspace_id.cmp(&right.workspace_id));
         let update = PullRequests {
             boot_id: boot,
             entries,
             unopened,
+            uncommitted,
         };
         let supervisor = cx.global_mut::<Supervisor>();
         supervisor.set_change_sources(sources);

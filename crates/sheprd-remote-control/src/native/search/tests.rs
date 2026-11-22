@@ -30,6 +30,7 @@ fn user(text: &str) -> EntryKind {
     EntryKind::User {
         text: text.into(),
         files: 0,
+        note: None,
     }
 }
 

@@ -27,7 +27,8 @@ use wry::raw_window_handle::{HasWindowHandle, RawWindowHandle};
 /// The title of the page `serve` serves, which the tab takes once it loads.
 const TITLE: &str = "Pages check";
 
-/// How long WebView2 may take to start, build the page, and load it.
+/// How long WebView2 may take to start, build the page, and load it, once
+/// `live_gui` has read its runtime from disk: about a second on CI.
 const SETTLE: Duration = Duration::from_secs(20);
 
 /// Enter's virtual key, and its key-down message's repeat count and scan
@@ -82,8 +83,12 @@ pub(super) fn start_pages(handle: WindowHandle<SheprdWindow>, cx: &mut App) {
                     let state = handle
                         .update(cx, |view, _, cx| {
                             let tab = cx.try_global::<Store>().and_then(|store| store.get(id));
+                            // Tells a build WebView2 is still working on
+                            // from one that failed, which keeps its error.
+                            let (building, failed) = view.page_progress(id);
                             format!(
-                                "location={:?}, title={:?}, page={}",
+                                "location={:?}, title={:?}, page={}, building={building}, \
+                                 failed={failed:?}",
                                 tab.and_then(|tab| tab.location.as_ref()),
                                 tab.map(|tab| &tab.title),
                                 view.has_page(id),

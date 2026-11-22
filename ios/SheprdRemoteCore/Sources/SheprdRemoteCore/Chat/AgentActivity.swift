@@ -182,7 +182,7 @@ extension Transcript {
 
     /// Whether the activity panel has anything to show.
     public var hasActivityPanel: Bool {
-        !activities.isEmpty || !plan.isEmpty || !changedFiles.isEmpty
+        !activities.isEmpty || !plan.isEmpty || !changedFiles.isEmpty || !pullRequests.isEmpty
     }
 }
 

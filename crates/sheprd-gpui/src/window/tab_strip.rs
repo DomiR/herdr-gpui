@@ -470,7 +470,17 @@ impl SheprdWindow {
                 },
             ))
             .when(ends.is_some_and(|ends| ends.trailing), |strip| {
-                strip.child(self.strip_trailing(window, cx))
+                // A host draws the end as its own region over this room.
+                if self.hosted {
+                    strip.child(
+                        div()
+                            .debug_selector(|| "strip-titlebar-trailing".into())
+                            .flex_none()
+                            .w(px(self.titlebar_width)),
+                    )
+                } else {
+                    strip.child(self.strip_trailing(window, cx))
+                }
             })
     }
 

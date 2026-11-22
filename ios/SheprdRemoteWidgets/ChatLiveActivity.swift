@@ -5,20 +5,31 @@ import WidgetKit
 
 /// One running chat on the lock screen and in the Dynamic Island. Tapping
 /// anywhere opens `herdr-remote://chat?...`, which the app turns into the
-/// chat's page in the web app.
+/// chat's page in the web app. Content a computer sealed for the push relay
+/// is opened here with this phone's notify key; when it does not open, the
+/// activity is the fixed `SealedCover`, with nothing from the push.
 struct ChatLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: ChatActivityAttributes.self) { context in
-            LockScreenView(attributes: context.attributes, state: context.state)
-                .activityBackgroundTint(Color.black.opacity(0.55))
-                .activitySystemActionForegroundColor(.white)
-                .widgetURL(context.attributes.link.url)
+            if let opened = context.attributes.opened(context.state) {
+                LockScreenView(facts: opened.facts, state: opened.state)
+                    .activityBackgroundTint(Color.black.opacity(0.55))
+                    .activitySystemActionForegroundColor(.white)
+                    .widgetURL(opened.facts.link.url)
+            } else {
+                SealedCover()
+                    .activityBackgroundTint(Color.black.opacity(0.55))
+                    .activitySystemActionForegroundColor(.white)
+            }
         } dynamicIsland: { context in
-            let state = context.state
-            let attributes = context.attributes
+            guard let opened = context.attributes.opened(context.state) else {
+                return SealedCover.island
+            }
+            let state = opened.state
+            let facts = opened.facts
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    AgentBadge(agent: attributes.agent, size: 28)
+                    AgentBadge(agent: facts.agent, size: 28)
                         .padding(.leading, 4)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
@@ -32,10 +43,10 @@ struct ChatLiveActivity: Widget {
                 }
                 DynamicIslandExpandedRegion(.center) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(title(state, attributes))
+                        Text(title(state, facts))
                             .font(.subheadline.weight(.semibold))
                             .lineLimit(1)
-                        Text(attributes.facts.place)
+                        Text(facts.place)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -43,7 +54,7 @@ struct ChatLiveActivity: Widget {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    ExpandedBottom(attributes: attributes, state: state)
+                    ExpandedBottom(facts: facts, state: state)
                 }
             } compactLeading: {
                 HStack(spacing: 4) {
@@ -73,17 +84,17 @@ struct ChatLiveActivity: Widget {
             } minimal: {
                 PhaseMark(phase: state.phase, size: 9)
             }
-            .widgetURL(attributes.link.url)
+            .widgetURL(facts.link.url)
             .keylineTint(Palette.phase(state.phase))
         }
     }
 
-    private func title(_ state: ChatActivityState, _ attributes: ChatActivityAttributes) -> String {
+    private func title(_ state: ChatActivityState, _ facts: ChatActivityFacts) -> String {
         switch state.phase {
-        case .working: "\(attributes.agent) is working"
-        case .question: "\(attributes.agent) needs an answer"
-        case .finished: "\(attributes.agent) finished"
-        case .failed: "\(attributes.agent) stopped"
+        case .working: "\(facts.agent) is working"
+        case .question: "\(facts.agent) needs an answer"
+        case .finished: "\(facts.agent) finished"
+        case .failed: "\(facts.agent) stopped"
         }
     }
 }
@@ -91,7 +102,7 @@ struct ChatLiveActivity: Widget {
 /// The expanded island's lower half: the question (or step, or summary) in
 /// a dark block, and Open.
 private struct ExpandedBottom: View {
-    let attributes: ChatActivityAttributes
+    let facts: ChatActivityFacts
     let state: ChatActivityState
 
     var body: some View {
@@ -103,7 +114,7 @@ private struct ExpandedBottom: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(8)
                 .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            AnswerButtons(attributes: attributes, state: state)
+            AnswerButtons(facts: facts, state: state)
             HStack {
                 if state.phase == .working, let plan = state.planLabel {
                     Text(plan)
@@ -111,7 +122,7 @@ private struct ExpandedBottom: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Link(destination: attributes.link.url) {
+                Link(destination: facts.link.url) {
                     Text("Open")
                         .font(.subheadline.weight(.semibold))
                         .padding(.horizontal, 16)

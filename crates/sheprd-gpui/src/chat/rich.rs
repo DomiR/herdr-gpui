@@ -15,7 +15,9 @@ mod size;
 pub(super) use code::{CodeText, MAX_CODE_LINE_CHARS, MAX_CODE_LINES, TAB_WIDTH};
 pub(super) use fence::Fence;
 pub(super) use math::{PADDING as MATH_PADDING, draw as draw_math};
+#[cfg(test)]
 pub(super) use parse::parse;
+pub(super) use parse::{Breaks, parse_with};
 pub(super) use remote::remote_content;
 pub(crate) use size::Size;
 

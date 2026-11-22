@@ -1,10 +1,10 @@
-//! The running agent: a listener on every relay, the `authorized` file
-//! followed as it changes, and `status.json` kept current.
+//! The running agent: a listener on every relay, the `authorized` and
+//! fleet files followed as they change, and `status.json` kept current.
 
 use crate::{
     Result,
-    authorized::Authorized,
     files::RunLock,
+    fleet::Admitted,
     keys::Keys,
     listen,
     status::{self, Live, RelayState},
@@ -19,8 +19,9 @@ use std::{
 };
 use tokio::sync::watch;
 
-/// How often the `authorized` file is read again, so a desktop added or
-/// removed over SSH takes effect without a restart.
+/// How often the `authorized` and fleet files are read again, so a
+/// desktop or member added or removed over SSH takes effect without a
+/// restart.
 const POLL: Duration = Duration::from_secs(2);
 
 /// What the agent runs with.
@@ -28,6 +29,9 @@ const POLL: Duration = Duration::from_secs(2);
 pub struct Options {
     /// Where admitted sessions go: the SSH server.
     pub forward: SocketAddr,
+    /// The `authorized_keys` the fleet's lines go in; none where there is
+    /// none to write (suspensions then only cut the tunnel).
+    pub authorized_keys: Option<PathBuf>,
     pub relays: Vec<Relay>,
     pub state_dir: PathBuf,
 }
@@ -55,32 +59,39 @@ impl std::fmt::Debug for Relay {
 pub struct Agent {
     /// Keeps a second agent off this state directory while this one lives.
     _run: RunLock,
-    authorized: watch::Sender<Authorized>,
+    admitted: watch::Sender<Admitted>,
+    authorized_keys: Option<PathBuf>,
     forward: SocketAddr,
     pub(crate) keys: Keys,
     relays: Vec<Relay>,
+    /// Removal exchanges members dialed in for, at most
+    /// `removal::CONCURRENT` at once.
+    pub(crate) removals: tokio::sync::Semaphore,
     state_dir: PathBuf,
     status: watch::Sender<BTreeMap<String, RelayState>>,
 }
 
 impl Agent {
-    /// Loads or makes the keys and reads the desktops; refuses when
+    /// Loads or makes the keys and reads who is admitted; refuses when
     /// another agent runs on the same state directory. Blocking.
     pub fn load(options: Options) -> Result<Arc<Self>> {
         let Options {
             forward,
+            authorized_keys,
             relays,
             state_dir,
         } = options;
         let run = RunLock::try_acquire(&state_dir)?;
         let keys = Keys::load_or_create(&state_dir)?;
-        let authorized = watch::Sender::new(Authorized::load(&state_dir)?);
+        let admitted = watch::Sender::new(Admitted::load(&state_dir)?);
         Ok(Arc::new(Self {
             _run: run,
-            authorized,
+            admitted,
+            authorized_keys,
             forward,
             keys,
             relays,
+            removals: tokio::sync::Semaphore::new(crate::removal::CONCURRENT),
             state_dir,
             status: watch::Sender::new(BTreeMap::new()),
         }))
@@ -92,14 +103,25 @@ impl Agent {
         self.keys.route()
     }
 
-    /// Reads the `authorized` file again; listeners and live sessions
-    /// follow when it changed. A file that does not parse leaves the
-    /// desktops as they were. Blocking.
+    /// Reads the `authorized` and fleet files again; listeners and live
+    /// sessions follow when they changed. A file that does not parse shuts
+    /// the fleet's members out, keeping the desktops and the cut-offs last
+    /// read, and the error is returned. Blocking.
     pub fn reload(&self) -> Result<()> {
-        let authorized = Authorized::load(&self.state_dir)?;
-        self.authorized.send_if_modified(|current| {
-            let changed = *current != authorized;
-            *current = authorized;
+        let admitted = match Admitted::load(&self.state_dir) {
+            Ok(admitted) => admitted,
+            Err(error) => {
+                self.admitted.send_if_modified(|current| {
+                    let changed = !current.held().refused;
+                    current.refuse();
+                    changed
+                });
+                return Err(error);
+            }
+        };
+        self.admitted.send_if_modified(|current| {
+            let changed = *current != admitted;
+            *current = admitted;
             changed
         });
         Ok(())
@@ -111,14 +133,26 @@ impl Agent {
         self.status.borrow().clone()
     }
 
-    pub(crate) fn set_state(&self, endpoint: &Endpoint, state: RelayState) {
+    pub(crate) fn set_state(&self, endpoint: &Endpoint, mut state: RelayState) {
+        // A failure's text is bounded, so the status Sheprd reads is.
+        if let RelayState::Failed { error } = &mut state {
+            status::bound_error(error);
+        }
         self.status.send_modify(|status| {
             status.insert(endpoint.to_string(), state);
         });
     }
 
-    pub(crate) fn authorized(&self) -> watch::Receiver<Authorized> {
-        self.authorized.subscribe()
+    pub(crate) fn admitted(&self) -> watch::Receiver<Admitted> {
+        self.admitted.subscribe()
+    }
+
+    pub(crate) fn state_dir(&self) -> &std::path::Path {
+        &self.state_dir
+    }
+
+    pub(crate) fn authorized_keys(&self) -> Option<&std::path::Path> {
+        self.authorized_keys.as_deref()
     }
 
     pub(crate) fn forward(&self) -> SocketAddr {
@@ -143,7 +177,7 @@ impl Agent {
                     let agent = Arc::clone(&self);
                     let reloaded = tokio::task::spawn_blocking(move || agent.reload()).await;
                     if let Ok(Err(error)) = reloaded {
-                        tracing::warn!(error = %error, "could not read the authorized desktops");
+                        tracing::warn!(error = %error, "could not read who is admitted");
                     }
                 }
                 _ = heartbeat.tick() => self.save_status().await,

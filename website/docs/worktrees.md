@@ -31,6 +31,15 @@ Right-click a workspace or worktree row to open its popover. Double-click a row 
 - a **Pull request** card for the branch, when you are signed in to GitHub
 - **Delete worktree checkout**, last, for linked worktrees
 
+### Naming with an agent
+
+The Rename dialog of a workspace, and of a tab (right-click the tab, then **Rename**), can ask an agent for a name:
+
+- **Name with Claude** runs Claude once on its own on this computer. It reads the end of the chats and terminals there and suggests a title of a few words. Nothing is sent to them, so their sessions and context are untouched. It needs `claude` installed on this computer.
+- **Ask Claude** (or Codex, or whichever agent is working there) asks that agent in its own conversation, a chat's or a terminal agent's, and reads its answer back. The question and the answer stay in that conversation. An agent that is waiting for your answer is not asked; reply to it first.
+
+Either way the suggestion only fills the name field, so you can change it before you press **Rename**.
+
 Closing a workspace ends its terminals but never touches checkout files or branches. Before it closes, Sheprd checks every affected local checkout for uncommitted files and for commits that are on no remote-tracking branch. If it finds either, or cannot check (for example on a remote host), you type `close` to confirm.
 
 For moving a worktree to another machine, see [Teleport](teleport.md).

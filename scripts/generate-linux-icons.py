@@ -29,20 +29,29 @@ def artwork(source, shape="circle", worktree=False, badge=False):
         "role": "img", "aria-labelledby": "title desc",
     })
     ET.SubElement(icon, f"{SVG}title", id="title").text = "Sheprd"
-    ET.SubElement(icon, f"{SVG}desc", id="desc").text = (
-        "Cream paw on a " + ("berry-red development" if worktree else "warm orange") + " gradient."
+    description = (
+        "Cream paw on a transparent background for the GitHub App badge."
+        if shape == "transparent"
+        else "Cream paw on a " + ("berry-red development" if worktree else "warm orange") + " gradient."
     )
+    ET.SubElement(icon, f"{SVG}desc", id="desc").text = description
     ET.SubElement(icon, f"{SVG}metadata").text = "Derived from sheprd-avatar.svg; original Sheprd artwork, Apache-2.0."
-    icon.append(defs)
+    if shape != "transparent":
+        icon.append(defs)
     if shape == "circle":
         ET.SubElement(icon, f"{SVG}circle", cx="512", cy="512", r="448", fill="url(#background)")
     elif shape == "tile":
         ET.SubElement(icon, f"{SVG}rect", x="64", y="64", width="896", height="896", rx="192", fill="url(#background)")
     elif shape == "square":
         ET.SubElement(icon, f"{SVG}rect", width="1024", height="1024", fill="url(#background)")
+    elif shape == "transparent":
+        pass
     else:
         raise ValueError(f"Unknown icon shape: {shape}")
-    paw.set("transform", "scale(10.24)" if shape == "square" else "translate(64 64) scale(8.96)")
+    paw.set("transform", {
+        "square": "scale(10.24)",
+        "transparent": "matrix(13.312 0 0 13.312 -153.6 -153.6)",
+    }.get(shape, "translate(64 64) scale(8.96)"))
     icon.append(paw)
     if badge:
         ET.SubElement(icon, f"{SVG}circle", cx="839", cy="185", r="135", fill="#c93647", stroke="#fff8f0", **{"stroke-width": "20"})
@@ -61,6 +70,7 @@ def main():
         "sheprd-icon-square.svg": ("square", False, False),
         "sheprd-icon-badge.svg": ("tile", False, True),
         "sheprd-github-app.svg": ("square", False, False),
+        "sheprd-github-app-transparent.svg": ("transparent", False, False),
     }
     for name, options in variants.items():
         (ASSETS / name).write_text(artwork(source, *options))

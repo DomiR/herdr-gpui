@@ -7,6 +7,20 @@ use std::{
     time::Duration,
 };
 
+/// Runs `work` against the paused clock (`start_paused`). It advances only
+/// when every task waits on a timer, and never while a `spawn_blocking`
+/// file-lock probe or edit runs, so a loaded machine cannot spend this
+/// bound: only the code's own waits can. Half of the desktop's answer wait
+/// leaves the 100 ms ownership probe well inside it and the wait outside.
+/// Answers the virtual time the work took.
+async fn promptly<T>(work: impl Future<Output = T>) -> (T, Duration) {
+    let start = tokio::time::Instant::now();
+    let answer = tokio::time::timeout(changes::LAYOUT_WAIT / 2, work)
+        .await
+        .expect("answered without waiting for a desktop");
+    (answer, start.elapsed())
+}
+
 fn state(dir: &Path, path: &Path) -> crate::web::Shared {
     let mut hub = Hub::offline_in(Layout::default(), None, None);
     hub.core = Some(Arc::new(tests_support_source(
@@ -34,7 +48,7 @@ fn desktop(path: &Path) -> std::fs::File {
     file
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn absent_and_stale_desktops_edit_saved_layout_without_waiting() {
     for stale in [false, true] {
         let dir = tempfile::tempdir().unwrap();
@@ -51,13 +65,10 @@ async fn absent_and_stale_desktops_edit_saved_layout_without_waiting() {
                 name: "renamed".into(),
             },
         ] {
-            tokio::time::timeout(
-                Duration::from_secs(1),
-                changes::arrange(&state, keeper(), op),
-            )
-            .await
-            .unwrap()
-            .unwrap();
+            let (answer, waited) = promptly(changes::arrange(&state, keeper(), op)).await;
+            answer.unwrap();
+            // Not even one ownership probe's sleep: no desktop was asked.
+            assert_eq!(waited, Duration::ZERO);
         }
         let saved = read(&path);
         assert_eq!(saved["tabs"][0]["location"]["active"], "t2");
@@ -68,7 +79,7 @@ async fn absent_and_stale_desktops_edit_saved_layout_without_waiting() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn exiting_desktop_leaves_an_unclaimed_intent_for_the_daemon() {
     let dir = tempfile::tempdir().unwrap();
     let path = saved_file(dir.path());
@@ -89,15 +100,12 @@ async fn exiting_desktop_leaves_an_unclaimed_intent_for_the_daemon() {
             .is_pending()
     );
     drop(owner);
-    tokio::time::timeout(Duration::from_secs(1), change)
-        .await
-        .unwrap()
-        .unwrap();
+    promptly(change).await.0.unwrap();
     assert_eq!(read(&path)["tabs"][0]["location"]["zoomed"], "t2");
     assert!(state.changes.take(Duration::ZERO).1.is_empty());
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn claimed_intent_is_not_replayed_after_desktop_exit() {
     let dir = tempfile::tempdir().unwrap();
     let path = saved_file(dir.path());
@@ -124,12 +132,7 @@ async fn claimed_intent_is_not_replayed_after_desktop_exit() {
     source
         .arrange_saved(&TabRef::File(4), "t2", &Op::Zoom)
         .unwrap();
-    assert!(
-        tokio::time::timeout(Duration::from_secs(1), change)
-            .await
-            .unwrap()
-            .is_err()
-    );
+    assert!(promptly(change).await.0.is_err());
     assert_eq!(read(&path)["tabs"][0]["location"]["zoomed"], "t2");
 }
 

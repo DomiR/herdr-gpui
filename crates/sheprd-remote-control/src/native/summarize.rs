@@ -46,7 +46,7 @@ pub(crate) async fn summarize(
             row_summary::run(&input)
         })
         .await;
-        let answer = answer.unwrap_or(Err(row_summary::Error::Failed));
+        let answer = answer.unwrap_or(Err(sheprd_client::one_shot::Error::Failed.into()));
         link.finish_summary(finished(answer, read_ms));
     });
     Ok(accepted())

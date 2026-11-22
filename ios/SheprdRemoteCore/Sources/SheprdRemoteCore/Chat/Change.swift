@@ -25,10 +25,16 @@ public enum Change: Codable, Hashable, Sendable {
     /// changed; it replaces the activity with the same call id.
     case activity(AgentActivity)
     case harnesses(Harnesses?)
+    /// The agent worked on a pull request: it is added, or what it did is
+    /// added to the one with the same repository and number.
+    case pullRequest(ChatPullRequest)
+    /// A user entry already pushed turns out to be another agent's brief.
+    case brief(Brief)
 
     enum CodingKeys: String, CodingKey {
         case change, entry, id, text, before, status, permission, plan, modes, options, turn, queued, count
-        case session, commands, usage, on, activity, harnesses
+        case session, commands, usage, on, activity, harnesses, brief
+        case pullRequest = "pull_request"
     }
 
     public init(from decoder: Decoder) throws {
@@ -54,6 +60,8 @@ public enum Change: Codable, Hashable, Sendable {
         case "auto_accept": self = .autoAccept(try c.decode(Bool.self, forKey: .on))
         case "activity": self = .activity(try c.decode(AgentActivity.self, forKey: .activity))
         case "harnesses": self = .harnesses(try c.decodeIfPresent(Harnesses.self, forKey: .harnesses))
+        case "pull_request": self = .pullRequest(try c.decode(ChatPullRequest.self, forKey: .pullRequest))
+        case "brief": self = .brief(try c.decode(Brief.self, forKey: .brief))
         case let other:
             throw DecodingError.dataCorruptedError(forKey: .change, in: c, debugDescription: "unknown change \(other)")
         }
@@ -84,6 +92,8 @@ public enum Change: Codable, Hashable, Sendable {
         case let .autoAccept(on): try c.encode("auto_accept", forKey: .change); try c.encode(on, forKey: .on)
         case let .activity(activity): try c.encode("activity", forKey: .change); try c.encode(activity, forKey: .activity)
         case let .harnesses(harnesses): try c.encode("harnesses", forKey: .change); try c.encode(harnesses, forKey: .harnesses)
+        case let .pullRequest(pull): try c.encode("pull_request", forKey: .change); try c.encode(pull, forKey: .pullRequest)
+        case let .brief(brief): try c.encode("brief", forKey: .change); try c.encode(brief, forKey: .brief)
         }
     }
 }
@@ -100,6 +110,10 @@ public enum ChangeError: String, Error, Hashable, Sendable {
     case noModes = "no_modes"
     case activityLimit = "activity_limit"
     case activityText = "activity_text"
+    case pullRequest = "pull_request"
+    case pullRequestLimit = "pull_request_limit"
+    case briefLimit = "brief_limit"
+    case notPrompt = "not_prompt"
 }
 
 extension Transcript {
@@ -130,6 +144,7 @@ extension Transcript {
                 entries.removeFirst(keep)
                 truncated = true
             }
+            briefs.removeAll { $0.entry < before }
         case let .status(status): self.status = status
         case let .permissionAsked(permission):
             if permissions.contains(where: { $0.id == permission.id }) { throw .duplicatePermission }
@@ -152,6 +167,8 @@ extension Transcript {
         case let .autoAccept(on): autoAccept = on
         case let .activity(activity): try record(activity)
         case let .harnesses(harnesses): self.harnesses = harnesses
+        case let .pullRequest(pull): try record(pull)
+        case let .brief(brief): try add(brief)
         }
     }
 }

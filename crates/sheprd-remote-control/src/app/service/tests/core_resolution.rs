@@ -22,6 +22,7 @@ fn a_bad_core_session_does_not_block_service_reconciliation() {
             ran.push(command(step));
             Ok(())
         },
+        || {},
         resolve,
     )
     .unwrap();
@@ -37,6 +38,7 @@ fn a_bad_core_session_does_not_block_service_reconciliation() {
             ran.push(command(step));
             Ok(())
         },
+        || {},
         resolve,
     )
     .unwrap();
@@ -58,6 +60,7 @@ fn a_missing_core_home_leaves_discovery_to_the_service() {
             &host,
             |_| unreachable(),
             |_| Ok(()),
+            || {},
             || Err(sheprd_core_client::Error::NoHome)
         )
         .unwrap(),

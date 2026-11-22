@@ -22,6 +22,7 @@ fn home_with(agent: Option<&str>, summary: Option<&str>) -> Home {
         checkouts: &Default::default(),
         recognized: &Default::default(),
         computer: "Studio",
+        favorites: &Default::default(),
         fingerprint: "FP",
         layout: &layout,
         load: None,

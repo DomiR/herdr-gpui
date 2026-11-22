@@ -340,6 +340,7 @@ pub(super) const CATALOG: &[Entry] = &[
     feature(Feature::AcpChats),
     #[cfg(feature = "mcp")]
     feature(Feature::Mcp),
+    feature(Feature::MoonframeWindow),
     feature(Feature::QaMenu),
     feature(Feature::SidebarHoverMenu),
     // keep-sorted end
@@ -645,6 +646,12 @@ pub(super) const CATALOG: &[Entry] = &[
     ),
     entry(
         Section::RemoteControl,
+        "remote-push-relay",
+        "settings-push-relay-title",
+        "settings-push-relay-description",
+    ),
+    entry(
+        Section::RemoteControl,
         "remote-idle",
         "settings-remote-idle",
         "settings-remote-idle-description",
@@ -660,6 +667,12 @@ pub(super) const CATALOG: &[Entry] = &[
         "remote-devices",
         "settings-remote-devices",
         "settings-remote-devices-description",
+    ),
+    entry(
+        Section::Fleet,
+        "fleet-create-row",
+        "settings-fleet-none",
+        "settings-fleet-none-description",
     ),
     entry(
         Section::Configuration,

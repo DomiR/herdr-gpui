@@ -151,3 +151,46 @@ struct RefusalTests {
         #expect(Refusal.text(status: 500, body: Data(#"{"error":""}"#.utf8)) == #"The computer answered 500: {"error":""}"#)
     }
 }
+
+/// A call's tag goes in a header the computer logs, so a report and the
+/// computer's line for the same call can be matched.
+struct CallTagTests {
+    @Test func aTagIsEightHexDigits() {
+        for _ in 0..<64 {
+            let tag = PathFailure.newTag()
+            #expect(tag.count == 8)
+            #expect(tag.allSatisfy { $0.isHexDigit && !$0.isUppercase })
+        }
+    }
+
+    @Test func aReportNamesTheCallItsAddressAndWhenItBeganToTheMillisecond() {
+        let began = Date(timeIntervalSince1970: 1_763_743_935.25)
+        let line = PathFailure.call(tag: "3fa9c2d1", origin: "https://m4max.local:7443", began: began)
+        #expect(line == "call 3fa9c2d1 at https://m4max.local:7443 begun 2025-11-21T16:52:15.250Z")
+    }
+}
+
+/// A call can make several requests, such as one upload per picture: each
+/// has its own tag, and a report names the last, the one that failed.
+struct CallTagsTests {
+    @Test func eachRequestGetsItsOwnTagAndTheReportNamesTheLast() {
+        let tags = CallTags()
+        let began = Date(timeIntervalSince1970: 1_763_743_935.25)
+        let first = tags.next(at: began.addingTimeInterval(-1))
+        let last = tags.next(at: began)
+        #expect(first != last)
+        #expect(tags.report(origin: "https://lan") == "call \(last) at https://lan begun 2025-11-21T16:52:15.250Z, after \(first)")
+    }
+
+    @Test func aCallWithNoRequestHasNoReport() {
+        #expect(CallTags().report(origin: "https://lan") == nil)
+    }
+
+    @Test func aLongCallKeepsItsLatestRequestsAndListsAFew() {
+        let tags = CallTags()
+        let sent = (0..<(CallTags.limit + 3)).map { _ in tags.next() }
+        #expect(tags.requests.map(\.tag) == Array(sent.suffix(CallTags.limit)))
+        let report = tags.report(origin: "https://lan") ?? ""
+        #expect(report.hasSuffix(", after " + sent.dropLast().suffix(CallTags.listed).joined(separator: " ")))
+    }
+}

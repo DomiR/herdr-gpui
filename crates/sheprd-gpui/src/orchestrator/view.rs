@@ -227,6 +227,11 @@ pub(crate) struct OrchestratorView {
     /// The selected row's item key, or run id on the Runs tab.
     selected: Option<String>,
     detail: Option<Detail>,
+    /// The open pull request's key when it was opened from elsewhere, such
+    /// as a chat's rail: the list shows its row whatever the search and
+    /// filters hide, so the selection marks where the page is. It lapses
+    /// once another item, or none, is open.
+    revealed: Option<String>,
     pane_width: f32,
     /// The list's width as last laid out, which decides the columns its rows
     /// keep beside an open item.
@@ -326,6 +331,7 @@ impl OrchestratorView {
             query: String::new(),
             selected: None,
             detail: None,
+            revealed: None,
             pane_width: PANE_DEFAULT,
             list_width: Rc::default(),
             focus: cx.focus_handle(),

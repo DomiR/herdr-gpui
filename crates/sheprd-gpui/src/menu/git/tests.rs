@@ -6,6 +6,8 @@ use gpui::{TestAppContext, VisualTestContext, point, px, size};
 use std::sync::Arc;
 
 mod en_xa;
+mod pr_create;
+mod pr_create_core;
 mod remote_kept;
 mod restack;
 mod unopened;

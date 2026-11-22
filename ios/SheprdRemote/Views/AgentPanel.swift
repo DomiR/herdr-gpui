@@ -3,7 +3,7 @@ import SwiftUI
 
 /// The desktop chat rail on a phone: what runs beside the conversation
 /// (sub-agents, background shells, monitors), the agent's plan, and the
-/// files it changed, opened from the chat's header. Sections stay away
+/// files it changed, and its pull requests, opened from the chat's header. Sections stay away
 /// when the agent reports nothing; nothing here guesses from the chat.
 struct AgentPanel: View {
     @Environment(AppModel.self) private var model
@@ -45,7 +45,7 @@ struct AgentPanel: View {
                         ContentUnavailableView(
                             "Nothing running",
                             systemImage: "list.bullet.clipboard",
-                            description: Text("Sub-agents, shells, the plan, and changed files show here when the agent reports them.")
+                            description: Text("Sub-agents, shells, the plan, changed files, and pull requests show here when the agent reports them.")
                         )
                         .padding(.top, 40)
                     } else {
@@ -124,6 +124,7 @@ struct AgentPanel: View {
                         VStack(spacing: 8) {
                             ForEach(transcript.changedFiles) { DiffBlock(path: $0.path, old: $0.old, new: $0.new) }
                         }
+                    case .pullRequests: ChatPullRequestList(pulls: transcript.pullRequests)
                     }
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
@@ -150,7 +151,7 @@ struct AgentPanel: View {
 
 /// The panel's sections, in the desktop rail's order.
 enum PanelSection: CaseIterable, Identifiable, Hashable {
-    case subagents, shells, monitors, plan, changed
+    case subagents, shells, monitors, plan, changed, pullRequests
 
     var id: Self { self }
 
@@ -159,7 +160,7 @@ enum PanelSection: CaseIterable, Identifiable, Hashable {
         case .subagents: .subagent
         case .shells: .shell
         case .monitors: .monitor
-        case .plan, .changed: nil
+        case .plan, .changed, .pullRequests: nil
         }
     }
 
@@ -170,6 +171,7 @@ enum PanelSection: CaseIterable, Identifiable, Hashable {
         case .monitors: "Monitors"
         case .plan: "Plan"
         case .changed: "Changed"
+        case .pullRequests: "Pull requests"
         }
     }
 
@@ -180,6 +182,7 @@ enum PanelSection: CaseIterable, Identifiable, Hashable {
         case .monitors: "waveform.path.ecg"
         case .plan: "checklist"
         case .changed: "doc.on.doc.fill"
+        case .pullRequests: "arrow.triangle.pull"
         }
     }
 
@@ -190,6 +193,7 @@ enum PanelSection: CaseIterable, Identifiable, Hashable {
         case .monitors: .pink
         case .plan: .orange
         case .changed: .blue
+        case .pullRequests: .green
         }
     }
 
@@ -198,6 +202,7 @@ enum PanelSection: CaseIterable, Identifiable, Hashable {
         case .subagents, .shells, .monitors: kind.map { !transcript.activityGroup($0).isEmpty } ?? false
         case .plan: !transcript.plan.isEmpty
         case .changed: !transcript.changedFiles.isEmpty
+        case .pullRequests: !transcript.pullRequests.isEmpty
         }
     }
 
@@ -212,6 +217,9 @@ enum PanelSection: CaseIterable, Identifiable, Hashable {
         case .changed:
             let count = transcript.changedFiles.count
             return "\(count) file\(count == 1 ? "" : "s")"
+        case .pullRequests:
+            let count = transcript.pullRequests.count
+            return "\(count) pull request\(count == 1 ? "" : "s")"
         }
     }
 }
@@ -279,6 +287,9 @@ private struct Overview: View {
         case .changed:
             let count = transcript.changedFiles.count
             return ("\(count)", count == 1 ? "file" : "files", false)
+        case .pullRequests:
+            let count = transcript.pullRequests.count
+            return ("\(count)", count == 1 ? "pull request" : "pull requests", false)
         }
     }
 }
@@ -472,7 +483,7 @@ struct AgentPanelButton: View {
         }
         .accessibilityLabel("Activity")
         .accessibilityValue(running > 0 ? "\(running) running" : "")
-        .accessibilityHint("Shows sub-agents, shells, the plan, and changed files")
+        .accessibilityHint("Shows sub-agents, shells, the plan, changed files, and pull requests")
     }
 }
 

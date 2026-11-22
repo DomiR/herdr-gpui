@@ -10,22 +10,38 @@ pub const USAGE: &str = "\
 sheprd-relay-agent: lets Sheprd reach this machine's SSH server through relays
 
 Usage:
-  sheprd-relay-agent run --relay ENDPOINT [--token-file FILE] [--relay ENDPOINT ...] [--forward PORT]
+  sheprd-relay-agent run --relay ENDPOINT [--token-file FILE] [--relay ENDPOINT ...] [--forward PORT] [--authorized-keys FILE]
   sheprd-relay-agent status [--json]
   sheprd-relay-agent authorize DIAL_KEY TUNNEL_KEY [LABEL]
   sheprd-relay-agent revoke DIAL_KEY
+  sheprd-relay-agent fleet apply [--authorized-keys FILE] < ACCESS_FILE
+  sheprd-relay-agent fleet scrub [--authorized-keys FILE]
   sheprd-relay-agent --help | --version
 
 run         Listen on each relay and forward the sessions of authorized
-            desktops to the SSH server on 127.0.0.1 (port 22 by default).
-            --token-file applies to the --relay before it.
-status      This agent's route, tunnel identity, desktops, and relays.
+            desktops and fleet members to the SSH server on 127.0.0.1
+            (port 22 by default). --token-file applies to the --relay
+            before it.
+status      This agent's route, tunnel identity, desktops, fleet, and
+            relays.
 authorize   Allow a desktop to dial, by its base64url keys. A running agent
             picks it up within seconds.
 revoke      Remove a desktop; its sessions end at once.
+fleet apply Merge the fleet access file Sheprd computed, read on stdin, into
+            the one kept here, write the fleet's authorized_keys lines,
+            and print the status as JSON. Run by Sheprd over SSH; a file
+            for another fleet than the one this account holds is refused.
+            A file that does not read or check out removes the fleet's
+            lines and admits no member until a good one is applied.
+fleet scrub Forget the fleet: remove its authorized_keys lines, its access
+            file, and its suspensions, so no member of it reaches this
+            account through the agent. Desktops authorized one by one
+            stay. Run by Sheprd over SSH after a person confirms there.
 
-Every command takes --state-dir DIR (default: ~/.local/state/sheprd-relay-agent,
-or ~/Library/Application Support/sheprd-relay-agent on macOS).
+--authorized-keys is where the fleet's lines go (default:
+~/.ssh/authorized_keys). Every command takes --state-dir DIR (default:
+~/.local/state/sheprd-relay-agent, or ~/Library/Application
+Support/sheprd-relay-agent on macOS).
 ";
 
 /// What was asked for, and where the state lives (`None`: the default).
@@ -38,15 +54,28 @@ pub struct Invocation {
 #[derive(Debug, Eq, PartialEq)]
 pub enum Command {
     Authorize(Entry),
+    /// `fleet apply`, with where the fleet's lines go (`None`: the
+    /// user's).
+    FleetApply {
+        authorized_keys: Option<PathBuf>,
+    },
+    /// `fleet scrub`, with where the fleet's lines are.
+    FleetScrub {
+        authorized_keys: Option<PathBuf>,
+    },
     Help,
     Revoke(Key),
     Run(Run),
-    Status { json: bool },
+    Status {
+        json: bool,
+    },
     Version,
 }
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Run {
+    /// Where the fleet's `authorized_keys` lines go (`None`: the user's).
+    pub authorized_keys: Option<PathBuf>,
     /// The SSH server's port on loopback.
     pub forward: u16,
     pub relays: Vec<RelayArg>,
@@ -90,6 +119,7 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Invocation, Err
     let mut state_dir = None;
     let mut words = Vec::new();
     let mut run = Run {
+        authorized_keys: None,
         forward: 22,
         relays: Vec::new(),
     };
@@ -122,6 +152,9 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Invocation, Err
                 let relay = run.relays.last_mut().ok_or(Error::TokenWithoutRelay)?;
                 relay.token_file = Some(file);
             }
+            Some("--authorized-keys") => {
+                run.authorized_keys = Some(PathBuf::from(value("--authorized-keys")?));
+            }
             Some("--forward") => {
                 run_flag = Some("--forward");
                 let text = value("--forward")?.to_string_lossy().into_owned();
@@ -130,6 +163,7 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Invocation, Err
             _ => words.push(arg.to_string_lossy().into_owned()),
         }
     }
+    let keys_flag = run.authorized_keys.is_some();
     let mut words = words.into_iter();
     let command = match words.next().as_deref() {
         None => return Err(Error::NoCommand),
@@ -144,6 +178,16 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Invocation, Err
             let entry = Entry::parse(&dial, &tunnel, &label).ok_or(Error::TunnelKey(tunnel))?;
             Command::Authorize(entry)
         }
+        Some("fleet") => match words.next().as_deref() {
+            Some("apply") => Command::FleetApply {
+                authorized_keys: run.authorized_keys.take(),
+            },
+            Some("scrub") => Command::FleetScrub {
+                authorized_keys: run.authorized_keys.take(),
+            },
+            Some(other) => return Err(Error::Unexpected(other.to_owned())),
+            None => return Err(Error::MissingValue("fleet")),
+        },
         Some("revoke") => {
             let dial = words.next().ok_or(Error::MissingValue("DIAL_KEY"))?;
             Command::Revoke(authorized::dial_key(&dial).ok_or(Error::DialKey(dial))?)
@@ -159,6 +203,13 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Invocation, Err
     }
     if status_flag && !matches!(command, Command::Status { .. }) {
         return Err(Error::Unexpected("--json".to_owned()));
+    }
+    let takes_keys = matches!(
+        command,
+        Command::Run(_) | Command::FleetApply { .. } | Command::FleetScrub { .. }
+    );
+    if keys_flag && !takes_keys {
+        return Err(Error::Unexpected("--authorized-keys".to_owned()));
     }
     Ok(invocation(command, state_dir))
 }

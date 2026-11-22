@@ -7,7 +7,7 @@
 //! the endpoint is chosen here and kept as a label.
 
 use super::{Error, HubError, Result, Source, lock, pane_id, worktree};
-use crate::hub::Layout;
+use crate::hub::{Launcher, Layout};
 use serde_json::{Value, json};
 use sheprd_chat_protocol::{Agent, ENDPOINT_ENV, EndpointId, TOKEN};
 use sheprd_core_client::wire::Run;
@@ -53,14 +53,14 @@ impl Source {
     pub(in crate::hub) fn open_chat(
         &self,
         agent: Agent,
-        program: &Path,
+        launcher: &Launcher,
         cwd: &str,
         place: Option<Place<'_>>,
     ) -> Result<String> {
         let endpoint = EndpointId::random().to_string();
         let mut labels = place_labels(place);
         labels.insert(TOKEN, endpoint.as_str());
-        let argv = [program.to_string_lossy().into_owned(), agent.to_string()];
+        let argv = launcher.argv(agent);
         self.run(&Run {
             argv: &argv,
             cwd: Some(cwd).filter(|cwd| !cwd.is_empty()),
@@ -80,7 +80,7 @@ impl Source {
     pub(in crate::hub) fn open_worktree_chat(
         &self,
         agent: Agent,
-        program: &Path,
+        launcher: &Launcher,
         cwd: &str,
         branch: &str,
         title: Option<&str>,
@@ -96,7 +96,7 @@ impl Source {
             cwd: &checkout,
             title,
         };
-        let started = self.open_chat(agent, program, &checkout, Some(place));
+        let started = self.open_chat(agent, launcher, &checkout, Some(place));
         let folder = Path::new(&checkout);
         if let Err(error) = &started {
             // A retry must find the branch free, but only a start that

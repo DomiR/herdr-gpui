@@ -69,15 +69,10 @@ class Queue(unittest.TestCase):
                          {name for name in JOBS if name not in ("checks-passed", "build")})
         self.assertTrue(set(PR_JOBS) <= set(JOBS))
 
-    def test_pull_requests_run_one_macos_leg_and_main_both(self):
-        # A pull request with every platform runs one macOS leg; one without
-        # runs Linux alone (scripts/ci-scope.py); the merge queue and main run
-        # both macOS legs.
+    def test_pull_requests_choose_legs_through_one_exclude(self):
+        # What each pull request runs is checked in test_ci_macos_runners.py.
         exclude = re.search(r"^        exclude: (.+)$", JOBS["checks"], re.M)[1]
-        self.assertEqual(exclude, "${{ fromJSON(needs.commits.outputs.full != 'true' && "
-                         "'[{\"runner\":\"macos-15\"},{\"runner\":\"ubuntu-24.04-arm\"}]' || "
-                         "github.event_name == 'pull_request' && "
-                         "'[{\"runner\":\"macos-15\",\"features\":\"all\"}]' || '[]') }}")
+        self.assertTrue(exclude.startswith("${{ fromJSON(github.event_name != 'pull_request' && '[]' || "))
 
 
 class WindowsNativeChanges(GitFixture):

@@ -9,6 +9,7 @@ fn user(id: u64, text: &str) -> Entry {
         kind: EntryKind::User {
             text: text.into(),
             files: 0,
+            note: None,
         },
     }
 }
@@ -164,4 +165,33 @@ fn a_users_pasted_card_or_page_stays_inert_code() {
         "the user's text stays code"
     );
     assert_eq!(parts(2).iter().filter(|live| **live).count(), 2);
+}
+
+#[test]
+fn user_newlines_stay_line_breaks_while_agent_prose_reflows() {
+    let text = "1: yes\n2: no";
+    let mut transcript = Transcript::new("Claude");
+    transcript.entries = vec![user(1, text), agent(2, text)];
+    let mut prepared = Prepared::default();
+    prepared.update(&transcript, &[(EntryId(1), 1), (EntryId(2), 1)]);
+    let breaks = |id| {
+        let body = prepared.body(EntryId(id)).unwrap();
+        let Body::Message(parts) = &*body else {
+            panic!("message")
+        };
+        parts
+            .iter()
+            .flat_map(|part| match part {
+                Part::Rich(blocks) => blocks.iter(),
+                _ => panic!("ordinary Markdown stays native"),
+            })
+            .flat_map(|block| match block {
+                rich::Block::Paragraph { content, .. } => content.as_slice(),
+                _ => &[],
+            })
+            .filter(|part| matches!(part, rich::Inline::Break))
+            .count()
+    };
+    assert_eq!(breaks(1), 1);
+    assert_eq!(breaks(2), 0);
 }

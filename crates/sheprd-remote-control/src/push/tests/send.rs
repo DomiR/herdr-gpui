@@ -1,6 +1,8 @@
 use super::*;
 use std::time::Duration;
 
+const HOST: &str = "9E92A0DF1CE0967EC34C0C0146005FBC51654330E7D26EC9B5805055755E24F6";
+
 #[test]
 fn statuses_map_to_outcomes() {
     assert_eq!(outcome(201, None), Outcome::Delivered);
@@ -25,7 +27,7 @@ fn statuses_map_to_outcomes() {
 
 #[test]
 fn topics_are_short_base64url_and_stable_per_tag() {
-    let topic = Topic::from_tag("chat-w1-p3");
+    let topic = Topic::from_tag(HOST, "chat-w1-p3");
     assert_eq!(topic.as_str().len(), 32);
     assert!(
         topic
@@ -33,8 +35,8 @@ fn topics_are_short_base64url_and_stable_per_tag() {
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
     );
-    assert_eq!(topic, Topic::from_tag("chat-w1-p3"));
-    assert_ne!(topic, Topic::from_tag("chat-w1-p4"));
+    assert_eq!(topic, Topic::from_tag(HOST, "chat-w1-p3"));
+    assert_ne!(topic, Topic::from_tag(HOST, "chat-w1-p4"));
     assert!(!topic.as_str().contains("chat"));
 }
 
@@ -43,6 +45,7 @@ fn delivery_follows_the_notification() {
     let question = Notification {
         body: String::new(),
         clear: false,
+        event: EventId::new(),
         kind: Kind::Question,
         pane: "p".to_owned(),
         permission: None,
@@ -51,17 +54,17 @@ fn delivery_follows_the_notification() {
         urgency: Urgency::High,
         wizz: false,
     };
-    let delivery = Delivery::for_notification(&question);
+    let delivery = Delivery::for_notification(&question, HOST);
     assert_eq!(delivery.urgency.header(), "high");
     assert_eq!(delivery.ttl_s, 24 * 60 * 60);
-    assert_eq!(delivery.topic, Some(Topic::from_tag("chat-p")));
+    assert_eq!(delivery.topic, Some(Topic::from_tag(HOST, "chat-p")));
 
     let clear = Notification {
         clear: true,
         urgency: Urgency::Normal,
         ..question
     };
-    let delivery = Delivery::for_notification(&clear);
+    let delivery = Delivery::for_notification(&clear, HOST);
     assert_eq!(delivery.urgency.header(), "normal");
     assert_eq!(delivery.ttl_s, 60 * 60);
 }
@@ -141,7 +144,7 @@ fn a_prepared_push_carries_the_headers_and_decrypts_to_the_message() {
         url: "/chat/p".to_owned(),
     };
     let delivery = Delivery {
-        topic: Some(Topic::from_tag("chat-p")),
+        topic: Some(Topic::from_tag(HOST, "chat-p")),
         ttl_s: 600,
         urgency: Urgency::High,
     };
@@ -159,7 +162,10 @@ fn a_prepared_push_carries_the_headers_and_decrypts_to_the_message() {
     assert_eq!(header("Content-Encoding"), Some("aes128gcm"));
     assert_eq!(header("TTL"), Some("600"));
     assert_eq!(header("Urgency"), Some("high"));
-    assert_eq!(header("Topic"), Some(Topic::from_tag("chat-p").as_str()));
+    assert_eq!(
+        header("Topic"),
+        Some(Topic::from_tag(HOST, "chat-p").as_str())
+    );
     let authorization = header("Authorization").unwrap();
     assert!(authorization.starts_with("vapid t="));
     assert!(authorization.ends_with(&format!(",k={}", sender.vapid().public_key_b64url())));

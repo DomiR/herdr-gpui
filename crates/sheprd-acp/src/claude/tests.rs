@@ -110,6 +110,7 @@ fn a_whole_turn_reaches_the_transcript_through_the_bridge() {
         exit_with_agent: false,
         harness: Some(crate::agents::Agent::Claude),
         history: None,
+        known: Default::default(),
         listens: false,
         load: None,
         login_hint: None,

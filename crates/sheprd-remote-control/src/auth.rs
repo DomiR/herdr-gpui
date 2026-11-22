@@ -80,12 +80,16 @@ pub enum Error {
     NoAddress,
     #[error("open Remote control > Pair device on the computer first")]
     NoPairing,
+    #[error("this computer listens on no relay; a pairing link needs one")]
+    NoRelays,
     #[error("the pairing is not waiting for an answer")]
     NotClaimed,
     #[error("could not draw random bytes")]
     Random(#[source] getrandom::Error),
     #[error("too many requests; try again shortly")]
     RateLimited,
+    #[error("another device already uses these relay keys; make new ones")]
+    RelayKeysTaken,
     #[error(transparent)]
     SshAccess(#[from] crate::ssh_access::Error),
     #[error("could not {operation} {}", path.display())]
@@ -151,6 +155,7 @@ impl From<&Error> for control::ErrorCode {
             Error::UnknownDevice => Self::UnknownDevice,
             Error::NotClaimed => Self::NotClaimed,
             Error::NoPairing => Self::NoPairing,
+            Error::NoRelays => Self::NoRelays,
             Error::Encode(_) | Error::Store { .. } => Self::Unsaved,
             _ => Self::Other,
         }
@@ -300,6 +305,9 @@ pub(crate) struct Auth {
     pair_limit: RateLimiter<IpAddr>,
     pairings: Pairings,
     presence: Presences,
+    /// Where an unpaired device's push relay handles go to be revoked,
+    /// when pushes go through the push relay (`set_push_relay_revocations`).
+    push_relay_revocations: Option<crate::apns::push_relay_revoke::Revocations>,
     /// What a nearby offer says about this computer's relays, when it
     /// listens on any (`set_relay_offer`).
     relay_offer: Option<crate::relay::Info>,
@@ -312,6 +320,8 @@ pub(crate) struct Auth {
     /// Where desktops paired with an SSH key are let in; `None` refuses
     /// them (`set_ssh_access`).
     ssh_access: Option<SshAccess>,
+    /// The state directory the devices were read from.
+    state_dir: PathBuf,
 }
 
 impl Auth {
@@ -337,11 +347,13 @@ impl Auth {
             ),
             pairings: Pairings::default(),
             presence: Presences::default(),
+            push_relay_revocations: None,
             relay_offer: None,
             relay_pairing: None,
             revoked: watch::Sender::new(0),
             sessions: Sessions::default(),
             ssh_access: None,
+            state_dir: state_dir.to_owned(),
         })
     }
 
@@ -365,6 +377,11 @@ impl Auth {
         self.ssh_access = Some(access);
     }
 
+    /// The state directory the devices were read from.
+    pub(crate) fn state_dir(&self) -> &Path {
+        &self.state_dir
+    }
+
     /// Where desktops are let in, when they can be.
     pub(crate) fn ssh_access(&self) -> Result<&SshAccess> {
         self.ssh_access
@@ -384,6 +401,12 @@ impl Auth {
         Ok(Some(Login::here(&self.ssh_access()?.host_key_dir)?))
     }
 
+    /// The open pairing, for what a desktop's claim asks of the fleet
+    /// (`fleet::bluetooth`).
+    pub(crate) fn pairings(&mut self) -> &mut Pairings {
+        &mut self.pairings
+    }
+
     /// Keeps the SSH key a desktop sent with `claim`.
     pub(crate) fn claimed_ssh(&mut self, claim: &ClaimId, key: SshKey) {
         self.pairings.claimed_ssh(claim, key);
@@ -398,6 +421,30 @@ impl Auth {
         };
         if let Err(error) = access.keys.remove(device) {
             tracing::warn!(error = %error, "could not remove a desktop's SSH key");
+        }
+    }
+
+    /// Revokes the push relay handles of every device unpaired from now on
+    /// through `revocations` (`apns::push_relay_revoke`).
+    pub(crate) fn set_push_relay_revocations(
+        &mut self,
+        revocations: crate::apns::push_relay_revoke::Revocations,
+    ) {
+        self.push_relay_revocations = Some(revocations);
+    }
+
+    /// The push relay handles `record` holds, when they are to be revoked.
+    fn push_relay_handles(&self, record: &DeviceRecord) -> Vec<crate::apns::Handle> {
+        if self.push_relay_revocations.is_none() {
+            return Vec::new();
+        }
+        crate::apns::Registration::from_stored(record.apns.as_ref()).handles()
+    }
+
+    /// Queues `handles` of a device that is gone for revoking.
+    fn revoke_push_relay_handles(&self, handles: Vec<crate::apns::Handle>) {
+        if let Some(revocations) = &self.push_relay_revocations {
+            crate::apns::push_relay_revoke::queue(revocations, handles);
         }
     }
 
@@ -504,12 +551,45 @@ impl Auth {
         }
         let token = random_bytes::<SECRET_LEN>()?;
         let relay = self.relay_offer.as_ref();
-        let (revealed, code) = started.reveal(nonce, fingerprint, &token, origins, relay)?;
+        let fleet = self.pairings.take_hint();
+        let (revealed, code) =
+            started.reveal(nonce, fingerprint, &token, origins, relay, fleet.as_ref())?;
         self.pairings.set_nearby(&token, code, now_ms)?;
         if relay.is_some() {
             self.relay_pairing = Some(token);
         }
         Ok(revealed)
+    }
+
+    /// A pairing link for the open pairing `id`: a fresh token, claimable
+    /// through the relays, which open a pairing dial for it
+    /// ([`Auth::take_relay_pairing`]). `fingerprint` is the CA's, hex.
+    pub(crate) fn pair_link(
+        &mut self,
+        id: &PairingId,
+        computer: &str,
+        fingerprint: &str,
+        fleet: Option<control::fleet::bluetooth::Hint>,
+        now_ms: u64,
+    ) -> Result<(String, u64)> {
+        use control::pairing_link::{MAX_RELAYS, PairingLink, Token};
+        let mut relay = self.relay_offer.clone().ok_or(Error::NoRelays)?;
+        relay.relays.truncate(MAX_RELAYS);
+        relay
+            .rtt_ms
+            .retain(|endpoint, _| relay.relays.contains(endpoint));
+        let fingerprint = nearby::fingerprint_bytes(fingerprint).ok_or(Error::NoPairing)?;
+        let token = random_bytes::<SECRET_LEN>()?;
+        let expires_in_ms = self.pairings.set_link(id, &token, now_ms)?;
+        self.relay_pairing = Some(token);
+        let link = PairingLink {
+            computer: device_name(computer).unwrap_or_else(|_| "Sheprd".to_owned()),
+            fingerprint,
+            fleet,
+            relay,
+            token: Token(token),
+        };
+        Ok((link.to_string(), expires_in_ms))
     }
 
     /// Lets nearby offers say how to claim through this computer's relays.
@@ -689,8 +769,10 @@ impl Auth {
     /// paired with from here are owed a revocation, which Sheprd carries
     /// out.
     pub(crate) fn revoke(&mut self, device: &DeviceId) -> Result<bool> {
+        let mut handles = Vec::new();
         if let Some(record) = self.devices.get(device) {
             self.links.forget(record)?;
+            handles = self.push_relay_handles(record);
         }
         self.host_relays.forget(device);
         // The device goes either way; a stale digest only names a device
@@ -700,6 +782,9 @@ impl Auth {
         self.revoked();
         self.forget_ssh(device);
         let revoked = self.devices.revoke(device);
+        if let Ok(true) = revoked {
+            self.revoke_push_relay_handles(handles);
+        }
         self.sync_apps();
         revoked
     }
@@ -821,6 +906,7 @@ impl Auth {
         self.devices.add_with(
             NewDevice {
                 app: None,
+                fleet: None,
                 id: id.clone(),
                 name,
                 public_key,
@@ -840,6 +926,10 @@ impl Auth {
     /// Forgets devices unseen for `idle_ms` and ends their sessions.
     pub(crate) fn expire_idle(&mut self, now_ms: u64, idle_ms: u64) -> Result<Vec<DeviceId>> {
         let expired = self.devices.expire_idle(now_ms, idle_ms)?;
+        for record in &expired {
+            self.revoke_push_relay_handles(self.push_relay_handles(record));
+        }
+        let expired: Vec<DeviceId> = expired.into_iter().map(|record| record.id).collect();
         for device in &expired {
             self.sessions.end_device(device);
             self.forget_ssh(device);

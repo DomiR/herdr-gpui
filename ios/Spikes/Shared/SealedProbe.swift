@@ -63,7 +63,7 @@ enum SealedProbe {
     static func open(_ state: SealedProbeAttributes.ContentState) -> Report {
         let started = ContinuousClock.now
         do {
-            guard let key = try NotifyKey.load() else { return failed("no key") }
+            guard let (key, source) = try NotifyKey.loadAny() else { return failed("no key") }
             guard let sealed = Base64URL.decode(state.sealed) else { return failed("bad base64") }
             let bytes = try NotificationSeal.open(
                 sealed,
@@ -78,7 +78,7 @@ enum SealedProbe {
             let free = os_proc_available_memory() / 1_000_000
             let report = Report(
                 headline: "Opened #\(plain.sequence) in \(ms) ms",
-                detail: "\(kind), \(free) MB free"
+                detail: "\(kind) from \(source.rawValue), \(free) MB free"
             )
             log("widget \(report.headline), \(report.detail)")
             return report

@@ -15,6 +15,7 @@ mod layers;
 mod link_underline;
 mod placed_images;
 mod prompt_geometry;
+mod rounded;
 
 fn cell(symbol: &str) -> CellData {
     CellData {

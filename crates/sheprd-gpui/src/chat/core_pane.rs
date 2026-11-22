@@ -321,15 +321,20 @@ impl SheprdWindow {
             .ok_or(super::StartError::NotLocal)?;
         let program = if route == Route::Local {
             Some(self.chats.program.found()?.to_owned())
+        } else if self.chats.brief.is_some() {
+            return Err(super::StartError::BriefRemote);
         } else {
             None
         };
         let endpoint = EndpointId::random();
         let env = self.chat_env(carry);
-        let spawn = match program.as_deref() {
+        let mut spawn = match program.as_deref() {
             Some(program) => spawn((agent, self.chats.program_choice), program, &endpoint, &env),
             None => remote_spawn(agent, &endpoint, &env),
         };
+        if let Some(brief) = &self.chats.brief {
+            brief.insert_into(&mut spawn.argv);
+        }
         Ok(spawn)
     }
 

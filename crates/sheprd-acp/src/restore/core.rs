@@ -221,6 +221,8 @@ pub(crate) fn run(endpoint: EndpointId) -> anyhow::Result<()> {
                 args: Vec::new(),
             },
             attach: true,
+            brief_file: None,
+            brief_from: None,
             // Restoring continues a session, which no other agent could.
             choose: false,
             cwd: Some(record.cwd),

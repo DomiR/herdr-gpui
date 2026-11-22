@@ -13,13 +13,16 @@ both, and the table shows the median of the rounds. It opens real windows,
 so it needs an active desktop.
 
     scripts/bench_frames.py --herdr /path/to/herdr \
-        main=target/release/sheprd moonframe=target/moonframe/release/sheprd
+        "classic=target/release/sheprd --classic" moonframe=target/release/sheprd
+
+Each app is `NAME=COMMAND`: a binary, then the arguments it starts with.
 """
 
 import argparse
 import json
 import os
 import re
+import shlex
 import shutil
 import statistics
 import subprocess
@@ -175,14 +178,14 @@ def percentile(values: list, p: float) -> float:
     return ordered[min(len(ordered) - 1, int(len(ordered) * p))]
 
 
-def run_once(herdr: str, binary: str, trees: int, phase_s: float) -> dict:
+def run_once(herdr: str, command: list[str], trees: int, phase_s: float) -> dict:
     """One app through the whole workload: a row of numbers per phase."""
     sandbox = Sandbox(herdr, trees)
     frames = []
     app = None
     try:
         app = subprocess.Popen(
-            [binary],
+            command,
             env={**sandbox.app_env(), "ZED_MEASUREMENTS": "1"},
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -200,7 +203,7 @@ def run_once(herdr: str, binary: str, trees: int, phase_s: float) -> dict:
         reader.start()
         time.sleep(SETTLE_S)
         if app.poll() is not None:
-            raise SystemExit(f"{binary} exited during startup")
+            raise SystemExit(f"{command[0]} exited during startup")
 
         rows = {}
 
@@ -276,21 +279,22 @@ def main() -> None:
     parser.add_argument("--trees", type=int, default=14, help="linked worktrees")
     parser.add_argument("--phase", type=float, default=8, help="seconds per phase")
     parser.add_argument("--json", action="store_true", help="print each run as JSON")
-    parser.add_argument("apps", nargs="+", metavar="NAME=BINARY")
+    parser.add_argument("apps", nargs="+", metavar="NAME=COMMAND")
     args = parser.parse_args()
 
     apps = []
     for spec in args.apps:
-        name, _, binary = spec.partition("=")
-        if not binary or not Path(binary).is_file():
-            parser.error(f"{spec}: expected NAME=BINARY naming a built binary")
-        apps.append((name, str(Path(binary).resolve())))
+        name, _, command = spec.partition("=")
+        words = shlex.split(command)
+        if not words or not Path(words[0]).is_file():
+            parser.error(f"{spec}: expected NAME=COMMAND starting with a built binary")
+        apps.append((name, [str(Path(words[0]).resolve()), *words[1:]]))
 
     runs = {name: [] for name, _ in apps}
     for round_ in range(1, args.rounds + 1):
-        for name, binary in apps:
+        for name, command in apps:
             print(f"round {round_}/{args.rounds}: {name}", file=sys.stderr)
-            rows = run_once(args.herdr, binary, args.trees, args.phase)
+            rows = run_once(args.herdr, command, args.trees, args.phase)
             runs[name].append(rows)
             if args.json:
                 print(json.dumps({"app": name, "round": round_, **rows}))

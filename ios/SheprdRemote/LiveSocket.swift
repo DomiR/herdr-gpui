@@ -7,6 +7,12 @@ import os
 private let log = Logger(subsystem: "so.pen.herdr.remote", category: "live")
 
 enum LiveSocket {
+    /// How often the socket checks that its path still carries traffic,
+    /// and how long a pong may take. A socket over a dead path otherwise
+    /// looks open for a minute or more, and sends hang on it meanwhile.
+    private static let keepaliveInterval: Duration = .seconds(10)
+    private static let pongLimit: Duration = .seconds(5)
+
     static func io(for computer: Computer, sessions: Sessions) -> LinkIO {
         LinkIO(
             ping: { origin in
@@ -71,7 +77,20 @@ enum LiveSocket {
                     continuation.finish(throwing: error)
                 }
             }
+            let keepalive = Task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: keepaliveInterval)
+                    guard !Task.isCancelled else { return }
+                    if await completes(within: pongLimit, { task.sendPing(pongReceiveHandler: $0) }) { continue }
+                    // A path that stopped carrying traffic: closing the
+                    // socket ends the reader, and the link races again.
+                    log.notice("no pong at \(client.origin, privacy: .public) within \(PathFailure.seconds(pongLimit), privacy: .public): closing")
+                    task.cancel(with: .goingAway, reason: nil)
+                    return
+                }
+            }
             continuation.onTermination = { _ in
+                keepalive.cancel()
                 reader.cancel()
                 task.cancel(with: .goingAway, reason: nil)
             }

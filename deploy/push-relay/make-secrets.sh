@@ -10,6 +10,7 @@
 #   apns/config.json    team, key, topic, and environment
 #   relay-key.pem       the relay's P-256 key, which phones seal handles to
 #   credential-secret   32 random bytes as hex, keying device credentials
+#   dashboard-token     32 random bytes as hex, for /dashboard and /metrics
 #
 # Keep the directory offline (a password manager or an encrypted disk):
 # a rebuilt droplet needs the same relay-key.pem and credential-secret, or
@@ -40,6 +41,7 @@ printf '{"team_id":"%s","key_id":"%s","topic":"so.pen.herdr.remote","sandbox":%s
   "$team" "$key_id" "$sandbox" > "$dir/apns/config.json"
 openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$dir/relay-key.pem" 2>/dev/null
 openssl rand -hex 32 > "$dir/credential-secret"
+openssl rand -hex 32 > "$dir/dashboard-token"
 
 echo "Wrote the $environment relay's secrets to $dir. Its public key:" >&2
 openssl pkey -in "$dir/relay-key.pem" -pubout

@@ -14,10 +14,12 @@ two:
 | `production` | `push.sheprd.org` | TestFlight and App Store builds |
 | `sandbox` | `push-sandbox.sheprd.org` | Builds from Xcode |
 
-Until App Attest and `POST /v1/attest` exist (plan, phase 2), nothing issues
-the credentials handles carry, so a relay answers `/healthz` but has no phone
-to push to. Bringing up the sandbox relay now still rehearses the deploy and
-the recovery below.
+Phones get the credentials their handles carry from `POST /v1/attest`, after
+App Attest. Until the iOS app does that (plan, phase 4), a relay answers
+`/healthz` and attestations but has no phone to push to. The sandbox relay
+takes only Xcode builds, whose App Attest environment is development; the
+production relay takes only TestFlight and App Store builds. Bringing up the
+sandbox relay now still rehearses the deploy and the recovery below.
 
 ## The image
 
@@ -61,6 +63,7 @@ others can read:
 | `relay-key.pem` | The relay's P-256 key (PKCS#8 PEM); phones seal handles to its public half |
 | `relay-key-previous.pem` | Optional: the key before a rotation, so older handles still open |
 | `credential-secret` | 32 random bytes as hex, keying the device credentials |
+| `dashboard-token` | Optional: the token for `/dashboard` and `/metrics` (24 or more characters; `make-secrets.sh` writes 32 random bytes as hex). Without it, neither is served |
 
 Make them on your own machine, once per environment:
 
@@ -159,7 +162,51 @@ so the next one works at once.
 - `https://DOMAIN/healthz` answers `ok`, for an uptime check.
 - `docker compose --env-file compose.env logs relay` on the droplet. Logs
   hold no tokens, payloads, or addresses.
-- Counters are not built yet (plan, phase 2).
+- `https://DOMAIN/dashboard`: a read-only page, live each second, signed in
+  to with the `dashboard-token`. Three wrong tokens block that address for
+  15 minutes; a sign-in lasts 12 hours, and a restart signs everyone out.
+- `https://DOMAIN/metrics`: the same numbers for Prometheus, with the same
+  token as a bearer token, and the same lockout:
+
+  ```sh
+  curl -H "Authorization: Bearer $(cat ~/sheprd-push-sandbox/dashboard-token)" \
+    https://push-sandbox.sheprd.org/metrics
+  ```
+
+  A Prometheus job sets `authorization: { credentials_file: … }` and
+  `scheme: https`.
+
+Both exist only when the secrets hold `dashboard-token`; without one, they
+answer 404. Caddy passes every path to the relay, which checks the token
+itself. What they count, all since the relay started:
+
+| Series | What |
+| --- | --- |
+| `sheprd_push_relay_pushes_total{outcome}` | Pushes by the reply the daemon got: `delivered`, `gone`, `refused`, `limited`, `expired`, `invalid`, `unavailable` |
+| `sheprd_push_relay_push_types_total{type}` | Pushes asked for, by `alert`, `background`, `liveactivity` |
+| `sheprd_push_relay_attestations_total{outcome}` | `issued`, `invalid`, `refused`, `limited`, `unavailable` |
+| `sheprd_push_relay_challenges_total{outcome}` | `issued`, `limited`, `unavailable` |
+| `sheprd_push_relay_revocations_total{outcome}` | Revocations by reply |
+| `sheprd_push_relay_limited_total{limit}` | Refusals by rate limit: `source`, `attest`, `device`, `handle`, `revoke`, and `apns` for Apple's own 429 |
+| `sheprd_push_relay_attested_devices` | Distinct devices that attested |
+| `sheprd_push_relay_active_devices{window}` | Distinct devices pushed to in the last `24h` and `7d` |
+| `sheprd_push_relay_device_events_skipped_total{count}` | Attestations (`attested`) and pushes (`active`) left out of the device counts because they were full; each event counts, so one device can be skipped many times |
+| `sheprd_push_relay_dashboard_logins_total{outcome}` | Dashboard sign-ins |
+
+No label carries an address, token, handle, device, or payload. Devices
+are counted in memory by the id their credential carries, an attested App
+Attest key, hashed under a key drawn at start, never written down or
+logged, and at most 131,072 of each kind; a restart starts every count
+again. The 7-day count reaches its full meaning only after a week of
+uptime.
+
+To turn them on for a relay that has none, add the token to the secrets
+directory you keep offline and install it as usual:
+
+```sh
+(umask 077; openssl rand -hex 32 > ~/sheprd-push-sandbox/dashboard-token)
+deploy/push-relay/install-secrets.sh ~/sheprd-push-sandbox root@RESERVED_IP
+```
 
 ## Recovery
 

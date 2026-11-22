@@ -8,18 +8,18 @@ import WidgetKit
 /// while the turn works. Amber with an Open button when a question waits;
 /// a check and the summary when the turn finished.
 struct LockScreenView: View {
-    let attributes: ChatActivityAttributes
+    let facts: ChatActivityFacts
     let state: ChatActivityState
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                AgentBadge(agent: attributes.agent)
-                Text(attributes.facts.place)
+                AgentBadge(agent: facts.agent)
+                Text(facts.place)
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
                 Spacer(minLength: 4)
-                Text(attributes.agent)
+                Text(facts.agent)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -41,7 +41,7 @@ struct LockScreenView: View {
             if state.phase == .working || state.phase == .finished {
                 TurnProgress(state: state)
             }
-            AnswerButtons(attributes: attributes, state: state)
+            AnswerButtons(facts: facts, state: state)
         }
         .padding(14)
         .background(state.phase == .question ? Palette.question.opacity(0.18) : Color.clear)
@@ -69,7 +69,7 @@ struct LockScreenView: View {
     private var action: some View {
         switch state.phase {
         case .question:
-            Link(destination: attributes.link.url) {
+            Link(destination: facts.link.url) {
                 Text("Open")
                     .font(.subheadline.weight(.semibold))
                     .padding(.horizontal, 14)
@@ -78,7 +78,7 @@ struct LockScreenView: View {
                     .foregroundStyle(.black)
             }
         case .finished:
-            Link(destination: attributes.link.url) {
+            Link(destination: facts.link.url) {
                 Text("Reply")
                     .font(.subheadline.weight(.semibold))
                     .padding(.horizontal, 14)

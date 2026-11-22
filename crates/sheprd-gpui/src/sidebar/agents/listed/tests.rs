@@ -76,6 +76,7 @@ fn core<'a>(
             .iter()
             .map(|agent| CoreAgent {
                 agent,
+                core: Some("core-1"),
                 session,
                 snapshot: None,
                 info: None,

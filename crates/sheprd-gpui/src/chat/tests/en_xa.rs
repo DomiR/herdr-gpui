@@ -34,6 +34,7 @@ fn working() -> ServerMessage {
             kind: EntryKind::User {
                 text: PROMPT.into(),
                 files: 0,
+                note: None,
             },
         },
         agent(2, ANSWER),

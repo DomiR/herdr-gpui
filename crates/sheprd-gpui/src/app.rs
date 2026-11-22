@@ -174,7 +174,9 @@ pub(crate) fn install_services(personal: bool, cx: &mut App) {
         // Machines added over Bluetooth are reached through their relays.
         crate::remote::nearby::desktop::install(cx);
         crate::device_tags::DeviceTags::install(cx);
+        crate::agent_favorites::AgentFavorites::install(cx);
         crate::relay_sharing::RelaySharing::install(cx);
+        crate::fleet::Fleet::install(cx);
         // Nor do they read the user's agent sessions.
         crate::traces::service::Service::install(cx);
         crate::text_shortcuts::Store::install(cx);
@@ -318,9 +320,10 @@ pub(crate) fn run() -> std::process::ExitCode {
         return exit;
     }
     // A build with the `moonframe` feature opens the Luau window on a plain
-    // launch; everything else stays the app's own.
+    // launch, unless the user chose the classic one; everything else stays
+    // the app's own.
     #[cfg(feature = "moonframe")]
-    if crate::luau_window::wanted(&args) {
+    if crate::luau_window::wanted(&args, crate::luau_window::chosen) {
         // Windows reopens it after an update or a restart, as the app's
         // own window; a `--check` of the layout is no launch.
         if args.is_empty() {
@@ -342,7 +345,7 @@ pub(crate) fn run() -> std::process::ExitCode {
         Err(error) => {
             eprintln!(
                 // i18n: data
-                "{error}\nUsage: sheprd [--socket CLIENT_SOCKET | --session NAME [--dev]]\n       sheprd browser open URL [--workspace ID] [--no-focus]\n       sheprd COMMAND ... (see sheprd --help)"
+                "{error}\nUsage: sheprd [--classic] [--socket CLIENT_SOCKET | --session NAME [--dev]]\n       sheprd browser open URL [--workspace ID] [--focus]\n       sheprd COMMAND ... (see sheprd --help)"
             );
             return std::process::ExitCode::from(2);
         }
@@ -388,11 +391,15 @@ pub(crate) fn run() -> std::process::ExitCode {
     if mode == LaunchMode::Help {
         println!(
             // i18n: data
-            "sheprd [--socket CLIENT_SOCKET | --session NAME [--dev]]\nConnects to Local and saved SSH hosts; never installs remote software.\nStarts the local Herdr daemon if needed; never stops it.\nExplicit --socket and --dev targets are attach-only; --socket isolates the GUI to one existing daemon."
+            "sheprd [--classic] [--socket CLIENT_SOCKET | --session NAME [--dev]]\nConnects to Local and saved SSH hosts; never installs remote software.\nStarts the local Herdr daemon if needed; never stops it.\nExplicit --socket and --dev targets are attach-only; --socket isolates the GUI to one existing daemon."
         );
         println!(
             // i18n: data
             "  --build-info        Print the executable's build identity without starting the GUI"
+        );
+        println!(
+            // i18n: data
+            "  --classic           Open the classic window rather than the Moonframe one"
         );
         println!(
             // i18n: data

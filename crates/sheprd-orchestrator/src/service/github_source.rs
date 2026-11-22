@@ -9,7 +9,7 @@ use super::{
 };
 use crate::Checkpoint;
 use chrono::Utc;
-use sheprd_github::Tokens;
+use sheprd_github::{ServerToken, Tokens};
 use std::{
     sync::{Arc, atomic::Ordering},
     time::Instant,
@@ -34,7 +34,9 @@ impl Worker {
             .repository
             .split_once('/')
             .map_or(key.repository.as_str(), |(owner, _)| owner);
-        let token = tokens.for_owner(owner);
+        let Some(token) = tokens.for_host(&key.host, owner) else {
+            return Ok(SyncState::SignIn);
+        };
         // A listing shown from memory continues from its own checkpoint;
         // else what the last complete sync stored, which a read-only store
         // cannot give.
@@ -115,7 +117,7 @@ impl Worker {
     fn read_checks(
         &mut self,
         key: &SourceKey,
-        token: &secrecy::SecretString,
+        token: &ServerToken,
         items: &[crate::Item],
     ) -> Result<()> {
         let open = schedule::open_pulls(items);

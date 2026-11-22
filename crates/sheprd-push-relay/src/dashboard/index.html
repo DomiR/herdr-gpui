@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Sheprd push relay</title>
+<link rel="stylesheet" href="/dashboard/style.css">
+<link rel="icon" href="/dashboard/icon.svg" type="image/svg+xml">
+<script src="/dashboard/app.js" defer></script>
+</head>
+<body class="viz-root">
+<header>
+  <h1>Sheprd push relay <span id="version" class="muted"></span></h1>
+  <span id="status" class="muted" aria-live="polite">Loading…</span>
+  <form method="post" action="/dashboard/logout"><button type="submit">Sign out</button></form>
+</header>
+<main>
+  <section class="tiles" aria-label="Now">
+    <div class="tile"><span class="label">Active devices, 24 hours</span><span class="value" id="active-day">–</span><span class="note" id="active-week"></span></div>
+    <div class="tile"><span class="label">Attested devices</span><span class="value" id="attested">–</span><span class="note" id="untracked">since the relay started</span></div>
+    <div class="tile"><span class="label">Pushes delivered</span><span class="value" id="delivered">–</span><span class="note" id="pushes"></span></div>
+    <div class="tile"><span class="label">Rate limited</span><span class="value" id="limited">–</span><span class="note">requests refused by a limit</span></div>
+    <div class="tile"><span class="label">Up</span><span class="value" id="uptime">–</span><span class="note" id="environment"></span></div>
+  </section>
+  <p class="muted">Devices are counted in memory by attested key, never named, and start again from zero when the relay restarts.</p>
+
+  <div class="columns">
+    <section aria-labelledby="pushes-title">
+      <h2 id="pushes-title">Pushes by reply</h2>
+      <table><tbody id="push-replies"></tbody></table>
+    </section>
+    <section aria-labelledby="kinds-title">
+      <h2 id="kinds-title">Pushes by type</h2>
+      <table><tbody id="kinds"></tbody></table>
+    </section>
+    <section aria-labelledby="attestations-title">
+      <h2 id="attestations-title">Attestations</h2>
+      <table><tbody id="attestations"></tbody></table>
+    </section>
+    <section aria-labelledby="challenges-title">
+      <h2 id="challenges-title">Challenges</h2>
+      <table><tbody id="challenges"></tbody></table>
+    </section>
+    <section aria-labelledby="revocations-title">
+      <h2 id="revocations-title">Revocations by reply</h2>
+      <table><tbody id="revocations"></tbody></table>
+    </section>
+    <section aria-labelledby="limits-title">
+      <h2 id="limits-title">Rate limits</h2>
+      <table><tbody id="limits"></tbody></table>
+    </section>
+  </div>
+</main>
+</body>
+</html>

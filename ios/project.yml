@@ -35,8 +35,11 @@ targets:
       - Shared
     dependencies:
       - package: SheprdRemoteCore
-      # The modules only the app links: GitHub, nearby pairing, relays,
-      # terminal input, and voice commands. The extensions need Core alone.
+      # The modules only the app links: the fleet log, GitHub, nearby
+      # pairing, relays, terminal input, and voice commands. The extensions
+      # need Core alone.
+      - package: SheprdRemoteCore
+        product: SheprdFleetLog
       - package: SheprdRemoteCore
         product: SheprdGitHub
       - package: SheprdRemoteCore
@@ -108,6 +111,11 @@ targets:
         com.apple.security.application-groups: [group.so.pen.herdr.remote]
         # Questions interrupt Focus, as a waiting agent should.
         com.apple.developer.usernotifications.time-sensitive: true
+        # The push relay takes App Attest's word that this is the real app.
+        # Development builds attest in development and use the sandbox push
+        # relay; TestFlight and App Store builds always attest in
+        # production, whatever this says.
+        com.apple.developer.devicecheck.appattest-environment: development
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: so.pen.herdr.remote
@@ -187,8 +195,10 @@ targets:
     platform: iOS
     sources:
       - SheprdRemoteNotifications
+      - path: Shared/AlertSweep.swift
       - path: Shared/NotifyKey.swift
       - path: Shared/NotificationCategories.swift
+      - path: Shared/PushRelaySetting.swift
     dependencies:
       - package: SheprdRemoteCore
     info:
@@ -202,14 +212,22 @@ targets:
         NSExtension:
           NSExtensionPointIdentifier: com.apple.usernotifications.service
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
+        # YES once the filtering entitlement below is granted and added: a
+        # repeated alert is then dropped instead of replacing the first.
+        SheprdFiltersRepeats: $(SHEPRD_FILTERS_REPEATS)
     entitlements:
       path: SheprdRemoteNotifications/SheprdRemoteNotifications.entitlements
       properties:
         # The App Group is also the keychain group the alert key is in.
         com.apple.security.application-groups: [group.so.pen.herdr.remote]
+        # Requested from Apple (ios/README.md, Notification filtering); add
+        # `com.apple.developer.usernotifications.filtering: true` here and
+        # set SHEPRD_FILTERS_REPEATS to YES once it is granted. Signing
+        # fails while the provisioning profile lacks it.
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: so.pen.herdr.remote.notifications
+        SHEPRD_FILTERS_REPEATS: "NO"
 
   SheprdRemoteWidgets:
     type: app-extension

@@ -26,6 +26,7 @@ pub use cidr::{Cidr, parse_list};
 
 use crate::{bucket::source_key, metrics::Offense};
 use serde::Serialize;
+pub use sheprd_dashboard::limit::wide_key;
 use std::{
     collections::HashMap,
     net::IpAddr,
@@ -235,20 +236,6 @@ pub struct Guard {
     /// addresses while every record is an active ban, so newcomers are
     /// still judged then.
     wide: Mutex<HashMap<IpAddr, Record>>,
-}
-
-/// The wide block `address` falls in: its IPv6 /48 or IPv4 /24, where an
-/// attacker's many addresses usually sit together.
-#[must_use]
-pub fn wide_key(address: IpAddr) -> IpAddr {
-    match address.to_canonical() {
-        IpAddr::V4(address) => {
-            IpAddr::V4(std::net::Ipv4Addr::from(u32::from(address) & 0xffff_ff00))
-        }
-        IpAddr::V6(address) => IpAddr::V6(std::net::Ipv6Addr::from(
-            u128::from(address) & !((1u128 << 80) - 1),
-        )),
-    }
 }
 
 /// Whether an address is one automatic bans leave alone.

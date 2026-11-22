@@ -20,6 +20,7 @@ fn running() -> ServerMessage {
         kind: EntryKind::User {
             text: "Fix it".into(),
             files: 0,
+            note: None,
         },
     }];
     ServerMessage::Snapshot {

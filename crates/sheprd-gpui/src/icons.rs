@@ -342,6 +342,7 @@ embedded_icons! {
     "sessions.svg",
     "settings.svg",
     "shield.svg",
+    "sparkles.svg",
     "split.svg",
     "star-full.svg",
     "star.svg",
@@ -392,6 +393,8 @@ impl AssetSource for Icons {
             .collect())
     }
 }
+
+pub(crate) mod hosted;
 
 #[cfg(test)]
 mod tests {

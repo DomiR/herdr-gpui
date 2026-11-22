@@ -7,12 +7,14 @@
 //! host, and the supervisor takes each request and runs a job here. A job:
 //! - copies this app's `herdr-remote-control` into the host's home when the
 //!   host lacks this exact build (`crate::host_build`);
-//! - runs `herdr-remote-control enroll` there with the phone's key, this
-//!   computer's name, and this daemon's APNs key, which starts the host's
-//!   daemon when it does not run, adds the phone, and then turns on
+//! - runs `herdr-remote-control enroll` there with the phone's key and this
+//!   computer's name, which starts the host's daemon when it does not run, adds the phone, and then turns on
 //!   `[remote]` in the host's Sheprd settings, creating them when missing;
 //! - hands the host's answer (its fingerprint and addresses) back to this
 //!   daemon, which the phone reads.
+//!
+//! No APNs key goes along: the host notifies the phone through the push
+//! relay, as every computer does.
 //!
 //! Revoking the phone here owes each host a revocation, which a job carries
 //! out with `herdr-remote-control revoke` once the host can be reached.
@@ -26,7 +28,7 @@ pub(crate) mod relay;
 use crate::{automations::Machine, host_build, teleport::Host};
 use sheprd_client::{ConnectTarget, ScriptLimits, shell_quote};
 use sheprd_remote_control::{
-    app::enroll::{Apns, Input},
+    app::enroll::Input,
     control::{
         DeviceId,
         hosts::{self, Enroll, Enrolled, HostOutcome, HostPairing},
@@ -132,7 +134,6 @@ pub(crate) struct Job {
     pub(crate) target: Option<ConnectTarget>,
     /// This computer's name, kept beside the phone on the host.
     pub(crate) via: String,
-    pub(crate) apns: Option<Apns>,
 }
 
 /// Runs `job`; how it ended, for the daemon to tell the phone.
@@ -158,7 +159,6 @@ fn enroll(job: &Job, cancelled: &AtomicBool) -> Result<Enrolled, Error> {
             via: job.via.clone(),
             replace: job.pairing.replace.clone(),
         },
-        apns: job.apns.clone(),
     };
     let input = serde_json::to_vec(&input).map_err(Error::Answer)?;
     let mut output = Vec::new();

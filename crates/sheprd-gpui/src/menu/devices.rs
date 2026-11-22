@@ -20,13 +20,14 @@ pub(super) mod picker;
 pub(super) mod rail;
 mod saved_warning;
 mod scope;
-mod setup;
+pub(crate) mod setup;
 mod wsl;
 
 pub(super) use add_device::Setup;
 pub(crate) use error::Error;
 pub(crate) use host_menu::HostMenu;
 pub(super) use nearby::NearbySetup;
+pub(crate) use picker::LineAction;
 pub(crate) use scope::DeviceScope;
 pub(super) use wsl::WslSetup;
 
@@ -45,6 +46,17 @@ fn multi_select_hint() -> String {
     } else {
         fl!("devices-multi-select")
     }
+}
+
+/// The footer's initials for `label`: the first letters of its first two
+/// words.
+fn footer_initials(label: &str) -> String {
+    label
+        .split_whitespace()
+        .filter_map(|word| word.chars().next())
+        .take(2)
+        .flat_map(char::to_uppercase)
+        .collect()
 }
 
 /// Why Add Device cannot open in this window.
@@ -284,6 +296,28 @@ impl SheprdWindow {
         .size_full()
     }
 
+    /// What the footer's picker names: the one device listed, how many are,
+    /// or All Devices.
+    fn device_footer_label(&self) -> String {
+        let picked = self.device_filter.picked().count();
+        match self.device_filter.picked().next() {
+            Some(id) if picked == 1 => self
+                .endpoints
+                .iter()
+                .find(|endpoint| endpoint.id == id)
+                .map_or_else(|| fl!("devices-all"), |e| e.label.clone()),
+            Some(_) => fl!("devices-picked", count = picked),
+            None => fl!("devices-all"),
+        }
+    }
+
+    /// Whether a listed device is connected, which the footer's dot shows.
+    fn device_footer_connected(&self) -> bool {
+        self.endpoints.iter().any(|endpoint| {
+            self.device_visible(&endpoint.id) && endpoint.live.status.is_connected()
+        })
+    }
+
     pub(crate) fn render_device_footer(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let button_bounds = std::rc::Rc::new(std::cell::Cell::new(Bounds::<Pixels>::default()));
         let painted_bounds = button_bounds.clone();
@@ -302,29 +336,13 @@ impl SheprdWindow {
             .into();
         let foreground = self.theme.foreground;
         let surface = self.theme.surface;
-        let picked = self.device_filter.picked().count();
-        let label = match self.device_filter.picked().next() {
-            Some(id) if picked == 1 => self
-                .endpoints
-                .iter()
-                .find(|endpoint| endpoint.id == id)
-                .map_or_else(|| fl!("devices-all"), |e| e.label.clone()),
-            Some(_) => fl!("devices-picked", count = picked),
-            None => fl!("devices-all"),
-        };
-        let connected = self.endpoints.iter().any(|endpoint| {
-            self.device_visible(&endpoint.id) && endpoint.live.status.is_connected()
-        });
+        let label = self.device_footer_label();
+        let connected = self.device_footer_connected();
         // Beside the activity bar, which carries Settings, the picker leads
         // with the device's initials and says how many hosts there are.
         let bar = self.activity_bar_shown();
         let hosts = self.endpoints.len();
-        let initials: String = label
-            .split_whitespace()
-            .filter_map(|word| word.chars().next())
-            .take(2)
-            .flat_map(char::to_uppercase)
-            .collect();
+        let initials = footer_initials(&label);
         div()
             .id("device-footer")
             .debug_selector(|| "device-footer".into())

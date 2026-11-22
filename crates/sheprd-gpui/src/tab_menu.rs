@@ -359,6 +359,7 @@ impl SheprdWindow {
                     tab.error = None;
                 }
                 self.menu.page = Some(Page::RenameTab);
+                self.offer_naming(crate::naming::Field::Tab);
                 cx.notify();
             }
         }
@@ -480,6 +481,28 @@ impl SheprdWindow {
             return;
         };
         self.move_tab(destination, window, cx);
+    }
+
+    /// The panes of the tab the menu is about, for naming it.
+    pub(crate) fn tab_menu_panes(&self) -> Option<Vec<String>> {
+        self.menu.tab.as_ref().map(|tab| tab.target.panes.clone())
+    }
+
+    /// What the rename page's field holds.
+    pub(crate) fn tab_rename_text(&self, cx: &App) -> Option<String> {
+        let input = self.menu.tab.as_ref()?.input.as_ref()?;
+        Some(input.read(cx).text().to_owned())
+    }
+
+    /// Puts `name` in the rename page's field, selected so typing replaces
+    /// it; a rename already sent keeps what it sent.
+    pub(crate) fn fill_tab_rename(&mut self, name: &str, cx: &mut Context<Self>) {
+        let Some(tab) = self.menu.tab.as_ref().filter(|tab| tab.pending.is_none()) else {
+            return;
+        };
+        if let Some(input) = tab.input.clone() {
+            input.update(cx, |input, cx| input.set_text_selected(name, cx));
+        }
     }
 
     fn submit_tab_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -756,6 +779,9 @@ impl SheprdWindow {
                         } else {
                             body.child(input)
                         }
+                    })
+                    .when(tab.pending.is_none(), |body| {
+                        body.children(self.render_naming(cx))
                     })
                     .child(
                         div()

@@ -17,9 +17,18 @@ final class AppDelegate: NSObject, UIApplicationDelegate, @preconcurrency UNUser
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         AppLock.migrate()
+        PushRelaySetting.applyDefault()
         AppModel.current = model
         UNUserNotificationCenter.current().delegate = self
         Task { await NotificationCategories.register(.finished) }
+        // Late copies of alerts the extension could not drop, at launch and
+        // whenever the app comes back, whichever window it comes back to.
+        Task { await AlertSweep.run() }
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { _ in
+            Task { await AlertSweep.run() }
+        }
         #if DEBUG
         if followDebugArguments() { return true }
         #endif
@@ -28,8 +37,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate, @preconcurrency UNUser
     }
 
     /// Asks once to show alerts, then registers for the APNs token the
-    /// paired computers seal alerts to.
-    static func enableAlerts() async {
+    /// paired computers seal alerts to. Whether alerts are allowed.
+    @discardableResult
+    static func enableAlerts() async -> Bool {
         let center = UNUserNotificationCenter.current()
         var options: UNAuthorizationOptions = [.alert, .badge, .sound]
         #if DEBUG
@@ -38,6 +48,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, @preconcurrency UNUser
         #endif
         let granted = (try? await center.requestAuthorization(options: options)) ?? false
         if granted { UIApplication.shared.registerForRemoteNotifications() }
+        return granted
     }
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
@@ -54,6 +65,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, @preconcurrency UNUser
         _ application: UIApplication,
         didReceiveRemoteNotification userInfo: [AnyHashable: Any]
     ) async -> UIBackgroundFetchResult {
+        await AlertSweep.run()
         guard let sealed = userInfo["sealed"] as? String,
               let opened = try? NotifyKey.open(sealed)
         else { return .noData }

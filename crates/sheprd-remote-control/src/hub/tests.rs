@@ -84,13 +84,24 @@ fn herdr_errors_keep_a_bounded_message() {
 #[cfg(unix)]
 #[test]
 fn chat_lines_run_the_program_without_trusting_its_path_as_shell() {
+    use sheprd_client::agent_choice::AgentChoice;
+    let launcher = |program: &str, choice| Launcher {
+        program: PathBuf::from(program),
+        choice,
+    };
+    let fixed = launcher("/bin/herdr-acp", AgentChoice::Fixed);
     assert_eq!(
-        command_line(Agent::Claude),
+        command_line(&fixed, Agent::Claude),
         " sh -c 'exec \"$HERDR_ACP\" claude'"
     );
+    let open = launcher("/opt/it's/herdr-acp", AgentChoice::Open);
     assert_eq!(
-        direct_command_line(Path::new("/opt/it's/herdr-acp"), Agent::Codex),
-        " '/opt/it'\\''s/herdr-acp' codex"
+        command_line(&open, Agent::Claude),
+        " sh -c 'exec \"$HERDR_ACP\" --choose claude'"
+    );
+    assert_eq!(
+        direct_command_line(&open, Agent::Codex),
+        " '/opt/it'\\''s/herdr-acp' --choose codex"
     );
 }
 

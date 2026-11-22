@@ -40,6 +40,9 @@ struct Target {
     repository: Option<carry::PaneRepository>,
     /// Other devices the pane can move to, listed after `choices`.
     devices: Vec<carry::Device>,
+    /// Whether the agent in the pane is a favorite on its device; `None`
+    /// when no agent runs there (`agent_favorites`).
+    favorite: Option<bool>,
 }
 
 impl Target {
@@ -69,6 +72,7 @@ impl Target {
             choices: crate::pane_move::choices(snapshot, &pane.tab_id),
             repository: carry::PaneRepository::of(snapshot, &pane.workspace_id),
             devices: Vec::new(),
+            favorite: None,
         };
         target.validate(snapshot).ok()?;
         Some(target)
@@ -101,6 +105,8 @@ impl Target {
 #[derive(Clone, Copy)]
 enum Action {
     Rename,
+    /// Stars or unstars the agent in the pane on its device.
+    Favorite,
     SplitRight,
     SplitDown,
     Swap,
@@ -146,6 +152,7 @@ impl Action {
                 }),
             ),
             Self::Rename
+            | Self::Favorite
             | Self::MoveToNewTab
             | Self::MoveToNewWorkspace
             | Self::MoveTo
@@ -158,6 +165,8 @@ impl Action {
     fn label(self, target: &Target) -> String {
         match self {
             Self::Rename => fl!("pane-menu-rename"),
+            Self::Favorite if target.favorite == Some(true) => fl!("agent-favorites-remove"),
+            Self::Favorite => fl!("agent-favorites-add"),
             Self::SplitRight => fl!("pane-menu-split-right"),
             Self::SplitDown => fl!("pane-menu-split-down"),
             Self::Swap => fl!("pane-menu-swap"),
@@ -177,8 +186,9 @@ impl Action {
     }
 }
 
-const ACTIONS: [Action; 12] = [
+const ACTIONS: &[Action] = &[
     Action::Rename,
+    Action::Favorite,
     Action::SplitRight,
     Action::SplitDown,
     Action::Swap,
@@ -199,8 +209,10 @@ impl PaneMenu {
     /// processes on this machine.
     fn actions(&self) -> Vec<Action> {
         ACTIONS
-            .into_iter()
+            .iter()
+            .copied()
             .filter(|action| match action {
+                Action::Favorite => self.target.favorite.is_some(),
                 Action::Swap => self.target.focused.is_some(),
                 Action::MoveToNewTab | Action::MoveToNewWorkspace => self.movable,
                 Action::MoveTo => {
@@ -276,6 +288,7 @@ impl SheprdWindow {
             return;
         };
         target.devices = self.carry_devices(target.repository.as_ref());
+        target.favorite = self.pane_favorite(&target.pane);
         if !self.open_menu(window, cx) {
             return;
         }
@@ -442,6 +455,18 @@ impl SheprdWindow {
                 }
             }
             Action::Processes => self.open_pane_processes(cx),
+            Action::Favorite => {
+                if let Some(favorite) = target.favorite {
+                    let endpoint = self.endpoints[self.selected_endpoint].id.clone();
+                    crate::agent_favorites::AgentFavorites::set(
+                        cx,
+                        &endpoint,
+                        target.pane,
+                        !favorite,
+                    );
+                }
+                self.dismiss_menu(window, cx);
+            }
             Action::EditScrollback => {
                 let result = (|| {
                     if !self.live.supports_edit_scrollback {

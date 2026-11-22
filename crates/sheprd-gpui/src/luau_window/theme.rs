@@ -81,14 +81,14 @@ fn config(palette: &Palette) -> ThemeConfig {
     colors.title_bar = Some(color(sidebar));
     colors.title_bar_border = Some(blend(14));
     colors.warning = Some(color(warning));
-    ThemeConfig {
-        colors,
-        font_family: Some(palette.font_family.clone().into()),
-        font_size: Some(palette.font_size),
-        mode: mode(dark),
-        name: "Sheprd".into(),
-        ..ThemeConfig::default()
-    }
+    // `ThemeConfig` is non-exhaustive: start from its default.
+    let mut config = ThemeConfig::default();
+    config.colors = colors;
+    config.font_family = Some(palette.font_family.clone().into());
+    config.font_size = Some(palette.font_size);
+    config.mode = mode(dark);
+    config.name = "Sheprd".into();
+    config
 }
 
 fn mode(dark: bool) -> ThemeMode {

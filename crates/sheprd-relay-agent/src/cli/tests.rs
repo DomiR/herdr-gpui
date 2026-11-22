@@ -153,3 +153,47 @@ fn a_state_dir_need_not_be_utf8() {
     let invocation = parse(["status".into(), "--state-dir".into(), dir.clone()]).unwrap();
     assert_eq!(invocation.state_dir, Some(PathBuf::from(dir)));
 }
+
+#[test]
+fn fleet_apply_takes_where_the_lines_go() {
+    assert_eq!(
+        parse_words(&["fleet", "apply"]).unwrap().command,
+        Command::FleetApply {
+            authorized_keys: None
+        }
+    );
+    assert_eq!(
+        parse_words(&["fleet", "apply", "--authorized-keys", "/k"])
+            .unwrap()
+            .command,
+        Command::FleetApply {
+            authorized_keys: Some(PathBuf::from("/k"))
+        }
+    );
+    assert_eq!(parse_words(&["fleet"]), Err(Error::MissingValue("fleet")));
+    assert_eq!(
+        parse_words(&["fleet", "join"]),
+        Err(Error::Unexpected("join".to_owned()))
+    );
+}
+
+#[test]
+fn run_takes_where_the_lines_go_and_status_does_not() {
+    let Command::Run(run) = parse_words(&[
+        "run",
+        "--relay",
+        "relay.example.org",
+        "--authorized-keys",
+        "/k",
+    ])
+    .unwrap()
+    .command
+    else {
+        panic!("not run");
+    };
+    assert_eq!(run.authorized_keys, Some(PathBuf::from("/k")));
+    assert_eq!(
+        parse_words(&["status", "--authorized-keys", "/k"]),
+        Err(Error::Unexpected("--authorized-keys".to_owned()))
+    );
+}

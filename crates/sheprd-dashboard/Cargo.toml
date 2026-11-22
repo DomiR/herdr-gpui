@@ -1,0 +1,30 @@
+[package]
+description            = "The relays' read-only operator dashboard behind one access token, and their Prometheus text"
+edition.workspace      = true
+license.workspace      = true
+name                   = "sheprd-dashboard"
+publish.workspace      = true
+rust-version.workspace = true
+version.workspace      = true
+
+[lints]
+workspace = true
+
+[dependencies]
+axum.workspace             = true
+base64.workspace           = true
+futures-util               = { features = ["std"], workspace = true }
+getrandom.workspace        = true
+hmac.workspace             = true
+percent-encoding.workspace = true
+serde.workspace            = true
+serde_json.workspace       = true
+sha2.workspace             = true
+thiserror.workspace        = true
+tokio.workspace            = true
+tracing.workspace          = true
+
+[dev-dependencies]
+http-body-util.workspace = true
+tokio                    = { features = ["test-util"], workspace = true }
+tower.workspace          = true

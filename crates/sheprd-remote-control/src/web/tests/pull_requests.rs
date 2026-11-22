@@ -19,6 +19,7 @@ fn badge() -> PullRequests {
             tone: Tone::Held,
         }],
         unopened: Vec::new(),
+        uncommitted: Vec::new(),
     }
 }
 

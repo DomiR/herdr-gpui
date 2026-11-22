@@ -273,11 +273,12 @@ pub(super) struct Check {
 
 impl Check {
     /// The GitHub Actions job this check ran as, if it did: other apps'
-    /// check runs have ids too, but no log GitHub serves.
-    fn job(&self) -> Option<u64> {
+    /// check runs have ids too, but no log GitHub serves. `web` is the
+    /// address of the server the pull request is on.
+    fn job(&self, web: &str) -> Option<u64> {
         self.database_id
             .filter(|_| self.kind == CheckKind::CheckRun)
-            .filter(|_| self.url.as_deref().is_some_and(actions_url))
+            .filter(|_| self.url.as_deref().is_some_and(|url| actions_url(url, web)))
     }
 
     pub(super) fn outcome(&self) -> Outcome {
@@ -289,9 +290,11 @@ impl Check {
     }
 }
 
-/// Whether `url` is a run on GitHub Actions, as its check runs link to.
-fn actions_url(url: &str) -> bool {
-    url.strip_prefix("https://github.com/")
+/// Whether `url` is a run on GitHub Actions on the server at `web`, as its
+/// check runs link to.
+fn actions_url(url: &str, web: &str) -> bool {
+    url.strip_prefix(web)
+        .and_then(|path| path.strip_prefix('/'))
         .is_some_and(|path| path.contains("/actions/runs/"))
 }
 
@@ -509,15 +512,25 @@ impl PullRequest {
             .map(|check| (check.name.as_str(), check.outcome()))
     }
 
+    /// The address of the server the pull request is on, from its verified
+    /// URL, such as `https://github.com`.
+    fn web(&self) -> &str {
+        self.url
+            .strip_prefix("https://")
+            .and_then(|rest| rest.find('/'))
+            .map_or("", |end| &self.url[.."https://".len() + end])
+    }
+
     /// [`Self::check_list`] with what a person can follow each check to.
     pub fn check_details(&self) -> impl Iterator<Item = CheckDetail<'_>> {
+        let web = self.web();
         self.status_check_rollup
             .iter()
             .flatten()
             .map(|check| CheckDetail {
                 name: &check.name,
                 outcome: check.outcome(),
-                job: check.job(),
+                job: check.job(web),
                 url: check.url.as_deref(),
             })
     }

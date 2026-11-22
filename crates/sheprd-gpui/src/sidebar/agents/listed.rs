@@ -24,6 +24,9 @@ pub(crate) enum Listed<'a> {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct CoreAgent<'a> {
     pub(crate) agent: &'a Agent,
+    /// The id of the core it runs on, while that core answers: favorites
+    /// name its terminal by it (`control::favorites::core_pane`).
+    pub(crate) core: Option<&'a str>,
     pub(crate) session: &'a Session,
     /// The host's Herdr 1 snapshot, whose workspaces a Herdr 2 tab opened
     /// in one of them is placed in.
@@ -40,6 +43,18 @@ impl<'a> Listed<'a> {
         match self {
             Self::Herdr1 { agent, .. } => &agent.pane_id,
             Self::Core(core) => &core.agent.pane,
+        }
+    }
+
+    /// What its host's daemon keeps it among favorites by: the Herdr 1
+    /// pane, or the herdr-core terminal named with its core's id. `None`
+    /// while that core does not answer.
+    pub(crate) fn favorite_key(&self) -> Option<String> {
+        match self {
+            Self::Herdr1 { agent, .. } => Some(agent.pane_id.clone()),
+            Self::Core(core) => core.core.map(|id| {
+                sheprd_remote_control::control::favorites::core_pane(id, &core.agent.pane)
+            }),
         }
     }
 

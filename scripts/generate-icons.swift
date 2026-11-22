@@ -105,12 +105,14 @@ for worktree in [false, true] {
   try compileAssetCatalog(name: name, worktree: worktree)
 }
 
-for name in ["sheprd-avatar", "sheprd-icon-badge", "sheprd-github-app"] {
+for name in ["sheprd-avatar", "sheprd-icon-badge", "sheprd-github-app", "sheprd-github-app-transparent"] {
   try render(artwork("\(name).svg", worktree: false), pixels: 1024, macOS: false)
     .write(to: assets.appendingPathComponent("\(name).png"))
 }
 try render(artwork("sheprd-github-app.svg", worktree: false), pixels: 200, macOS: false)
   .write(to: assets.appendingPathComponent("sheprd-github-app-200.png"))
+try render(artwork("sheprd-github-app-transparent.svg", worktree: false), pixels: 200, macOS: false)
+  .write(to: assets.appendingPathComponent("sheprd-github-app-transparent-200.png"))
 
 // iOS and watchOS supply their own masks. Their app icons must be opaque and
 // full-bleed, without desktop margins or pre-rounded corners.

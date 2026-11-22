@@ -2,6 +2,9 @@
 //! edges on the same device-pixel grid even with fractional cell metrics.
 use gpui::{Bounds, Path, PathBuilder, Pixels, Point, point, px};
 
+mod paths;
+pub(super) use paths::CellPath;
+
 #[derive(Clone, Copy)]
 pub(super) enum Graphic {
     // Left, right, up, down: absent (0), light (1), or heavy (2).

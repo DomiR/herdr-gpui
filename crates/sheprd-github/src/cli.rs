@@ -53,7 +53,7 @@ pub(super) fn profile() -> Result<Profile> {
 /// `token`'s account. GitHub refusing it means `gh` holds an expired or
 /// revoked token, which only `gh` can replace.
 pub(super) fn verify(token: SecretString) -> Result<Profile> {
-    profile_from(Arc::new(token), true).map_err(|error| match error {
+    profile_from(super::Server::GitHub, Arc::new(token), true).map_err(|error| match error {
         crate::Error::Authentication => Error::Rejected.into(),
         error => error,
     })

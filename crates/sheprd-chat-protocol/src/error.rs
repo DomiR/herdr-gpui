@@ -10,6 +10,8 @@ pub enum Error {
     ActivityLimit,
     #[error("an activity's text exceeds {} bytes", crate::MAX_ACTIVITY_TEXT)]
     ActivityText,
+    #[error(transparent)]
+    Brief(#[from] crate::brief::Error),
     #[error("permission request {0:?} is already pending")]
     DuplicatePermission(PermissionId),
     #[error("chat frame is empty")]

@@ -212,13 +212,14 @@ fn only_a_note_sheprd_wrote_is_split_off() {
 }
 
 #[test]
-fn hiding_notes_keeps_the_persons_words_and_drops_empty_messages() {
+fn hiding_notes_keeps_them_apart_from_the_persons_words_and_drops_empty_messages() {
     use sheprd_chat_protocol::{Entry, EntryId, EntryKind, Transcript};
-    let user = |id, text: &str, files| Entry {
+    let user = |id, text: &str, files, note: Option<&str>| Entry {
         id: EntryId(id),
         kind: EntryKind::User {
             text: text.to_owned(),
             files,
+            note: note.map(str::to_owned),
         },
     };
     let desktop = note_with("Be brief.", DESKTOP);
@@ -227,10 +228,10 @@ fn hiding_notes_keeps_the_persons_words_and_drops_empty_messages() {
     let typed = "<sheprd>example</sheprd> what is this?";
     let mut transcript = Transcript::new("Claude".to_owned());
     transcript.entries = vec![
-        user(1, &format!("{desktop}\nfirst"), 0),
-        user(2, &phone, 0),
-        user(3, &format!("{bare}\n\u{1f4ce} a.png"), 1),
-        user(4, typed, 0),
+        user(1, &format!("{desktop}\nfirst"), 0, None),
+        user(2, &phone, 0, None),
+        user(3, &format!("{bare}\n\u{1f4ce} a.png"), 1, None),
+        user(4, typed, 0, None),
     ];
     let told = hide(&mut transcript);
     assert_eq!(
@@ -245,9 +246,51 @@ fn hiding_notes_keeps_the_persons_words_and_drops_empty_messages() {
     assert_eq!(
         transcript.entries,
         vec![
-            user(1, "first", 0),
-            user(3, "\u{1f4ce} a.png", 1),
-            user(4, typed, 0),
+            user(1, "first", 0, Some(&desktop)),
+            user(3, "\u{1f4ce} a.png", 1, Some(&bare)),
+            user(4, typed, 0, None),
+        ]
+    );
+}
+
+#[test]
+fn a_note_kept_as_its_own_message_goes_to_the_words_right_after_it() {
+    use sheprd_chat_protocol::{Entry, EntryId, EntryKind, Transcript};
+    let user = |id, text: &str, note: Option<&str>| Entry {
+        id: EntryId(id),
+        kind: EntryKind::User {
+            text: text.to_owned(),
+            files: 0,
+            note: note.map(str::to_owned),
+        },
+    };
+    let first = note::wrap(None, "x\n");
+    let second = note::wrap(None, "y\n");
+    let mut transcript = Transcript::new("Claude".to_owned());
+    transcript.entries = vec![
+        user(1, &first, None),
+        user(2, "first", None),
+        user(3, &second, None),
+        Entry {
+            id: EntryId(4),
+            kind: EntryKind::Agent {
+                text: "ok".to_owned(),
+            },
+        },
+        user(5, "second", None),
+    ];
+    hide(&mut transcript);
+    assert_eq!(
+        transcript.entries,
+        vec![
+            user(2, "first", Some(&first)),
+            Entry {
+                id: EntryId(4),
+                kind: EntryKind::Agent {
+                    text: "ok".to_owned(),
+                },
+            },
+            user(5, "second", None),
         ]
     );
 }

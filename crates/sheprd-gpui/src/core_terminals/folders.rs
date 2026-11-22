@@ -116,8 +116,16 @@ impl SheprdWindow {
     /// last tick, once Git named its branch. `None` when no herdr-core tab
     /// is shown, or its pane is in no checkout or on a detached head.
     pub(crate) fn core_git_input(&self) -> Option<crate::pull_request::Input> {
-        let (tab, _) = self.core_terminals.shown.as_ref()?;
-        let host = self.core_terminals.host_of(*tab);
+        let (tab, terminal) = self.core_terminals.shown.as_ref()?;
+        self.core_pane_git_input(*tab, terminal)
+    }
+
+    pub(crate) fn core_pane_git_input(
+        &self,
+        tab: crate::browser::TabId,
+        terminal: &sheprd_backend::TerminalId,
+    ) -> Option<crate::pull_request::Input> {
+        let host = self.core_terminals.host_of(tab);
         if host
             != super::Host::of(&crate::browser::scope(
                 &self.endpoints[self.selected_endpoint],
@@ -125,7 +133,13 @@ impl SheprdWindow {
         {
             return None;
         }
-        let checkout = self.shown_core_folder()?;
+        let checkout = self
+            .core_terminals
+            .info(tab, terminal)?
+            .cwd
+            .as_ref()?
+            .to_str()?
+            .to_owned();
         let checkouts = match &host {
             super::Host::Local => &self.core_terminals.checkouts,
             super::Host::Remote(scope) => {

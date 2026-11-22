@@ -1,6 +1,7 @@
 use super::*;
 use crate::control::pull_requests::{
-    MAX_PULL_REQUESTS, PullRequests, Tone, UnopenedBranch, WorkspacePullRequest,
+    MAX_PULL_REQUESTS, PullRequests, Tone, UncommittedCheckout, UnopenedBranch,
+    WorkspacePullRequest,
 };
 
 fn snapshot() -> PullRequests {
@@ -15,6 +16,7 @@ fn snapshot() -> PullRequests {
             tone: Tone::Held,
         }],
         unopened: Vec::new(),
+        uncommitted: Vec::new(),
     }
 }
 
@@ -87,5 +89,32 @@ fn branches_waiting_for_a_pull_request_are_bounded() {
 fn an_older_app_sends_no_waiting_branches() {
     let value: PullRequests = serde_json::from_str(r#"{"boot_id":"boot","entries":[]}"#).unwrap();
     assert!(value.unopened.is_empty());
+    assert!(value.uncommitted.is_empty());
     assert!(value.valid());
+}
+
+fn uncommitted(id: &str) -> UncommittedCheckout {
+    UncommittedCheckout {
+        workspace_id: id.into(),
+        cwd: "/code/app".into(),
+        branch: "topic".into(),
+    }
+}
+
+#[test]
+fn checkouts_with_uncommitted_changes_are_bounded() {
+    let mut value = snapshot();
+    value.uncommitted.push(uncommitted("w1"));
+    assert!(value.valid());
+    value.uncommitted.push(uncommitted("w1"));
+    assert!(!value.valid(), "duplicate workspace identity");
+    value.uncommitted = vec![UncommittedCheckout {
+        cwd: String::new(),
+        ..uncommitted("w1")
+    }];
+    assert!(!value.valid(), "no checkout");
+    value.uncommitted = (0..=MAX_PULL_REQUESTS)
+        .map(|n| uncommitted(&format!("w{n}")))
+        .collect();
+    assert!(!value.valid());
 }

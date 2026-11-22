@@ -17,6 +17,7 @@ on:
     branches: [main]
     paths:
       - 'crates/sheprd-relay/**'
+      - 'crates/sheprd-dashboard/**'
       - 'Cargo.lock'
       - 'Cargo.toml'
       - 'rust-toolchain.toml'
@@ -30,6 +31,7 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'crates/sheprd-relay/**'
+      - 'crates/sheprd-dashboard/**'
       - 'Cargo.lock'
       - 'Cargo.toml'
       - 'rust-toolchain.toml'

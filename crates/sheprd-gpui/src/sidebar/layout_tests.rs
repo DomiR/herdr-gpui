@@ -49,6 +49,8 @@ mod device_tag_groups;
 #[cfg(test)]
 mod devices_layout;
 #[cfg(test)]
+mod favorite_agents;
+#[cfg(test)]
 mod fold_all_hosts;
 #[cfg(test)]
 mod gpu_line;
@@ -608,6 +610,7 @@ pub(crate) fn fixture_window(window: &mut Window, cx: &mut Context<SheprdWindow>
         chrome_region: None,
         hosted: false,
         chat_rail_width: crate::panel_resize::CHAT_RAIL,
+        chat_turns: Default::default(),
         chats: Default::default(),
         sound: Default::default(),
         bell: Default::default(),
@@ -672,6 +675,7 @@ pub(crate) fn fixture_window(window: &mut Window, cx: &mut Context<SheprdWindow>
         git: Default::default(),
         git_anchor: Default::default(),
         deliveries: Default::default(),
+        details_visible: false,
         terminal_notes: Default::default(),
         notes_width: crate::panel_resize::NOTES,
         notice_overflow: Default::default(),
@@ -751,6 +755,7 @@ pub(crate) fn fixture_window(window: &mut Window, cx: &mut Context<SheprdWindow>
         sent_focus: None,
         bounds: Bounds::default(),
         title: crate::WINDOW_TITLE.to_owned(),
+        titlebar_width: 0.,
         cell_width: 9.,
         hovered_terminal_link: false,
         pressed_terminal_link: None,
@@ -810,6 +815,7 @@ pub(crate) fn fixture_window(window: &mut Window, cx: &mut Context<SheprdWindow>
         sidebar_split_modified: false,
         sidebar_preferences: None,
         sidebar_modified: false,
+        agent_favorites: Default::default(),
         agent_group: None,
         agent_sort: Default::default(),
         agent_sort_modified: false,
@@ -837,6 +843,8 @@ pub(crate) fn fixture_window(window: &mut Window, cx: &mut Context<SheprdWindow>
         _notification_mutes: SheprdWindow::observe_notification_mutes(cx),
         browser: crate::browser::Browser::new(cx),
         _browser_tabs: cx.observe_global::<crate::browser::Store>(|_, cx| cx.notify()),
+        _agent_favorites: cx
+            .observe_global::<crate::agent_favorites::AgentFavorites>(|_, cx| cx.notify()),
         _device_tags: cx.observe_global::<crate::device_tags::DeviceTags>(|_, cx| cx.notify()),
         _worktree_notes: SheprdWindow::observe_worktree_notes(window, cx),
         prefix_armed: false,

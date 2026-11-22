@@ -9,6 +9,7 @@ public enum Expected: Hashable, Sendable {
     case autoAccept(Bool)
     case answer(PermissionId)
     case unqueue(UUID)
+    case agent(String)
 
     /// Which setting it changes: a newer command for the same one
     /// replaces an older one still on its way.
@@ -18,6 +19,7 @@ public enum Expected: Hashable, Sendable {
         case autoAccept
         case answer(PermissionId)
         case unqueue(UUID)
+        case agent
     }
 
     public init?(_ command: ChatCommand) {
@@ -27,6 +29,7 @@ public enum Expected: Hashable, Sendable {
         case let .setAutoAccept(on): self = .autoAccept(on)
         case let .answer(permission, _), let .answerQuestion(permission, _): self = .answer(permission)
         case let .unqueue(id): self = .unqueue(id)
+        case let .setAgent(agent): self = .agent(agent)
         case .prompt, .cancel, .stopActivity: return nil
         }
     }
@@ -38,6 +41,7 @@ public enum Expected: Hashable, Sendable {
         case .autoAccept: .autoAccept
         case let .answer(permission): .answer(permission)
         case let .unqueue(id): .unqueue(id)
+        case .agent: .agent
         }
     }
 
@@ -59,6 +63,8 @@ public enum Expected: Hashable, Sendable {
             return !transcript.permissions.contains { $0.id == permission }
         case let .unqueue(id):
             return !transcript.queued.contains { $0.id == id }
+        case let .agent(agent):
+            return transcript.harnesses?.current == agent
         }
     }
 
@@ -84,6 +90,9 @@ public enum Expected: Hashable, Sendable {
             transcript.permissions.removeAll { $0.id == permission }
         case let .unqueue(id):
             transcript.queued.removeAll { $0.id == id }
+        case let .agent(agent):
+            guard transcript.harnesses?.available.contains(agent) == true else { return }
+            transcript.harnesses?.current = agent
         }
     }
 }

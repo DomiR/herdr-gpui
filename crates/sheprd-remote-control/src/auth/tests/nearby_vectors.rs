@@ -61,7 +61,7 @@ fn leg(phone: &Phone, daemon: &SecretKey, daemon_nonce: [u8; 32], fingerprint: &
         daemon_nonce: &daemon_nonce,
         fingerprint: &fp,
     }
-    .reveal(&TOKEN, &origins(), None, &AES_NONCE)
+    .reveal(&TOKEN, &origins(), None, None, &AES_NONCE)
     .unwrap();
     json!({
         "phone_private_key": encode(&phone.secret.to_bytes()),
@@ -79,6 +79,7 @@ fn leg(phone: &Phone, daemon: &SecretKey, daemon_nonce: [u8; 32], fingerprint: &
             token: encode(&TOKEN),
             origins: &origins(),
             relay: None,
+            fleet: None,
         })
         .unwrap(),
         "sealed": encode(&revealed.sealed),

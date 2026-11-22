@@ -1,0 +1,20 @@
+settings-text-shortcuts-section = テキストショートカット
+settings-text-shortcuts-lead = よく送るプロンプトです。チャットで / を入力するか、+ の横にあるショートカットボタンを使います。メッセージが空のときはすぐに送信され、入力中のときはその内容に追加されます。リストは各コンピュータがすべてのデバイス用に保持するため、スマートフォンと接続中のすべてのコンピュータで同じリストを共有します。
+settings-text-shortcuts-add = ショートカットを追加
+settings-text-shortcuts-add-description = エージェントに作業の続行を頼むなど、よく送るテキストです。
+settings-text-shortcuts-add-button = 追加
+settings-text-shortcuts-full = 1 つのリストに登録できるショートカットは最大 {$count} 件です。
+settings-text-shortcuts-list = ショートカット
+settings-text-shortcuts-empty = ショートカットはまだありません。
+settings-text-shortcuts-title = タイトル
+settings-text-shortcuts-title-placeholder = メニューに表示（空欄の場合はテキストの冒頭）
+settings-text-shortcuts-text = テキスト
+settings-text-shortcuts-text-placeholder = エージェントに送信する内容
+# $count is how many characters the text has; $limit is the most a shortcut keeps.
+settings-text-shortcuts-length = { $count } / { $limit } 文字
+settings-text-shortcuts-up = 上へ
+settings-text-shortcuts-down = 下へ
+settings-text-shortcuts-edit = 編集
+settings-text-shortcuts-delete = 削除
+settings-text-shortcuts-cancel = キャンセル
+settings-text-shortcuts-save = 保存

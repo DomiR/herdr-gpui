@@ -446,7 +446,7 @@ fn install(
         },
         read_only: options.read_only || existing, // i18n: data
         entries: vec![
-            Entry { id: EntryId(1), kind: EntryKind::User { text: "Show the result with equations, clear formatting, and controls I can explore.".into(), files: 0 } }, // i18n: data
+            Entry { id: EntryId(1), kind: EntryKind::User { text: "Show the result with equations, clear formatting, and controls I can explore.".into(), files: 0, note: None} }, // i18n: data
             Entry { id: EntryId(2), kind: EntryKind::Agent { text: content } },
         ],
         ..Transcript::default()
@@ -537,6 +537,7 @@ fn install(
             kind: EntryKind::User {
                 text: USER.into(),
                 files: 0,
+                note: None,
             },
         }];
     }
@@ -816,6 +817,7 @@ fn attachment_entries() -> Result<Vec<Entry>> {
             kind: EntryKind::User {
                 text: "Can you explain this image and link the notes?".into(), // i18n: data
                 files: 0,
+                note: None,
             },
         },
         Entry {
@@ -835,6 +837,7 @@ fn earlier_turns() -> Vec<Entry> {
         kind: EntryKind::User {
             text: text.into(),
             files: 0,
+            note: None,
         },
     };
     let agent = |id, text: &str| Entry {
@@ -882,6 +885,7 @@ fn tool_entries() -> Vec<Entry> {
             kind: EntryKind::User {
                 text: "Why does the send button stay pink when the box is empty?".into(), // i18n: data
                 files: 0,
+                note: None,
             },
         },
         Entry {

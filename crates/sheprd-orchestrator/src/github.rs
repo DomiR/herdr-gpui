@@ -12,9 +12,9 @@
 
 use super::{Activity, Checkpoint, Error, Item, ItemKey, PullRequest, Result, SourceKey};
 use chrono::{DateTime, TimeDelta, Utc};
-use secrecy::SecretString;
 use serde::Deserialize;
 use serde_json::{Value, json};
+use sheprd_github::ServerToken;
 use std::collections::HashSet;
 use std::time::Duration;
 
@@ -163,7 +163,7 @@ pub struct Listing {
 /// while the last full listing is recent, from `resume` (else the checkpoint).
 pub fn sync(
     source: &SourceKey,
-    token: &SecretString,
+    token: &ServerToken,
     previous: Option<&Checkpoint>,
     (cached, resume): (Option<Vec<Item>>, Option<Resume>),
     cancelled: &impl Fn() -> bool,

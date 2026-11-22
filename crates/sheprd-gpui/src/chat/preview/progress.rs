@@ -36,6 +36,7 @@ pub(super) fn entries(live: bool) -> Vec<Entry> {
             kind: EntryKind::User {
                 text: "Run the adapter tests, and have a sub-agent look at why the attach socket drops after a restart.".into(), // i18n: data
                 files: 0,
+                note: None,
             },
         },
         Entry {

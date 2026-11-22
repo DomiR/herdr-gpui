@@ -217,10 +217,10 @@ pub enum Error {
     MissingPlatformAsset,
     #[error("Signed archive does not match GitHub release metadata")]
     ArchiveMetadata,
-    #[error("Host chat archive does not start with its signed manifest")]
-    HostChatLayout,
-    #[error("Host chat archive holds more than its signed builds")]
-    HostChatExpanded,
+    #[error("Host build archive does not start with its signed manifest")]
+    HostArchiveLayout,
+    #[error("Host build archive holds more than its signed builds")]
+    HostArchiveExpanded,
     #[error("Update archive exceeds signed size")]
     ArchiveExceedsSize,
     #[error("Update archive size or SHA-256 mismatch")]

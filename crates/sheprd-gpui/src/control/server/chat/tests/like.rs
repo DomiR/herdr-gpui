@@ -13,6 +13,7 @@ fn a_new_chat_without_an_agent_needs_a_caller_in_a_chat(cx: &mut gpui::TestAppCo
                 op: ChatOp::New {
                     agent: None,
                     pane: None,
+                    prompt: None,
                 },
             },
             cx,

@@ -20,6 +20,29 @@ local TONES = { working = "warning", blocked = "danger", done = "success" }
 
 -- Which design draws the rows. Devices lists agents by machine, which this
 -- pane does not yet, so it draws Herdr's rows.
+-- A tool at the end of a head (fold, search, the sidebar toggle): a small button, as
+-- `icon_button`'s, with its icon a step larger, as large as Sheprd's own
+-- sidebar draws them, where a small button's icon would be smaller.
+local function head_tool(props: any)
+	return ui.row {
+		gap = "none",
+		ui.row {
+			class = "icon-button sheprd-head-tool",
+			width = 26,
+			height = 26,
+			align = "center",
+			justify = "center",
+			tooltip = props.tooltip,
+			msg = props.msg,
+			to = props.to,
+			ui.icon { name = props.icon, size = "large" },
+		},
+	}
+end
+
+-- Folds the sidebar to its rail, or opens it again from there.
+local TOGGLE = { icon = "panel-left", tooltip = "Toggle the sidebar", msg = { command = "toggle_sidebar" }, to = LINK }
+
 local function design(layout: any): string
 	local name = layout.name
 	if name == "superset" or name == "orca" or name == "minimal" then
@@ -234,6 +257,7 @@ local function classic_row(workspace: any, last: boolean, layout: any, theme: an
 		theme = theme,
 		-- With guides, the indent is the guide's, inside the row.
 		indent = if child and not guided then layout.child_indent else 0,
+		nest = layout.nest,
 		msg = { sheprd = focus(workspace) },
 		context = { sheprd = menu(workspace) },
 		carry = carry(workspace),
@@ -280,6 +304,7 @@ local function superset_row(workspace: any, layout: any, theme: any)
 		layout = { padding = layout.padding, row_padding = 5 },
 		theme = theme,
 		indent = if workspace.child then layout.padding else 0,
+		nest = layout.nest,
 		msg = { sheprd = focus(workspace) },
 		context = { sheprd = menu(workspace) },
 		carry = carry(workspace),
@@ -312,7 +337,7 @@ end
 
 -- Orca's cards: a status column beside the name, and a quieter meta line
 -- with the branch and the pull request.
-local function orca_row(workspace: any, theme: any)
+local function orca_row(workspace: any, layout: any, theme: any)
 	local meta = {}
 	if branch(workspace) then
 		table.insert(meta, workspace.branch)
@@ -327,6 +352,7 @@ local function orca_row(workspace: any, theme: any)
 		layout = { padding = 8, row_padding = 5, spacing = 4 },
 		theme = theme,
 		indent = if workspace.child then 12 else 0,
+		nest = layout.nest,
 		msg = { sheprd = focus(workspace) },
 		context = { sheprd = menu(workspace) },
 		carry = carry(workspace),
@@ -357,6 +383,7 @@ local function minimal_row(workspace: any, layout: any, theme: any)
 		layout = layout,
 		theme = theme,
 		indent = if workspace.child then layout.child_indent else 0,
+		nest = layout.nest,
 		msg = { sheprd = focus(workspace) },
 		context = { sheprd = menu(workspace) },
 		carry = carry(workspace),
@@ -390,7 +417,7 @@ local function workspace_row(workspace: any, last: boolean, layout: any, theme: 
 	if kind == "superset" then
 		return with_note(superset_row(workspace, layout, theme), workspace, theme)
 	elseif kind == "orca" then
-		return with_note(orca_row(workspace, theme), workspace, theme)
+		return with_note(orca_row(workspace, layout, theme), workspace, theme)
 	elseif kind == "minimal" then
 		return with_note(minimal_row(workspace, layout, theme), workspace, theme)
 	end
@@ -569,15 +596,6 @@ local function results(devices: any, query: string, selected: number, layout: an
 	return children
 end
 
-local function link(text: string, command: string, theme: any)
-	return ui.row {
-		class = "sheprd-link",
-		msg = { command = command },
-		to = LINK,
-		ui.text { text, style = { color = theme.muted } },
-	}
-end
-
 return mod {
 	init = function(previous)
 		return previous or { query = "", searching = false, selected = 1 }
@@ -659,10 +677,19 @@ return mod {
 			return ui.column {
 				class = "sheprd-worktrees",
 				grow = true,
-				scroll = true,
-				padding = "small",
-				style = { background = theme.sidebar, gap = 4 },
-				table.unpack(tiles),
+				gap = "none",
+				style = { background = theme.sidebar },
+				-- The toggle that opens the sidebar again, where its head has it.
+				ui.row { class = "sheprd-head", align = "center", justify = "center", height = 32, shrink = false, head_tool(TOGGLE) },
+				ui.column {
+					grow = true,
+					scroll = true,
+					-- Sheprd's own sidebar scrolls with no scrollbar.
+					scrollbar = false,
+					padding = "small",
+					style = { gap = 4 },
+					table.unpack(tiles),
+				},
 			}
 		end
 		local searching = state.searching and state.query ~= ""
@@ -671,7 +698,10 @@ return mod {
 			rows = results(devices, state.query, state.selected, layout, theme)
 		else
 			-- Each device under its header when several are listed, as
-			-- Sheprd's sidebar shows them; one device's rows stand alone.
+			-- Sheprd's sidebar shows them, its rows stepped in by the
+			-- layout's `nest`; one device's rows stand alone.
+			local nested = table.clone(layout)
+			nested.nest = if sheprd.multi then layout.nest or 0 else 0
 			for _, device in devices do
 				if sheprd.multi then
 					table.insert(rows, device_header(device, layout, theme))
@@ -679,7 +709,7 @@ return mod {
 				local list = device.workspaces or {}
 				for index, workspace in list do
 					local following = list[index + 1]
-					table.insert(rows, workspace_row(workspace, not (following and following.child), layout, theme))
+					table.insert(rows, workspace_row(workspace, not (following and following.child), nested, theme))
 				end
 			end
 		end
@@ -709,31 +739,30 @@ return mod {
 				side = ui.row {
 					align = "center",
 					style = { gap = 2 },
-					icon_button {
+					head_tool {
 						icon = if folded then "chevrons-up-down" else "list-tree",
-						size = "small",
 						tooltip = if folded then "Expand every group" else "Collapse every group",
 						msg = { fold_all = not folded },
 						to = LINK,
 					},
 					if (sheprd.merged or 0) > 0
-						then icon_button {
+						then head_tool {
 							icon = "sparkles",
-							size = "small",
 							tooltip = "Remove merged worktrees",
 							msg = { command = "remove_merged_worktrees" },
 							to = LINK,
 						}
 						else false,
-					icon_button { icon = "search", size = "small", tooltip = "Search devices, worktrees, branches and notes", msg = "search" },
+					head_tool { icon = "search", tooltip = "Search devices, worktrees, branches and notes", msg = "search" },
 				},
 			}
 		return ui.column {
 			class = "sheprd-worktrees",
 			grow = true,
 			gap = "none",
-			-- Sheprd's sidebar font: see src/theme.rs.
-			style = { background = theme.sidebar, font = "mono" },
+			-- Sheprd's sidebar font (src/luau_window/theme.rs) at the size
+			-- step nearest its own (`sidebar_size`, src/sidebar/hosted.rs).
+			style = { background = theme.sidebar, font = "mono", size = theme.sidebar_size },
 			ui.row {
 				class = "sheprd-head",
 				align = "center",
@@ -742,24 +771,18 @@ return mod {
 				style = { padding = { left = 12, right = 8 } },
 				ui.text { "WORKSPACES", class = "sheprd-title", weight = "bold", size = "small", style = { color = theme.subtext } },
 				ui.spacer(),
-				icon_button { icon = "panel-left", size = "small", tooltip = "Toggle the sidebar", msg = { command = "toggle_sidebar" }, to = LINK },
+				head_tool(TOGGLE),
 			},
 			head,
 			ui.column {
 				grow = true,
 				scroll = true,
+				-- Sheprd's own sidebar scrolls with no scrollbar.
+				scrollbar = false,
 				gap = "none",
 				ui.column { shrink = false, gap = "none", table.unpack(rows) },
 			},
-			ui.row {
-				class = "sheprd-left-actions",
-				align = "center",
-				shrink = false,
-				style = { padding = { x = (layout.padding or 8) + (layout.inset or 0), y = 4 } },
-				link("new", "new_workspace", theme),
-				ui.spacer(),
-				link("menu", "command_palette", theme),
-			},
+			-- New and menu are the `actions` mod's, under the rule below.
 		}
 	end,
 }

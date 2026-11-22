@@ -21,6 +21,7 @@ fn opened(view: &Entity<SheprdWindow>, program: &Program, cx: &mut VisualTestCon
         kind: EntryKind::User {
             text: "Why does the sidebar flicker?".into(),
             files: 0,
+            note: None,
         },
     };
     let entries = std::iter::once(prompt)

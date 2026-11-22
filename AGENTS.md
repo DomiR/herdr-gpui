@@ -34,7 +34,7 @@ Closing or detaching the GUI must leave the daemons and their terminals running.
 | `crates/sheprd-terminal` | The terminal emulator for herdr-core's raw byte streams (alacritty_terminal): bytes in, `sheprd-protocol` cells and damage out, and semantic input encoded for the program's modes; no GPUI or I/O |
 | `crates/sheprd-traces` | Traces: the index of agent sessions a host keeps, one private SQLite file in the state directory; incremental, bounded parsing of Claude Code and Codex session files into redacted events and per-session totals, FTS5, per-day activity, and the redactor diagnostics bundles share; `sheprd-acp traces` runs it on a host; no GPUI or runtime |
 | `crates/sheprd-tunnel` | The end-to-end tunnel inside a relay stream (`docs/relay-plan.md`, End-to-end encryption): the hybrid `Noise_IKpsk2` + ML-KEM-768 handshake for sessions and pairing, padded and rekeyed records, framing, and, with `tokio`, the tunnel over a stream; sans-I/O otherwise, and the iOS app's Swift copy is checked against its vectors; no GPUI |
-| `crates/sheprd-gpui` | Native UI, connection bridge, presentation state, semantic input, geometry, and painting. Its `moonframe` feature, off by default, opens the app in a window Moonframe lays out (`just run-moonframe`, `docs/moonframe.md`): the shell and the header, activity bar, worktree rows, details pane and status bar are Luau in `moonframe/app`, over `app.sheprd` and its actions (`sidebar/hosted`); the terminals and pages stay one Rust view. It starts as the app does (`app::install_services`), with the app's menus and log; what looks for main windows goes through `window::main_window` |
+| `crates/sheprd-gpui` | Native UI, connection bridge, presentation state, semantic input, geometry, and painting. Its `moonframe` feature, on by default, opens the app in a window Moonframe lays out (`docs/moonframe.md`) unless `moonframe_window = false` or `--classic` asks for the classic one; releases run the Luau compiled in, with Moonframe's developer tools and sparkles agent (`acp`) editing the user's copies, and `moonframe-studio` (`just run-moonframe`) reads it from the checkout instead: the shell and the header, activity bar, worktree rows, details pane and status bar are Luau in `moonframe/app`, over `app.sheprd` and its actions (`sidebar/hosted`); the terminals and pages stay one Rust view. It starts as the app does (`app::install_services`), with the app's menus and log; what looks for main windows goes through `window::main_window` |
 | `crates/sheprd-control-protocol` | The control socket between `sheprd <command>` and the running app: request and response types, bounds, and the Unix socket or named pipe; no GPUI |
 | `crates/sheprd-commands` | The command catalog: each command's name, default shortcuts per platform, and the daemon request it becomes against a snapshot; no GPUI (the app binds the keys and runs window commands) |
 | `crates/sheprd-usage` | Plan usage of AI services on a host: the providers, their probes and sign-ins, the registry, and the read worker; no GPUI (the app draws the status bar and panel) |
@@ -43,9 +43,11 @@ Closing or detaching the GUI must leave the daemons and their terminals running.
 | `crates/sheprd-vcs` | Git on the checkouts the app shows: working-tree status, commit, push, and pull request creation, checkpoints kept as Git refs on each host, and the code search index; no GPUI (the app runs the workers from its views) |
 | `crates/sheprd-orchestrator` | The orchestrator's backend: issue and pull request records, the per-repository SQLite database, the GitHub, GitLab, and Beads readers, agent dispatch, and the worker; also the app's cache database and private-file setup; no GPUI (the app draws the sections and pages) |
 | `crates/sheprd-remote` | Machines beyond this computer's daemon: the cloud providers (one feature each), their config tables and saved devices, running scripts on any host, and Teleport's core; no GPUI (the app runs its jobs and draws its views) |
-| `crates/sheprd-remote-control` | Remote control from a phone. With the `server` feature, the `sheprd-remote-control` daemon: HTTPS with its own CA, dual-approval pairing, Web Push, chats and terminal tabs through Herdr's API socket, and desktops paired over Bluetooth let in over SSH through its relays (`ssh_access`), with the adding side's `desktop-pair` and `relay-connect` (`desktop`). Without it, what Sheprd uses: the daemon's control protocol, the `[remote]` config table, the user service install, and the pairing state; no GPUI, and no Tokio without `server` |
+| `crates/sheprd-remote-control` | Remote control from a phone. With the `server` feature, the `sheprd-remote-control` daemon: HTTPS with its own CA, dual-approval pairing, Web Push, chats and terminal tabs through Herdr's API socket, and desktops paired over Bluetooth let in over SSH through its relays (`ssh_access`), with the adding side's `desktop-pair` and `relay-connect` (`desktop`). Without it, what Sheprd uses: the daemon's control protocol, the fleet's signed log (`control::fleet`, `docs/relay-plan.md`, Fleet), the `[remote]` config table, the user service install, and the pairing state; no GPUI, and no Tokio without `server` |
+| `crates/sheprd-fleet-ffi` | The fleet log (`control::fleet`) for the iOS app: a static library behind a two-function C interface taking JSON, which `ios/tools/build-fleet-ffi.sh` builds into the `SheprdFleetFFI` XCFramework, so the phone replays its own copy with the computers' own rules; no GPUI, runtime, or state between calls |
 | `crates/sheprd-apns` | The Apple Push Notification service from the provider's side: credentials, the provider token, the HTTP/2 sender, the relay client, and sealing, shared by the daemon and the push relay; no GPUI, and what a push says stays with its callers |
-| `crates/sheprd-push-relay` | The hosted relay that forwards sealed pushes to APNs for the iOS app (`docs/apns-relay-plan.md`): handles, credentials, rate limits, and a `Store` of revocations (memory by default, SQLite, or Postgres); no GPUI, and no token or payload may reach a store or its logs |
+| `crates/sheprd-dashboard` | What the two hosted relays share for their operators: the read-only dashboard's routes behind one access token (login, lockout, live SSE) for any relay that is a `Site`, the bearer check for `/metrics`, the `labels!` table and Prometheus text, in-memory rate limits, and constant-time secrets; no GPUI, state on disk, or address or token in its logs |
+| `crates/sheprd-push-relay` | The hosted relay that forwards sealed pushes to APNs for the iOS app (`docs/apns-relay-plan.md`): handles, credentials, rate limits, and a `Store` of revocations (memory by default, SQLite, or Postgres), and counters with a dashboard behind the operator's token; no GPUI, and no token or payload may reach a store or its logs, and no device is named in a counter |
 | `crates/sheprd-relay` | The hosted relay that joins Sheprd peers without a direct path, replacing Tailscale (`docs/relay-plan.md`): QUIC with a WebSocket fallback, listeners proven by a P-256 key, dials allowed only for the dial keys a listener names while connected (pairing keys once), opaque end-to-end encrypted streams, no accounts or users to authorize, limits on connections, sessions, and bandwidth, Prometheus metrics, and a read-only dashboard behind a login; without its `server` feature, only the protocol (`wire`, `socket`, `route`) and `Endpoint` clients need; no GPUI, no state, and no address, route, or payload in its logs |
 | `crates/sheprd-relay-agent` | `sheprd-relay-agent`, run on an SSH machine so Sheprd reaches its SSH server through relays (`docs/relay-plan.md`, Sheprd and SSH machines): its route and tunnel keys, the `authorized` desktops, listening on each relay, and each admitted session spliced to `127.0.0.1:22` inside the end-to-end tunnel; `status --json` for enrolling; no GPUI |
 | `crates/sheprd-nearby` | `sheprd-nearby` on Linux and Windows: Sheprd's Bluetooth helper for nearby pairing and presence, BlueZ over `zbus` or WinRT's GATT server, speaking the macOS Swift helper's stdio protocol (`macos/sheprd-nearby`); no GPUI or Tokio |
@@ -255,21 +257,37 @@ what was deferred to CI.
   runs workspace tests with default and all features, including headless UI and
   CLI tests, split like `checks` into parallel `default` and `all` legs. The
   `windows-native` job runs `live_gui` (the `test-gui` and `test-sidebar`
-  equivalents) against a pinned `herdr.exe`, and the release-mode performance
-  budget, on both Windows runners, on main and on pull requests that change
-  what the app is built from (`scripts/ci-changes.sh`), except the live-daemon test on
-  ARM64, where the emulated daemon ignores Enter; the optimized Windows build
-  and its installer run in `windows-package` when their inputs change, and in
+  equivalents) against a pinned `herdr.exe` on both Windows runners, with
+  every platform, when what the app is built from changes
+  (`scripts/ci-changes.sh`), except the live-daemon test on ARM64, where the
+  emulated daemon ignores Enter; its release-mode performance budget runs
+  on main and in the merge queue only. The optimized Windows build and its
+  installer run in `windows-package` when their inputs change, with every
+  platform, and in
   the release workflow, which only smoke-tests the CLI of the bytes it ships
   and requires CI to have passed on the commit. Keep the `cfg(unix)`/`cfg(windows)`
   split honest and say plainly what a platform cannot do instead of stubbing
   behavior that appears to work.
-- Pull requests run CI on `ubuntu-24.04` alone and lint and test only the
-  crates their changes reach (`scripts/ci-scope.py`). The merge queue, `main`,
+- Pull requests run the Linux checks and the macOS default-features leg,
+  and lint and test only the crates their changes reach
+  (`scripts/ci-scope.py`): on ARM64 for members' pull requests, whose runs
+  take our own machines, and on x86_64 otherwise. `main`, the merge queue,
   and a pull request that changes a platform `cfg` line or file, a
   dependency (any `Cargo.toml`, `Cargo.lock`) or the toolchain, or the CI
   selection itself, or carries the `windows`, `macos`, or `full-ci` label,
-  run every platform over the whole workspace.
+  run every platform over the whole workspace, except that such a pull
+  request runs Windows only for what a Windows build reads: not for macOS
+  files, `cfg` gates naming only macOS or Apple, or the `macos` label. The
+  Nix flake builds on pull requests only when the flake or the toolchain pin
+  changes, and on `main` and every release otherwise.
+- macOS jobs, and the ARM64 Linux legs, run on our own machines when the
+  repository variables `CI_MACOS_RUNNER` and `CI_LINUX_ARM_RUNNER` name their
+  labels (`docs/self-hosted-runners.md`), for
+  members' code only: `main`, the merge queue, and pull requests from
+  branches of this repository opened by its owner, members, or
+  collaborators. A fork's or a bot's pull request always uses hosted runners.
+  A runner that outlives its job keeps `target/` between runs
+  (`scripts/ci-clean-self-hosted.sh`).
 - A `cfg` gate is only proven on the platform it names. For changes that touch
   one, rely on the corresponding platform CI jobs: a macOS run cannot see a
   Linux-only gate, and neither can the Windows cross-check. Code inside an
@@ -309,6 +327,10 @@ just test-perf
 
 - Only commit, push, or create/update a PR when requested. Do not amend, force-push, discard changes, or clean up other worktrees without explicit authorization.
 - Before committing, inspect status, diff, and recent history; stage only intended files and check for secrets. Do not bypass hooks or signing when they fail.
+- Push with an upstream (`git push -u origin HEAD:refs/heads/NAME`, or
+  `git branch --set-upstream-to` afterwards). The app finds a checkout's pull
+  request through `branch.<name>.merge`, falling back to the local branch
+  name, so a branch pushed under another name without one shows no PR.
 - Use conventional commit subjects (`feat`, `fix`, `refactor`, `test`, `docs`, `chore`). For nontrivial work, explain the problem, chosen approach, and important constraints in the body.
 - Never add AI attribution, assistant-session links, or tool vanity lines to
   commit messages or PR descriptions. This includes `Co-Authored-By` trailers

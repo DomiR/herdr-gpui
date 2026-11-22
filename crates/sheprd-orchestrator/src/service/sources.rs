@@ -5,6 +5,7 @@ use super::{
     Access, Item, Provider, RepoInfo, Result, SourceKey, SourceStatus, SyncState, Worker, azure,
     gitlab,
 };
+use sheprd_github::{Server, Tokens};
 use std::collections::{HashMap, HashSet};
 
 impl SyncState {
@@ -79,8 +80,8 @@ pub(super) fn keep_current_beads(items: &mut Vec<Item>, info: Option<&RepoInfo>)
 }
 
 /// Each source of `info`, syncing when this build can read it.
-pub(super) fn statuses(info: &RepoInfo) -> Vec<SourceStatus> {
-    sources(info)
+pub(super) fn statuses(info: &RepoInfo, tokens: Option<&Tokens>) -> Vec<SourceStatus> {
+    sources(info, tokens)
         .into_iter()
         .map(|(key, supported)| SourceStatus {
             key,
@@ -93,12 +94,18 @@ pub(super) fn statuses(info: &RepoInfo) -> Vec<SourceStatus> {
         .collect()
 }
 
-/// The sources a repository has, and whether this build can read each.
-pub fn sources(info: &RepoInfo) -> Vec<(SourceKey, bool)> {
+/// The sources a repository has, and whether this build can read each: a
+/// GitHub source on GitHub.com, or on an Enterprise Server one of `tokens`
+/// signed in to.
+pub fn sources(info: &RepoInfo, tokens: Option<&Tokens>) -> Vec<(SourceKey, bool)> {
     let remote = info.remote.as_ref().map(|remote| {
         let supported = match remote.source.provider {
             Provider::Azure => true,
-            Provider::Github => remote.source.host == "github.com",
+            Provider::Github => match Server::of_host(&remote.source.host) {
+                Some(Server::GitHub) => true,
+                Some(server) => tokens.is_some_and(|tokens| tokens.serves(&server)),
+                None => false,
+            },
             Provider::Gitlab => true,
             Provider::Beads => false,
         };

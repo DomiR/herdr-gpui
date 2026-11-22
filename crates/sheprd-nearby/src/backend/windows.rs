@@ -38,14 +38,17 @@ use windows::{
     core::{GUID, IInspectable, Ref},
 };
 
-/// What a notification carries beyond the ATT header.
-const ATT_HEADER: u16 = 3;
+pub(super) mod central;
+
+/// What a notification or write carries beyond the ATT header.
+pub(super) const ATT_HEADER: u16 = 3;
 
 pub(super) struct Windows {
     provider: GattServiceProvider,
     pair: GattLocalCharacteristic,
     presence: GattLocalCharacteristic,
     advertising: Mutex<bool>,
+    out: Out,
     /// Kept so its state handler stays registered.
     _radio: WinRadio,
 }
@@ -118,6 +121,7 @@ impl Windows {
             pair,
             presence,
             advertising: Mutex::new(false),
+            out,
             _radio: radio,
         })
     }
@@ -150,7 +154,9 @@ impl Backend for Windows {
         };
         match result {
             Ok(()) => *advertising = advertise,
-            Err(error) => Out.emit(&Event::error(format_args!("advertising: {error}"))),
+            Err(error) => self
+                .out
+                .emit(&Event::error(format_args!("advertising: {error}"))),
         }
     }
 
@@ -177,7 +183,8 @@ impl Backend for Windows {
             Ok(())
         })();
         if let Err(error) = sent {
-            Out.emit(&Event::error(format_args!("notify: {error}")));
+            self.out
+                .emit(&Event::error(format_args!("notify: {error}")));
         }
     }
 
@@ -284,7 +291,7 @@ fn session_device(session: &GattSession) -> windows::core::Result<String> {
     Ok(session.DeviceId()?.Id()?.to_string())
 }
 
-fn state(state: RadioState) -> Radio {
+pub(super) fn state(state: RadioState) -> Radio {
     match state {
         RadioState::On => Radio::PoweredOn,
         RadioState::Off | RadioState::Disabled => Radio::PoweredOff,
@@ -293,17 +300,17 @@ fn state(state: RadioState) -> Radio {
 }
 
 /// A UUID string as WinRT's GUID.
-fn guid(uuid: &str) -> GUID {
+pub(super) fn guid(uuid: &str) -> GUID {
     u128::from_str_radix(&uuid.replace('-', ""), 16).map_or(GUID::zeroed(), GUID::from_u128)
 }
 
-fn buffer(bytes: &[u8]) -> windows::core::Result<IBuffer> {
+pub(super) fn buffer(bytes: &[u8]) -> windows::core::Result<IBuffer> {
     let writer = DataWriter::new()?;
     writer.WriteBytes(bytes)?;
     writer.DetachBuffer()
 }
 
-fn bytes(buffer: &IBuffer) -> windows::core::Result<Vec<u8>> {
+pub(super) fn bytes(buffer: &IBuffer) -> windows::core::Result<Vec<u8>> {
     let length = usize::try_from(buffer.Length()?).unwrap_or(0);
     let reader = DataReader::FromBuffer(buffer)?;
     let mut bytes = vec![0; length];

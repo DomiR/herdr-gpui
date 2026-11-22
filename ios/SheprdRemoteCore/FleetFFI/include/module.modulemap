@@ -1,0 +1,4 @@
+module SheprdFleetFFI {
+    header "sheprd_fleet.h"
+    export *
+}

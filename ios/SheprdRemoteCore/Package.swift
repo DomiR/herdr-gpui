@@ -11,6 +11,10 @@
 // way. Only the app links those, not the widgets, watch, or extensions,
 // which need Core alone.
 //
+// - `SheprdFleetLog`: the phone's own copy of the fleet log, replayed and
+//   checked by the Rust `sheprd-fleet-ffi` crate the app links as
+//   `SheprdFleetFFI` (`ios/tools/build-fleet-ffi.sh` builds it first), and
+//   its sync with any computer of the fleet.
 // - `SheprdGitHub`: the phone's own GitHub client: hosts, leased and
 //   signed-in tokens, the REST and GraphQL reads, pull requests, checks, and
 //   their logs.
@@ -32,6 +36,7 @@ let package = Package(
     platforms: [.iOS("26.0"), .macOS("26.0"), .watchOS("26.0")],
     products: [
         // keep-sorted start
+        .library(name: "SheprdFleetLog", targets: ["SheprdFleetLog"]),
         .library(name: "SheprdGitHub", targets: ["SheprdGitHub"]),
         .library(name: "SheprdNearby", targets: ["SheprdNearby"]),
         .library(name: "SheprdRelay", targets: ["SheprdRelay"]),
@@ -43,6 +48,8 @@ let package = Package(
     ],
     targets: [
         // keep-sorted start
+        .binaryTarget(name: "SheprdFleetFFI", path: "Frameworks/SheprdFleetFFI.xcframework"),
+        .target(name: "SheprdFleetLog", dependencies: ["SheprdFleetFFI", "SheprdRemoteCore"]),
         .target(name: "SheprdGitHub", dependencies: ["SheprdRemoteCore"]),
         .target(name: "SheprdNearby", dependencies: ["SheprdRemoteCore"]),
         .target(name: "SheprdRelay", dependencies: ["SheprdRemoteCore", "SheprdTunnel"]),
@@ -52,6 +59,11 @@ let package = Package(
         .target(name: "SheprdVoice", dependencies: ["SheprdRemoteCore"]),
         // keep-sorted end
         // keep-sorted start
+        .testTarget(
+            name: "SheprdFleetLogTests",
+            dependencies: ["SheprdFleetLog", "SheprdRemoteCore"],
+            resources: [.copy("Fixtures")]
+        ),
         .testTarget(
             name: "SheprdGitHubTests",
             dependencies: ["SheprdGitHub", "SheprdRemoteCore"],

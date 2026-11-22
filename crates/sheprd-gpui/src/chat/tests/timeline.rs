@@ -21,6 +21,7 @@ pub(super) fn conversation(plan: bool) -> ServerMessage {
             kind: EntryKind::User {
                 text: "Fix it".into(),
                 files: 0,
+                note: None,
             },
         },
         agent(2, "Looking."),

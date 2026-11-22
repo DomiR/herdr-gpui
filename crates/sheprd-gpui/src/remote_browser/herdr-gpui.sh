@@ -21,7 +21,7 @@ json=0
 
 usage() {
     cat <<'EOF'
-Usage: sheprd browser open [--no-focus] [--tab] URL
+Usage: sheprd browser open [--focus] [--tab] URL
        sheprd browser reload
        sheprd browser feedback [--wait SECONDS]
 
@@ -32,7 +32,8 @@ Herdr 2 terminal (HC_TERMINAL_ID), of the workspace that shows it.
   open URL      An http or https address, or a bare host such as
                 localhost:3000. An address on this host's localhost is
                 forwarded to the user's machine first.
-  --no-focus    Add the tab without switching to it.
+  --focus       Switch to the tab. Without it the tab is added in the
+                background (--no-focus, the default, is accepted).
   --tab         Accepted: a page from this host always opens as a tab.
   reload        Reload the tabs this pane opened.
   feedback      Herdr 2: return notes sent to this terminal (exit 4 if none).
@@ -142,10 +143,12 @@ send() {
 }
 
 open_page() {
-    focus=1
+    # In the background unless asked: the user may be typing elsewhere.
+    focus=0
     target=
     for arg in "$@"; do
         case $arg in
+            --focus) focus=1 ;;
             --no-focus) focus=0 ;;
             # A page from a host always opens as a tab.
             --tab) ;;

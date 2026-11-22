@@ -2,7 +2,9 @@
 //! requests of the same boot.
 
 use super::*;
-use crate::control::pull_requests::{PullRequests, Tone, UnopenedBranch, WorkspacePullRequest};
+use crate::control::pull_requests::{
+    PullRequests, Tone, UncommittedCheckout, UnopenedBranch, WorkspacePullRequest,
+};
 use model::{Home, Run, Sources};
 use sheprd_chat_protocol::Status;
 
@@ -28,6 +30,7 @@ fn pull_requests(boot: &str, branch: &str) -> PullRequests {
             tone: Tone::Ready,
         }],
         unopened: Vec::new(),
+        uncommitted: Vec::new(),
     }
 }
 
@@ -36,6 +39,7 @@ fn project(summaries: HashMap<String, Summary>, pull_requests: &PullRequests) ->
         checkouts: &Default::default(),
         recognized: &Default::default(),
         computer: "Studio",
+        favorites: &Default::default(),
         fingerprint: "FP",
         layout: &layout(EndpointId::random()),
         load: None,
@@ -108,6 +112,7 @@ fn commits_without_a_pull_request_show_only_for_the_same_boot_and_branch() {
             branch: branch.into(),
             commits: 4,
         }],
+        uncommitted: Vec::new(),
     };
     let commits =
         |update: &PullRequests| project(HashMap::new(), update).workspaces[0].unopened_commits;
@@ -115,6 +120,26 @@ fn commits_without_a_pull_request_show_only_for_the_same_boot_and_branch() {
     assert_eq!(commits(&waiting(&boot, "main")), Some(4));
     assert_eq!(commits(&waiting("other", "main")), None);
     assert_eq!(commits(&waiting(&boot, "other")), None);
+}
+
+#[test]
+fn uncommitted_changes_show_only_for_the_same_boot_and_branch() {
+    let dirty = |boot: &str, branch: &str| PullRequests {
+        boot_id: boot.into(),
+        uncommitted: vec![UncommittedCheckout {
+            workspace_id: "w1".into(),
+            cwd: "/work".into(),
+            branch: branch.into(),
+        }],
+        ..PullRequests::default()
+    };
+    let shown = |update: &PullRequests| project(HashMap::new(), update).workspaces[0].uncommitted;
+    let boot = layout(EndpointId::random()).boot;
+    assert!(shown(&dirty(&boot, "main")));
+    assert!(!shown(&dirty("other", "main")));
+    assert!(!shown(&dirty(&boot, "other")));
+    let json = serde_json::to_value(project(HashMap::new(), &PullRequests::default())).unwrap();
+    assert!(json["workspaces"][0].get("uncommitted").is_none());
 }
 
 #[test]

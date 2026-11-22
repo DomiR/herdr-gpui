@@ -16,7 +16,7 @@ use hyper_util::rt::{TokioExecutor, TokioIo};
 use rustls::{ClientConfig, RootCertStore, crypto::ring, pki_types::ServerName};
 use secrecy::ExposeSecret as _;
 use serde::{Deserialize, Serialize};
-use std::{path::Path, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 use tokio::{net::TcpStream, sync::Mutex};
 use tokio_rustls::TlsConnector;
 
@@ -174,12 +174,6 @@ pub struct Sender {
 }
 
 impl Sender {
-    /// The sender for the credentials in `state_dir`, or `None` when there
-    /// are none. Blocking file I/O.
-    pub fn load(state_dir: &Path) -> Result<Option<Self>> {
-        Config::load(state_dir)?.map(Self::new).transpose()
-    }
-
     pub fn new(config: Config) -> Result<Self> {
         let tls = tls()?;
         let token = ProviderToken::new(

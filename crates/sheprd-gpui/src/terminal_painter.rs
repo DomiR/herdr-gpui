@@ -13,9 +13,9 @@ pub(crate) use self::decorations::decoration_spans;
 use self::decorations::underline_offset;
 use self::glyphs::GlyphCache;
 pub(crate) use self::graphics::CellSeparator;
-use self::graphics::Graphic;
+use self::graphics::{CellPath, Graphic};
 pub(crate) use self::grid::Ground;
-use self::grid::{background_extent, grid_corners, grid_rect, last_row_has_separator};
+use self::grid::{background_extent, grid_rect, last_row_has_separator};
 use self::images::{ImageCache, ImageGeometry, below_text};
 pub(crate) use self::images::{ImageTarget, PlacedImages};
 pub(crate) use self::images::{fit_bgra, texture};
@@ -848,7 +848,7 @@ impl TerminalPainter {
             {
                 continue;
             }
-            if let Some(separator) = CellSeparator::from_symbol(&cell.symbol) {
+            if let Some(shape) = CellPath::from_symbol(&cell.symbol) {
                 let (column, row) = (
                     index % usize::from(frame.width),
                     index / usize::from(frame.width),
@@ -858,20 +858,20 @@ impl TerminalPainter {
                 let wide = column + 1 < usize::from(frame.width)
                     && frame.cells.get(index + 1).is_some_and(|next| next.skip);
                 let cells = if wide { 2 } else { 1 };
-                let (near, far) = grid_corners(
-                    window,
-                    origin,
-                    point(
-                        px(column as f32 * cell_width),
-                        px(row as f32 * self.cell_height),
-                    ),
-                    point(
-                        px((column + cells) as f32 * cell_width),
-                        px((row + 1) as f32 * self.cell_height),
-                    ),
+                let (near, far) = (
+                    origin
+                        + point(
+                            px(column as f32 * cell_width),
+                            px(row as f32 * self.cell_height),
+                        ),
+                    origin
+                        + point(
+                            px((column + cells) as f32 * cell_width),
+                            px((row + 1) as f32 * self.cell_height),
+                        ),
                 );
                 // A degenerate cell whose path cannot tessellate keeps the font glyph.
-                if let Ok(path) = separator.path(near, far) {
+                if let Ok(path) = shape.path(near, far, window) {
                     let color = rgb(cell_colors(cell, &self.theme).0);
                     #[cfg(test)]
                     self.painted_separators.push((path.bounds, color));

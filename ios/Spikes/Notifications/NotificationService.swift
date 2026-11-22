@@ -15,11 +15,12 @@ final class NotificationService: UNNotificationServiceExtension {
             guard let text = request.content.userInfo["sealed"] as? String,
                   let sealed = Base64URL.decode(text)
             else { throw NotificationSeal.Failure.format }
-            guard let key = try NotifyKey.load() else { throw NotifyKey.Failure.keychain(errSecItemNotFound) }
+            guard let (key, source) = try NotifyKey.loadAny() else { throw NotifyKey.Failure.keychain(errSecItemNotFound) }
             let opened = try NotificationSeal.open(sealed, device: key.publicKey) { try key.agree($0) }
             let message = try JSONDecoder().decode(Message.self, from: opened)
             content.title = message.title
             content.body = message.body
+            content.subtitle = "Opened from the \(source.rawValue)"
         } catch {
             content.body = "Could not open: \(error)"
         }

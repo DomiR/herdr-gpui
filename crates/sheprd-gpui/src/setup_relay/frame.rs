@@ -38,6 +38,15 @@ const OUTPUT: u8 = 4;
 const EXIT: u8 = 5;
 
 impl Frame {
+    pub(super) fn write_input(bytes: &[u8], writer: &mut impl Write) -> io::Result<()> {
+        if bytes.len() > MAX_PAYLOAD {
+            return Err(io::ErrorKind::InvalidInput.into());
+        }
+        writer.write_all(&[INPUT])?;
+        writer.write_all(&(bytes.len() as u32).to_be_bytes())?;
+        writer.write_all(bytes)
+    }
+
     /// Writes the frame in one call, so frames from several threads sharing a
     /// locked writer never interleave.
     pub(super) fn write(&self, writer: &mut impl Write) -> io::Result<()> {

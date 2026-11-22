@@ -21,6 +21,7 @@ fn add_account(view: &mut crate::SheprdWindow, login: Option<&str>) {
         login.map(|login| Profile::fixture(login, Arc::new("emu-token".into()), &["emu-org"]));
     view.menu.github_accounts = vec![AdditionalAccount {
         id: ID.into(),
+        server: crate::github::Server::GitHub,
         owners: vec!["listed-owner".into()],
         auth,
     }];
@@ -37,7 +38,11 @@ fn repositories_an_additional_account_owns_are_read_with_it(cx: &mut TestAppCont
             let tokens = view.pr_tokens().unwrap();
             assert_eq!(tokens.key(), "fixture-user");
             assert_eq!(
-                tokens.for_owner("fabien_microsoft").expose_secret(),
+                tokens
+                    .for_owner(&crate::github::Server::GitHub, "fabien_microsoft")
+                    .unwrap()
+                    .token
+                    .expose_secret(),
                 "fixture-token"
             );
 
@@ -48,10 +53,21 @@ fn repositories_an_additional_account_owns_are_read_with_it(cx: &mut TestAppCont
                 "fixture-user,fabien_microsoft(fabien_microsoft emu-org listed-owner)"
             );
             for owner in ["fabien_microsoft", "emu-org", "listed-owner"] {
-                assert_eq!(tokens.for_owner(owner).expose_secret(), "emu-token");
+                assert_eq!(
+                    tokens
+                        .for_owner(&crate::github::Server::GitHub, owner)
+                        .unwrap()
+                        .token
+                        .expose_secret(),
+                    "emu-token"
+                );
             }
             assert_eq!(
-                tokens.for_owner("rust-lang").expose_secret(),
+                tokens
+                    .for_owner(&crate::github::Server::GitHub, "rust-lang")
+                    .unwrap()
+                    .token
+                    .expose_secret(),
                 "fixture-token"
             );
             assert_eq!(
@@ -61,9 +77,13 @@ fn repositories_an_additional_account_owns_are_read_with_it(cx: &mut TestAppCont
             // Local-only work reads with the same accounts.
             assert!(view.main_tokens().unwrap().same(&tokens));
 
-            // Without a main sign-in nothing is read, as before.
+            // Without a main sign-in the additional account still reads
+            // the owners it covers, and no other owner is read.
             view.menu.github = Auth::default();
-            assert!(view.pr_tokens().is_none());
+            let tokens = view.pr_tokens().unwrap();
+            let github = crate::github::Server::GitHub;
+            assert!(tokens.for_owner(&github, "emu-org").is_some());
+            assert!(tokens.for_owner(&github, "rust-lang").is_none());
         });
     });
 }
@@ -185,7 +205,10 @@ fn an_added_account_is_shown_once_its_sign_in_exists(cx: &mut TestAppContext) {
             view.github_fixture(false, window, cx);
             view.menu.github = Auth::connected_fixture();
             // The config write has not landed yet: the device's account stays.
-            view.menu.github_adding = Some(ID.into());
+            view.menu.github_adding = Some(crate::menu::github::Adding {
+                id: ID.into(),
+                token: None,
+            });
             view.poll_github(window, cx);
             assert!(view.menu.github_account.is_none());
             assert!(view.github_auth().connected());

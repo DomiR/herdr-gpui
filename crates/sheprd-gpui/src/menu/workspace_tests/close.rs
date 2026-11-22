@@ -25,6 +25,7 @@ fn close_dialog_blocks_submission_until_risks_are_explicitly_accepted(
                 dirty: true,
                 unpushed: true,
                 unknown: true,
+                ..Default::default()
             });
             view.menu.input = Some(DialogInput::new(String::new()));
             view.submit_workspace_dialog(window, cx);

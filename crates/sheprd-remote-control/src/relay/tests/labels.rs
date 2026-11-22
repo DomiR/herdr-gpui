@@ -72,6 +72,7 @@ fn the_nearby_offer_leaves_the_labels_out() {
         token: "t".into(),
         origins: &[],
         relay: auth.relay_offer(),
+        fleet: None,
     })
     .unwrap();
     assert!(sealed["relay"].get("labels").is_none(), "{sealed}");

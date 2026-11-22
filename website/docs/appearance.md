@@ -174,4 +174,4 @@ Plugin actions bound in Herdr's config with `[[keys.command]] type = "plugin_act
 
 The `language` setting is `system` (the default, following the OS's preferred languages) or a language tag such as `fr-CA`. **Settings > General > Language** picks it, and `sheprd language set TAG` writes it.
 
-With **System** selected, a Simplified Chinese system preference shows the available Simplified Chinese translations. Untranslated text falls back to English. Terminal output, names, and what the daemon reports never change with it.
+With **System** selected, a Simplified Chinese system preference shows the available Simplified Chinese translations, and a Japanese one shows the Japanese translations, which cover Settings so far. Untranslated text falls back to English. Terminal output, names, and what the daemon reports never change with it.

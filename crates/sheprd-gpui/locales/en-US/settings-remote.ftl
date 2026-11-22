@@ -3,7 +3,7 @@
 # saves on each SSH host.
 
 settings-remote-health-updating = Updating the service…
-settings-remote-health-off = Off. Turning it on installs a user service that serves your chats over HTTPS on your network, and over Tailscale when it runs.
+settings-remote-health-off = Off. Turning it on installs a user service that serves your chats over HTTPS on your network, over Tailscale when it runs, and through a relay once you add one under Relays.
 settings-remote-health-starting = Starting…
 settings-remote-health-running = Running on port { $port } · { $devices ->
         [one] { $devices } device
@@ -29,6 +29,9 @@ settings-remote-presence-note = Paired iPhones near this computer over Bluetooth
 settings-remote-restart = Restart the daemon
 settings-remote-restart-note = Starts it again from the binary beside Sheprd, as after an update. Phones reconnect on their own.
 settings-remote-restart-button = Restart
+settings-remote-fleet = Use several computers?
+settings-remote-fleet-note = Fleet links them all, with your phones, so a host added on one is reachable from every other.
+settings-remote-fleet-open = Open Fleet
 
 settings-remote-section-connection = Connection
 settings-remote-bind-all = All interfaces

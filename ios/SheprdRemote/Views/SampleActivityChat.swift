@@ -3,7 +3,8 @@ import Foundation
 import SheprdRemoteCore
 
 // A made-up chat for `-sampleChat activity`: a turn still running with
-// sub-agents, background shells, a monitor, a plan, and changed files, so
+// sub-agents, background shells, a monitor, a plan, changed files, and
+// pull requests, so
 // screenshots of the activity panel show no one's real work.
 
 extension PaneKey {
@@ -53,6 +54,11 @@ extension Transcript {
         ].compactMap { content, status in
             try? JSONDecoder().decode(PlanEntry.self, from: Data(#"{"content":"\#(content)","status":"\#(status.rawValue)"}"#.utf8))
         }
+        transcript.pullRequests = [
+            ChatPullRequest(repo: "example/forecast", number: 412, actions: [.created, .pushed]),
+            ChatPullRequest(repo: "example/forecast", number: 398, actions: [.reviewed, .merged]),
+            ChatPullRequest(repo: "example/charts", number: 57),
+        ]
         return transcript
     }
 

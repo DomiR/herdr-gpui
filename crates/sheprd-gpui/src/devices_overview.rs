@@ -18,7 +18,7 @@ mod view;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use chart::sparkline;
+pub(crate) use chart::{padded, sparkline};
 pub(crate) use model::{Device, Link, Tally, online_tally};
 pub(crate) use view::Look;
 

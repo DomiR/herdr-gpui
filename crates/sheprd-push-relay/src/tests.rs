@@ -1,6 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use crate::{
+    attest::Verifier,
     credential::{DeviceId, Issuer},
     handle::{Keyring, key_id},
     limit::{Rate, Rates},
@@ -17,9 +18,17 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+mod attest;
+mod attest_chain;
+mod attest_relay;
+mod challenge;
 mod check;
+mod counters;
 mod credential;
+mod dashboard;
+mod devices;
 mod handle;
+mod handle_fixture;
 mod limit;
 mod options;
 mod relay;
@@ -33,6 +42,8 @@ const NOW_S: u64 = 1_790_000_000;
 const NOW_MS: u64 = NOW_S * 1000;
 const PHONE: DeviceId = [1; 16];
 const OTHER_PHONE: DeviceId = [2; 16];
+/// The app attestations in the tests are for.
+const APP_ID: &str = "ABCDE12345.so.pen.herdr.remote";
 const PAYLOAD: &str = r#"{"aps":{"content-available":1},"sealed":"bm90aGluZyB0byBzZWU"}"#;
 
 fn relay_key() -> SecretKey {
@@ -133,15 +144,21 @@ struct Fixture {
 }
 
 fn fixture_with(rates: Rates) -> Fixture {
+    fixture_attesting(rates, Host::Production, Verifier::apple(APP_ID))
+}
+
+/// A relay for `environment` whose attestations chain to `verifier`'s root.
+fn fixture_attesting(rates: Rates, environment: Host, verifier: Verifier) -> Fixture {
     let store = Memory::default();
     let apple = Apple::default();
     let relay = Relay::new(
         apple.clone(),
-        Host::Production,
+        environment,
         issuer(),
         Keyring::new(relay_key(), None),
         store.clone(),
         rates,
+        verifier,
     );
     Fixture {
         apple,

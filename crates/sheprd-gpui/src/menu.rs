@@ -62,6 +62,8 @@ mod worktree_open_tests;
 #[cfg(test)]
 mod worktree_tests;
 
+#[cfg(test)]
+pub(crate) use github::AdditionalAccount;
 #[cfg(any(windows, test, feature = "integration-test"))]
 pub(crate) use state::Cover;
 pub(crate) use {
@@ -75,7 +77,7 @@ pub(crate) use {
 };
 
 use crate::direction::Logical;
-pub(crate) use devices::{DeviceScope, SettingsHint, enter as enter_key};
+pub(crate) use devices::{DeviceScope, LineAction, SettingsHint, enter as enter_key};
 pub(crate) use overview_reply::open_overview_reply;
 use page::WorkspaceMenuAction;
 pub(crate) use pr_queue::PrChange;

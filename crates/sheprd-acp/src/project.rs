@@ -46,6 +46,10 @@ pub(crate) enum Stream {
 struct Open {
     entry: EntryId,
     message: Option<String>,
+    /// A user message that began with a paste envelope, as the agent sent
+    /// it: its closing tag may come in a later chunk, so the entry is
+    /// unwrapped whole each time rather than appended to.
+    pasted: Option<String>,
     stream: Stream,
 }
 
@@ -154,16 +158,20 @@ impl Projector {
     }
 
     /// The user's own prompt, which ACP does not echo back, ending in
-    /// `files` lines naming the files it carried.
-    pub(crate) fn prompt(&mut self, text: &str, files: usize) -> Change {
+    /// `files` lines naming the files it carried, with what was sent
+    /// ahead of it.
+    pub(crate) fn prompt(&mut self, text: &str, files: usize, note: Option<String>) -> Change {
         self.close();
         let id = self.next_id();
+        // The file lines follow the text, so only text alone is unwrapped.
+        let text = if files == 0 { shown(text) } else { text };
         Change::Push {
             entry: Entry {
                 id,
                 kind: EntryKind::User {
                     text: bounded(text.to_owned()),
                     files,
+                    note: note.map(bounded),
                 },
             },
         }
@@ -179,11 +187,38 @@ impl Projector {
         if text.is_empty() {
             return None;
         }
-        let open = self.open.as_ref().filter(|open| {
+        let open = self.open.as_mut().filter(|open| {
             open.stream == stream
                 && open.message.as_deref() == message
                 && transcript.last_entry_id() == Some(open.entry)
         });
+        if let Some(Open {
+            entry,
+            pasted: Some(raw),
+            ..
+        }) = open
+        {
+            if raw.len() <= MAX_ENTRY_TEXT {
+                raw.push_str(&text);
+            }
+            // The note a replay gave the entry stays with it.
+            let note = transcript
+                .entry(*entry)
+                .and_then(|entry| match &entry.kind {
+                    EntryKind::User { note, .. } => note.clone(),
+                    _ => None,
+                });
+            return Some(Change::Replace {
+                entry: Entry {
+                    id: *entry,
+                    kind: EntryKind::User {
+                        text: bounded(unwrapped(raw).to_owned()),
+                        files: 0,
+                        note,
+                    },
+                },
+            });
+        }
         if let Some(open) = open {
             let have = transcript
                 .entry(open.entry)
@@ -196,14 +231,21 @@ impl Projector {
             });
         }
         let id = self.next_id();
+        let text = bounded(text);
+        let pasted = (stream == Stream::User && text.trim_start().starts_with(PASTE_OPEN))
+            .then(|| text.clone());
         self.open = Some(Open {
             entry: id,
             message: message.map(str::to_owned),
+            pasted,
             stream,
         });
-        let text = bounded(text);
         let kind = match stream {
-            Stream::User => EntryKind::User { text, files: 0 },
+            Stream::User => EntryKind::User {
+                text: unwrapped(&text).to_owned(),
+                files: 0,
+                note: None,
+            },
             Stream::Agent => EntryKind::Agent { text },
             Stream::Thought => EntryKind::Thought { text },
         };
@@ -924,6 +966,21 @@ fn clip(have: usize, mut text: String) -> Option<String> {
     text.truncate(cut);
     text.push_str(TRUNCATED);
     Some(text)
+}
+
+/// A prompt as the chat shows it: without the envelope an agent wraps
+/// pasted text in, which the agent itself still receives.
+pub(crate) fn shown(text: &str) -> &str {
+    sheprd_chat_protocol::display::unwrap_paste(text).unwrap_or(text)
+}
+
+/// How a paste envelope begins.
+const PASTE_OPEN: &str = "<pasted_content";
+
+/// A user message streamed so far, as shown: a message that is only an
+/// envelope's opening tag yet shows nothing until its text comes.
+fn unwrapped(text: &str) -> &str {
+    sheprd_chat_protocol::display::unwrap_paste(text).unwrap_or_default()
 }
 
 #[cfg(test)]

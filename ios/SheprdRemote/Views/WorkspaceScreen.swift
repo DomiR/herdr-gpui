@@ -63,14 +63,21 @@ struct WorkspaceScreen: View {
             .max { ($0.lastAnswer ?? .distantPast) < ($1.lastAnswer ?? .distantPast) }
         return endingDialogs(List {
             Section {
-                Summary(workspace: workspace, place: [model.displayName(machine.computer), repository?.label].compactMap { $0 }.joined(separator: " · "))
+                Summary(workspace: workspace, place: repository?.label ?? workspace.cwd)
+                NavigationLink {
+                    ComputerScreen(device: key.device).makesRoomForConnectionToast()
+                } label: {
+                    ComputerRow(computer: machine.computer, name: model.displayName(machine.computer), status: machine.status)
+                }
                 if let pullRequest = workspace.pullRequest, let url = URL(string: pullRequest.url) {
                     // Plain text and a chevron, like the rows below, not a
                     // tinted web link.
                     Link(destination: url) { PullRequestRow(pullRequest: pullRequest) }.tint(.primary)
                 }
                 if workspace.branch != nil {
-                    RouteLink(.changes(key)) { ChangesRow(count: changedFiles) }
+                    RouteLink(.changes(key)) {
+                        ChangesRow(count: changedFiles, uncommitted: workspace.uncommitted ?? false)
+                    }
                 }
             }
             Section {
@@ -188,8 +195,9 @@ struct WorkspaceScreen: View {
         .task(id: WorkspacePictureStore.Load(panes: chats.map(\.chat.pane), online: isOnline(machine))) {
             await pictures.load(.init(panes: chats.map(\.chat.pane), online: isOnline(machine)), device: key.device, fleet: model.fleet)
         }
-        // Again on each return, as an agent may have changed more since.
-        .task(id: machine.status) {
+        // Again on each return, as an agent may have changed more since,
+        // and when the computer's pencil comes or goes, so the count follows it.
+        .task(id: ChangesLoad(status: machine.status, uncommitted: workspace.uncommitted)) {
             guard isOnline(machine), workspace.branch != nil else { return }
             let (device, id) = (key.device, key.workspace)
             changedFiles = try? await model.fleet.call(device) { client, token in
@@ -626,6 +634,25 @@ private struct Summary: View {
     }
 }
 
+/// The computer the workspace is on, and whether the phone reaches it now;
+/// opens that computer's page.
+private struct ComputerRow: View {
+    var computer: Computer
+    var name: String
+    var status: LinkStatus
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: computer.via == nil ? "laptopcomputer" : "server.rack").font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.tint)
+                .frame(width: 28, height: 28).background(.tint.opacity(0.15), in: .rect(cornerRadius: 28 * 0.28))
+            Text(name).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+            ComputerStatusLine(status: status).font(.subheadline).labelStyle(.iconOnly).imageScale(.small)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
 /// The workspace's pull request: its number, its state as an icon, and
 /// a link out to it.
 private struct PullRequestRow: View {
@@ -648,14 +675,26 @@ private struct PullRequestRow: View {
     }
 }
 
-/// Opens the workspace's changes, saying how many files are uncommitted.
+/// When the workspace's uncommitted count is read again.
+private struct ChangesLoad: Equatable {
+    var status: LinkStatus
+    var uncommitted: Bool?
+}
+
+/// Opens the workspace's changes, saying how many files are uncommitted,
+/// with the desktop's pencil while there are any.
 private struct ChangesRow: View {
     var count: Int?
+    var uncommitted: Bool
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "plusminus").font(.system(size: 14, weight: .semibold))
-                .frame(width: 28, height: 28).background(.fill.secondary, in: .rect(cornerRadius: 28 * 0.28))
+            if uncommitted || (count ?? 0) > 0 {
+                UncommittedMark(size: 28)
+            } else {
+                Image(systemName: "plusminus").font(.system(size: 14, weight: .semibold))
+                    .frame(width: 28, height: 28).background(.fill.secondary, in: .rect(cornerRadius: 28 * 0.28))
+            }
             Text("Changes").frame(maxWidth: .infinity, alignment: .leading)
             if let count {
                 Text(count, format: .number).foregroundStyle(.secondary).monospacedDigit()

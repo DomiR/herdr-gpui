@@ -4,13 +4,13 @@ import SwiftUI
 import UIKit
 import UserNotifications
 
-/// Three spikes on three tabs; each shows what it measured so a device run
+/// The spikes, one per tab; each shows what it measured so a device run
 /// can be read off the screen.
 @main
 struct SpikesApp: App {
     @UIApplicationDelegateAdaptor private var delegate: SpikeDelegate
     @State private var central = Central()
-    /// `-tab notify` or `-tab activity` opens that tab, for headless runs.
+    /// `-tab notify`, `-tab activity`, or `-tab attest` opens that tab, for headless runs.
     @State private var tab = UserDefaults.standard.string(forKey: "tab") ?? "bluetooth"
 
     var body: some Scene {
@@ -19,6 +19,7 @@ struct SpikesApp: App {
                 Tab("Bluetooth", systemImage: "dot.radiowaves.left.and.right", value: "bluetooth") { BluetoothTab(central: central) }
                 Tab("Notify", systemImage: "bell.badge", value: "notify") { NotifyTab() }
                 Tab("Activity", systemImage: "rectangle.badge.checkmark", value: "activity") { ActivityTab() }
+                Tab("Attest", systemImage: "checkmark.seal", value: "attest") { AttestTab() }
             }
             .task { central.start() }
         }
@@ -71,12 +72,10 @@ struct NotifyTab: View {
                 if let problem { Section("Problem") { Text(problem) } }
             }
             .navigationTitle("Sealed notifications")
-            .task {
-                // Provisional: granted without a prompt, delivered quietly;
-                // the service extension still runs.
-                _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .provisional])
-                await refresh()
-            }
+            // No provisional request here: iOS showed provisional pushes
+            // quietly and did not run the service extension. Register asks
+            // for banners.
+            .task { await refresh() }
             .refreshable { await refresh() }
         }
     }
@@ -93,6 +92,7 @@ struct NotifyTab: View {
     private func refresh() async {
         do {
             share(try NotifyKey.load() ?? NotifyKey.create())
+            try NotifyKey.mirror()
         } catch {
             problem = "\(error)"
         }
@@ -163,6 +163,7 @@ struct ActivityTab: View {
     private func startSealed() {
         do {
             let key = try NotifyKey.load() ?? NotifyKey.create()
+            try NotifyKey.mirror()
             let device = key.publicKey.x963Representation
             let state = try SealedProbe.state(sequence: 0, device: device)
             let activity = try Activity.request(

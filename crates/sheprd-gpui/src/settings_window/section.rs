@@ -25,6 +25,7 @@ pub(super) enum Section {
     #[cfg(target_os = "macos")]
     Machines,
     RemoteControl,
+    Fleet,
     Configuration,
 }
 
@@ -92,6 +93,7 @@ impl Section {
         #[cfg(target_os = "macos")]
         Self::Machines,
         Self::RemoteControl,
+        Self::Fleet,
         Self::Configuration,
     ];
 
@@ -120,6 +122,7 @@ impl Section {
             #[cfg(target_os = "macos")]
             Self::Machines => "settings-section-machines",
             Self::RemoteControl => "settings-section-remote-control",
+            Self::Fleet => "settings-fleet-section",
             Self::Configuration => "settings-section-configuration",
         }
     }
@@ -141,6 +144,7 @@ impl Section {
             #[cfg(target_os = "macos")]
             Self::Machines => "settings-lead-machines",
             Self::RemoteControl => "settings-lead-remote-control",
+            Self::Fleet => "settings-fleet-lead",
             Self::Configuration => "settings-lead-configuration",
             Self::General | Self::Tabs | Self::Notifications => return None,
         };
@@ -166,7 +170,7 @@ impl Section {
             Self::CloudDevices => Some(Group::Connect),
             #[cfg(target_os = "macos")]
             Self::Machines => Some(Group::Connect),
-            Self::RemoteControl => Some(Group::Connect),
+            Self::RemoteControl | Self::Fleet => Some(Group::Connect),
             Self::Configuration => Some(Group::Advanced),
         }
     }
@@ -191,6 +195,7 @@ impl Section {
             #[cfg(target_os = "macos")]
             Self::Machines => "icons/computer.svg",
             Self::RemoteControl => "icons/phone.svg",
+            Self::Fleet => "icons/globe.svg",
             Self::Configuration => "icons/file.svg",
         }
     }

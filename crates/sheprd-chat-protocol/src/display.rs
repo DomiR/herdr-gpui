@@ -1,5 +1,5 @@
-//! Short text for numbers both clients show the same way: durations, token
-//! counts, costs, and how a turn ended.
+//! Short text both clients show the same way: durations, token counts,
+//! costs, how a turn ended, and pasted text without its envelope.
 
 use crate::{Cost, TurnEnd, TurnSummary};
 
@@ -70,4 +70,50 @@ impl TurnSummary {
         }
         text
     }
+}
+
+/// Agents such as Claude wrap pasted text in a `<pasted_content id="…">`
+/// envelope, which reaches logs, titles, and replayed prompts. Shown, the
+/// text is what was pasted: `text` without a leading envelope, `text` itself
+/// when it has none, and `None` when nothing is left (blank, or only the
+/// envelope's tags). Ordinary markup inside the text is never touched.
+pub fn unwrap_paste(text: &str) -> Option<&str> {
+    const OPEN: &str = "<pasted_content";
+    const CLOSE: &str = "</pasted_content>";
+    let original = text;
+    let text = text.trim();
+    if text.is_empty() || text == CLOSE {
+        return None;
+    }
+    let Some(rest) = text.strip_prefix(OPEN) else {
+        return Some(original);
+    };
+    // Only the exact tag Claude writes is unwrapped. Anything more in it,
+    // such as other attributes, would reach the agent unseen, so such text
+    // shows as it is.
+    let Some(body) = rest.strip_prefix('>').or_else(|| paste_id(rest)) else {
+        // A title cut off inside the tag is a marker with nothing to show.
+        let cut = rest
+            .strip_prefix(" id=\"")
+            .is_some_and(|id| id.len() <= MAX_PASTE_ID && id.bytes().all(id_byte));
+        return (!cut).then_some(original);
+    };
+    let body = body.trim();
+    let body = body.strip_suffix(CLOSE).unwrap_or(body).trim();
+    (!body.is_empty()).then_some(body)
+}
+
+/// The text after a ` id="ID">` opening tag's end, where the id is a short
+/// run of letters, digits, `-` and `_`.
+fn paste_id(rest: &str) -> Option<&str> {
+    let rest = rest.strip_prefix(" id=\"")?;
+    let (id, rest) = rest.split_once("\">")?;
+    ((1..=MAX_PASTE_ID).contains(&id.len()) && id.bytes().all(id_byte)).then_some(rest)
+}
+
+/// The longest paste envelope id unwrapped.
+const MAX_PASTE_ID: usize = 32;
+
+fn id_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_'
 }

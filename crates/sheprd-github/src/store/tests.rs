@@ -9,6 +9,7 @@ use std::{
 mod additional;
 #[cfg(windows)]
 mod credential_manager;
+mod enterprise;
 mod github_cli;
 
 #[test]
@@ -63,6 +64,7 @@ fn competing_restores_load_the_rotated_credential_inside_the_transaction() {
                         }
                         assert_eq!(token.expose_secret(), "new-access");
                         Ok(Profile {
+                            server: Server::GitHub,
                             login: "fixture".into(),
                             avatar_url: String::new(),
                             token,
@@ -98,6 +100,7 @@ fn competing_restores_load_the_rotated_credential_inside_the_transaction() {
                 credential.profile_with(
                     |token| {
                         Ok(Profile {
+                            server: Server::GitHub,
                             login: "fixture".into(),
                             avatar_url: String::new(),
                             token,

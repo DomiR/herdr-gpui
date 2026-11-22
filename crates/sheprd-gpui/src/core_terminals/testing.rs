@@ -7,6 +7,10 @@ use super::{CoreTerminals, Host, Panes, Scope, TabId, TabPanes, TerminalInfo};
 use super::{Purpose, Spawn};
 
 impl CoreTerminals {
+    pub(crate) fn set_shown_for_test(&mut self, tab: TabId, terminal: sheprd_backend::TerminalId) {
+        self.shown = Some((tab, terminal));
+    }
+
     /// Shows `panes` as `tab`, a mirror when `observe`, with what herdr-core
     /// reports of `infos`, as a restored tab and a finished list would.
     pub(crate) fn show_for_test(

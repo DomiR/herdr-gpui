@@ -150,7 +150,7 @@ impl SheprdWindow {
     /// then **Add provider** while any is left out.
     pub(in crate::menu) fn rail_sources(&self) -> Vec<Source> {
         let mut sources = vec![Source::Host];
-        if cfg!(target_os = "macos") {
+        if crate::remote::nearby::SCANS {
             sources.push(Source::Nearby);
         }
         if cfg!(windows) {

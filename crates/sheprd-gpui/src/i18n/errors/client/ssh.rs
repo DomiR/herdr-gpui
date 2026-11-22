@@ -19,6 +19,7 @@ impl Localize for Error {
                 fl!("error-client-ssh-refused", error = failure.localize())
             }
             Self::Timeout => fl!("error-client-ssh-timeout"),
+            Self::Unchecked => fl!("error-client-ssh-unchecked"),
             Self::Unsupported => fl!("error-client-ssh-unsupported"),
             // keep-sorted end
         }

@@ -97,9 +97,13 @@ impl SheprdWindow {
             .collect();
         // The same computers keep the text shortcuts.
         crate::text_shortcuts::Store::reach(cx, &reachable);
+        // And their favorite agents.
+        crate::agent_favorites::AgentFavorites::reach(cx, &reachable);
         // And hear which relays this computer listens on.
         let window = cx.entity_id();
         crate::relay_sharing::RelaySharing::reach(cx, window, &reachable);
+        // And carry the fleet's log to those in it.
+        crate::fleet::Fleet::reach(cx, window, &reachable);
         DeviceTags::reach(cx, reachable);
     }
 

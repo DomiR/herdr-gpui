@@ -27,6 +27,7 @@ fn rich_user_prompts_use_the_narrow_column_without_inflating_short_bubbles(
                     kind: EntryKind::User {
                         text: text.into(),
                         files: 0,
+                        note: None,
                     },
                 }],
             ),

@@ -7,8 +7,10 @@ use std::time::{Duration, Instant};
 
 mod fonts;
 mod themes;
+mod window_close;
 use fonts::verify_fonts;
 use themes::verify_themes;
+pub(crate) use window_close::verify_native_close;
 
 /// Where the Sidebar page painted, after the section rows.
 pub(super) const SIDEBAR_PAGE: usize = Section::ALL.len();

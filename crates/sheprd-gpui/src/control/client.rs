@@ -5,6 +5,7 @@ mod app;
 mod browser;
 mod chat;
 mod events;
+mod fleet;
 mod help;
 mod hosts;
 mod local;
@@ -349,8 +350,17 @@ pub(crate) fn status(error: &crate::Error) -> u8 {
         // or not a token is the caller's to fix.
         crate::Error::ListenToken(crate::control::listen_token::Error::Read(_)) => exit::REFUSED,
         crate::Error::ListenToken(_) => exit::USAGE,
+        // So for a pairing link.
+        crate::Error::LinkInput(crate::control::link_input::Error::Read(_)) => exit::REFUSED,
+        crate::Error::LinkInput(_) => exit::USAGE,
         crate::Error::Control(crate::control::Error::Unavailable { .. }) => exit::NOT_RUNNING,
         crate::Error::ChatPullRequests(error) => chat_pull_requests_status(error),
+        // A file that could not be read is a failure; a brief that is not
+        // one is the caller's to fix.
+        crate::Error::ChatBrief(
+            crate::control::brief::Error::Open { .. } | crate::control::brief::Error::Read(_),
+        ) => exit::REFUSED,
+        crate::Error::ChatBrief(_) => exit::USAGE,
         crate::Error::Control(crate::control::Error::Rejected { code, .. }) => match code {
             ErrorCode::InvalidUrl => exit::USAGE,
             ErrorCode::NotFound | ErrorCode::WorkspaceNotFound | ErrorCode::NoWindow => {
@@ -570,6 +580,7 @@ pub(crate) fn dispatch(command: ControlCommand, context: &Context) -> crate::Res
         ControlCommand::Security(command) => hosts::security(command, context),
         ControlCommand::Automation(command) => hosts::automation(command, context),
         ControlCommand::Remote(command) => remote::remote(command, context),
+        ControlCommand::Fleet(command) => fleet::fleet(command, context),
         ControlCommand::Mod(command) => mods::run(command, context),
         ControlCommand::Search {
             files,

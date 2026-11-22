@@ -5,34 +5,39 @@ and sealed alerts, without shipping the APNs key to their computers. A small
 Rust service in this repository, `sheprd-push-relay`, holds the key and forwards
 pushes from each user's `sheprd-remote-control` daemon to Apple.
 
-- **Opt-in.** It is off until the user turns it on, in a setting that explains
-  what the relay sees.
+- **Opt-in on the computer.** Each computer sends nothing through it until the
+  user turns it on, in a setting that explains what the relay sees. The iOS
+  app has it on by default, since without it the App Store app gets no push;
+  its setting explains the same and turns it off.
 - **Cheap to run.** One Docker image built by CI, on any small host, with no database.
   TestFlight has about 120 downloads, so nothing here needs to scale yet.
 - **Little to steal.** The server stores no push tokens and no chat content, and
   it has no route to anyone's computer.
 
 This extends `docs/remote-control-plan.md` (iOS Live Activities) and
-`docs/ios-app-plan.md` (Notifications, exactly). Bringing your own key stays
-supported for people who sign the app themselves.
+`docs/ios-app-plan.md` (Notifications, exactly). The push relay is the only way
+a computer sends an iPhone push: the app has one publisher, so nobody else can
+hold an APNs key for it, and the daemon's own-key mode is gone (see Decided).
 
 ## Where things stand
 
 | Piece | Today |
 | --- | --- |
-| Credentials | Each daemon loads `STATE_DIR/apns/AuthKey.p8` and `config.json`. Without them, `state.apns` is `None`, chat changes are skipped, and `POST /api/apns` answers 503. |
-| Sending | `apns::Sender` posts straight to Apple over HTTP/2, in `crates/sheprd-apns/src/send.rs`. The docs say a device can never make the daemon post anywhere else. |
+| Credentials | No daemon holds an APNs key. Without `push_relay`, `state.apns` is `Delivery::Off`, chat changes are skipped, and `POST /api/apns` answers 503. A key an earlier release used in `STATE_DIR/apns/` is left on disk and never read. |
+| Sending | Only the push relay posts to Apple, with `sheprd_apns::Sender` (`crates/sheprd-apns/src/send.rs`). A daemon hands sealed pushes to the relay with `RelayClient`, and a device can never make it post anywhere else. |
 | Alerts | Sealed to the phone. APNs sees "Sheprd", "New activity", the thread id, and ciphertext. |
 | Live Activities | Plaintext: agent, chat title, workspace, computer, step, question, and answer options. |
 | Live Activity detail | Each computer and each phone chooses Detailed or Generic, and the stricter one wins (`apns/redact.rs`). `Privacy` also applies: question text and failure messages need Excerpt. |
 | Token upload | `ActivityTokens.sync` treats the 503 like any failure: it forgets the session and sets `lastError`, which Settings shows. |
 
-### Why bring-your-own-key cannot work for most users
+### Why bring-your-own-key cannot work
 
 APNs accepts a key only from the Apple team that owns the app. Tokens from our
 TestFlight or App Store build belong to `so.pen.herdr.remote`, so only our key
-can reach them. A user's own key works only with a copy of the app signed by
-their own team.
+can reach them. A user's own key would work only with a copy of the app signed
+by their own team, which gets none of the published app's pushes. The daemon
+supported that once, and it was removed: the published app is the only one
+that receives pushes, so only its publisher's relay sends them.
 
 ### Why the key cannot ship in the app
 
@@ -87,6 +92,18 @@ The app proves it is genuine with App Attest and receives a **device
 credential**, valid for 30 days, matching the daemon's `device_idle_days`
 default. With it comes the relay's current public key, signed by an offline root
 key pinned in the app, so the relay key can be replaced without an app release.
+
+Built (`sheprd-push-relay`, `attest`): the app sends `POST /v1/challenge`, makes
+an App Attest key, attests it with the SHA-256 of the challenge's text as the
+client data hash, and sends `POST /v1/attest` with the key id, attestation, and
+challenge. The relay checks the chain to Apple's App Attest root, the nonce,
+the key and credential ids, the app (`TEAM_ID.so.pen.herdr.remote`), counter
+zero, and that the build's App Attest environment is this relay's: Xcode builds
+attest in development and push through the sandbox relay. It answers with the
+credential, its expiry, and the relay's key and key id. Challenges and device
+ids are derived from the credential secret, so none is stored: a device id is
+an HMAC of the key id. Each challenge is good for one attestation, remembered in
+memory until it expires, so a captured attestation cannot be sent again. The key is not yet signed by the offline root.
 
 ### 2. Make handles on the phone
 
@@ -190,17 +207,22 @@ the app lets the credential expire, and APNs reports the tokens gone.
 
 ## Opt-in
 
-Relay delivery is off by default. A daemon with no relay setting makes no
-connection to the relay, and the iOS app makes no attest call until the user
-turns it on.
+Relay delivery is on by default on both sides, and either side turns it off.
+The iOS app has it on from its first launch, and again after a reinstall,
+unless the user turned it off; a daemon connects to the relay only to deliver
+to a handle a phone gave it, so nothing reaches the relay from a computer
+until a phone with the setting on registers there.
 
 The choice is made in two places, because each side holds something different:
 
-- **Sheprd**, Remote Control settings: `push_relay = false` in `[remote]`, for
-  each computer. This allows content to leave that computer.
-- **iOS app**, Settings > Live Activities: this allows the phone to attest and
-  give out handles. When the user first pairs, or when a paired computer has
-  the relay on, the app offers this with the same explanation.
+- **Sheprd**, Remote Control settings: `push_relay` in `[remote]`, for each
+  computer. It is on by default, so every computer the phone is paired with,
+  linked hosts and fleet members included, pushes without a setting to find
+  on each machine. Turning it off (`push_relay = false`, `--no-push-relay`)
+  keeps content from leaving that computer through the relay.
+- **iOS app**, Settings > Push Relay: this allows the phone to attest and
+  give out handles. It is on by default, as the App Store app has no other
+  way to get pushes; the setting shows the same explanation and turns it off.
 
 Both must be on for pushes to flow. Turning either off stops them, and turning
 off the phone's setting also revokes its handles.
@@ -372,13 +394,14 @@ DigitalOcean droplet.
   and the daemon's pacer holds updates to one per ten seconds per chat. At this
   size the smallest instance is plenty. Measure it in phase 4 rather than trust
   this estimate.
-- `GET /healthz` for an uptime monitor, and counters with no per-user labels.
+- `GET /healthz` for an uptime monitor, and counters with no per-user labels:
+  `GET /metrics` and a read-only dashboard, both behind the operator's token.
 
 ## Changes by component
 
 **New crate, `crates/sheprd-apns`.** The JWT, `Host`, `Outcome`, and HTTP/2
-sender move here from `sheprd-remote-control`, so the daemon's own-key mode and
-the relay share one implementation. No GPUI.
+sender move here from `sheprd-remote-control`. The push relay uses the sender;
+the daemon uses only `RelayClient` and sealing. No GPUI.
 
 **New crate, `crates/sheprd-push-relay`.** The relay binary, on Tokio and axum
 as `sheprd-remote-control` is, with stores behind a trait. It has its own
@@ -386,11 +409,13 @@ as `sheprd-remote-control` is, with stores behind a trait. It has its own
 and deployment config stay on the host and out of the repository.
 
 **`sheprd-remote-control`.**
-- A `Delivery` enum with `Off`, `OwnKey(Sender)`, and `Relay(RelayClient)`
-  replaces `Option<Sender>`, so `server/live.rs` and `server/notifier.rs` have
-  one path. The own key wins when both are configured.
+- A `Delivery` enum with `Off` and `Relay(RelayClient)` replaces
+  `Option<Sender>`, so `server/live.rs` and `server/notifier.rs` have one
+  path. The daemon reads no APNs key and never contacts `api.push.apple.com`.
 - `Registration` holds a recipient that is a token or a handle, as a closed
-  enum with its own length bounds. `DeviceToken`'s hex check stays for tokens.
+  enum with its own length bounds. Only handles are sent to. Plain tokens, from
+  an app older than the relay, are still accepted and stored, and stored ones
+  load, so that app keeps registering; they reach nothing.
 - The relay URLs are compiled in, so a paired device still cannot redirect the
   daemon: `push.sheprd.org`, and `push-sandbox.sheprd.org` for Xcode builds. The
   handle's environment picks one. Update the guarantee in `apns.rs` to name them.
@@ -399,15 +424,17 @@ and deployment config stay on the host and out of the repository.
 - `RelayClient` accepts only a sealed payload type, built by the sealing code, so
   sending plain text through the relay is a compile error, not a code review
   catch.
-- `[remote]` gains `push_relay = false`, with a daemon flag and a `--help` entry.
-- A `gone` reply forgets the handle, as `BadDeviceToken` forgets a token today.
+- `[remote]` gains `push_relay`, on by default, with `--no-push-relay` and a
+  `--help` entry.
+- A `gone` reply forgets the handle.
 - A relay outage must not stall the notifier. Alerts fall back to Web Push where
   a subscription exists, and activity updates are dropped, not queued.
 
 **iOS.**
-- The opt-in setting and explanation. Nothing below runs until it is on.
+- The setting and explanation, on by default. Nothing below runs while it is off.
 - App Attest registration and credential renewal, in the main app only.
-- `ActivityTokens.sync` sends handles, and sends tokens only in own-key mode.
+- `ActivityTokens.sync` sends handles, and no plain tokens: with the push
+  relay off, the phone gets no APNs push at all.
 - A daemon reply of "push not configured" stops being an error: it no longer
   forgets the session or sets `lastError`.
 - Settings says which delivery is active.
@@ -417,12 +444,12 @@ and deployment config stay on the host and out of the repository.
 **Sheprd.**
 - The opt-in setting and explanation in Remote Control settings, using the app's
   usual confirmation before it turns on.
-- Status shown in the remote control view (off, own key, or relay, and whether
+- Status shown in the remote control view (off or push relay, and whether
   the last push worked), with a `sheprd` command to read it, per `AGENTS.md`.
   The command only reads: turning the relay on stays in the settings.
 
-**Docs.** `ios/README.md`, `crates/sheprd-remote-control/README.md` (the off,
-own-key, and relay modes), `docs/remote-control-plan.md`, the App Store privacy
+**Docs.** `ios/README.md`, `crates/sheprd-remote-control/README.md` (the off
+and push relay modes), `docs/remote-control-plan.md`, the App Store privacy
 details (the relay receives device tokens), and a privacy policy entry.
 
 ## Phases
@@ -438,11 +465,19 @@ first: the launch depends on it.
 **2. Extract and build.** Started. `sheprd-apns` is extracted with no behavior
 change, and `sheprd-push-relay` runs against a mock APNs, covering malformed
 handles, expiry, revocation, kind checks, limits, each APNs reply, and the test
-that no token or payload reaches disk or logs. Still to build, after spike 3: App
-Attest, `POST /v1/attest`, the signed relay key, and the `devices` table. Until
-then nothing issues credentials, so the relay cannot serve a real phone. Also
-still to add: the counters. Stores and `RelayClient` are built; the daemon uses
-the client once `Delivery` lands in phase 4.
+that no token or payload reaches disk or logs. `POST /v1/challenge` and
+`POST /v1/attest` issue credentials to attested keys, checked against a test PKI
+and against an attestation from an iPhone. The counters are built: pushes by reply and type,
+attestations, challenges, revocations, and rate-limit refusals, with no
+per-user labels, and devices attested and active in the last day and week,
+counted in memory by credential device id and never named. `/metrics` and a
+read-only dashboard serve them behind the operator's `dashboard-token`
+(`deploy/push-relay/README.md`, Monitoring), on the dashboard the relay
+shares through `sheprd-dashboard`. Still to build: the relay key signed by
+the offline root, and renewal by assertion with the `devices` table (until
+then a phone attests a new key when its credential runs out). Stores and
+`RelayClient` are built; the daemon uses the client once `Delivery` lands in
+phase 4.
 
 **3. Image and host.** Built: `crates/sheprd-push-relay/Dockerfile`,
 `.github/workflows/push-relay-image.yml`, and `deploy/push-relay`, whose
@@ -454,6 +489,24 @@ up the sandbox relay and try the recovery on it.
 **4. Connect it.** Add `Delivery`, handles in `Registration`, the opt-in settings,
 iOS attestation and handles, and sealed Live Activities. Test on a real device
 against the sandbox relay, including a locked phone, and measure memory and CPU.
+The daemon's side is built: `apns::Delivery` (off or push relay),
+`Recipient` in `Registration` (a hex token or
+`{"handle", "environment"}`), sealed and shortened Live Activities
+(`apns::relayed`, info `sheprd-live-activity-v1`), `SealedPush` as the only
+thing `RelayClient` takes, `[remote] push_relay` and `--push-relay`, `gone`
+forgetting a handle, a one-minute outage window that leaves alerts to Web
+Push and drops activity updates, and revoking a phone's handles at the push
+relay when it unpairs by any path (`apns::push_relay_revoke`; best effort,
+bounded, and only in push relay mode: with `push_relay` off the daemon makes
+no push relay connection and keeps the handles unused). The iOS side is built
+too: the opt-in in Settings > Push Relay with this explanation, App Attest
+and the credential in the main app's keychain, renewed a week before it runs
+out, handles made on the phone per token and sent with the notify key,
+revoking them when the setting goes off, the widget opening sealed content
+from the notify keys in an App Group file, and each computer's delivery
+(`POST /api/apns` answers `push_relay`; an older daemon may still say
+`own_key`, which the phone reads as unknown). Still to do: the Sheprd
+setting, explanation, and status command, and testing on a device.
 
 **5. Roll out.** Deploy production and offer it to TestFlight users. Watch
 delivery rates, 429s, and `gone` replies. Try the recovery runbook on the sandbox
@@ -463,15 +516,17 @@ relay before announcing it.
 
 Before phase 5 offers the relay to anyone, from issue #1056:
 
-- [ ] A TestFlight install, paired with a daemon that has no APNs key, gets sealed
-      alerts and Live Activity updates through the relay.
+- [ ] A TestFlight install, paired with a daemon with the push relay on, gets
+      sealed alerts and Live Activity updates through the relay.
 - [ ] The relay never receives a plain-text alert body or Live Activity content.
 - [ ] A handle from one phone cannot push to another phone.
-- [ ] A daemon with its own key keeps sending directly, as today.
+- [ ] No daemon contacts `api.push.apple.com`: with the push relay off it sends no
+      APNs push, and a plain token an older app registered is kept but never
+      sent to.
 - [ ] Turning the relay off, in Sheprd or on the phone, stops every send through it.
 - [ ] No token or payload reaches the relay's disk or logs.
 - [ ] `ios/README.md` and `crates/sheprd-remote-control/README.md` document the
-      three modes.
+      two modes, push relay and off.
 
 ## Spikes
 
@@ -479,13 +534,19 @@ Before phase 5 offers the relay to anyone, from issue #1056:
    limited to chosen topics and one environment. Confirm one works for
    `so.pen.herdr.remote.push-type.liveactivity`. If it does, use one per
    environment instead of a team-scoped key.
-2. **Sealed Live Activity (first, and blocking).** Built and waiting for a phone:
-   see `docs/ios-spikes.md`. Payload size is measured above. Can the widget
+2. **Sealed Live Activity (first, and blocking).** Done: it works on a locked
+   iPhone, opening each update in 5 to 7 ms, but the widget cannot read the
+   keychain (`errSecNotAvailable`), so the app also keeps the Secure Enclave
+   key's handle in an App Group file the widget reads. See `docs/ios-spikes.md`.
+   The original question: Payload size is measured above. Can the widget
    extension open sealed content on a locked phone? The alert key is `AfterFirstUnlockThisDeviceOnly` and the
    Notification Service Extension already uses it, but a Secure Enclave
    operation during a widget render is untested. Measure memory, render time,
    and how a real payload fits 4,096 bytes after base64.
-3. **App Attest.** The details here came from general knowledge, because
+3. **App Attest.** Mostly done: on an iPhone, a development build attests and
+   asserts, and `ios/Spikes/attest-check.py` verifies both as the relay will
+   (`docs/ios-spikes.md`). Still open: a TestFlight build's environment. The
+   original question: the details here came from general knowledge, because
    Apple's page could not be read while writing this. Confirm the attestation
    flow, how a TestFlight build is identified, and how its App Attest
    environment relates to `aps-environment`. Decide what the simulator does,
@@ -504,6 +565,11 @@ Before phase 5 offers the relay to anyone, from issue #1056:
 - Full Live Activities with meaningful detail at launch, sealed end to end.
 - The relay lives on `sheprd.org`: `push.sheprd.org`, and
   `push-sandbox.sheprd.org` for development.
+- Computers push only through the push relay. The app's publisher is the only
+  one who can hold its APNs key, so the daemon's own-key mode was removed:
+  linking a host no longer copies an APNs key to it, a copy an earlier link
+  left there stays on disk unused, and an older Sheprd's `apns` enroll field is
+  ignored.
 
 ## Decisions needed
 

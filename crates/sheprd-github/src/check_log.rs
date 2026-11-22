@@ -1,11 +1,13 @@
 //! The end of a GitHub Actions job's log, and the excerpt of it a prompt
 //! carries. GitHub answers a log request with a redirect to storage that
-//! needs no token, so the token is sent to GitHub alone. A failure is
+//! needs no token, so the token is sent to its own server alone. A failure is
 //! written last, so the reader keeps a log's tail rather than its start,
 //! and refuses a log too long to reach the end of. Log text is untrusted.
 
-use crate::http::{agent, authorization};
-use secrecy::SecretString;
+use crate::{
+    ServerToken,
+    http::{agent, authorization},
+};
 use std::{collections::VecDeque, io::Read, time::Duration};
 
 mod error;
@@ -30,17 +32,18 @@ const ERROR_MARK: &str = "##[error]";
 
 /// The end of job `job`'s log in `owner/repo`, which the caller took from a
 /// verified pull request. Blocking.
-pub fn job_log(token: &SecretString, owner: &str, repo: &str, job: u64) -> crate::Result<String> {
-    let agent = agent(TIMEOUT);
+pub fn job_log(token: &ServerToken, owner: &str, repo: &str, job: u64) -> crate::Result<String> {
+    let agent = agent(&token.server, TIMEOUT);
     let context = "check log"; // i18n: data
     let reply = agent
         .get(format!(
-            "https://api.github.com/repos/{owner}/{repo}/actions/jobs/{job}/logs"
+            "{}/repos/{owner}/{repo}/actions/jobs/{job}/logs",
+            token.server.rest_root()
         ))
         .header("User-Agent", "Sheprd")
         .header("Accept", "application/vnd.github+json")
         .header("X-GitHub-Api-Version", "2022-11-28")
-        .header("Authorization", authorization(token)?)
+        .header("Authorization", authorization(&token.token)?)
         .call()
         .map_err(crate::log::network(context))?;
     let status = reply.status().as_u16();

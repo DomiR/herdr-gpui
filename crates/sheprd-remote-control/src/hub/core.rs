@@ -56,6 +56,24 @@ const PREFIX: &str = "core:";
 /// Where terminals nothing else lists go, new ones from a phone included.
 pub(super) const UNLISTED: &str = "core:terminals";
 
+/// What a core whose desktop document is `spaces` and whose terminals are
+/// `terminals` lists, for other modules' tests.
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+pub(crate) fn project_spaces(boot: &str, spaces: Value, terminals: &[Terminal]) -> Layout {
+    let mut poller = poller::Poller::default();
+    poller
+        .read_spaces(
+            boot,
+            Ok(sheprd_core_client::wire::Doc {
+                value: spaces,
+                version: 1,
+            }),
+        )
+        .expect("spaces read");
+    poller.project(boot, terminals, None, None)
+}
+
 /// The workspace a phone's new workspace in `cwd` is listed as until
 /// Sheprd keeps one for it: named for its folder, so it keeps its id
 /// whichever of its panes close, and safe in a path.
@@ -391,14 +409,9 @@ fn id(address: &str) -> String {
     id
 }
 
-/// A pane's id. Addresses survive a core restart but start over when its
-/// state is wiped, which also gives the core a new id: naming the core
-/// keeps an open phone view from landing on an unrelated new terminal.
+/// A pane's id, which favorites share (`control::favorites::core_pane`).
 fn pane_id(boot: &str, address: &str) -> String {
-    let tag = boot.bytes().fold(0x811c_9dc5_u32, |hash, byte| {
-        (hash ^ u32::from(byte)).wrapping_mul(0x0100_0193)
-    });
-    format!("{PREFIX}{tag:08x}-{}", &id(address)[PREFIX.len()..])
+    crate::control::favorites::core_pane(boot, address)
 }
 
 pub(super) fn owns(params: &Value) -> bool {

@@ -27,7 +27,7 @@ use sheprd_chat_protocol::{Device, Origin, Via};
 use std::path::{Path, PathBuf};
 
 pub(crate) use launch::Running;
-pub(crate) use note::{Place, Told, hide, split};
+pub(crate) use note::{Place, Told, checksum, hide, split};
 pub(crate) use prompts::{Facts, Kind, Prompts};
 pub(crate) use recall::Recall;
 

@@ -63,7 +63,7 @@ pub(super) fn label(panel: ActivityPanel) -> SharedString {
     .into()
 }
 
-fn icon(panel: ActivityPanel) -> &'static str {
+pub(super) fn icon(panel: ActivityPanel) -> &'static str {
     match panel {
         ActivityPanel::Overview => "icons/pulse.svg",
         ActivityPanel::Workspaces => "icons/terminal.svg",

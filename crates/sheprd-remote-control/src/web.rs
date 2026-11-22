@@ -12,6 +12,8 @@
 mod api;
 mod assets;
 pub(crate) mod attention;
+mod favorites;
+mod fleet;
 mod fragments;
 mod github;
 mod hosts;
@@ -28,12 +30,14 @@ mod shortcuts;
 mod stream;
 mod tags;
 mod terminal;
+mod test_push;
 mod typed;
 mod update;
 mod uploads;
 mod workspace;
 
 pub(crate) use api::{NEW_CHAT_WAIT, check_new_workspace, parse_agent};
+pub(crate) use favorites::{Kept as Favorites, follow_boot as follow_favorite_boot};
 pub(crate) use fragments::folders;
 pub(crate) use indicators::{Indicators, Look};
 pub(crate) use log::report_limit;
@@ -75,9 +79,9 @@ const BODY_LIMIT: usize = 320 * 1024;
 
 /// What every request reads.
 pub(crate) struct State {
-    /// Live Activity pushes for the iOS companion, when the user set up an
-    /// APNs key.
-    pub(crate) apns: Option<crate::apns::Sender>,
+    /// How APNs pushes for the iOS companion leave: through the push relay,
+    /// or not at all.
+    pub(crate) apns: crate::apns::Delivery,
     /// `Auth::apps`: origins of apps installed from other computers.
     pub(crate) apps: Arc<RwLock<Vec<String>>>,
     pub(crate) auth: Mutex<Auth>,
@@ -88,7 +92,11 @@ pub(crate) struct State {
     pub(crate) computer: String,
     /// Streams open per device.
     pub(crate) connected: Mutex<HashMap<DeviceId, usize>>,
+    /// This computer's favorite agents, which its phones and desktops share.
+    pub(crate) favorites: Favorites,
     pub(crate) fingerprint: String,
+    /// The fleet, when its key could be read or made.
+    pub(crate) fleet: Option<Arc<crate::fleet::Fleet>>,
     pub(crate) github: crate::native::changes::github::Reader,
     pub(crate) hub: Arc<Hub>,
     /// Lending this computer's GitHub sign-ins to phones, and which
@@ -113,6 +121,8 @@ pub(crate) struct State {
     pub(crate) pull_requests:
         tokio::sync::watch::Sender<Arc<crate::control::pull_requests::PullRequests>>,
     pub(crate) push: Option<Sender>,
+    /// How the last APNs push of each kind went.
+    pub(crate) pushes: crate::apns::Ledger,
     /// The relays this computer listens on, when any are set.
     pub(crate) relay: Option<Arc<crate::relay::Relays>>,
     /// How often each address may write a phone's error to the log.
@@ -230,7 +240,12 @@ pub(crate) fn router(state: Shared) -> Router {
         .route("/api/relay", get(relay::info).post(relay::enroll))
         .route(
             "/api/apns",
-            post(api::register_apns).layer(DefaultBodyLimit::max(16 * 1024)),
+            // 32 activities, each a token or a relay handle of up to 2 KiB.
+            post(api::register_apns).layer(DefaultBodyLimit::max(96 * 1024)),
+        )
+        .route(
+            "/api/apns/test",
+            post(test_push::send).layer(DefaultBodyLimit::max(1024)),
         )
         .route("/api/term/{pane}/keys", post(terminal::keys))
         .route("/api/term/{pane}/paste", post(terminal::paste))
@@ -255,6 +270,15 @@ pub(crate) fn router(state: Shared) -> Router {
             post(crate::native::summarize),
         )
         .route("/api/v2/chat/{pane}/title", post(crate::native::title))
+        .route("/api/v2/fleet", get(fleet::status))
+        .route(
+            "/api/v2/fleet/join",
+            post(fleet::join).layer(DefaultBodyLimit::max(fleet::MAX_JOIN_BODY)),
+        )
+        .route(
+            "/api/v2/fleet/sync",
+            post(fleet::sync).layer(DefaultBodyLimit::max(fleet::MAX_SYNC_BODY)),
+        )
         .route("/api/v2/github/token", get(crate::native::github::token))
         .route("/api/v2/home", get(crate::native::get_home))
         .route("/api/v2/hosts", get(hosts::list))
@@ -263,6 +287,7 @@ pub(crate) fn router(state: Shared) -> Router {
             post(hosts::relay).layer(DefaultBodyLimit::max(16 * 1024)),
         )
         .route("/api/v2/hosts/{host}/pair", post(hosts::pair))
+        .route("/api/v2/favorites", post(favorites::post))
         .route("/api/v2/live", get(crate::native::live))
         .route("/api/v2/new", get(crate::native::new_options))
         .route("/api/v2/search", get(crate::native::search))
@@ -426,6 +451,23 @@ async fn cors(Extract(state): Extract<Shared>, request: Request, next: Next) -> 
     response
 }
 
+/// How a phone hears of a fleet failure: what it sent is refused, the
+/// fleet is not there, or this computer failed.
+fn fleet_status(error: &crate::fleet::Error) -> StatusCode {
+    use crate::fleet::{Error, bluetooth, joins};
+    match error {
+        Error::NoFleet => StatusCode::CONFLICT,
+        Error::Joins(joins::Error::Full) => StatusCode::TOO_MANY_REQUESTS,
+        Error::Joins(joins::Error::Removed) => StatusCode::FORBIDDEN,
+        Error::Joins(_) | Error::Log(_) => StatusCode::BAD_REQUEST,
+        Error::Bluetooth(bluetooth::Error::NotClaimant | bluetooth::Error::Removed) => {
+            StatusCode::FORBIDDEN
+        }
+        Error::Bluetooth(_) => StatusCode::CONFLICT,
+        _ => StatusCode::INTERNAL_SERVER_ERROR,
+    }
+}
+
 pub(crate) fn allowed_origin(origins: &[String], origin: &str) -> bool {
     origins.iter().any(|allowed| allowed == origin)
 }
@@ -473,6 +515,8 @@ pub(crate) enum ApiError {
     Auth(#[from] auth::Error),
     #[error(transparent)]
     Changes(#[from] crate::native::changes::Error),
+    #[error(transparent)]
+    Fleet(#[from] crate::fleet::Error),
     #[error("that is not a folder you can start a workspace in")]
     Folder,
     #[error(transparent)]
@@ -510,9 +554,9 @@ impl IntoResponse for ApiError {
             Self::Auth(auth::Error::RateLimited | auth::Error::NearbyBusy) => {
                 StatusCode::TOO_MANY_REQUESTS
             }
-            Self::Auth(auth::Error::NearbyExhausted | auth::Error::NoPairing) => {
-                StatusCode::CONFLICT
-            }
+            Self::Auth(
+                auth::Error::NearbyExhausted | auth::Error::NoPairing | auth::Error::RelayKeysTaken,
+            ) => StatusCode::CONFLICT,
             Self::Auth(auth::Error::UnknownNearby) => StatusCode::NOT_FOUND,
             Self::Auth(auth::Error::UnknownDevice) => StatusCode::FORBIDDEN,
             Self::Auth(auth::Error::Links(auth::links::Error::UnknownHost)) => {
@@ -539,7 +583,9 @@ impl IntoResponse for ApiError {
                     | crate::ssh_access::Error::UnknownUser,
                 ),
             ) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::Fleet(error) => fleet_status(error),
             Self::Update(update::Error::AppClosed) => StatusCode::CONFLICT,
+            Self::App(crate::app::Error::Favorites(_)) => StatusCode::BAD_REQUEST,
             Self::App(_) | Self::Upload(uploads::Error::Write(_)) => {
                 StatusCode::INTERNAL_SERVER_ERROR
             }

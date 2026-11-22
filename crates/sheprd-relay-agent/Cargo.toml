@@ -11,18 +11,40 @@ version.workspace      = true
 [lints]
 workspace = true
 
+[features]
+# The agent itself: its keys, listening on relays, the tunnel, and its
+# command line. Sheprd's daemon and app depend on the library without it,
+# for the fleet access file, the removal frames, and the `authorized_keys`
+# lines (docs/relay-plan.md, Fleet), so Tokio never reaches the app.
+default = ["runtime"]
+runtime = [
+  "dep:getrandom",
+  "dep:sheprd-tunnel",
+  "dep:tokio",
+  "dep:tracing",
+  "dep:tracing-subscriber",
+  "sheprd-relay/client",
+]
+
+[[bin]]
+name              = "sheprd-relay-agent"
+path              = "src/main.rs"
+required-features = ["runtime"]
+
 [dependencies]
 base64.workspace             = true
-getrandom.workspace          = true
 p256.workspace               = true
 serde.workspace              = true
 serde_json.workspace         = true
-sheprd-relay                 = { features = ["client"], workspace = true }
-sheprd-tunnel                = { features = ["tokio"], workspace = true }
+sha2.workspace               = true
+sheprd-relay.workspace       = true
 thiserror.workspace          = true
-tokio.workspace              = true
-tracing.workspace            = true
-tracing-subscriber           = { features = ["fmt"], workspace = true }
+
+getrandom          = { optional = true, workspace = true }
+sheprd-tunnel      = { features = ["tokio"], optional = true, workspace = true }
+tokio              = { optional = true, workspace = true }
+tracing            = { optional = true, workspace = true }
+tracing-subscriber = { features = ["fmt"], optional = true, workspace = true }
 
 [dev-dependencies]
 axum.workspace               = true

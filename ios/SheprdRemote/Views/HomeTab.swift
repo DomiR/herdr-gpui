@@ -56,6 +56,7 @@ struct HomeTab: View {
     private func chats(_ sections: [AgentSort.Section<HomeRow>]) -> some View {
         ChatList(sections: sections)
             .nearbyBanner()
+            .fleetOffer()
             .overlay {
                 if model.computers.isEmpty {
                     ContentUnavailableView {

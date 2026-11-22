@@ -102,6 +102,7 @@ fn selection_is_refused_after_claim_and_missing_cli_address_can_be_retried() {
             code: "123456".into(),
             app: None,
             ssh: false,
+            fleet: None,
         })),
     );
     let before = pairing.phase().clone();

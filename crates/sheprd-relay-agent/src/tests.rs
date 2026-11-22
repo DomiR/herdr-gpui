@@ -20,6 +20,9 @@ use tokio::{
     sync::watch,
 };
 
+mod fleet;
+mod fleet_also;
+mod fleet_refused;
 mod status;
 
 /// A relay serving QUIC and HTTP on loopback: its HTTP address, and its
@@ -125,6 +128,7 @@ async fn start(dir: &Path) -> Running {
 async fn start_on(dir: &Path, http: SocketAddr) -> (Arc<Agent>, watch::Sender<bool>) {
     let forward = ssh_server().await;
     let options = Options {
+        authorized_keys: Some(dir.join("authorized_keys")),
         forward,
         relays: vec![Relay {
             endpoint: Endpoint::parse(&format!("http://{http}")).unwrap(),
@@ -154,6 +158,8 @@ async fn until(agent: &Agent, wanted: impl Fn(&RelayState) -> bool) {
 /// A session's plaintext end, and the QUIC connection that carries it.
 struct Session {
     io: tokio::io::DuplexStream,
+    /// The handshake's hash, which a member's proof signs.
+    hash: [u8; 32],
     _connection: quinn::Connection,
 }
 
@@ -169,6 +175,7 @@ async fn dial(running: &Running, desktop: &Desktop) -> sheprd_tunnel::Result<Ses
     let (initiator, first) = Initiator::session(&desktop.tunnel, &identity, route.as_bytes())?;
     let tunnel = stream::connect(join(recv, send), initiator, &first, identity.x25519()).await?;
     Ok(Session {
+        hash: tunnel.hash,
         io: tunnel.io,
         _connection: connection,
     })

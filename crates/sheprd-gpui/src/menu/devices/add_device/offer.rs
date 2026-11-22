@@ -1,11 +1,11 @@
 //! What Add Device offers when a host cannot be saved as it is, and how it
-//! asks: install or update Herdr, continue in a terminal, restart the
+//! asks: install or update Herdr, continue setup, restart the
 //! server, or install the user's SSH key.
 
 use crate::i18n::fl;
 use sheprd_client::{HostProbe, SshFailure};
 
-/// Why setup has to continue in a terminal.
+/// Why setup needs the user's input.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::menu::devices) enum Offer {
     Install,
@@ -64,8 +64,7 @@ impl Offer {
         }
     }
 
-    /// Windows cannot run a setup on a local terminal yet (see
-    /// `setup::terminal_setup`), so the user runs Herdr's own command in one.
+    /// Windows cannot host interactive setup yet, so it names the CLI command.
     fn terminal_instructions(self, target: &str, user: Option<&str>) -> String {
         match self {
             Self::Install => fl!("add-device-terminal-install", target = target),

@@ -12,6 +12,10 @@ pub struct PullRequests {
     /// sends none.
     #[serde(default)]
     pub unopened: Vec<UnopenedBranch>,
+    /// Workspaces whose checkout has uncommitted changes, untracked files
+    /// included, as the desktop's pencil marks them. An older app sends none.
+    #[serde(default)]
+    pub uncommitted: Vec<UncommittedCheckout>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -32,6 +36,14 @@ pub struct UnopenedBranch {
     pub cwd: String,
     pub branch: String,
     pub commits: u64,
+}
+
+/// A workspace's checkout with uncommitted changes.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct UncommittedCheckout {
+    pub workspace_id: String,
+    pub cwd: String,
+    pub branch: String,
 }
 
 impl PullRequests {
@@ -56,6 +68,15 @@ impl PullRequests {
                 .collect::<std::collections::HashSet<_>>()
                 .len()
                 == self.unopened.len()
+            && self.uncommitted.len() <= MAX_PULL_REQUESTS
+            && self.uncommitted.iter().all(UncommittedCheckout::valid)
+            && self
+                .uncommitted
+                .iter()
+                .map(|entry| &entry.workspace_id)
+                .collect::<std::collections::HashSet<_>>()
+                .len()
+                == self.uncommitted.len()
     }
 }
 
@@ -72,6 +93,12 @@ fn valid_place(workspace_id: &str, cwd: &str, branch: &str) -> bool {
 impl UnopenedBranch {
     pub fn valid(&self) -> bool {
         self.commits > 0 && valid_place(&self.workspace_id, &self.cwd, &self.branch)
+    }
+}
+
+impl UncommittedCheckout {
+    pub fn valid(&self) -> bool {
+        valid_place(&self.workspace_id, &self.cwd, &self.branch)
     }
 }
 

@@ -1,229 +1,172 @@
-import ActivityKit
 import SheprdRemoteCore
 import SwiftUI
 import UIKit
 
-/// Settings A: one grouped list.
+/// Settings: a short hub of pages, as the system's is. What repeats per
+/// computer (alerts at the desk, push delivery, test pushes) lives on each
+/// computer's page, and a problem shows once, on top.
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
-    @Environment(WindowState.self) private var window: WindowState?
-    @State private var cacheSize = 0
-    @State private var forgetting: Computer?
-    @State private var editMode = EditMode.inactive
+    @AppStorage(PushRelaySetting.key, store: PushRelaySetting.store) private var pushRelay = true
+    @AppStorage(AppAppearance.key) private var appearance = AppAppearance.system
     #if DEBUG
+    @State private var showingComputers = false
     @State private var showingRelays = false
     @State private var showingGitHub = false
+    @State private var showingNotifications = false
     #endif
-    @AppStorage(AppLock.setting, store: AppLock.store) private var requireFaceID = false
-    @AppStorage(AppAppearance.key) private var appearance = AppAppearance.system
-    @AppStorage(VoiceSettings.speaksKey) private var voiceSpeaks = true
-    @AppStorage(VoiceSettings.confirmsKey) private var voiceConfirms = false
-    @AppStorage(VoiceSettings.languageKey) private var voicePhoneLanguage = false
-    @AppStorage(ActivityTokens.genericSetting) private var genericActivities = false
-    @AppStorage(RowLines.key) private var rowLines = RowLines.choices.lowerBound
-    @AppStorage(FeedbackSettings.soundsKey) private var effectSounds = true
-    @AppStorage(FeedbackSettings.hapticsKey) private var haptics = true
 
     var body: some View {
         List {
-            Section {
-                ForEach(model.computers) { computer in
-                    NavigationLink {
-                        ComputerScreen(device: computer.device).makesRoomForConnectionToast()
-                    } label: {
-                        ComputerRow(computer: computer)
-                    }
-                    .swipeActions {
-                        // Not `.destructive`: that removes the row before
-                        // the confirmation answers.
-                        Button("Forget", systemImage: "trash") { forgetting = computer }.tint(.red)
-                    }
-                }
-                .onDelete { offsets in forgetting = offsets.first.map { model.computers[$0] } }
-                Button("Pair a Computer", systemImage: "plus") { window?.pairing = true }
-            } header: {
-                HStack {
-                    Text("Computers")
-                    Spacer()
-                    if !model.computers.isEmpty { EditButton().textCase(nil).font(.subheadline) }
-                }
-            } footer: {
-                if !model.computers.isEmpty {
-                    Text("Forgetting a computer removes its chats from this \(UIDevice.current.model). It does not stop Sheprd there.")
-                }
-            }
-            if !model.computers.isEmpty {
+            // The relay's error comes first and opens its controls. A
+            // registration copies it into `tokens.lastError`, so the last
+            // problem shows only when it says something else.
+            let relayError = pushRelay ? model.tokens.pushRelay.lastError : nil
+            let problem = (model.tokens.lastError ?? model.message).flatMap { $0 == relayError ? nil : $0 }
+            if relayError != nil || problem != nil {
                 Section {
-                    ForEach(model.computers) { computer in
-                        Toggle(model.displayName(computer), isOn: Binding(
-                            get: { computer.presence },
-                            set: { model.setPresence($0, for: computer) }
-                        ))
-                    }
-                } header: {
-                    Text("Hold alerts at the desk")
-                } footer: {
-                    Text("Over Bluetooth, this phone tells the computer when you are near it, and the computer holds phone alerts while you are there and using it. It also keeps the computer's addresses current. The computer needs presence on in Sheprd's Remote control settings.")
-                }
-            }
-            Section {
-                NavigationLink {
-                    RelaysView().makesRoomForConnectionToast()
-                } label: {
-                    LabeledContent("Relays", value: "\(model.savedRelays.relays.count)")
-                }
-            } header: {
-                Text("Connection")
-            } footer: {
-                Text("A relay joins this \(UIDevice.current.model) to a computer when they are on different networks.")
-            }
-            Section {
-                GitHubSettingsRow()
-            } footer: {
-                Text("This \(UIDevice.current.model) reads pull requests and checks from GitHub with its own sign-in, or one a computer lends.")
-            }
-            Section {
-                Picker("Lines per Row", selection: $rowLines) {
-                    ForEach(RowLines.choices, id: \.self) { Text($0, format: .number).tag($0) }
-                }
-                NavigationLink {
-                    TextShortcutsView().makesRoomForConnectionToast()
-                } label: {
-                    LabeledContent("Text Shortcuts", value: "\(model.shortcuts.shortcuts.count)")
-                }
-            } header: {
-                Text("Chats")
-            } footer: {
-                Text("Lines per Row is how much of a chat's latest reply or summary its row shows in the lists.")
-            }
-            Section {
-                Toggle("Effect Sounds", isOn: $effectSounds)
-                if FeedbackSettings.canTap {
-                    Toggle("Haptics", isOn: $haptics)
-                }
-            } header: {
-                Text("Sounds & Haptics")
-            } footer: {
-                Text(FeedbackSettings.canTap
-                    ? "Effect sounds go with an agent's message effects, such as slam and fireworks, and stay quiet when the Ring/Silent switch is on silent. Haptics are what you feel on sending, answering, terminal keys, and effects."
-                    : "Effect sounds go with an agent's message effects, such as slam and fireworks, and stay quiet when the \(UIDevice.current.model) is muted.")
-            }
-            Section {
-                Toggle("Speak Results", isOn: $voiceSpeaks)
-                Toggle("Confirm by Voice", isOn: $voiceConfirms)
-                Toggle("Use Phone Language", isOn: $voicePhoneLanguage)
-            } header: {
-                Text("Voice")
-            } footer: {
-                Text("Confirm by Voice reads the plan aloud and starts on a plain yes, for a new worktree only. Anything else still needs a tap. Use Phone Language is experimental: commands other than English are less reliable, and cannot stop or answer a chat.")
-            }
-            Section("Terminal") {
-                NavigationLink {
-                    TerminalKeysView().makesRoomForConnectionToast()
-                } label: {
-                    let layout = model.termKeys.layout
-                    LabeledContent("Terminal Keys", value: "\(layout.top.count + layout.bottom.count)")
-                }
-            }
-            Section {
-                if !ActivityAuthorizationInfo().areActivitiesEnabled {
-                    Label("Live Activities are off for Sheprd. Turn them on in Settings.", systemImage: "exclamationmark.triangle")
-                }
-                Toggle("Keep Generic", isOn: $genericActivities)
-                    .onChange(of: genericActivities) { _, generic in
-                        Task { await model.tokens.genericChanged(to: generic) }
-                    }
-                #if DEBUG
-                Button("Start a sample activity") { model.startSample() }
-                if let status = model.sampleStatus {
-                    Text(status).font(.footnote).foregroundStyle(.secondary)
-                }
-                #endif
-            } header: {
-                Text("Live Activities")
-            } footer: {
-                Text("Generic shows the agent and what it is doing, without the chat's name, steps, or questions. A computer can also choose this in Sheprd's Remote control settings.")
-            }
-            Section {
-                Picker("Appearance", selection: $appearance) {
-                    ForEach(AppAppearance.allCases) { Text($0.title).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-            } header: {
-                Text("Appearance")
-            } footer: {
-                Text("Terminals stay dark either way.")
-            }
-            Section {
-                Toggle("Require Face ID", isOn: Binding(
-                    get: { requireFaceID },
-                    set: { on in
-                        // Turning the lock off asks too, so a borrowed,
-                        // unlocked phone cannot drop it.
-                        Task {
-                            if await OwnerCheck.confirm(on ? "Lock Sheprd" : "Stop locking Sheprd") {
-                                requireFaceID = on
-                                model.appLockChanged()
-                            }
+                    if let relayError {
+                        NavigationLink {
+                            NotificationSettingsView().makesRoomForConnectionToast()
+                        } label: {
+                            ProblemRow(title: "Push relay refused this \(UIDevice.current.model)", detail: relayError)
                         }
                     }
-                ))
-            } header: {
-                Text("Privacy")
-            } footer: {
-                Text("Asks for Face ID when the app opens and hides it in the app switcher. \"Always\" answers ask either way.")
-            }
-            Section("Storage") {
-                LabeledContent("Cached chats and lists", value: ByteCountFormatter.string(fromByteCount: Int64(cacheSize), countStyle: .file))
-                Button("Clear cache", role: .destructive) {
-                    model.fleet.clearCache()
-                    model.drafts = [:]
-                    cacheSize = 0
+                    if let problem {
+                        ProblemRow(title: "Last problem", detail: problem)
+                    }
                 }
             }
-            if let problem = model.tokens.lastError ?? model.message {
-                Section("Last problem") { Text(problem).font(.footnote).foregroundStyle(.secondary) }
+            Section {
+                SettingsLink("Computers", symbol: "desktopcomputer", color: .blue, value: "\(model.computers.count)") {
+                    ComputersSettingsView()
+                }
+                SettingsLink("Fleet", symbol: "point.3.connected.trianglepath.dotted", color: .indigo, value: fleetSummary) {
+                    FleetSettingsView()
+                }
+                SettingsLink("Relays", symbol: "antenna.radiowaves.left.and.right", color: .teal,
+                             value: "\(model.savedRelays.relays.count)") {
+                    RelaysView()
+                }
+                GitHubSettingsRow()
+            }
+            Section {
+                SettingsLink("Notifications", symbol: "bell.badge.fill", color: .red) {
+                    NotificationSettingsView()
+                }
+                SettingsLink("Chats", symbol: "bubble.left.and.bubble.right.fill", color: .green) {
+                    ChatSettingsView()
+                }
+                SettingsLink("Voice", symbol: "waveform", color: .pink) {
+                    VoiceSettingsView()
+                }
+                SettingsLink("Terminal Keys", symbol: "terminal.fill", color: .gray,
+                             value: "\(model.termKeys.layout.top.count + model.termKeys.layout.bottom.count)") {
+                    TerminalKeysView()
+                }
+                SettingsLink("Sounds & Haptics", symbol: "speaker.wave.2.fill", color: .orange) {
+                    SoundsSettingsView()
+                }
+            }
+            Section {
+                Picker(selection: $appearance) {
+                    ForEach(AppAppearance.allCases) { Text($0.title).tag($0) }
+                } label: {
+                    Label { Text("Appearance") } icon: { SettingsIcon(symbol: "circle.lefthalf.filled", color: .blue) }
+                }
+                .pickerStyle(.menu)
+                SettingsLink("Privacy & Storage", symbol: "hand.raised.fill", color: .blue) {
+                    PrivacySettingsView()
+                }
+            } footer: {
+                Text("Terminals stay dark in either appearance.")
             }
             Section {
                 LabeledContent("Version", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        .task { cacheSize = model.fleet.cache.size() }
-        .forgetConfirmation($forgetting)
-        .environment(\.editMode, $editMode)
         #if DEBUG
-        .task { if UserDefaults.standard.bool(forKey: "editComputers") { editMode = .active } }
+        .navigationDestination(isPresented: $showingComputers) { ComputersSettingsView().makesRoomForConnectionToast() }
+        .task { if UserDefaults.standard.bool(forKey: "editComputers") { showingComputers = true } }
         .navigationDestination(isPresented: $showingRelays) { RelaysView().makesRoomForConnectionToast() }
         .task { if UserDefaults.standard.bool(forKey: "openRelays") { showingRelays = true } }
         .navigationDestination(isPresented: $showingGitHub) { GitHubSettingsView().makesRoomForConnectionToast() }
         .task { if UserDefaults.standard.bool(forKey: "openGitHub") { showingGitHub = true } }
+        .navigationDestination(isPresented: $showingNotifications) { NotificationSettingsView().makesRoomForConnectionToast() }
+        .task { if UserDefaults.standard.bool(forKey: "openNotifications") { showingNotifications = true } }
         #endif
+    }
+
+    /// Where this phone stands with the fleet, beside its row.
+    private var fleetSummary: String {
+        let membership = model.fleetMembership
+        if membership.admitted {
+            let count = membership.status?.view?.members.count ?? 0
+            return count == 1 ? "1 member" : "\(count) members"
+        }
+        return membership.record == nil ? "Not joined" : "Waiting"
     }
 }
 
-/// A computer in Settings: its name, then how it stands or where it is.
-private struct ComputerRow: View {
-    @Environment(AppModel.self) private var model
-    var computer: Computer
+/// A row icon in a colored rounded square, as the system's Settings draws.
+struct SettingsIcon: View {
+    let symbol: String
+    let color: Color
 
     var body: some View {
-        let machine = model.fleet.machines.first { $0.id == computer.device }
-        let status = machine?.status
-        VStack(alignment: .leading, spacing: 2) {
-            Text(model.displayName(computer))
-            if status == .revoked {
-                ComputerStatusLine(status: .revoked).font(.caption)
-            } else if status == .outdated || machine?.needsUpdate == true {
-                ComputerStatusLine(status: .outdated).font(.caption)
-            } else if let vouching = model.vouching(computer) {
-                let via = "via \(model.displayName(vouching))"
-                Text(computer.relay == nil ? via : "\(via) · \(Computer.relayLabel)")
-                    .font(.caption).foregroundStyle(.secondary)
-            } else if let label = computer.reachLabel {
-                Text(label).font(.caption).foregroundStyle(.secondary)
+        Image(systemName: symbol)
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(width: 28, height: 28)
+            .background(color, in: RoundedRectangle(cornerRadius: 7))
+            .accessibilityHidden(true)
+    }
+}
+
+/// One of the hub's rows: an icon, a title, a value, and the page it opens.
+private struct SettingsLink<Destination: View>: View {
+    let title: LocalizedStringKey
+    let symbol: String
+    let color: Color
+    var value: String?
+    @ViewBuilder let destination: () -> Destination
+
+    init(_ title: LocalizedStringKey, symbol: String, color: Color, value: String? = nil,
+         @ViewBuilder destination: @escaping () -> Destination) {
+        self.title = title
+        self.symbol = symbol
+        self.color = color
+        self.value = value
+        self.destination = destination
+    }
+
+    var body: some View {
+        NavigationLink {
+            destination().makesRoomForConnectionToast()
+        } label: {
+            LabeledContent {
+                if let value { Text(verbatim: value) }
+            } label: {
+                Label { Text(title) } icon: { SettingsIcon(symbol: symbol, color: color) }
             }
+        }
+    }
+}
+
+/// The one problem Settings shows, above everything else.
+private struct ProblemRow: View {
+    let title: String
+    let detail: String
+
+    var body: some View {
+        Label {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                Text(detail).font(.footnote).foregroundStyle(.secondary)
+            }
+        } icon: {
+            SettingsIcon(symbol: "exclamationmark.triangle.fill", color: .orange)
         }
     }
 }

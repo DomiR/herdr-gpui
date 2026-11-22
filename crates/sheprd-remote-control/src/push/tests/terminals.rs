@@ -187,7 +187,10 @@ fn a_terminal_question_skips_the_wait_and_lasts_a_day() {
     let mut throttle = Throttle::default();
     assert!(throttle.offer(alert.clone(), 0).is_some());
     assert!(throttle.offer(alert.clone(), 10).is_some());
-    assert_eq!(Delivery::for_notification(&alert).ttl_s, 24 * 60 * 60);
+    assert_eq!(
+        Delivery::for_notification(&alert, "AB12").ttl_s,
+        24 * 60 * 60
+    );
 }
 
 fn titled(status: AgentStatus, task: &'static str) -> SeenAgent<'static> {

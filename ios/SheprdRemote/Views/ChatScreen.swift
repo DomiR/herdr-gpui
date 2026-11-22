@@ -67,7 +67,9 @@ struct ChatScreen: View {
         .toolbar(.hidden, for: .tabBar)
         .hidesConnectionToast()
         .toolbar {
-            if offersWorkspace, let workspace = item?.workspace {
+            // A terminal agent's conversation has no chat item; its tab's
+            // workspace is the same place, on the same computer.
+            if offersWorkspace, let workspace = item?.workspace ?? terminal?.workspace {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { model.pendingWorkspace = WorkspaceKey(device: key.device, workspace: workspace.id) } label: {
                         Image(systemName: "square.stack.3d.up")
@@ -103,7 +105,7 @@ struct ChatScreen: View {
                 }
             }
             // The desktop rail's sections: sub-agents, shells, the plan,
-            // and changed files, once the agent reports any.
+            // changed files, and pull requests, once the agent reports any.
             if let transcript = store?.transcript, transcript.hasActivityPanel {
                 ToolbarItem(placement: .topBarTrailing) {
                     AgentPanelButton(transcript: transcript) { showingPanel = true }
@@ -135,6 +137,7 @@ struct ChatScreen: View {
             #if DEBUG
             if key == .sample {
                 store = ChatStore(key: key, sample: .sample)
+                if UserDefaults.standard.bool(forKey: "session") { showingSession = true }
                 return
             }
             if key == .activitySample {
@@ -237,7 +240,12 @@ private struct ChatDocument: View {
         let tools: [Tool] = (turns.last ?? []).compactMap { entry in
             if case let .tool(tool) = entry.kind { tool } else { nil }
         }
-        let prompt: String? = if case let .user(text, _) = turns.last?.first?.kind { text } else { nil }
+        let prompt: String? = if case let .user(text, _) = turns.last?.first?.kind {
+            // A brief pins its goal alone, not a screenful.
+            if let id = turns.last?.first?.id, transcript.brief(id) != nil { BriefOutline(text).goal } else { PastedEnvelope.unwrap(text) }
+        } else {
+            nil
+        }
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 16) {
                 let hidden = max(turns.count - shownTurns, 0)
@@ -257,7 +265,11 @@ private struct ChatDocument: View {
                 ForEach(Array(turns.enumerated().dropFirst(hidden)), id: \.element.first?.id) { index, turn in
                     if index > hidden { Divider().padding(.vertical, 8) }
                     // Only the latest turn's prompt pins once scrolled past.
-                    ChatTurn(entries: turn, promptAbove: index == turns.count - 1 ? $promptAbove : nil)
+                    ChatTurn(
+                        entries: turn,
+                        promptAbove: index == turns.count - 1 ? $promptAbove : nil,
+                        brief: turn.first.flatMap { transcript.brief($0.id) }
+                    )
                 }
                 if !transcript.queued.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {

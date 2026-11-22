@@ -21,7 +21,7 @@ serde_json.workspace        = true
 sha2.workspace              = true
 thiserror.workspace         = true
 tracing.workspace           = true
-ureq.workspace              = true
+ureq                        = { features = ["platform-verifier"], workspace = true }
 zeroize.workspace           = true
 
 [dev-dependencies]

@@ -12,10 +12,15 @@ fn on() -> RemoteConfig {
 
 fn ran(config: &RemoteConfig, host: &Host) -> (Outcome, Vec<String>) {
     let commands = RefCell::new(Vec::new());
-    let outcome = restart(config, host, |step| {
-        commands.borrow_mut().push(command(step));
-        Ok(())
-    })
+    let outcome = restart(
+        config,
+        host,
+        |_| unreachable(),
+        |step| {
+            commands.borrow_mut().push(command(step));
+            Ok(())
+        },
+    )
     .unwrap();
     (outcome, commands.into_inner())
 }

@@ -34,7 +34,7 @@ fn ssh_answers_are_fenced_after_host_account_or_connection_changes() {
         let next_tokens = if login == "fixture" {
             tokens
         } else {
-            crate::Tokens::new(&profile, [])
+            crate::Tokens::new(Some(&profile), [])
         };
         assert!(peer.cache.scope(
             (0, generation, String::new()),

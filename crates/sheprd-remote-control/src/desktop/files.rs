@@ -10,7 +10,7 @@ use std::{
 
 /// The file's bytes, `None` when it is missing; more than `limit` bytes is
 /// not a file pairing wrote.
-pub(super) fn read_bounded(path: &Path, limit: u64) -> Result<Option<Vec<u8>>> {
+pub(crate) fn read_bounded(path: &Path, limit: u64) -> Result<Option<Vec<u8>>> {
     let file = match fs::File::open(path) {
         Ok(file) => file,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
@@ -26,7 +26,7 @@ pub(super) fn read_bounded(path: &Path, limit: u64) -> Result<Option<Vec<u8>>> {
     Ok(Some(bytes))
 }
 
-pub(super) fn create_private_dir(directory: &Path) -> Result<()> {
+pub(crate) fn create_private_dir(directory: &Path) -> Result<()> {
     if directory.is_dir() {
         return Ok(());
     }
@@ -41,7 +41,7 @@ pub(super) fn create_private_dir(directory: &Path) -> Result<()> {
 
 /// Replaces `path` with `content`, private to this user, creating its
 /// folder.
-pub(super) fn write_private(path: &Path, content: &[u8]) -> Result<()> {
+pub(crate) fn write_private(path: &Path, content: &[u8]) -> Result<()> {
     let directory = path.parent().ok_or(Error::RecordFormat)?;
     create_private_dir(directory)?;
     let write = || -> io::Result<()> {

@@ -4,7 +4,7 @@
 
 use super::*;
 use crate::remote::supervisor::github::{Account, answers};
-use secrecy::SecretString;
+use sheprd_github::ServerToken;
 use sheprd_remote_control::control::{
     changes::AskId,
     github::{LeaseAnswer, LeaseAsk},
@@ -18,21 +18,21 @@ fn ask(id: u64, host: &str) -> LeaseAsk {
     }
 }
 
-fn works(_: &SecretString) -> sheprd_github::Result<String> {
+fn works(_: &ServerToken) -> sheprd_github::Result<String> {
     Ok("OctoCat".into())
 }
 
-fn rejected(_: &SecretString) -> sheprd_github::Result<String> {
+fn rejected(_: &ServerToken) -> sheprd_github::Result<String> {
     Err(sheprd_github::Error::Authentication)
 }
 
-fn another_account(_: &SecretString) -> sheprd_github::Result<String> {
+fn another_account(_: &ServerToken) -> sheprd_github::Result<String> {
     Ok("someone-else".into())
 }
 
 static CHECKS: AtomicUsize = AtomicUsize::new(0);
 
-fn counted(_: &SecretString) -> sheprd_github::Result<String> {
+fn counted(_: &ServerToken) -> sheprd_github::Result<String> {
     CHECKS.fetch_add(1, Ordering::SeqCst);
     Ok("octocat".into())
 }
@@ -112,7 +112,7 @@ fn only_a_token_github_still_takes_is_lent_and_only_for_github_com() {
         matches!(&lent[0], (AskId(1), LeaseAnswer::Lease(lease)) if lease.token.expose() == "ghu_main")
     );
     assert_eq!(lent[1], (AskId(2), LeaseAnswer::SignedOut));
-    for check in [rejected as fn(&SecretString) -> _, another_account] {
+    for check in [rejected as fn(&ServerToken) -> _, another_account] {
         assert_eq!(
             answers(main.as_ref(), &asks[..1], check),
             [(AskId(1), LeaseAnswer::SignedOut)]

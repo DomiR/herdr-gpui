@@ -23,6 +23,22 @@ pub(crate) struct Record {
     pub(crate) relays: Vec<String>,
     /// Its route, base64url.
     pub(crate) route: String,
+    /// Written from the fleet's signed records (`crate::fleet`), not by
+    /// pairing here: `relay-connect` opens such a session with a purpose
+    /// byte, and the fleet removes the record when access ends.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) fleet: bool,
+    /// For a fleet record, the fleet host it was written for, hex: only
+    /// that host's own signed records may change its tunnel identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) host: Option<String>,
+    /// The machine reads a fleet session's opening, the purpose byte and
+    /// the proof of this computer's fleet key, before SSH: a member's own
+    /// host. Who owns the record (`fleet`) says nothing of it: a Sheprd
+    /// host that is no member, or an agent, splices what it gets straight
+    /// to SSH.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) opening: bool,
 }
 
 impl Record {
@@ -53,8 +69,15 @@ impl Record {
         // The id is only the route's first eight bytes: another machine
         // whose route shares them must not take over this one's record
         // and host keys. The same machine paired again may update both.
+        // A fleet record may also take a new tunnel identity for the same
+        // route, but only for the same fleet host, whose certificate
+        // authority signs it; never another host's, and never by pairing.
         match Self::load(state_dir, &id) {
-            Ok(kept) if kept.route != self.route || kept.identity != self.identity => {
+            Ok(kept)
+                if kept.route != self.route
+                    || (kept.identity != self.identity && !self.same_fleet_host(&kept))
+                    || (kept.fleet && self.fleet && kept.host != self.host) =>
+            {
                 return Err(Error::RecordConflict(id));
             }
             Ok(_) | Err(Error::Record(_)) => {}
@@ -66,6 +89,66 @@ impl Record {
         let lines = known_hosts(&host, host_keys);
         files::write_private(&relay_host::known_hosts(state_dir, &host), lines.as_bytes())?;
         Ok(id)
+    }
+
+    /// Whether both are fleet records written for one fleet host.
+    fn same_fleet_host(&self, kept: &Self) -> bool {
+        self.fleet && kept.fleet && self.host.is_some() && self.host == kept.host
+    }
+
+    /// Removes the machine with `id` and its known hosts. Blocking.
+    pub(crate) fn remove(state_dir: &Path, id: &str) -> Result<()> {
+        for file in [
+            path(state_dir, id),
+            relay_host::known_hosts(state_dir, &host_name(id)),
+        ] {
+            match std::fs::remove_file(&file) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(source) => {
+                    return Err(Error::File {
+                        operation: "remove",
+                        path: file,
+                        source,
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// The ids of every record the fleet wrote, read from the records
+    /// themselves: what removes them when the fleet's own list of them is
+    /// damaged. A record that does not read is not counted. Blocking.
+    pub(crate) fn fleet_ids(state_dir: &Path) -> Result<Vec<String>> {
+        let folder = directory(state_dir).join("hosts");
+        let entries = match std::fs::read_dir(&folder) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(source) => {
+                return Err(Error::File {
+                    operation: "read",
+                    path: folder,
+                    source,
+                });
+            }
+        };
+        let mut ids = Vec::new();
+        for entry in entries {
+            let entry = entry.map_err(|source| Error::File {
+                operation: "read",
+                path: folder.clone(),
+                source,
+            })?;
+            let name = entry.file_name();
+            let Some(id) = name.to_str().and_then(|name| name.strip_suffix(".json")) else {
+                continue;
+            };
+            if Self::load(state_dir, id).is_ok_and(|record| record.fleet) {
+                ids.push(id.to_owned());
+            }
+        }
+        Ok(ids)
     }
 
     /// The tunnel identity, decoded.

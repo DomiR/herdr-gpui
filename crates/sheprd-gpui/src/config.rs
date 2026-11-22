@@ -94,7 +94,7 @@ use fonts::FontSettings;
 pub use fonts::symbol_fallbacks;
 pub use fonts::{FONT_SIZE_RANGE, FONT_SIZE_STEP, FontConfig};
 pub(crate) use github::MAX_ACCOUNTS;
-pub use github::{GitHubAccount, GitHubConfig};
+pub use github::{EnterpriseAccount, GitHubAccount, GitHubConfig};
 pub(crate) use herdr_2::HERDR_2_SCROLLBACK;
 pub use layout::{Density, Layout, LayoutMode, Style};
 pub(crate) use notifications::NotificationDelivery;

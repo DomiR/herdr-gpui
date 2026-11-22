@@ -1,8 +1,9 @@
 //! A relay that restarts, or fails for a moment, costs a daemon nothing.
 
 use crate::{
-    Priority, Push, PushType,
-    relay::{RelayClient, RelayOutcome, push_body},
+    Error, Priority, Push, PushType, SealedPush,
+    relay::{RelayClient, RelayOutcome},
+    seal::INFO,
 };
 use http_body_util::Full;
 use hyper::{Response, StatusCode, body::Bytes, server::conn::http2, service::service_fn};
@@ -20,13 +21,31 @@ fn handle() -> secrecy::SecretString {
     "h".into()
 }
 
-fn push() -> Push {
-    Push {
-        body: br#"{"aps":{}}"#.to_vec(),
-        collapse_id: Some("chat-1".to_owned()),
-        priority: Priority::High,
-        push_type: PushType::Alert,
-    }
+/// The cover an alert shows, which travels in the clear.
+const CLEAR: [&str; 2] = ["Sheprd", "chat-1"];
+
+fn device() -> p256::PublicKey {
+    p256::SecretKey::from_slice(&[5; 32]).unwrap().public_key()
+}
+
+/// A push whose body `body` makes from the sealed text, in base64url.
+fn built(body: impl FnOnce(String) -> Vec<u8>) -> Result<SealedPush, Error> {
+    use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+    SealedPush::build(&device(), INFO, &CLEAR, |sealer| {
+        Ok::<_, Error>(Push {
+            body: body(URL_SAFE_NO_PAD.encode(sealer.seal(b"hello")?)),
+            collapse_id: Some("chat-1".to_owned()),
+            priority: Priority::High,
+            push_type: PushType::Alert,
+        })
+    })
+}
+
+fn push() -> SealedPush {
+    built(|sealed| {
+        format!(r#"{{"aps":{{"alert":{{"title":"Sheprd"}}}},"sealed":"{sealed}"}}"#).into_bytes()
+    })
+    .unwrap()
 }
 
 /// A server that answers `statuses` in turn, then the last for good, and
@@ -148,14 +167,9 @@ async fn a_restarted_relay_is_reached_again_with_nothing_set_up() {
     );
 }
 
-#[tokio::test]
-async fn a_payload_that_is_not_text_is_refused_without_a_call() {
-    let (client, calls, _server) = relay(vec![StatusCode::OK]).await;
-    let mut push = push();
-    push.body = vec![0xff];
-    assert!(push_body(&handle(), &push).is_none());
-    assert_eq!(client.post(&handle(), &push).await, RelayOutcome::Invalid);
-    assert_eq!(calls.load(Ordering::SeqCst), 0);
+#[test]
+fn a_payload_that_is_not_json_cannot_be_built() {
+    assert!(matches!(built(|_| vec![0xff]), Err(Error::NotSealed)));
 }
 
 #[test]
@@ -163,4 +177,72 @@ fn the_relays_are_ours_alone() {
     use crate::RelayHost;
     assert_eq!(RelayHost::Production.name(), "push.sheprd.org");
     assert_eq!(RelayHost::Sandbox.name(), "push-sandbox.sheprd.org");
+}
+
+#[test]
+fn a_push_that_sealed_nothing_cannot_be_built() {
+    let built = SealedPush::build(&device(), INFO, &CLEAR, |_| {
+        Ok::<_, Error>(Push {
+            body: br#"{"aps":{"alert":{"title":"Sheprd"}}}"#.to_vec(),
+            collapse_id: None,
+            priority: Priority::High,
+            push_type: PushType::Alert,
+        })
+    });
+    assert!(matches!(built, Err(Error::NotSealed)));
+}
+
+#[test]
+fn plain_text_beside_the_sealed_text_cannot_be_built() {
+    // Sealed, then dropped for the plain text.
+    let discarded = built(|_| br#"{"aps":{"alert":{"title":"Run rm -rf?"}}}"#.to_vec());
+    assert!(matches!(discarded, Err(Error::NotSealed)));
+    // Sealed, but with plain text beside it.
+    let beside = built(|sealed| {
+        format!(r#"{{"aps":{{"alert":{{"body":"Run rm -rf?"}}}},"sealed":"{sealed}"}}"#)
+            .into_bytes()
+    });
+    assert!(matches!(beside, Err(Error::NotSealed)));
+    // Hidden in an array.
+    let listed =
+        built(|sealed| format!(r#"{{"sealed":"{sealed}","more":["Run rm -rf?"]}}"#).into_bytes());
+    assert!(matches!(listed, Err(Error::NotSealed)));
+}
+
+#[test]
+fn a_collapse_id_must_be_named_clear() {
+    let built = SealedPush::build(&device(), INFO, &CLEAR, |sealer| {
+        let sealed = base64::Engine::encode(
+            &base64::engine::general_purpose::URL_SAFE_NO_PAD,
+            sealer.seal(b"hello")?,
+        );
+        Ok::<_, Error>(Push {
+            body: format!(r#"{{"sealed":"{sealed}"}}"#).into_bytes(),
+            collapse_id: Some("remote plan".to_owned()),
+            priority: Priority::High,
+            push_type: PushType::Alert,
+        })
+    });
+    assert!(matches!(built, Err(Error::NotSealed)));
+}
+
+#[test]
+fn what_is_sealed_opens_with_the_phones_key() {
+    let key = p256::SecretKey::from_slice(&[5; 32]).unwrap();
+    let push = push();
+    let body: serde_json::Value = serde_json::from_slice(&push.push().body).unwrap();
+    let sealed = base64::Engine::decode(
+        &base64::engine::general_purpose::URL_SAFE_NO_PAD,
+        body["sealed"].as_str().unwrap(),
+    )
+    .unwrap();
+    assert_eq!(crate::seal::open(&key, &sealed, INFO).unwrap(), b"hello");
+}
+
+#[test]
+fn a_handles_environment_names_its_relay() {
+    use crate::RelayHost;
+    let read: Vec<RelayHost> = serde_json::from_str(r#"["production","sandbox"]"#).unwrap();
+    assert_eq!(read, [RelayHost::Production, RelayHost::Sandbox]);
+    assert!(serde_json::from_str::<RelayHost>(r#""push.evil.example""#).is_err());
 }

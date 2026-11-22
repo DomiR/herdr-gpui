@@ -66,10 +66,15 @@ fn a_restart_of_an_unchanged_definition_restarts_in_place() {
     let host = launchd(dir.path(), "20261108.1");
     reconcile(&on(), &host, |_| unreachable(), |_| Ok(())).unwrap();
     let commands = RefCell::new(Vec::new());
-    restart(&on(), &host, |step| {
-        commands.borrow_mut().push(command(step));
-        Ok(())
-    })
+    restart(
+        &on(),
+        &host,
+        |_| unreachable(),
+        |step| {
+            commands.borrow_mut().push(command(step));
+            Ok(())
+        },
+    )
     .unwrap();
     let commands = commands.into_inner();
     assert!(

@@ -27,6 +27,7 @@ error-chat-version = the chat program speaks protocol version { $version }
 
 # $agent is an agent's name, such as Claude Code.
 error-chat-start-agent-missing = { $agent } is not installed on this host
+error-chat-start-brief-remote = a brief can only start a chat on this machine
 error-chat-start-disabled = ACP chats are off in Settings
 error-chat-start-line = the chat's command cannot be typed into a shell
 error-chat-start-no-workspace = no workspace is focused

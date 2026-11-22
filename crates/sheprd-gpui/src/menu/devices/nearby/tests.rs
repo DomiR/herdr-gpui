@@ -7,7 +7,8 @@ use sheprd_remote_control::control::desktop::PairOutput;
 const STUDIO: &str = "1A2B3C4D-5E6F-7081-92A3-B4C5D6E7F809";
 
 /// The page as it opens, scanning with no helper behind it.
-fn open(view: &mut SheprdWindow) {
+pub(super) fn open(view: &mut SheprdWindow, cx: &mut Context<SheprdWindow>) {
+    let link = super::link::input(view, cx);
     view.menu.nearby_setup = Some(NearbySetup {
         attempt: super::next_attempt(),
         found: Vec::new(),
@@ -15,13 +16,14 @@ fn open(view: &mut SheprdWindow) {
         pairing: None,
         radio: None,
         scanner: None,
+        link,
         step: Step::Looking,
         _poll: None,
     });
     view.menu.page = Some(Page::AddNearby);
 }
 
-fn setup(view: &SheprdWindow) -> &NearbySetup {
+pub(super) fn setup(view: &SheprdWindow) -> &NearbySetup {
     view.menu.nearby_setup.as_ref().unwrap()
 }
 
@@ -39,9 +41,11 @@ fn studio() -> Found {
     }
 }
 
-fn window(cx: &mut TestAppContext) -> (gpui::Entity<SheprdWindow>, &mut VisualTestContext) {
+pub(super) fn window(
+    cx: &mut TestAppContext,
+) -> (gpui::Entity<SheprdWindow>, &mut VisualTestContext) {
     let (view, cx) = cx.add_window_view(fixture_window);
-    view.update_in(cx, |view, _, _| open(view));
+    view.update_in(cx, |view, _, cx| open(view, cx));
     (view, cx)
 }
 
@@ -107,6 +111,8 @@ fn the_code_shows_and_bluetooth_may_go_once_it_does(cx: &mut TestAppContext) {
             PairOutput::Code {
                 code: "428913".into(),
                 computer: "Studio Mac".into(),
+                fleet: None,
+                pairing: "p".into(),
             },
             window,
             cx,
@@ -118,9 +124,13 @@ fn the_code_shows_and_bluetooth_may_go_once_it_does(cx: &mut TestAppContext) {
             },
             code: "428913".into(),
             claimed,
+            // No fleet read here: nothing to choose, so the claim went.
+            offer: super::fleet::Offer::None,
+            pairing: "p".into(),
+            decided: true,
         };
         assert_eq!(setup(view).step, showing(false));
-        view.nearby_output(PairOutput::Claimed, window, cx);
+        view.nearby_output(PairOutput::Claimed { code: None }, window, cx);
         assert_eq!(setup(view).step, showing(true));
         // The claim goes through the relays: Bluetooth leaving is fine now.
         view.nearby_event(

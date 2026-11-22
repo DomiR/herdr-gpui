@@ -44,6 +44,7 @@ pub enum HostOp {
     PrComments,
     /// Open it in a browser tab.
     PrOpen,
+    PrCreate {},
     /// Open the Git popup's merge dialog for it, which on a GitHub stack
     /// lands the open layers below it too. Only the dialog opens: the user
     /// picks the method and confirms there.

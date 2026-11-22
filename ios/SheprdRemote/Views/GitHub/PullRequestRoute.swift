@@ -25,6 +25,16 @@ struct PullRequestRoute: Hashable {
     }
 }
 
+extension GitHubSearchPull {
+    /// Whether `route` names this pull request, its owner and repository in
+    /// any case.
+    func names(_ route: PullRequestRoute) -> Bool {
+        host == route.host && number == route.number
+            && owner.caseInsensitiveCompare(route.owner) == .orderedSame
+            && repo.caseInsensitiveCompare(route.repo) == .orderedSame
+    }
+}
+
 extension PullRequestDetailScreen {
     /// The detail screen a list row's route leads to.
     init(route: PullRequestRoute, title: String?) {

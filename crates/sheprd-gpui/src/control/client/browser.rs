@@ -140,9 +140,9 @@ pub(super) fn feedback(wait: u64, _: &Context) -> crate::Result<Output> {
     }
 }
 
-/// The text of a page tab.
-fn text(id: u64, context: &Context) -> crate::Result<Output> {
-    match context.call(Request::Tab, TabOp::Text { id })? {
+/// The text of a page tab, read where it is unless `focus` shows it.
+fn text(id: u64, focus: bool, context: &Context) -> crate::Result<Output> {
+    match context.call(Request::Tab, TabOp::Text { id, focus })? {
         Response::Tab {
             reply: Reply::Text { text },
         } => Output::data(text.clone(), &serde_json::json!({ "id": id, "text": text })),
@@ -265,13 +265,20 @@ fn zoomed(response: Response) -> crate::Result<Output> {
 
 /// The screenshot is written by the app, so the path is made absolute here,
 /// where the caller's working directory is known.
-fn screenshot(id: u64, path: &Path, context: &Context) -> crate::Result<Output> {
+fn screenshot(id: u64, path: &Path, focus: bool, context: &Context) -> crate::Result<Output> {
     let path = std::path::absolute(path)?;
     let text = path
         .to_str()
         .ok_or(crate::Error::InvalidLocalPage)?
         .to_owned();
-    context.act(Request::Tab, TabOp::Screenshot { id, path: text })
+    context.act(
+        Request::Tab,
+        TabOp::Screenshot {
+            id,
+            path: text,
+            focus,
+        },
+    )
 }
 
 pub(super) fn run(command: BrowserCommand, context: &Context) -> crate::Result<Output> {
@@ -302,11 +309,11 @@ pub(super) fn run(command: BrowserCommand, context: &Context) -> crate::Result<O
         }
         BrowserCommand::Back { id } => context.act(Request::Tab, TabOp::Back { id }),
         BrowserCommand::Forward { id } => context.act(Request::Tab, TabOp::Forward { id }),
-        BrowserCommand::Text { id } => text(id, context),
+        BrowserCommand::Text { id, focus } => text(id, focus, context),
         BrowserCommand::Eval { id, script, wait } => eval(id, script, wait, context),
         BrowserCommand::Logs { id, clear } => logs(id, clear, context),
         BrowserCommand::ClearData { id } => context.act(Request::Tab, TabOp::ClearData { id }),
-        BrowserCommand::Screenshot { id, path } => screenshot(id, &path, context),
+        BrowserCommand::Screenshot { id, path, focus } => screenshot(id, &path, focus, context),
         BrowserCommand::Zoom { id, change } => zoom(id, change, context),
     }
 }

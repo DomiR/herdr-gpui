@@ -6,6 +6,9 @@
 error-chat-protocol-activity-limit = { $count } activities already run
 # $bytes is the most bytes an activity's text may take.
 error-chat-protocol-activity-text = an activity's text exceeds { $bytes } bytes
+# $count is how many briefs, prompts another agent wrote, a chat keeps.
+error-chat-protocol-brief-limit = { $count } briefs are already kept
+error-chat-protocol-brief-not-prompt = entry { $id } is not a prompt
 error-chat-protocol-duplicate-permission = permission request { $id } is already pending
 error-chat-protocol-empty-frame = chat frame is empty
 error-chat-protocol-entry-order = pushed entry { $id } does not follow the last entry { $last }

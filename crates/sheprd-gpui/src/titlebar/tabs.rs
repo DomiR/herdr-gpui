@@ -82,10 +82,15 @@ impl SheprdWindow {
     /// the traffic lights and the toggle. A sidebar dragged narrower than
     /// that hands them to the leftmost strip instead.
     fn navigation_in_sidebar(&self, window: &Window) -> bool {
+        self.navigation_fits_sidebar(f32::from(window.viewport_size().width))
+    }
+
+    /// [`Self::navigation_in_sidebar`] for a window `window_width` wide: a
+    /// host's header shows Back and Forward by it, as the leftmost strip
+    /// shows them otherwise.
+    pub(crate) fn navigation_fits_sidebar(&self, window_width: f32) -> bool {
         let mode = self.sidebar_mode();
-        let column = self
-            .sidebar_column_width(f32::from(window.viewport_size().width))
-            .unwrap_or(0.);
+        let column = self.sidebar_column_width(window_width).unwrap_or(0.);
         mode == SidebarMode::Expanded
             && column >= LEADING + self.header_lead() + Style::NATIVE.width() + SIDEBAR_END
     }

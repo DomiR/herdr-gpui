@@ -10,6 +10,7 @@ fn home(layout: &Layout) -> Home {
         checkouts: &Default::default(),
         recognized: &Default::default(),
         computer: "Studio",
+        favorites: &Default::default(),
         fingerprint: "FP",
         layout,
         load: None,

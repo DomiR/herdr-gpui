@@ -1,0 +1,28 @@
+{
+  "apns": {
+    "aps": {
+      "alert": {
+        "body": "New activity",
+        "title": "Sheprd"
+      },
+      "interruption-level": "active",
+      "mutable-content": 1,
+      "sound": "default",
+      "thread-id": "da3e621ffd4d063c/test"
+    },
+    "sealed": "BHE1-k_ZOgnc6Yu_aBtL_PUOfA1jVOYq-wv_KjQpYXhl7UwfAt25Aj7lalV-UV1qncZsEfIglg3llDNN9Yh3ZyQBAQEBAQEBAQEBAQFrMxOYQgmgCh1XkUmKZaf5aFm1ONSX0Hm8rk25iRB1WpnFDGwQZ_eLohu00YEUA9-wzuxKGsMkh9gF0jufiAxVF_nf3OUtI3dy1J9o9aDB6PeJ9laH0KngurRgxWoXZSedBVtWeWJzLLrgWyNeGkW_mTnbEaTUm5bX9VLfI28D9GJWAjlSB1bV4Pbsyv0acfqp8OMeMW4VkmmY9McqG1qLV53JtIsb8XbeM8FIxutUBi9UmMsQiGR6DNbOsU2TIxT4bCuJRKjeTOPOqAzWrFU2MkHOhZgspF5jQ2GSkV2MQFTrQk2tayWpL-Z9QUBh_4Ccgzn3pRefH3k3TGqp9TIJVzSKigUUDTSPjxXbBnXIqyD8XHvBA2aenlqEszkNK7suQcD6FK6aREeKv1zP99Mtl1tw6Bm1RMRrO4AkQfeq2mvnUulPC8yYTa8MEb8vxw"
+  },
+  "device_private_key": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc",
+  "plaintext": {
+    "badge": 3,
+    "body": "From Studio: notifications from this computer reach this phone.",
+    "clear": false,
+    "computer": "9E92A0DF1CE0967EC34C0C0146005FBC51654330E7D26EC9B5805055755E24F6",
+    "event": "5d0c3e1f9a7b4c2d8e6f1a0b9c8d7e6f",
+    "kind": "test",
+    "pane": "test",
+    "test": "6F1D2C3B-0A4E-4F5D-9C8B-7A6E5D4C3B2A",
+    "title": "Test push",
+    "v": 1
+  }
+}

@@ -4,6 +4,7 @@
 mod agents;
 mod app;
 mod attach;
+mod briefs;
 mod claude;
 mod cli;
 mod codex;
@@ -13,6 +14,7 @@ mod files;
 mod harness;
 mod herdr;
 mod history;
+mod known;
 mod mirror;
 mod observe;
 mod pi;

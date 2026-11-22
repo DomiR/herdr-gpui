@@ -84,7 +84,9 @@ impl SheprdWindow {
                 .iter()
                 .filter_map(|(index, _)| self.listed_core_agents(*index))
                 .collect();
-            return listed_agents(lives, cores, self.agent_sort);
+            // Favorites go first whatever the sort; a picked group keeps its
+            // coordinator first instead.
+            return self.favorites_first(listed_agents(lives, cores, self.agent_sort));
         };
         let rows = panel_agents(lives, self.agent_sort);
         let hosts: Vec<_> = self.listed_hosts().collect();

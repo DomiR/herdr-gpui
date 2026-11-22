@@ -38,6 +38,21 @@ remote-pair-nearby-allow = To pair nearby over Bluetooth, allow Sheprd to use Bl
 # Enter opens it too, so keep the key name.
 remote-pair-get-app = Get the iPhone app (Enter)
 
+## Copy link: a pairing link for another computer running Sheprd on any
+## network, pasted there in Add Device > Nearby Sheprd.
+
+remote-pair-link-intro = Adding this computer from another one running Sheprd on a different network? Copy a pairing link and paste it there in Add Device > Nearby Sheprd.
+remote-pair-copy-link = Copy link
+# $minutes is how long the link still works, rounded up.
+remote-pair-link-copied = Copied. It works once, for { $minutes ->
+    [one] one more minute
+   *[other] { $minutes } more minutes
+}. Send it only to yourself: whoever holds it can ask to pair.
+remote-pair-link-expired = The copied link expired. Copy a new one.
+remote-pair-link-no-relays = A link needs this computer to listen on a relay. Turn on relays in Settings > Remote control.
+# $error is the reason, in a sentence of its own.
+remote-pair-link-failed = Could not make a link: { $error }
+
 # The phone's name is drawn bold.
 remote-pair-wants = { $device } wants remote control of your chats.
 # $app is the address the phone's app was installed from.

@@ -26,6 +26,7 @@ fn a_sub_agents_own_steps_stay_inside_its_call() {
             EntryKind::User {
                 text: "delegate".into(),
                 files: 0,
+                note: None,
             },
         ),
         call(2, "task", "Explore the parser", None),

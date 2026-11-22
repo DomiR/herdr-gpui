@@ -7,13 +7,26 @@ fn a_lost_chat_keeps_its_terminal_and_folder_like_a_desktop_chat() {
     let (source, fake) = fake();
     source.poll().unwrap();
     source
-        .open_chat(Agent::Claude, Path::new("/bin/sheprd-acp"), "/code", None)
+        .open_chat(
+            Agent::Claude,
+            &crate::hub::Launcher {
+                program: Path::new("/bin/sheprd-acp").to_owned(),
+                choice: sheprd_client::agent_choice::AgentChoice::Open,
+            },
+            "/code",
+            None,
+        )
         .unwrap();
     let request = fake.inputs.recv_timeout(Duration::from_secs(2)).unwrap();
     let request: Value = serde_json::from_slice(&request).unwrap();
     assert_eq!(request["method"], "terminal.run");
     let params = &request["params"];
     assert_eq!(params["keep"], true);
+    // The chat may switch agents later, as a desktop's may.
+    assert_eq!(
+        params["argv"],
+        json!(["/bin/sheprd-acp", "--choose", "claude"])
+    );
     assert_eq!(params["cwd"], "/code");
     assert_eq!(params["env"]["HERDR_PANE_ID"], "");
     assert!(params["labels"][TOKEN].as_str().is_some());

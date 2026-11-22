@@ -13,31 +13,51 @@
 //!
 //! - [`keys`]: this computer's dial, tunnel, and SSH keys, made once.
 //! - [`files`]: the private files they and the records live in.
+//! - [`joining`]: what an approved claim says about the fleet, checked.
 
 mod claim;
-mod connect;
+pub(crate) mod connect;
 mod error;
 mod exchange;
-mod files;
-mod keys;
+pub(crate) mod files;
+mod joining;
+pub(crate) mod keys;
 mod pair;
-mod record;
+pub(crate) mod record;
 
 pub use error::{Error, Result};
+
+/// The steps `desktop-pair` takes, for other modules' tests to run them
+/// against a daemon of their own: Unix only, as those tests are.
+#[cfg(all(test, unix))]
+pub(crate) mod for_tests {
+    pub(crate) use super::{
+        claim::{Allowed, Claimant, claim},
+        exchange::{Exchange, Opened},
+        joining::checked,
+    };
+}
 
 use exchange::Opened;
 use keys::Keys;
 use std::{path::Path, process::ExitCode};
 
-/// Runs `desktop-pair` to the end, reporting each step on stdout.
-pub fn run_pair(state_dir: Option<&Path>, name: String) -> ExitCode {
+/// Runs `desktop-pair` to the end, reporting each step on stdout; `link`
+/// reads a pairing link from stdin in place of the Bluetooth exchange.
+pub fn run_pair(state_dir: Option<&Path>, name: String, link: bool) -> ExitCode {
     let Some(state_dir) = pair::state_dir(state_dir) else {
         pair::emit(&crate::control::desktop::PairOutput::Failed {
             message: "this computer has no state directory".to_owned(), // i18n: data
         });
         return ExitCode::from(2);
     };
-    let result = runtime().and_then(|runtime| runtime.block_on(pair::pair(state_dir, name)));
+    let source = if link {
+        pair::Source::Link
+    } else {
+        pair::Source::Nearby
+    };
+    let result =
+        runtime().and_then(|runtime| runtime.block_on(pair::pair(state_dir, name, source)));
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {

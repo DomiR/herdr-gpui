@@ -106,6 +106,7 @@ fn a_nearby_offer_carries_the_round_trips_measured_since_start() {
         token: "t".into(),
         origins: &[],
         relay: auth.relay_offer(),
+        fleet: None,
     })
     .unwrap();
     assert_eq!(offer["relay"]["relays"][0], "https://near.example.org");

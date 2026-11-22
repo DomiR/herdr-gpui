@@ -16,7 +16,7 @@ impl SheprdWindow {
         cx.notify();
     }
 
-    /// Handle completed saves before polling any setup workspace in progress.
+    /// Handle completed saves before polling interactive setup.
     pub(super) fn poll_saved_device(
         &mut self,
         window: &mut Window,

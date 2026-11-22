@@ -125,3 +125,5 @@ fn a_client_before_pull_requests_gets_the_count_in_their_place() {
     let message = change(pull, 1, epoch);
     assert_eq!(current.message(message.clone()), Some(message));
 }
+
+mod briefs;

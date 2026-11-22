@@ -147,7 +147,7 @@ fn prompts(transcript: &Transcript) -> impl Iterator<Item = &str> {
 
 fn typed_entry(kind: &EntryKind) -> Option<&str> {
     match kind {
-        EntryKind::User { text, files } => Some(typed(text, *files)),
+        EntryKind::User { text, files, .. } => Some(typed(text, *files)),
         _ => None,
     }
 }

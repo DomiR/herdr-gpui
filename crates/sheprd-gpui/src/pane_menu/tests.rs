@@ -209,7 +209,7 @@ fn menu_isolation_rename_composition_close_and_endpoint_fences(cx: &mut TestAppC
                 } else {
                     v.selection_epoch += 1;
                 }
-                for action in ACTIONS {
+                for &action in ACTIONS {
                     v.activate_pane_menu(action, window, cx);
                     assert_eq!(v.menu.page, Some(Page::Pane));
                     assert!(v.menu.pane.as_ref().unwrap().error.is_some());

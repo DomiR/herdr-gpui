@@ -16,6 +16,7 @@ fn the_latest_turn_is_in_focus_and_earlier_ones_fold() {
             EntryKind::User {
                 text: "first".into(),
                 files: 0,
+                note: None,
             },
         ),
         entry(
@@ -29,6 +30,7 @@ fn the_latest_turn_is_in_focus_and_earlier_ones_fold() {
             EntryKind::User {
                 text: "second prompt".into(),
                 files: 0,
+                note: None,
             },
         ),
         entry(

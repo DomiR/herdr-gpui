@@ -6,62 +6,27 @@ fn enable(path: &Path) -> crate::app::Result<RemoteConfig> {
     enable_settings_at(path, Duration::ZERO)
 }
 
-fn apns() -> Apns {
-    Apns {
-        config: r#"{"team_id":"T","key_id":"K","topic":"so.pen.herdr.remote"}"#.into(),
-        key: "-----BEGIN PRIVATE KEY-----\nsecret\n-----END PRIVATE KEY-----\n".into(),
-    }
-}
-
 #[test]
-fn the_input_is_the_enrollment_with_optional_apns_files() {
+fn the_input_is_the_enrollment_and_an_older_sheprds_apns_files_are_ignored() {
     let input: Input = serde_json::from_str(
         r#"{"name":"iPhone","public_key":"KEY","via":"MacBook Pro","replace":"d0"}"#,
     )
     .unwrap();
     assert_eq!(input.enroll.name, "iPhone");
     assert_eq!(input.enroll.replace, Some(DeviceId("d0".into())));
-    assert_eq!(input.apns, None);
-    let with_apns = Input {
-        apns: Some(apns()),
-        ..input
-    };
-    let json = serde_json::to_value(&with_apns).unwrap();
-    assert_eq!(json["apns"]["config"], apns().config);
-    assert_eq!(serde_json::from_value::<Input>(json).unwrap(), with_apns);
-}
+    let json = serde_json::to_value(&input).unwrap();
+    assert!(json.get("apns").is_none());
+    assert_eq!(serde_json::from_value::<Input>(json).unwrap(), input);
 
-#[test]
-fn apns_files_never_reach_a_log() {
-    let shown = format!("{:?}", apns());
-    assert!(!shown.contains("secret"));
-    assert!(!shown.contains("team_id"));
-}
-
-#[test]
-fn apns_files_are_written_privately_once() {
-    let dir = tempfile::tempdir().unwrap();
-    assert_eq!(Apns::read(dir.path()), None);
-    assert!(write_apns(dir.path(), &apns()).unwrap());
-    assert_eq!(Apns::read(dir.path()), Some(apns()));
-    // The same files again change nothing, so the daemon is not restarted.
-    assert!(!write_apns(dir.path(), &apns()).unwrap());
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mode = |path: &Path| fs::metadata(path).unwrap().permissions().mode() & 0o777;
-        assert_eq!(mode(&dir.path().join("apns")), 0o700);
-        assert_eq!(mode(&dir.path().join("apns/AuthKey.p8")), 0o600);
-        assert_eq!(mode(&dir.path().join("apns/config.json")), 0o600);
-    }
-    let huge = Apns {
-        key: "k".repeat(MAX_APNS_FILE + 1),
-        ..apns()
-    };
-    assert!(matches!(
-        write_apns(dir.path(), &huge),
-        Err(super::super::Error::Enroll(Error::ApnsSize))
-    ));
+    // Sheprd before the push relay sent its APNs key along: still read,
+    // and the key dropped, never kept or written.
+    let older: Input = serde_json::from_str(
+        r#"{"name":"iPhone","public_key":"KEY","via":"MacBook Pro","replace":"d0",
+            "apns":{"config":"{\"team_id\":\"T\"}","key":"-----BEGIN PRIVATE KEY-----"}}"#,
+    )
+    .unwrap();
+    assert_eq!(older, input);
+    assert!(!format!("{older:?}").contains("PRIVATE KEY"));
 }
 
 #[test]

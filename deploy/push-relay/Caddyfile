@@ -17,6 +17,10 @@
 	}
 	# Caddy replaces X-Forwarded-For with the caller's address, which the
 	# relay's per-address limits read (--behind-proxy). Nothing it logs
-	# names an address or a token.
+	# names an address or a token. Every path goes to the relay, /dashboard
+	# and /metrics included: the relay serves them only when its secrets
+	# hold a dashboard-token, and only to its holder, so Caddy needs no
+	# rule of its own. The dashboard's live view is Server-Sent Events,
+	# which reverse_proxy passes through unbuffered.
 	reverse_proxy relay:8080
 }

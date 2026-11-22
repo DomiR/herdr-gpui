@@ -1,7 +1,8 @@
 import Foundation
 
 /// How Home lists the agents of every computer. Priority is the desktop's
-/// agent panel order; workspace is its grouped one.
+/// agent panel order; workspace is its grouped one. Favorites come first in
+/// every order, in a section of their own.
 public enum AgentSort: String, CaseIterable, Identifiable, Sendable {
     case priority, recent, workspace
 
@@ -15,16 +16,21 @@ public enum AgentSort: String, CaseIterable, Identifiable, Sendable {
         public var title: String
         public var group: String
         public var groupTitle: String
+        /// Starred on some device, so it lists in Favorites.
+        public var favorite: Bool
 
         /// An unknown status lists as idle.
         var shownStatus: Home.AgentStatus { status == .unknown ? .idle : status }
 
-        public init(status: Home.AgentStatus, date: Date?, title: String, group: String, groupTitle: String) {
+        public init(
+            status: Home.AgentStatus, date: Date?, title: String, group: String, groupTitle: String, favorite: Bool = false
+        ) {
             self.status = status
             self.date = date
             self.title = title
             self.group = group
             self.groupTitle = groupTitle
+            self.favorite = favorite
         }
     }
 
@@ -38,14 +44,29 @@ public enum AgentSort: String, CaseIterable, Identifiable, Sendable {
         public var status: Home.AgentStatus?
     }
 
+    /// The id of the favorites' section, which no status or group has.
+    public static let favoritesID = "favorites"
+
     /// The statuses the priority order lists, in order.
     private static let priorityTitles: [(Home.AgentStatus, String)] =
         [(.blocked, "Needs you"), (.done, "Done"), (.working, "Working"), (.idle, "Idle")]
 
-    /// `items` in this order. Every section lists the newest first, then
+    /// `items` in this order, after a Favorites section holding the starred
+    /// ones whatever the order. Every section lists the newest first, then
     /// the undated by title.
     public func sections<Item>(of items: [Item], facts: (Item) -> Facts) -> [Section<Item>] {
-        let rows = items.map { (item: $0, facts: facts($0)) }.sorted { a, b in
+        let all = items.map { (item: $0, facts: facts($0)) }
+        let favorites = all.filter(\.facts.favorite)
+        let rest = favorites.isEmpty ? all : all.filter { !$0.facts.favorite }
+        let starred = favorites.isEmpty ? [] : [
+            Section(id: Self.favoritesID, title: "Favorites", items: Self.newestFirst(favorites).map(\.item)),
+        ]
+        return starred + ordered(rest)
+    }
+
+    /// The newest first, then the undated by title.
+    private static func newestFirst<Item>(_ rows: [(item: Item, facts: Facts)]) -> [(item: Item, facts: Facts)] {
+        rows.sorted { a, b in
             switch (a.facts.date, b.facts.date) {
             case let (first?, second?) where first != second: first > second
             case (_?, nil): true
@@ -53,6 +74,11 @@ public enum AgentSort: String, CaseIterable, Identifiable, Sendable {
             default: a.facts.title.localizedStandardCompare(b.facts.title) == .orderedAscending
             }
         }
+    }
+
+    /// `all`, none of them a favorite, in this order.
+    private func ordered<Item>(_ all: [(item: Item, facts: Facts)]) -> [Section<Item>] {
+        let rows = Self.newestFirst(all)
         switch self {
         case .recent:
             return rows.isEmpty ? [] : [Section(id: "recent", title: "Recent", items: rows.map(\.item))]
@@ -64,9 +90,8 @@ public enum AgentSort: String, CaseIterable, Identifiable, Sendable {
         case .workspace:
             // Groups keep the order of `items`, the computers' own.
             var order: [String] = []
-            for item in items {
-                let group = facts(item).group
-                if !order.contains(group) { order.append(group) }
+            for row in all where !order.contains(row.facts.group) {
+                order.append(row.facts.group)
             }
             return order.compactMap { group in
                 let matching = rows.filter { $0.facts.group == group }

@@ -11,6 +11,7 @@ type Props = {
 	layout: any,
 	theme: any,
 	indent: number?,
+	nest: number?,
 	card: boolean?,
 	stripe: boolean?,
 	msg: any,
@@ -39,6 +40,7 @@ return component {
 		["layout"] = "`app.sheprd.layout`: spacing, inset, radius and highlight",
 		["theme"] = "`app.sheprd_theme`, for the colors",
 		["indent"] = "how far it steps in, for a worktree under its checkout",
+		["nest"] = "how far its contents step in under a device's header, inside its highlight",
 		["card"] = "draw it as a card (Orca) whatever the layout's highlight",
 		["stripe"] = "mark the selected row with a stripe down its leading edge (Superset)",
 		["msg"] = "what a click sends",
@@ -57,8 +59,15 @@ return component {
 		local selected = props.selected == true
 		local outline = props.card or layout.outline
 		local inset = if props.card then 4 else layout.inset or 0
+		local padding = layout.padding or 8
 		local style: any = {
-			padding = { x = layout.padding or 8, y = (layout.row_padding or 0) + (layout.style_padding or 0) },
+			-- A device's rows keep their highlight's edges and step their
+			-- contents in, as Sheprd's own sidebar draws them.
+			padding = {
+				left = padding + (props.nest or 0),
+				right = padding,
+				y = (layout.row_padding or 0) + (layout.style_padding or 0),
+			},
 			margin = { left = inset + (props.indent or 0), right = inset, y = (layout.spacing or 0) / 2 },
 		}
 		if outline then

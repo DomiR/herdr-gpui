@@ -10,6 +10,7 @@ use std::{
 
 mod accounts;
 mod en_xa;
+mod enterprise;
 mod filter;
 mod page;
 mod pane;

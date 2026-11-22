@@ -50,14 +50,22 @@ jobs:
         github.actor == 'penso' && github.triggering_actor == 'penso' &&
         github.ref == 'refs/heads/main'))
     name: Workflow Security
-    runs-on: ubuntu-latest
+    # Members' runs use our own Linux VMs when CI_LINUX_ARM_RUNNER names
+    # them, as the checks job does: every other job waits for this one, and
+    # hosted runners are shared with every repository of the account.
+    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association))) && vars.CI_LINUX_ARM_RUNNER || '"ubuntu-latest"') }}
     timeout-minutes: 10
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # Shares the runner's checkout with the build jobs: keep target/.
+          clean: ${{ runner.environment != 'self-hosted' }}
           persist-credentials: false
+      - name: Clean the self-hosted checkout but its build
+        if: runner.environment == 'self-hosted'
+        run: bash scripts/ci-clean-self-hosted.sh
       - uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd # v0.8.1
         with:
           advanced-security: false
@@ -80,19 +88,29 @@ jobs:
       full: ${{ steps.scope.outputs.full }}
       gpui: ${{ steps.scope.outputs.gpui }}
       macos_release: ${{ steps.changes.outputs.macos_release }}
+      relay_agent: ${{ steps.changes.outputs.relay_agent }}
       website: ${{ steps.changes.outputs.website }}
+      windows: ${{ steps.scope.outputs.windows }}
       windows_native: ${{ steps.changes.outputs.windows_native }}
       windows_package: ${{ steps.changes.outputs.windows_package }}
-    runs-on: ubuntu-24.04
+    # Members' runs use our own Linux VMs when CI_LINUX_ARM_RUNNER names
+    # them, as the checks job does: every other job waits for this one, and
+    # hosted runners are shared with every repository of the account.
+    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association))) && vars.CI_LINUX_ARM_RUNNER || '"ubuntu-24.04"') }}
     timeout-minutes: 5
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # Shares the runner's checkout with the build jobs: keep target/.
+          clean: ${{ runner.environment != 'self-hosted' }}
           # The range being checked is history the default shallow clone lacks.
           fetch-depth: 0
           persist-credentials: false
+      - name: Clean the self-hosted checkout but its build
+        if: runner.environment == 'self-hosted'
+        run: bash scripts/ci-clean-self-hosted.sh
       - name: Check every commit subject the changelog will publish
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
@@ -117,6 +135,10 @@ jobs:
         env:
           PYTHONDONTWRITEBYTECODE: '1'
         run: python3 scripts/test_ci_scope.py
+      - name: Test the self-hosted checkout cleanup
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: python3 scripts/tests/test_ci_clean_self_hosted.py
       - name: Detect build and test inputs
         id: changes
         env:
@@ -158,12 +180,25 @@ jobs:
         # side, each with one of the lints; the script checks ride with the
         # default-features pass.
         features: [default, all]
-        # Pull requests run ubuntu-24.04 alone unless they need every
-        # platform (scripts/ci-scope.py); the runner set stays fixed here.
-        # When they do, they run one macOS leg, as macOS jobs have the
-        # smallest runner limit; the merge queue and main run both.
-        exclude: ${{ fromJSON(needs.commits.outputs.full != 'true' && '[{"runner":"macos-15"},{"runner":"ubuntu-24.04-arm"}]' || github.event_name == 'pull_request' && '[{"runner":"macos-15","features":"all"}]' || '[]') }}
-    runs-on: ${{ matrix.runner }}
+        # Every pull request runs the macOS default-features leg, as nothing
+        # checks macOS between it and main. A members' pull request runs its
+        # Linux legs on ARM64, which our own machines take; x86_64 Linux is
+        # left to main and the merge queue. Any other pull request runs x86_64
+        # Linux, adding ARM64 when it needs every platform
+        # (scripts/ci-scope.py). Every platform also brings the macOS
+        # all-features leg for members, whose macOS runs on our own Macs; a
+        # fork's runs on the account's few hosted macOS runners and skips it.
+        # Main and the merge queue run every leg.
+        exclude: ${{ fromJSON(github.event_name != 'pull_request' && '[]' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)) && (needs.commits.outputs.full != 'true' && '[{"runner":"ubuntu-24.04"},{"runner":"macos-15","features":"all"}]' || '[{"runner":"ubuntu-24.04"}]') || needs.commits.outputs.full != 'true' && '[{"runner":"macos-15","features":"all"},{"runner":"ubuntu-24.04-arm"}]' || '[{"runner":"macos-15","features":"all"}]') }}
+    # The repository variables CI_MACOS_RUNNER and CI_LINUX_ARM_RUNNER, JSON
+    # label lists such as '["self-hosted", "macOS", "ARM64", "tart"]', move
+    # the macOS and ARM64 Linux legs to our own machines, past the account's
+    # five hosted macOS jobs and onto warm build directories, for code only
+    # members wrote: main, the merge queue, and pull requests from branches of
+    # this repository opened by its owner, members, or collaborators. A
+    # fork's pull request, or a bot's such as Dependabot's, which brings in
+    # new dependencies' build scripts, stays on hosted runners.
+    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association))) && (matrix.runner == 'macos-15' && vars.CI_MACOS_RUNNER || matrix.runner == 'ubuntu-24.04-arm' && vars.CI_LINUX_ARM_RUNNER) || toJSON(matrix.runner)) }}
     timeout-minutes: 60
     permissions:
       contents: read
@@ -174,6 +209,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # A self-hosted runner keeps its target directory between runs, so
+          # a build compiles only what changed; the next step cleans the rest.
+          clean: ${{ runner.environment != 'self-hosted' }}
+      - name: Clean the self-hosted checkout but its build
+        if: runner.environment == 'self-hosted'
+        run: bash scripts/ci-clean-self-hosted.sh
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
         run: bash scripts/install-linux-deps.sh
@@ -215,6 +256,7 @@ jobs:
           PYTHONDONTWRITEBYTECODE: '1'
         run: python3 scripts/tests/test_remote_work.py
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        if: runner.environment != 'self-hosted'
         with:
           key: checks-${{ matrix.features }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -252,10 +294,11 @@ jobs:
         if: matrix.features == 'all' && env.SCOPE != ''
         run: read -ra scope <<< "$SCOPE" && cargo test --locked "${scope[@]}" --all-features
       # The `moonframe` feature's Luau layout loads only at run time: load every
-      # module and report what fails, without a window.
+      # module and report what fails, without a window. The default build
+      # checks the copy compiled in; all features read the sources.
       - name: Check the Moonframe layout
-        if: matrix.features == 'all' && needs.commits.outputs.gpui == 'true'
-        run: cargo run --locked -p sheprd-gpui --all-features -- --check
+        if: needs.commits.outputs.gpui == 'true'
+        run: cargo run --locked -p sheprd-gpui ${{ matrix.features == 'all' && '--all-features' || '' }} -- --check
 
   # Match the other platforms' Rust checks without an extra optimized build,
   # in the merge queue, on main, and on pull requests that need every platform.
@@ -263,7 +306,7 @@ jobs:
   # the release workflow.
   windows:
     if: >-
-      needs.commits.outputs.code == 'true' && needs.commits.outputs.full == 'true' &&
+      needs.commits.outputs.code == 'true' && needs.commits.outputs.windows == 'true' &&
       (github.repository == 'sheprd-labs/sheprd' || github.repository == 'penso/herdr-gpui') &&
       (github.event_name == 'pull_request' || github.event_name == 'merge_group' ||
        ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
@@ -307,10 +350,10 @@ jobs:
         if: matrix.features == 'all'
         run: cargo test --locked --workspace --all-features
       # The `moonframe` feature's Luau layout loads only at run time: load every
-      # module and report what fails, without a window.
+      # module and report what fails, without a window. The default build
+      # checks the copy compiled in; all features read the sources.
       - name: Check the Moonframe layout
-        if: matrix.features == 'all'
-        run: cargo run --locked -p sheprd-gpui --all-features -- --check
+        run: cargo run --locked -p sheprd-gpui ${{ matrix.features == 'all' && '--all-features' || '' }} -- --check
 
   # The native GUI tests (`just test-gui`, `just test-sidebar`) on a real
   # Windows desktop session against a pinned, checksummed Herdr daemon in the
@@ -321,7 +364,7 @@ jobs:
   # (`scripts/ci-changes.sh`); main always does.
   windows-native:
     if: >-
-      needs.commits.outputs.windows_native == 'true' && needs.commits.outputs.full == 'true' &&
+      needs.commits.outputs.windows_native == 'true' && needs.commits.outputs.windows == 'true' &&
       (github.repository == 'sheprd-labs/sheprd' || github.repository == 'penso/herdr-gpui') &&
       (github.event_name == 'pull_request' || github.event_name == 'merge_group' ||
        ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
@@ -372,7 +415,11 @@ jobs:
         run: |
           HERDR_TEST_SIGNED_FILE="$(dirname "$HERDR_TEST_BINARY")/conpty/x64/OpenConsole.exe" \
             cargo test --locked -p sheprd-gpui signer_matches_what_powershell_reports -- --ignored --nocapture
+      # An optimized build, too slow for a pull request: the merge queue and
+      # main run it, and a labeled pull request asking for every platform
+      # leaves it to them.
       - name: Release-mode performance budget
+        if: github.event_name != 'pull_request'
         env:
           HERDR_PERF_P95_MS: '100'
         run: |
@@ -381,11 +428,13 @@ jobs:
 
   # The optimized Windows build, its zip, and its installer, made and installed
   # as the release workflow does, so a packaging or installer mistake fails the
-  # pull request rather than a release. A release build is too slow for every
-  # change, so this runs only when what those artifacts are made from changes.
+  # merge queue rather than a release. A release build is too slow for every
+  # change, so this runs only when what those artifacts are made from changes,
+  # and with every platform: in the merge queue, on main, and on a pull
+  # request labeled for it.
   windows-package:
     if: >-
-      needs.commits.outputs.windows_package == 'true' &&
+      needs.commits.outputs.windows_package == 'true' && needs.commits.outputs.windows == 'true' &&
       (github.repository == 'sheprd-labs/sheprd' || github.repository == 'penso/herdr-gpui') &&
       (github.event_name == 'pull_request' || github.event_name == 'merge_group' ||
        ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
@@ -455,7 +504,10 @@ jobs:
         github.ref == 'refs/heads/main'))
     name: Website and docs
     needs: commits
-    runs-on: ubuntu-24.04
+    # Members' runs use our own Linux VMs when CI_LINUX_ARM_RUNNER names
+    # them, as the checks job does: every other job waits for this one, and
+    # hosted runners are shared with every repository of the account.
+    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association))) && vars.CI_LINUX_ARM_RUNNER || '"ubuntu-24.04"') }}
     timeout-minutes: 10
     permissions:
       contents: read
@@ -464,7 +516,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # Shares the runner's checkout with the build jobs: keep target/.
+          clean: ${{ runner.environment != 'self-hosted' }}
           persist-credentials: false
+      - name: Clean the self-hosted checkout but its build
+        if: runner.environment == 'self-hosted'
+        run: bash scripts/ci-clean-self-hosted.sh
       - name: Check the docs site
         run: |
           python3 -m venv "$RUNNER_TEMP/docs-venv"
@@ -478,7 +535,7 @@ jobs:
   # the run selected.
   checks-passed:
     name: Format, lint, and test
-    needs: [checks, windows, windows-native, windows-package, build-macos, commits, website, zizmor]
+    needs: [checks, windows, windows-native, windows-package, build-macos, relay-agent, commits, website, zizmor]
     if: >-
       always() &&
       github.event.pull_request.draft != true &&
@@ -487,7 +544,10 @@ jobs:
        ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
         github.actor == 'penso' && github.triggering_actor == 'penso' &&
         github.ref == 'refs/heads/main'))
-    runs-on: ubuntu-24.04
+    # Members' runs use our own Linux VMs when CI_LINUX_ARM_RUNNER names
+    # them, as the checks job does: every other job waits for this one, and
+    # hosted runners are shared with every repository of the account.
+    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association))) && vars.CI_LINUX_ARM_RUNNER || '"ubuntu-24.04"') }}
     timeout-minutes: 5
     permissions: {}
     steps:
@@ -500,10 +560,13 @@ jobs:
           PACKAGE: ${{ needs.windows-package.result }}
           MACOS_RELEASE: ${{ needs.build-macos.result }}
           MACOS_INPUTS: ${{ needs.commits.outputs.macos_release }}
+          RELAY_AGENT: ${{ needs.relay-agent.result }}
+          RELAY_AGENT_INPUTS: ${{ needs.commits.outputs.relay_agent }}
           EVENT: ${{ github.event_name }}
           COMMITS: ${{ needs.commits.result }}
           CODE: ${{ needs.commits.outputs.code }}
           FULL: ${{ needs.commits.outputs.full }}
+          WINDOWS_SCOPE: ${{ needs.commits.outputs.windows }}
           PACKAGE_INPUTS: ${{ needs.commits.outputs.windows_package }}
           SITE: ${{ needs.website.result }}
           SITE_INPUTS: ${{ needs.commits.outputs.website }}
@@ -513,14 +576,14 @@ jobs:
           # Only a pull request may skip platforms; main and the merge queue
           # check every one.
           if [ "$EVENT" != pull_request ]; then
-            test "$FULL" = true || exit 1
+            test "$FULL" = true && test "$WINDOWS_SCOPE" = true || exit 1
           fi
           if [ "$CODE" = true ]; then
             test "$RESULT" = success || exit 1
-            if [ "$FULL" = true ]; then
+            if [ "$WINDOWS_SCOPE" = true ]; then
               test "$WINDOWS" = success || exit 1
             else
-              test "$FULL" = false && test "$WINDOWS" = skipped || exit 1
+              test "$WINDOWS_SCOPE" = false && test "$WINDOWS" = skipped || exit 1
             fi
           else
             test "$CODE" = false && test "$RESULT" = skipped && test "$WINDOWS" = skipped || exit 1
@@ -528,10 +591,10 @@ jobs:
           # The GUI tests run with every platform: on main and in the merge
           # queue with code changes, on pull requests when their inputs
           # change; missing detection fails.
-          if [ "$NATIVE_INPUTS" = true ] && [ "$FULL" = true ]; then
+          if [ "$NATIVE_INPUTS" = true ] && [ "$WINDOWS_SCOPE" = true ]; then
             test "$NATIVE" = success || exit 1
           else
-            { [ "$NATIVE_INPUTS" = false ] || [ "$FULL" = false ]; } && test "$NATIVE" = skipped || exit 1
+            { [ "$NATIVE_INPUTS" = false ] || [ "$WINDOWS_SCOPE" = false ]; } && test "$NATIVE" = skipped || exit 1
           fi
           # The macOS release builds run before merge, with every platform,
           # when their inputs change.
@@ -541,10 +604,17 @@ jobs:
           else
             test "$MACOS_RELEASE" = skipped || exit 1
           fi
-          if [ "$PACKAGE_INPUTS" = true ]; then
+          # The relay agent builds run before merge when their inputs change.
+          if [ "$RELAY_AGENT_INPUTS" = true ] &&
+             { [ "$EVENT" = pull_request ] || [ "$EVENT" = merge_group ]; }; then
+            test "$RELAY_AGENT" = success || exit 1
+          else
+            test "$RELAY_AGENT" = skipped || exit 1
+          fi
+          if [ "$PACKAGE_INPUTS" = true ] && [ "$WINDOWS_SCOPE" = true ]; then
             test "$PACKAGE" = success || exit 1
           else
-            test "$PACKAGE_INPUTS" = false && test "$PACKAGE" = skipped || exit 1
+            { [ "$PACKAGE_INPUTS" = false ] || [ "$WINDOWS_SCOPE" = false ]; } && test "$PACKAGE" = skipped || exit 1
           fi
           if [ "$SITE_INPUTS" = true ]; then
             test "$SITE" = success
@@ -603,6 +673,52 @@ jobs:
           TARGET: ${{ matrix.target }}
         run: cargo test --locked --release -p sheprd-gpui --test cli --target "$TARGET"
 
+  # sheprd-relay-agent as each release builds it for the machines Sheprd
+  # shares as a fleet's plain host (scripts/release/build-agent.sh), before
+  # merge only and when what it is built from changes (`scripts/ci-changes.sh`).
+  # A pull request builds the x86_64 Linux one; one that needs every
+  # platform, and the merge queue, also build the aarch64 Linux one and both
+  # Macs' on one macOS runner. The release workflow builds all four anyway.
+  relay-agent:
+    if: >-
+      needs.commits.outputs.relay_agent == 'true' &&
+      (github.repository == 'sheprd-labs/sheprd' || github.repository == 'penso/herdr-gpui') &&
+      (github.event_name == 'pull_request' || github.event_name == 'merge_group')
+    name: Relay agent (${{ matrix.runner }})
+    needs: commits
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm, macos-15]
+        exclude: ${{ fromJSON(needs.commits.outputs.full != 'true' && '[{"runner":"macos-15"},{"runner":"ubuntu-24.04-arm"}]' || '[]') }}
+    # Our own machines for members' macOS and ARM64 legs, as in the checks job.
+    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association))) && (matrix.runner == 'macos-15' && vars.CI_MACOS_RUNNER || matrix.runner == 'ubuntu-24.04-arm' && vars.CI_LINUX_ARM_RUNNER) || toJSON(matrix.runner)) }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # Shares the runner's checkout with the build jobs: keep target/.
+          clean: ${{ runner.environment != 'self-hosted' }}
+      - name: Clean the self-hosted checkout but its build
+        if: runner.environment == 'self-hosted'
+        run: bash scripts/ci-clean-self-hosted.sh
+      - run: rustup show
+      # Linux builds its own architecture's static agent; macOS builds
+      # both thin ones, the x86_64 one cross-compiled.
+      - name: Build sheprd-relay-agent as a release does
+        run: |
+          if [ "$(uname -s)" = Darwin ]; then
+            targets="aarch64-apple-darwin x86_64-apple-darwin"
+          else
+            targets="$(uname -m)-unknown-linux-musl"
+          fi
+          for target in $targets; do
+            bash scripts/release/build-agent.sh "$target" "$RUNNER_TEMP/sheprd-relay-agent-$target"
+          done
+
   # The macOS release builds and their release-mode CLI suite, before merge
   # only and when what they depend on changes (`scripts/ci-changes.sh`): in
   # the merge queue and on pull requests that need every platform. On main
@@ -622,7 +738,9 @@ jobs:
         # x86_64 macOS cross-compiles on Apple Silicon and runs under Rosetta,
         # as the release workflow builds it; Intel runners are scarce.
         target: [aarch64-apple-darwin, x86_64-apple-darwin]
-    runs-on: macos-15
+    # Our own Macs when CI_MACOS_RUNNER names them, for members' code only,
+    # as in the checks job.
+    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association))) && vars.CI_MACOS_RUNNER || '"macos-15"') }}
     timeout-minutes: 60
     permissions:
       contents: read
@@ -630,6 +748,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # A self-hosted runner keeps its target directory between runs, so
+          # a build compiles only what changed; the next step cleans the rest.
+          clean: ${{ runner.environment != 'self-hosted' }}
+      - name: Clean the self-hosted checkout but its build
+        if: runner.environment == 'self-hosted'
+        run: bash scripts/ci-clean-self-hosted.sh
       - name: Install pinned Rust toolchain
         env:
           TARGET: ${{ matrix.target }}

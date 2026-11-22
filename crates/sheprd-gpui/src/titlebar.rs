@@ -1,6 +1,7 @@
 //! Native chrome and GitHub account access.
 // i18n: migrated
 mod decorations;
+mod details;
 mod navigation;
 mod status;
 mod tabs;
@@ -52,7 +53,7 @@ impl SheprdWindow {
         // GitLab waiting for a token opens its page, once GitHub has an
         // account and nothing of its own to ask.
         if self.orchestrator_gitlab_needs_sign_in(cx)
-            && self.pr_profile().is_some()
+            && self.pr_signed_in()
             && !self.github_needs_attention()
             && self.github_rate_limit_message().is_none()
         {
@@ -61,16 +62,16 @@ impl SheprdWindow {
         }
         // Azure DevOps waiting for a token opens its page the same way.
         if self.orchestrator_needs_sign_in(crate::orchestrator::Provider::Azure, cx)
-            && self.pr_profile().is_some()
+            && self.pr_signed_in()
             && !self.github_needs_attention()
         {
             self.open_azure_page(window, cx);
             return;
         }
         self.menu.page = Some(Page::GitHub);
-        // A device already covered by the main account opens the page rather
-        // than starting a second sign-in for itself.
-        if connect && self.pr_profile().is_none() && !self.github_auth().loading_profile() {
+        // A device some account already reads with opens the page rather
+        // than starting another sign-in.
+        if connect && !self.pr_signed_in() && !self.github_auth().loading_profile() {
             self.start_github();
         }
         cx.notify();
@@ -378,7 +379,7 @@ impl SheprdWindow {
 
     /// What ends the bar: git actions, the account, and the window controls
     /// a client-decorated window draws.
-    fn titlebar_end(&self, window: &Window, cx: &mut Context<Self>) -> Div {
+    pub(crate) fn titlebar_end(&self, window: &Window, cx: &mut Context<Self>) -> Div {
         let image = self
             .pr_profile()
             .and_then(|profile| self.menu.github_avatars.get(&profile.avatar_url));
@@ -502,6 +503,7 @@ impl SheprdWindow {
                             }),
                     ),
             )
+            .when(self.hosted, |end| end.child(self.details_toggle(cx)))
             // The in-window menu bar carries the window controls instead,
             // until it is hidden and they would leave with it.
             .when(!self.menu_bar_shown(), |end| {

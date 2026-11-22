@@ -91,7 +91,7 @@ impl SheprdWindow {
         self.create_unavailable(target).is_none()
     }
 
-    pub(super) fn session_delete_reason(&self, row: &Row) -> Option<String> {
+    pub(in crate::menu) fn session_delete_reason(&self, row: &Row) -> Option<String> {
         if self.sessions.mutation.is_some() {
             return Some(fl!("sessions-menu-wait-for-delete"));
         }

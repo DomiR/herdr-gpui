@@ -59,6 +59,9 @@ pub(super) fn serve(
         HostOp::PrOpen => in_window(caller, cx, |view, window, cx| {
             pr::open(view, caller, window, cx)
         }),
+        HostOp::PrCreate {} => in_free_window(caller, cx, |view, window, cx| {
+            pr::create(view, caller, window, cx)
+        }),
         HostOp::PrMerge => in_window(caller, cx, |view, window, cx| {
             pr::ask(view, caller, crate::menu::PrChange::Merge, window, cx)
         }),

@@ -30,6 +30,9 @@ struct SessionSheet: View {
                     VStack(spacing: 14) {
                         nameCard()
                         contextCard(transcript)
+                        if let harnesses = transcript.harnesses, harnesses.available.count > 1 {
+                            agentTiles(harnesses, idle: transcript.status != .working)
+                        }
                         if let modes = transcript.modes, !modes.available.isEmpty { modeTiles(modes) }
                         if let option = transcript.options.first(where: { $0.category == .thoughtLevel }),
                            case let .select(choices, current) = option.kind, choices.count > 1 {
@@ -104,6 +107,49 @@ struct SessionSheet: View {
             Spacer(minLength: 0)
         }
         .card()
+    }
+
+    /// The agents the chat may hand its conversation to, as the desktop's
+    /// agent button offers them; a switch waits for the turn to end.
+    private func agentTiles(_ harnesses: Harnesses, idle: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Agent").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 10)], spacing: 10) {
+                ForEach(harnesses.available, id: \.self) { agent in
+                    let selected = agent == harnesses.current
+                    Button {
+                        if !selected { send(.setAgent(agent)) }
+                    } label: {
+                        VStack(spacing: 6) {
+                            AgentIcon(agent: agent, size: 32)
+                            Text(Self.agentName(agent)).font(.caption.weight(.medium)).lineLimit(1)
+                        }
+                        .frame(maxWidth: .infinity).padding(.vertical, 10)
+                        .background(selected ? AnyShapeStyle(.tint.opacity(0.16)) : AnyShapeStyle(.fill.quinary), in: .rect(cornerRadius: 14))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 14).strokeBorder(selected ? AnyShapeStyle(.tint) : AnyShapeStyle(.clear), lineWidth: 1.5)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Self.agentName(agent))
+                    .accessibilityAddTraits(selected ? .isSelected : [])
+                }
+            }
+            .disabled(!idle)
+            .haptic(.selection, trigger: harnesses.current)
+            Text(idle ? "The new agent picks up this conversation with your next message." : "You can switch once the agent finishes its turn.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        .card()
+    }
+
+    /// An agent's name as Sheprd shows it (`sheprd_chat_protocol::Agent`).
+    static func agentName(_ agent: String) -> String {
+        switch agent {
+        case "opencode": "OpenCode"
+        case "kimi": "Kimi Code"
+        default: agent.prefix(1).uppercased() + agent.dropFirst()
+        }
     }
 
     private func modeTiles(_ modes: Modes) -> some View {

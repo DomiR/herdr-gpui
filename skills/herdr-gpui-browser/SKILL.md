@@ -85,9 +85,9 @@ sheprd browser open http://localhost:3000
   and the keyboard stays with your pane, so they can keep talking to you
   while the page updates. Later files you open join the same split.
 - A web address opens as a tab in your own workspace (`HERDR_WORKSPACE_ID`,
-  which Herdr sets in every pane, or the workspace of your Herdr 2 tab) and the window switches to it. The
-  terminal keeps running underneath; the user returns to it by clicking its
-  tab.
+  which Herdr sets in every pane, or the workspace of your Herdr 2 tab). The
+  window does not switch to it: the user may be working in another
+  workspace, and their keystrokes must not land in your page.
 - Add `--tab` to open a file as a tab instead, or `--beside` to put a web
   address in the split.
 - A local file is served with the other files in its folder, so relative
@@ -99,8 +99,17 @@ sheprd browser open http://localhost:3000
   images load. Links to other Markdown files in the folder open rendered too.
 - Opening the same page again from the same pane reuses and reloads its tab.
   After editing a file, run `sheprd browser reload` instead.
-- Add `--no-focus` to add the tab without switching to it, for example when
-  the user is typing in your pane.
+- Browser commands never take the user's focus on their own: `open`,
+  `navigate`, `reload`, `text`, and `screenshot` leave the window on the
+  workspace and tab the user is in, and the keyboard where it is. Add
+  `--focus` to `open`, `text`, or `screenshot` only when the user asked
+  to see the page now. `--no-focus`, the old way to ask for this, is
+  accepted and changes nothing.
+- `sheprd browser text TAB` reads a page in the background, loading it out
+  of sight if need be. `sheprd browser screenshot TAB PATH` pictures the page
+  as it shows, so it works only while the page is on screen (beside your
+  terminal, or the tab the user is looking at) and otherwise exits 5. Do not
+  retry it with `--focus` in a loop; ask the user, or read the text.
 - When the user finds a page too small or too large, zoom its tab:
   `sheprd browser zoom TAB 150` (or `+`, `-`, `reset`), with `TAB` from
   `sheprd browser list`. The tab keeps its zoom; the user zooms with
@@ -343,6 +352,13 @@ unless they ask for another:
   `sheprd chat new --pane ID` with a pane of it. With no agent named it
   starts your agent with your chat's model, thinking, and permission mode.
   Do not run an agent's terminal command there instead.
+- **You hand it a task**: write the task to a file and start the chat with
+  it, `sheprd chat new [AGENT] --pane ID --prompt-file PATH` (or
+  `--prompt TEXT`, or `--prompt-file -` for standard input; at most 96 KB).
+  Sheprd sends it as the new chat's first prompt and shows it as your
+  brief, not the user's words. Do not paste a task into a chat with
+  `herdr agent prompt` or `herdr pane send-text`. A brief works only for
+  chats on this machine; on an SSH host the command exits 8.
 - **You run in a terminal**: start the same CLI you run as, with the same
   options, such as the model and permission flags you were started with
   (`ps -o args= -p $PPID` from your shell usually shows your command line),
@@ -359,6 +375,7 @@ what Sheprd shows or keeps.
 
 | To | Run |
 | --- | --- |
+| Read or picture a page tab you opened, without taking the user's focus | `sheprd browser text TAB`, `sheprd browser screenshot TAB PATH` (`--focus` shows the tab first) |
 | Show a file at a line, read-only | `sheprd code open src/main.rs:42` |
 | Open the review of your uncommitted changes | `sheprd review` |
 | Ask the user to restart an owned orchestrator run, or adopt a legacy run's current process | `sheprd orchestrator restart RUN` / `sheprd orchestrator adopt RUN` (loaded project; confirmation required) |
@@ -374,6 +391,7 @@ what Sheprd shows or keeps.
 | Update the Sheprd app on another machine (the user confirms in Sheprd) | `sheprd host update studio` |
 | Save the working tree before a risky change, and compare later | `sheprd checkpoint create before refactor`, `sheprd checkpoint diff ID` |
 | Your branch's pull request, its checks, and (with your workspace focused) its comments | `sheprd pr`, `sheprd pr checks`, `sheprd pr comments` |
+| Ask to create your branch's pull request without `gh` credentials; focus the local checkout and your core pane first, then the user clicks Create pull request in Sheprd | `sheprd pr create`; only opens the native action, does not submit or return a PR URL; after confirmation use `sheprd pr` and `sheprd chat pr add URL` |
 | Diagnose missing GitHub details: last reported GraphQL quota and rate-limit retry delays | `sheprd pr quota --json` |
 | Ask the user to merge your branch's pull request (with the stack below it), or to add it to or take it out of the merge queue; they confirm in Sheprd | `sheprd pr merge`, `sheprd pr queue add\|remove` |
 | List the vulnerability reports outsiders filed and the open Dependabot alerts of your repositories, most severe first | `sheprd security --json` |
@@ -386,6 +404,7 @@ what Sheprd shows or keeps.
 | Ask the user to stop (or pause) whatever holds a port you need | `sheprd ports stop 3000`; they confirm in the app |
 | See the processes under a pane, with CPU and memory | `sheprd processes` |
 | Start another agent like yourself, in a chat (see [Starting another agent](#starting-another-agent)) | `sheprd chat new --pane ID` from a chat, then `sheprd chat` for its status |
+| Hand another agent a task, shown as your brief in its new chat | `sheprd chat new [AGENT] --pane ID --prompt-file PATH` |
 | Start a chat with another agent in a new tab, shown as a native chat view | `sheprd chat new claude`, then `sheprd chat` for its status |
 | List a pull request you changed without `gh` in your chat's side rail (`gh pr` commands show there on their own) | `sheprd chat pr add https://github.com/OWNER/REPO/pull/N`; `sheprd chat pr` lists them |
 | Move a terminal agent into a native chat, keeping its conversation (an agent that is idle, in another pane) | `sheprd chat convert --pane ID`, then `sheprd chat` for its status |
@@ -403,6 +422,9 @@ what Sheprd shows or keeps.
 | Run a command inside a running virtual Mac (build, test, install an app) | `sheprd machine exec NAME --cwd ~/app -- xcodebuild test` |
 | Test a Mac app's UI in a virtual Mac: look at its screen, then click, type, or press keys | `sheprd machine screenshot NAME /tmp/s.png`, `sheprd machine click NAME X Y`, `sheprd machine type NAME TEXT`, `sheprd machine key NAME cmd+s` |
 | Check remote control and its daemon-host network interfaces, or pair a phone (Tailscale preferred; optionally choose an origin from status) | `sheprd remote status`, `sheprd remote pair [--address HTTPS_ORIGIN]` |
+| Check whether iPhone pushes go out (off, or through the push relay) and whether the last ones worked, here and on each linked host; read-only, the user turns the push relay off or on in Settings | `sheprd remote push-status --json` |
+| See the user's fleet of computers and phones and which hosts each reaches, or ask to remove one (the user confirms in Settings > Fleet) | `sheprd fleet status --json`, `sheprd fleet remove MEMBER` |
+| Add another computer running Sheprd on any network from its pairing link (piped on stdin, never an argument); the user clicks Pair | `sheprd remote add-link < FILE` |
 | Keep this computer's listen token for a private relay (piped on stdin, never an argument), or forget it | `sheprd remote relays token ENDPOINT < FILE`, `sheprd remote relays token ENDPOINT --clear` |
 | Keep the machine awake during a long job | `sheprd caffeine on --for 2h` |
 | Check whether the app runs, and which windows and hosts it has | `sheprd status` |

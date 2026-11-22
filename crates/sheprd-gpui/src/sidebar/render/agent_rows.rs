@@ -14,6 +14,48 @@ use crate::{
 };
 use gpui::{prelude::*, *};
 
+#[cfg(test)]
+mod tests;
+
+/// What goes above an agent row as the list passes from favorites to the
+/// rest.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::sidebar) enum Mark {
+    /// Over the first favorite.
+    Heading,
+    /// Under the last favorite, over the first other agent.
+    Rule,
+}
+
+/// Where the list stands among favorites, so each mark is painted once.
+#[derive(Debug, Default)]
+pub(in crate::sidebar) struct Favorites {
+    started: bool,
+    in_favorites: bool,
+    marks: usize,
+}
+
+impl Favorites {
+    /// The mark above the next row, which is a favorite or not.
+    pub(in crate::sidebar) fn next(&mut self, favorite: bool) -> Option<Mark> {
+        let first = !self.started;
+        self.started = true;
+        let mark = match (first, self.in_favorites, favorite) {
+            (true, _, true) => Some(Mark::Heading),
+            (false, true, false) => Some(Mark::Rule),
+            _ => None,
+        };
+        self.in_favorites = favorite;
+        self.marks += usize::from(mark.is_some());
+        mark
+    }
+
+    /// The marks painted since last asked.
+    fn take_marks(&mut self) -> usize {
+        std::mem::take(&mut self.marks)
+    }
+}
+
 impl SheprdWindow {
     /// Appends a row for each agent `panel_agents` lists, in that order, and
     /// returns the list with how many rows it painted and where the selected
@@ -32,6 +74,10 @@ impl SheprdWindow {
         let multi = self.endpoints.len() > 1;
         let mut count = 0;
         let mut focused = None;
+        // Favorites come first (`favorites_first`): a heading over them and
+        // a rule under them. Both count as rows, as the reveal scrolls to a
+        // row by its place among the list's children.
+        let mut favorites = Favorites::default();
         for (index, agent) in self.panel_agents() {
             let Some(endpoint) = self.endpoints.get(index) else {
                 continue;
@@ -58,6 +104,12 @@ impl SheprdWindow {
             let Some(lines) = self.configured_agent_lines(&agent, row_cx.host) else {
                 continue;
             };
+            match favorites.next(self.favorite_agent(index, &agent)) {
+                Some(Mark::Heading) => list = list.child(self.favorites_heading(look)),
+                Some(Mark::Rule) => list = list.child(self.favorites_rule()),
+                None => {}
+            }
+            count += favorites.take_marks();
             if selected && agent.focused() {
                 focused = Some(count);
             }
@@ -152,6 +204,7 @@ impl SheprdWindow {
             spoken
         };
         let focused = selected && agent.focused();
+        let star = self.agent_star(index, &agent, cx);
         Cell::new(
             rows,
             RowData::Agent(AgentRow {
@@ -174,6 +227,7 @@ impl SheprdWindow {
         .selected(focused)
         .highlighted(menu_open)
         .row()
+        .when_some(star, |row, star| row.relative().child(star))
         .when(gap > 0., |row| row.mt(px(gap)))
         .id(SharedString::from(format!("agent-{endpoint_id}-{id}")))
         .role(Role::ListItem)

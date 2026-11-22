@@ -48,6 +48,7 @@ fn it_says_what_the_agent_is_doing() {
     let prompt = EntryKind::User {
         text: "Fix it".into(),
         files: 0,
+        note: None,
     };
     assert_eq!(doing(&working(vec![prompt.clone()])), "Thinking");
     assert_eq!(
@@ -119,6 +120,7 @@ fn prompt() -> EntryKind {
     EntryKind::User {
         text: "Fix it".into(),
         files: 0,
+        note: None,
     }
 }
 

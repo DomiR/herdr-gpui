@@ -3,15 +3,19 @@ use control::BrowserCommand;
 
 mod automation;
 mod browser_eval;
+mod browser_focus;
 mod browser_zoom;
 mod chat;
+mod chat_brief;
 mod chat_pull_requests;
 mod chat_shortcuts;
+mod classic;
 mod cloud_batch;
 mod cloud_exec;
 mod cloud_images;
 mod cloud_setup;
 mod control_commands;
+mod fleet;
 mod language;
 mod links;
 mod local_ports;
@@ -23,6 +27,7 @@ mod memory;
 mod menu_bar;
 mod mods;
 mod open_command;
+mod pr_create;
 mod pr_merge;
 mod px0;
 mod quota;
@@ -73,7 +78,7 @@ fn browser_commands_never_start_the_gui() {
         browser(BrowserCommand::Open {
             target: "localhost:3000".into(),
             workspace: None,
-            focus: true,
+            focus: false,
             placement: None,
         })
     );
@@ -82,7 +87,7 @@ fn browser_commands_never_start_the_gui() {
         browser(BrowserCommand::Open {
             target: "demo.html".into(),
             workspace: None,
-            focus: true,
+            focus: false,
             placement: Some(control::Placement::Beside),
         })
     );
@@ -91,7 +96,7 @@ fn browser_commands_never_start_the_gui() {
         browser(BrowserCommand::Open {
             target: "demo.html".into(),
             workspace: None,
-            focus: true,
+            focus: false,
             placement: Some(control::Placement::Tab),
         })
     );

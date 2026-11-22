@@ -108,6 +108,7 @@ fn a_chat_under_way_or_only_watched_is_not_fresh() {
         kind: EntryKind::User {
             text: "hi".to_owned(),
             files: 0,
+            note: None,
         },
     });
     assert!(!fresh(&prompted));
@@ -219,6 +220,7 @@ fn a_chat_already_under_way_is_settled_without_switching() {
         kind: EntryKind::User {
             text: "hi".to_owned(),
             files: 0,
+            note: None,
         },
     });
     let mut settled = None;

@@ -412,7 +412,7 @@ signing step of `sign` receives it; builds, tests, metadata, OIDC and publicatio
 never do. The public key is validated before builds and matched against the
 private key before signing exact JSON bytes. See [updater setup](../../docs/updating.md).
 
-The exact release base set is twenty-seven files: the DMG, two manual Linux archives,
+The exact release base set is twenty-nine files: the DMG, two manual Linux archives,
 their `.deb`, `.rpm` and Arch packages, two Windows zips and two Windows installers, SBOM, three updater archives, `update-manifest.json`, and its
 raw 64-byte Ed25519 `update-manifest.sig`, plus `package-manifest.json` and
 `package-manifest.sig` for the six Linux packages, `windows-manifest.json` and
@@ -421,7 +421,19 @@ raw 64-byte Ed25519 `update-manifest.sig`, plus `package-manifest.json` and
 `sheprd-remote-control-VERSION-ARCH-unknown-linux-musl` host builds. Each Linux
 job builds its host build with `build-host.sh`; Sheprd copies it onto SSH and
 cloud machines of that architecture to pair a phone with them
-(`docs/remote-control-plan.md`, "Other machines"). All base files receive SHA-256 and Sigstore sidecars and GitHub
+(`docs/remote-control-plan.md`, "Other machines"). Two archives carry their
+own signed manifest first: `sheprd-acp-VERSION-linux-musl.tar.gz` (schema 5,
+`pack-host-chats`), the host builds' `sheprd-acp`, and
+`sheprd-relay-agent-VERSION.tar.gz` (schema 6, `pack-host-agents`), the agent
+Sheprd installs on a machine it shares as a fleet's plain host. `build-agent.sh`
+builds the agent static on each Linux job and thin for each Mac in
+`macos-build`; the sign job signs the Mac builds with the Developer ID
+(`sign-macos.sh VERSION APP OUT EXECUTABLE...`) before it lists all four.
+Windows and the BSDs get no agent: its service and installer are POSIX shell
+with systemd or launchd. CI builds the agent the same way, before merge, only
+when what it is built from changes (`scripts/ci-changes.sh`, `relay_agent`).
+`scripts/verify-release.sh --without-host-agents` verifies a release published
+before the agent archive. All base files receive SHA-256 and Sigstore sidecars and GitHub
 provenance in the separate protected OIDC job. The raw signature is not overwritten:
 its Sigstore sidecar is `update-manifest.sig.sig`; the JSON's is
 `update-manifest.json.sig` (and likewise for the package, Windows, and host manifests).
@@ -433,7 +445,7 @@ This keeps the current set below the 128-asset limit in installed updaters, with
 any platform, signature, or checksum algorithm. Creation refuses sets of 128 or
 more assets. Older immutable releases retain their per-file SHA-512 contract
 and remain verifiable. Missing or additional files fail closed.
-`artifact-manifest.py base-names VERSION DIRECTORY` lists the twenty-seven base names.
+`artifact-manifest.py base-names VERSION DIRECTORY` lists the twenty-nine base names.
 The publication job verifies downloaded draft bytes and the complete exact asset
 set before making it public; Homebrew still verifies and uses only the final DMG.
 

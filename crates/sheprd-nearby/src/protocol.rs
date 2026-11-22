@@ -2,10 +2,13 @@
 //! per line, the same messages the macOS helper reads and writes (its
 //! header comment in `macos/sheprd-nearby/main.swift`).
 
-use crate::framing::MAX_MESSAGE;
+use crate::{central, framing::MAX_MESSAGE};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize};
-use std::io::{self, BufRead, Write};
+use std::{
+    io::{self, BufRead, Write},
+    sync::mpsc,
+};
 
 /// The longest line accepted from Sheprd: a base64 frame of
 /// [`MAX_MESSAGE`] bytes and its envelope.
@@ -34,6 +37,8 @@ pub(crate) enum Command {
         channel: Channel,
         data: Vec<u8>,
     },
+    /// For the scanning side, which adds another computer's Sheprd.
+    Central(central::Command),
 }
 
 #[derive(Deserialize)]
@@ -58,6 +63,20 @@ enum Line {
         data: String,
     },
     Stop,
+    Scan {
+        #[serde(default)]
+        on: bool,
+    },
+    Connect {
+        peripheral: String,
+    },
+    Disconnect {
+        peripheral: String,
+    },
+    PeripheralFrame {
+        peripheral: String,
+        data: String,
+    },
 }
 
 impl Command {
@@ -67,12 +86,17 @@ impl Command {
         if line.len() > MAX_LINE {
             return None;
         }
+        let decode = |data: String| {
+            STANDARD
+                .decode(data)
+                .ok()
+                .filter(|data| data.len() <= MAX_MESSAGE)
+        };
         let frame = |central: String, channel, data: String| {
-            let data = STANDARD.decode(data).ok()?;
-            (data.len() <= MAX_MESSAGE).then_some(Self::Frame {
+            Some(Self::Frame {
                 central,
                 channel,
-                data,
+                data: decode(data)?,
             })
         };
         match serde_json::from_str::<Line>(line).ok()? {
@@ -84,6 +108,19 @@ impl Command {
             Line::Stop => Some(Self::Stop),
             Line::Frame { central, data } => frame(central, Channel::Pair, data),
             Line::PresenceFrame { central, data } => frame(central, Channel::Presence, data),
+            Line::Scan { on } => Some(Self::Central(central::Command::Scan(on))),
+            Line::Connect { peripheral } => {
+                Some(Self::Central(central::Command::Connect(peripheral)))
+            }
+            Line::Disconnect { peripheral } => {
+                Some(Self::Central(central::Command::Disconnect(peripheral)))
+            }
+            Line::PeripheralFrame { peripheral, data } => {
+                Some(Self::Central(central::Command::Write {
+                    peripheral,
+                    data: decode(data)?,
+                }))
+            }
         }
     }
 }
@@ -101,15 +138,52 @@ pub(crate) enum Radio {
 }
 
 /// What the helper tells Sheprd.
-#[derive(Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case", tag = "type")]
 pub(crate) enum Event {
-    State { state: Radio },
-    Frame { central: String, data: String },
-    PresenceFrame { central: String, data: String },
-    Disconnected { central: String },
-    Idle { seconds: u64 },
-    Error { message: String },
+    State {
+        state: Radio,
+    },
+    Frame {
+        central: String,
+        data: String,
+    },
+    PresenceFrame {
+        central: String,
+        data: String,
+    },
+    Disconnected {
+        central: String,
+    },
+    Idle {
+        seconds: u64,
+    },
+    Error {
+        message: String,
+    },
+    /// The radio, as the scanning side sees it.
+    CentralState {
+        state: Radio,
+    },
+    /// A computer showing Pair device, and the name it gives.
+    Found {
+        peripheral: String,
+        name: String,
+        fp: String,
+    },
+    /// The computer is ready to carry `pair` frames.
+    Connected {
+        peripheral: String,
+    },
+    /// A whole message the computer sent on `pair`.
+    PeripheralFrame {
+        peripheral: String,
+        data: String,
+    },
+    /// The computer went, or stopped showing Pair device.
+    PeripheralDisconnected {
+        peripheral: String,
+    },
 }
 
 impl Event {
@@ -123,6 +197,14 @@ impl Event {
         }
     }
 
+    /// A whole message a computer sent, for Sheprd to relay.
+    pub(crate) fn peripheral_frame(peripheral: &str, data: &[u8]) -> Self {
+        Self::PeripheralFrame {
+            peripheral: peripheral.to_owned(),
+            data: STANDARD.encode(data),
+        }
+    }
+
     pub(crate) fn error(message: impl std::fmt::Display) -> Self {
         Self::Error {
             message: message.to_string().chars().take(200).collect(),
@@ -131,12 +213,24 @@ impl Event {
 }
 
 /// Writes events to Sheprd, one line each; shared by every thread that
-/// reports something.
+/// reports something. The measurement harness (`bench`) drives the helper
+/// in-process and reads the events from a channel instead.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct Out;
+pub(crate) struct Out {
+    sink: Option<mpsc::Sender<Event>>,
+}
 
 impl Out {
+    /// Events go to `sink` rather than to standard output.
+    pub(crate) fn to(sink: mpsc::Sender<Event>) -> Self {
+        Self { sink: Some(sink) }
+    }
+
     pub(crate) fn emit(&self, event: &Event) {
+        if let Some(sink) = &self.sink {
+            let _ = sink.send(event.clone());
+            return;
+        }
         let Ok(mut line) = serde_json::to_vec(event) else {
             return;
         };

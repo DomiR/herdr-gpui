@@ -21,6 +21,7 @@ mod context;
 mod effects;
 mod error;
 mod fallback;
+mod favorites;
 pub(crate) mod files;
 mod folders;
 mod history;

@@ -2,7 +2,7 @@
 //! headers, the GraphQL call, and the account-wide rate-limit cooldown. Remote
 //! diagnostics stay bounded so a hostile response cannot flood the UI.
 
-use super::{Result, log};
+use super::{Result, Server, ServerToken, log};
 use crate::Error;
 use chrono::{DateTime, Utc};
 use secrecy::{ExposeSecret, ExposeSecretMut, SecretBox as Secret, SecretString};
@@ -16,13 +16,20 @@ use std::{
 use zeroize::Zeroizing;
 
 pub(super) const LIMIT: u64 = 2 * 1024 * 1024;
-const API: &str = "https://api.github.com";
 
-pub(super) fn agent(timeout: Duration) -> ureq::Agent {
+/// An agent for requests to `server`. An Enterprise Server is verified
+/// against the system's certificates, because an organization often issues
+/// its certificate from its own authority.
+pub(super) fn agent(server: &Server, timeout: Duration) -> ureq::Agent {
+    let roots = match server {
+        Server::GitHub => ureq::tls::RootCerts::WebPki,
+        Server::Enterprise(_) => ureq::tls::RootCerts::PlatformVerifier,
+    };
     ureq::Agent::config_builder()
         .timeout_global(Some(timeout))
         .max_redirects(0)
         .http_status_as_error(false)
+        .tls_config(ureq::tls::TlsConfig::builder().root_certs(roots).build())
         .build()
         .into()
 }
@@ -86,7 +93,7 @@ fn body<T: DeserializeOwned>(
 
 pub fn graphql(
     context: &'static str,
-    token: &SecretString,
+    token: &ServerToken,
     query: &str,
     variables: Value,
     timeout: Duration,
@@ -103,7 +110,7 @@ pub fn graphql(
         return Err(crate::pull_request::Error::Cancelled.into());
     }
     if let Some(errors) = result.get("errors") {
-        let kind = log::token_kind(token);
+        let kind = log::token_kind(&token.token);
         log::graphql(context, kind, &exchange, errors);
         if errors.as_array().is_some_and(|errors| {
             errors.iter().any(|error| {
@@ -126,7 +133,7 @@ pub fn graphql(
 /// error no alias claims, fails the whole request. Pull request lookups are
 /// its only caller, so failures are logged under their context.
 pub fn graphql_aliases(
-    token: &SecretString,
+    token: &ServerToken,
     query: &str,
     variables: Value,
     aliases: &[(String, String)],
@@ -142,7 +149,7 @@ pub fn graphql_aliases(
     if cancelled() {
         return Err(crate::pull_request::Error::Cancelled.into());
     }
-    let kind = log::token_kind(token);
+    let kind = log::token_kind(&token.token);
     if let Some(errors) = result.get("errors") {
         log::graphql("pull_request", kind, &exchange, errors);
     }
@@ -216,7 +223,7 @@ pub(super) fn split_aliases(
 /// user needs, and a generic failure would invite a blind retry.
 pub fn mutation(
     context: &'static str,
-    token: &SecretString,
+    token: &ServerToken,
     query: &str,
     variables: Value,
     timeout: Duration,
@@ -232,21 +239,21 @@ pub fn mutation(
         &mut None,
     )?;
     if let Some(errors) = result.get("errors") {
-        let kind = log::token_kind(token);
+        let kind = log::token_kind(&token.token);
         log::graphql(context, kind, &exchange, errors);
         return Err(query_error(errors, repository, kind, exchange.reset));
     }
     Ok(result)
 }
 
-/// A REST read of `path` under `https://api.github.com`, such as
+/// A REST read of `path` under the token's server's REST API, such as
 /// `/repos/OWNER/REPO/security-advisories`, through the same bounded reader
 /// and typed refusals as GraphQL. Callers build `path` from names they have
 /// validated; nothing here escapes it. The answer is read straight into
 /// `T`, so fields `T` leaves out are skipped rather than held.
 pub fn rest<T: DeserializeOwned>(
     context: &'static str,
-    token: &SecretString,
+    token: &ServerToken,
     path: &str,
     timeout: Duration,
     cancelled: impl Fn() -> bool,
@@ -254,19 +261,20 @@ pub fn rest<T: DeserializeOwned>(
     if cancelled() {
         return Err(crate::pull_request::Error::Cancelled.into());
     }
-    let agent = agent(timeout);
+    let agent = agent(&token.server, timeout);
     let read = |url: &str| {
         agent
             .get(url)
             .header("User-Agent", "Sheprd")
             .header("Accept", "application/vnd.github+json")
             .header("X-GitHub-Api-Version", "2022-11-28")
-            .header("Authorization", authorization(token)?)
+            .header("Authorization", authorization(&token.token)?)
             .call()
             .map_err(log::network(context))
     };
-    let mut reply = read(&format!("{API}{path}"))?;
+    let mut reply = read(&format!("{}{path}", token.server.rest_root()))?;
     let moved = moved_to(
+        &token.server,
         reply.status().as_u16(),
         reply
             .headers()
@@ -287,25 +295,25 @@ pub fn rest<T: DeserializeOwned>(
 }
 
 /// A REST write the user asked for, such as a merge: `body` sent with `PUT`
-/// to `path` under `https://api.github.com`. Like [`mutation`] it is sent
+/// to `path` under the token's server's REST API. Like [`mutation`] it is sent
 /// once, never retried, and never redirected, and a refusal GitHub explains
 /// (400, 409, 422) carries its message, cleaned and bounded, because "not
 /// ready to merge" is the answer the user needs. Callers build `path` from
 /// names they have validated.
 pub fn rest_put(
     context: &'static str,
-    token: &SecretString,
+    token: &ServerToken,
     path: &str,
     body: &Value,
     timeout: Duration,
 ) -> Result<Value> {
-    let reply = agent(timeout)
-        .put(format!("{API}{path}"))
+    let reply = agent(&token.server, timeout)
+        .put(format!("{}{path}", token.server.rest_root()))
         .header("User-Agent", "Sheprd")
         .header("Accept", "application/vnd.github+json")
         .header("Content-Type", "application/json")
         .header("X-GitHub-Api-Version", "2022-11-28")
-        .header("Authorization", authorization(token)?)
+        .header("Authorization", authorization(&token.token)?)
         .send(body.to_string().as_bytes())
         .map_err(log::network(context))?;
     let status = reply.status().as_u16();
@@ -324,13 +332,17 @@ pub(super) fn refusal(answer: &Value) -> Option<String> {
 
 /// Where GitHub says a moved repository's read continues. A transferred or
 /// renamed repository answers REST under its old name with a redirect, which
-/// is followed once and only within the API: the request carries the token,
-/// so nothing else may be named by a response.
-pub(super) fn moved_to(status: u16, location: Option<&str>) -> Option<&str> {
+/// is followed once and only within the server's API: the request carries
+/// the token, so nothing else may be named by a response.
+pub(super) fn moved_to<'a>(
+    server: &Server,
+    status: u16,
+    location: Option<&'a str>,
+) -> Option<&'a str> {
     location.filter(|url| {
         matches!(status, 301 | 302 | 307 | 308)
             && url
-                .strip_prefix(API)
+                .strip_prefix(server.rest_root().as_str())
                 .is_some_and(|path| path.starts_with('/'))
     })
 }
@@ -400,19 +412,17 @@ pub fn fake_graphql(token: &str, url: String) {
     }
 }
 
-fn graphql_url(token: &SecretString) -> String {
+fn graphql_url(token: &ServerToken) -> String {
     #[cfg(any(test, feature = "test-support"))]
     if let Some((_, url)) = FAKE_GRAPHQL.lock().ok().and_then(|fakes| {
         fakes
             .iter()
-            .find(|(fake, _)| fake == token.expose_secret())
+            .find(|(fake, _)| fake == token.token.expose_secret())
             .cloned()
     }) {
         return url;
     }
-    #[cfg(not(any(test, feature = "test-support")))]
-    let _ = token;
-    "https://api.github.com/graphql".to_owned()
+    token.server.graphql_url()
 }
 
 /// One GraphQL POST, its bounded JSON body, and the headers that explain a
@@ -420,7 +430,7 @@ fn graphql_url(token: &SecretString) -> String {
 /// so each feature's share of the account's quota can be read from it.
 fn post(
     context: &'static str,
-    token: &SecretString,
+    token: &ServerToken,
     query: &str,
     variables: Value,
     deadline: Instant,
@@ -431,12 +441,12 @@ fn post(
         .checked_duration_since(Instant::now())
         .ok_or(crate::pull_request::Error::Timeout)?;
     let started = Instant::now();
-    let reply = agent(timeout)
+    let reply = agent(&token.server, timeout)
         .post(graphql_url(token))
         .header("User-Agent", "Sheprd")
         .header("Accept", "application/vnd.github+json")
         .header("Content-Type", "application/json")
-        .header("Authorization", authorization(token)?)
+        .header("Authorization", authorization(&token.token)?)
         .send(body.as_bytes())
         .map_err(log::network(context))?;
     log::usage(
@@ -452,7 +462,7 @@ fn post(
     );
     // GraphQL reports failures with a 200, so the headers that explain them are
     // captured before the body consumes the response.
-    crate::quota::record(token, reply.headers());
+    crate::quota::record(&token.token, reply.headers());
     let exchange = log::Exchange::new(reply.headers());
     let result: Value = response(context, reply)?;
     Ok((result, exchange))
@@ -535,7 +545,7 @@ pub(super) fn oauth<T: DeserializeOwned>(
     // zeroized by this module. Never log request fields or response bodies.
     response(
         path,
-        agent(timeout)
+        agent(&Server::GitHub, timeout)
             .post(format!("https://github.com/login/{path}"))
             .header("User-Agent", "Sheprd")
             .header("Accept", "application/json")

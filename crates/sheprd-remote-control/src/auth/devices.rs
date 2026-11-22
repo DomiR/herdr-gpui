@@ -2,6 +2,8 @@
 //! directory. Every change replaces the file atomically, private to this
 //! user; seeing a device is written at most once a minute.
 
+pub(crate) mod relay_keys;
+
 use super::{Error, NewDevice, PublicKey, Result, StoreOperation, links::Link};
 use crate::control::{self, DeviceId};
 use serde::{Deserialize, Serialize};
@@ -165,6 +167,7 @@ impl Devices {
         links: Vec<Link>,
         share_github: bool,
     ) -> Result<()> {
+        self.ensure_relay_free(&device.id, device.relay.as_ref())?;
         self.records.push(DeviceRecord {
             app: device.app,
             id: device.id,
@@ -288,13 +291,30 @@ impl Devices {
         keys: RelayKeys,
         now_ms: u64,
     ) -> Result<bool> {
-        let Some(record) = self.records.iter_mut().find(|record| &record.id == id) else {
+        self.replace_relay(id, Some(keys), now_ms)
+    }
+
+    /// Replaces the device's relay keys with `keys`, or drops them with
+    /// `None`, set at `now_ms`; whether it is paired. Keys another device
+    /// holds are refused ([`relay_keys`]). Blocking.
+    pub(crate) fn replace_relay(
+        &mut self,
+        id: &DeviceId,
+        keys: Option<RelayKeys>,
+        now_ms: u64,
+    ) -> Result<bool> {
+        let Some(index) = self.records.iter().position(|record| &record.id == id) else {
             return Ok(false);
         };
-        let before = (record.relay.replace(keys), record.relay_ms.replace(now_ms));
-        let index = self.records.iter().position(|record| &record.id == id);
+        self.ensure_relay_free(id, keys.as_ref())?;
+        let record = &mut self.records[index];
+        let set_ms = keys.is_some().then_some(now_ms);
+        let before = (
+            std::mem::replace(&mut record.relay, keys),
+            std::mem::replace(&mut record.relay_ms, set_ms),
+        );
         self.save_or_undo(|devices| {
-            if let Some(record) = index.and_then(|index| devices.records.get_mut(index)) {
+            if let Some(record) = devices.records.get_mut(index) {
                 (record.relay, record.relay_ms) = before;
             }
         })?;
@@ -360,9 +380,9 @@ impl Devices {
         })
     }
 
-    /// Forgets devices not seen (or, never seen, not paired) for `idle_ms`.
-    /// Blocking when any expire.
-    pub(crate) fn expire_idle(&mut self, now_ms: u64, idle_ms: u64) -> Result<Vec<DeviceId>> {
+    /// Forgets devices not seen (or, never seen, not paired) for `idle_ms`,
+    /// returning their records. Blocking when any expire.
+    pub(crate) fn expire_idle(&mut self, now_ms: u64, idle_ms: u64) -> Result<Vec<DeviceRecord>> {
         let idle = |record: &DeviceRecord| {
             let seen = record.last_seen_ms.unwrap_or(record.created_ms);
             now_ms.saturating_sub(seen) >= idle_ms
@@ -373,13 +393,10 @@ impl Devices {
         let previous = self.records.clone();
         self.records.retain(|record| !idle(record));
         self.save_or_undo(|devices| devices.records = previous.clone())?;
-        let expired: Vec<DeviceId> = previous
-            .into_iter()
-            .filter(|record| idle(record))
-            .map(|record| record.id)
-            .collect();
-        for id in &expired {
-            self.stored_seen.remove(id);
+        let expired: Vec<DeviceRecord> =
+            previous.into_iter().filter(|record| idle(record)).collect();
+        for record in &expired {
+            self.stored_seen.remove(&record.id);
         }
         Ok(expired)
     }

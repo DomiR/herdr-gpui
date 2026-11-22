@@ -2,6 +2,7 @@ use super::*;
 use p256::ecdsa::{Signature, SigningKey, signature::Signer};
 
 mod devices;
+mod fleet_claims;
 mod handoff;
 mod host_relays;
 mod host_retries;
@@ -12,7 +13,9 @@ mod nearby;
 mod nearby_relay;
 mod nearby_vectors;
 mod pairing;
+mod pairing_link;
 mod presence;
+mod push_relay_revocations;
 mod session;
 mod share_github;
 
@@ -50,6 +53,7 @@ fn token(offer: &Offer) -> String {
 fn new_device(seed: u8, name: &str) -> NewDevice {
     NewDevice {
         app: None,
+        fleet: None,
         id: DeviceId(format!("device-{seed}")),
         name: name.to_owned(),
         public_key: PublicKey::parse(&public_key(&signing_key(seed))).unwrap(),

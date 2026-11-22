@@ -72,6 +72,7 @@ fn with_files(id: u64, text: &str, files: usize) -> Entry {
         kind: EntryKind::User {
             text: text.to_owned(),
             files,
+            note: None,
         },
     }
 }

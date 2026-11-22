@@ -37,6 +37,8 @@ pub enum Error {
     NoLogin,
     #[error("the other computer listens on no relays; turn on Remote control with relays there")]
     NoRelays,
+    #[error(transparent)]
+    PairingLink(#[from] crate::control::pairing_link::Error),
     #[error("{0} is not a machine this computer added")]
     Record(String),
     #[error("another machine is already saved under {0}; remove it before pairing this one")]

@@ -14,6 +14,10 @@ use sheprd_client::ConnectTarget;
 
 use super::rail::add_device_offer;
 
+mod hosted;
+
+pub use hosted::LineAction;
+
 /// The widest a session chip grows, which leaves a device's name its room in
 /// the picker's fixed width.
 const CHIP_WIDTH: f32 = 160.;

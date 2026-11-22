@@ -15,7 +15,12 @@ JOBS = {"build": WORKFLOW.split("\njobs:\n  build:\n", 1)[1]}
 
 
 class NixWorkflowTests(unittest.TestCase):
-    def test_bundle_input_changes_trigger_both_events(self):
+    @staticmethod
+    def patterns(event):
+        section = re.search(rf"^  {event}:\n((?:    .*\n)+)", WORKFLOW, re.M)[1]
+        return re.findall(r"^      - (.+)$", section, re.M)
+
+    def test_bundle_input_changes_trigger_main_builds(self):
         inputs = [
             "flake.nix", "flake.lock", "Cargo.lock", "rust-toolchain.toml",
             "LICENSE", "NOTICE", "crates/sheprd-gpui/SOUND-NOTICE.md",
@@ -25,12 +30,16 @@ class NixWorkflowTests(unittest.TestCase):
         for directory in ("assets/macos", "assets/icons", "macos/sheprd-nearby"):
             inputs.extend(path.relative_to(ROOT).as_posix() for path in (ROOT / directory).rglob("*")
                           if path.is_file())
-        for event in ("pull_request", "push"):
-            section = re.search(rf"^  {event}:\n((?:    .*\n)+)", WORKFLOW, re.M)[1]
-            patterns = re.findall(r"^      - (.+)$", section, re.M)
-            for path in inputs:
-                with self.subTest(event=event, path=path):
-                    self.assertTrue(any(fnmatch.fnmatchcase(path, pattern) for pattern in patterns))
+        patterns = self.patterns("push")
+        for path in inputs:
+            with self.subTest(path=path):
+                self.assertTrue(any(fnmatch.fnmatchcase(path, pattern) for pattern in patterns))
+
+    def test_pull_requests_build_only_for_the_flake_and_toolchain(self):
+        # Three cold flake builds are too slow for every lockfile bump; main
+        # and every release build the rest.
+        self.assertEqual(self.patterns("pull_request"),
+                         ["flake.nix", "flake.lock", "rust-toolchain.toml", ".github/workflows/nix.yml"])
 
     def test_contributor_pull_requests_run_in_the_upstream_repository(self):
         for repository, actor in itertools.product(

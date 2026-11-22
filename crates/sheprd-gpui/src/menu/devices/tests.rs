@@ -15,6 +15,8 @@ mod boat_rail;
 mod cloud_providers;
 mod en_xa;
 mod fold;
+#[cfg(unix)]
+mod gui_setup;
 mod host_key;
 mod host_key_choice;
 mod key_login;
@@ -24,10 +26,6 @@ mod rail;
 mod scope;
 mod selection;
 mod session_chip;
-#[cfg(unix)]
-mod setup_activation;
-#[cfg(unix)]
-mod setup_workspace;
 mod version_warning;
 
 #[test]
@@ -164,7 +162,7 @@ fn a_host_already_saved_or_being_added_returns_to_the_form(cx: &mut gpui::TestAp
                 ),
                 (
                     crate::Error::from(super::Error::Adding),
-                    "This host is already being added, in another Add Device dialog or a \u{201c}Set up\u{201d} workspace that is still running. Finish or close it, then try again.",
+                    "This host is already being added in another Add Device dialog. Finish or close it, then try again.",
                 ),
             ] {
                 open_form(view, Step::Checking(again.clone()), cx);
@@ -175,9 +173,12 @@ fn a_host_already_saved_or_being_added_returns_to_the_form(cx: &mut gpui::TestAp
                     Some(message)
                 );
             }
-            open_form(view, Step::Verifying(again.clone(), Offer::Install), cx);
-            view.setup_space_verified(Err(super::Error::Exists("m5max-ms".into()).into()), cx);
-            assert!(matches!(step(view), Step::Form));
+            #[cfg(unix)]
+            {
+                open_form(view, Step::Verifying(again.clone(), Offer::Install), cx);
+                view.device_setup_started(Err(super::Error::Exists("m5max-ms".into()).into()), cx);
+                assert!(matches!(step(view), Step::Form));
+            }
         });
     });
 }

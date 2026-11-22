@@ -4,6 +4,7 @@ use super::text;
 mod automation;
 mod gpu;
 mod local_ports;
+mod pr_create;
 mod quota;
 mod security;
 mod stack;

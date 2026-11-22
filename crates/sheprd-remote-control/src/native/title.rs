@@ -36,6 +36,6 @@ pub(crate) async fn title(
         chat_title::run(&input)
     })
     .await
-    .map_err(|_| row_summary::Error::Failed)??;
+    .map_err(|_| row_summary::Error::from(sheprd_client::one_shot::Error::Failed))??;
     Ok(Json(Answer { title }))
 }

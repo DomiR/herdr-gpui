@@ -20,6 +20,7 @@ fn add_account(view: &mut crate::SheprdWindow) {
     }];
     view.menu.github_accounts = vec![AdditionalAccount {
         id: ID.into(),
+        server: sheprd_github::Server::GitHub,
         owners: Vec::new(),
         auth: waiting(),
     }];

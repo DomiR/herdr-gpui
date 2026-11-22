@@ -8,6 +8,7 @@ fn entries() -> Vec<Entry> {
         kind: EntryKind::User {
             text: text.into(),
             files: 0,
+            note: None,
         },
     };
     let agent = |id| Entry {

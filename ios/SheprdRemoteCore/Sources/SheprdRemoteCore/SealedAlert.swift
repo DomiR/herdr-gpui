@@ -15,6 +15,8 @@ public struct SealedAlert: Codable, Hashable, Sendable {
         case terminalAsking = "terminal_asking"
         case terminalDone = "terminal_done"
         case error
+        /// A test push the user sent from Settings (`PushTestReceipts`).
+        case test
         case other
 
         public init(from decoder: Decoder) throws {
@@ -42,8 +44,13 @@ public struct SealedAlert: Codable, Hashable, Sendable {
     public var permission: Permission?
     /// The agent asked for attention with `::wizz`: the alert buzzes.
     public var wizz: Bool
+    /// A test push's id, which the extension records on arrival.
+    public var test: String?
+    /// The computer's notification decision this is a copy of, the same in
+    /// every copy (`SeenAlerts`); older computers leave it out.
+    public var event: String?
 
-    enum CodingKeys: String, CodingKey { case kind, clear, computer, pane, title, body, badge, permission, wizz }
+    enum CodingKeys: String, CodingKey { case kind, clear, computer, pane, title, body, badge, permission, wizz, test, event }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -56,6 +63,8 @@ public struct SealedAlert: Codable, Hashable, Sendable {
         badge = try c.decodeIfPresent(Int.self, forKey: .badge)
         permission = try c.decodeIfPresent(Permission.self, forKey: .permission)
         wizz = try c.decodeIfPresent(Bool.self, forKey: .wizz) ?? false
+        test = try c.decodeIfPresent(String.self, forKey: .test)
+        event = try c.decodeIfPresent(String.self, forKey: .event)
     }
 
     /// Opens an APNs payload's `sealed` field with the device's key.
@@ -135,7 +144,7 @@ public struct AlertPresentation: Hashable, Sendable {
             category = "question." + digest.prefix(8).map { String(format: "%02x", $0) }.joined()
         case .turnEnded:
             self = Self.finished
-        case .terminalAsking, .terminalDone, .error, .other:
+        case .terminalAsking, .terminalDone, .error, .test, .other:
             category = nil
             actions = []
         }

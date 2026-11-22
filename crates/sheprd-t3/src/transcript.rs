@@ -40,6 +40,7 @@ fn entry(thread: &Thread, item: &TurnItem) -> Option<EntryKind> {
         TurnKind::UserMessage { message_id, text } => EntryKind::User {
             text: text_of(thread, message_id, text.as_deref()),
             files: 0,
+            note: None,
         },
         TurnKind::AssistantMessage { message_id, text } => EntryKind::Agent {
             text: text_of(thread, message_id, text.as_deref()),

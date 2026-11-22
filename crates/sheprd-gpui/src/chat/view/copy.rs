@@ -120,7 +120,7 @@ impl SheprdWindow {
 
     /// What every copy button shares: it copies `text`, says `copied` in a
     /// flash, and keeps its press from starting a text selection.
-    fn chat_copy_button(
+    pub(super) fn chat_copy_button(
         &self,
         id: impl Into<ElementId>,
         selector: String,

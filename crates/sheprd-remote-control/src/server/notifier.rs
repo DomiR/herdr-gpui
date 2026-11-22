@@ -4,13 +4,14 @@
 //! in plain terminals have no transcript: their settled status changes,
 //! read from the layout every tick, alert instead. A
 //! device the native app registered for alerts gets them sealed through
-//! APNs; any other gets Web Push, which is blocking HTTPS on the blocking
-//! pool. A push service that says a token or subscription is gone drops it
-//! from the device. While Sheprd marks a device near (presence), its
-//! alerts are held and go out when the owner leaves.
+//! the push relay; any other, or one whose push failed, gets Web Push where
+//! it subscribed (the native app never does), which is blocking HTTPS on
+//! the blocking pool. A push service that says a token, handle, or subscription
+//! is gone drops it from the device. While Sheprd marks a device near
+//! (presence), its alerts are held and go out when the owner leaves.
 
 use crate::{
-    apns::{self, Registration, alert::Sealed},
+    apns::{self, Recipient, Registration, Sent, alert::Sealed},
     control::DeviceId,
     hub::Event,
     hub::Layout,
@@ -32,7 +33,7 @@ use tokio::sync::{broadcast::error::RecvError, mpsc};
 const TICK: Duration = Duration::from_secs(1);
 
 pub(super) async fn run(state: Arc<State>) {
-    if state.push.is_none() && state.apns.is_none() {
+    if state.push.is_none() && state.apns.is_off() {
         return;
     }
     let mut live = super::live::LiveActivities::default();
@@ -365,15 +366,20 @@ impl Outbox {
     }
 }
 
-/// Devices that get sealed alerts through APNs: those that registered an
-/// alert token and a notify key, while the user's APNs key is set up.
+/// Devices that get sealed alerts through APNs: those that registered a
+/// notify key and an alert token, or handle, that this daemon's delivery
+/// reaches.
 fn alert_devices(state: &State) -> Vec<DeviceId> {
-    if state.apns.is_none() {
+    if state.apns.is_off() {
         return Vec::new();
     }
     super::live::registrations(state)
         .into_iter()
-        .filter(|(_, registration)| registration.alerts().is_some())
+        .filter(|(_, registration)| {
+            registration
+                .alerts()
+                .is_some_and(|(recipient, _)| state.apns.reaches(recipient))
+        })
         .map(|(device, _)| device)
         .collect()
 }
@@ -395,11 +401,13 @@ fn deliver(state: Arc<State>, device: DeviceId) -> mpsc::Sender<Notification> {
 }
 
 /// Sends `notification` sealed through APNs when `device` registered for
-/// alerts; `false` when it did not, so Web Push carries it instead.
+/// alerts; `false` when it did not or the push failed, so Web Push carries
+/// it instead where the device subscribed. During a relay outage that is at
+/// once, so the device's queue does not wait on the relay.
 async fn send_alert(state: &Arc<State>, device: &DeviceId, notification: &Notification) -> bool {
-    let Some(sender) = &state.apns else {
+    if state.apns.is_off() {
         return false;
-    };
+    }
     let registration = Registration::from_stored(
         state
             .auth()
@@ -407,31 +415,34 @@ async fn send_alert(state: &Arc<State>, device: &DeviceId, notification: &Notifi
             .get(device)
             .and_then(|record| record.apns.as_ref()),
     );
-    let Some((token, key)) = registration.alerts() else {
+    let Some((recipient, key)) = registration
+        .alerts()
+        .filter(|(recipient, _)| state.apns.reaches(recipient))
+    else {
         return false;
     };
-    let (token, key) = (token.clone(), *key);
+    let (recipient, key) = (recipient.clone(), *key);
     let sealed = Sealed::new(
         notification,
         apns::computer_id(&state.fingerprint),
         waiting(state),
     );
-    let Ok(push) = apns::alert::push(sealed, &notification.tag, |plaintext| {
-        Ok(apns::seal::seal(&key, plaintext, apns::seal::INFO)?)
-    }) else {
-        return true;
-    };
-    if let Ok(apns::Outcome::Gone) = sender.post(&token, &push, now_ms() / 1000).await {
+    let sent = state
+        .apns
+        .alert(&recipient, &key, sealed, &notification.tag, now_ms())
+        .await;
+    state.pushes.record(apns::Kind::Alert, &sent, now_ms());
+    if sent == Sent::Gone {
         let state = state.clone();
         let device = device.clone();
-        let _ = tokio::task::spawn_blocking(move || forget(&state, &device, &token)).await;
+        let _ = tokio::task::spawn_blocking(move || forget(&state, &device, &recipient)).await;
     }
-    true
+    sent == Sent::Delivered
 }
 
-/// Drops `token` from `device`'s registration after APNs refused it.
-/// Blocking.
-fn forget(state: &State, device: &DeviceId, token: &apns::DeviceToken) {
+/// Drops `token` from `device`'s registration after APNs or the relay
+/// called it gone. Blocking.
+pub(crate) fn forget(state: &State, device: &DeviceId, token: &Recipient) {
     let mut auth = state.auth();
     let devices = auth.devices_mut();
     let mut registration =
@@ -458,7 +469,7 @@ fn send(state: &State, device: &DeviceId, notification: &Notification) {
         return;
     };
     let message = notification.message(waiting(state));
-    let delivery = Delivery::for_notification(notification);
+    let delivery = Delivery::for_notification(notification, &apns::computer_id(&state.fingerprint));
     if let Ok(Outcome::Gone) = sender.send(&subscription, &message, &delivery) {
         let _ = state.auth().devices_mut().set_push(device, None);
     }

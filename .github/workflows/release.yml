@@ -210,6 +210,11 @@ jobs:
       # Automations run in the sheprd-automate beside it.
       - run: '"target/$TARGET/release/sheprd-automate" --version'
       - run: '"target/$TARGET/release/herdr-core" --version'
+      # Sheprd installs this thin sheprd-relay-agent on Macs of this
+      # architecture it shares as a fleet's plain host. The sign job signs
+      # it and lists it in the signed agent manifest (schema 6).
+      - name: Build sheprd-relay-agent for other Macs
+        run: bash scripts/release/build-agent.sh "$TARGET" "target/$TARGET/release/sheprd-relay-agent"
       - name: Install the notice generator
         uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
         with:
@@ -227,6 +232,7 @@ jobs:
             target/${{ matrix.target }}/release/sheprd-automate
             target/${{ matrix.target }}/release/sheprd-nearby
             target/${{ matrix.target }}/release/herdr-core
+            target/${{ matrix.target }}/release/sheprd-relay-agent
             target/${{ matrix.target }}/release/THIRD-PARTY-NOTICES.txt
           if-no-files-found: error
           retention-days: 7
@@ -312,6 +318,19 @@ jobs:
         with:
           name: linux-host-chat-${{ matrix.target }}
           path: dist/sheprd-acp-${{ needs.validate.outputs.version }}-${{ matrix.host }}
+          if-no-files-found: error
+          retention-days: 7
+      # Sheprd installs this static sheprd-relay-agent on machines of this
+      # architecture it shares as a fleet's plain host. It goes to the sign
+      # job alone: it is published inside the signed agent archive.
+      - name: Build the static sheprd-relay-agent for other machines
+        run: |
+          mkdir agent
+          bash scripts/release/build-agent.sh "$HOST_TARGET" "agent/sheprd-relay-agent-$VERSION-$HOST_TARGET"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux-host-agent-${{ matrix.target }}
+          path: agent/sheprd-relay-agent-${{ needs.validate.outputs.version }}-${{ matrix.host }}
           if-no-files-found: error
           retention-days: 7
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -649,6 +668,12 @@ jobs:
         run: |
           mkdir dist
           chmod +x binaries/arm64/sheprd binaries/x86_64/sheprd binaries/arm64/sheprd-acp binaries/x86_64/sheprd-acp binaries/arm64/sheprd-remote-control binaries/x86_64/sheprd-remote-control binaries/arm64/sheprd-automate binaries/x86_64/sheprd-automate binaries/arm64/herdr-core binaries/x86_64/herdr-core binaries/arm64/sheprd-nearby binaries/x86_64/sheprd-nearby
+          # sheprd-relay-agent ships outside the app, one thin build each,
+          # signed below with the app and packed with the Linux builds.
+          mkdir host-agents
+          cp binaries/arm64/sheprd-relay-agent "host-agents/sheprd-relay-agent-$VERSION-aarch64-apple-darwin"
+          cp binaries/x86_64/sheprd-relay-agent "host-agents/sheprd-relay-agent-$VERSION-x86_64-apple-darwin"
+          chmod 755 host-agents/*
           cmp binaries/arm64/THIRD-PARTY-NOTICES.txt binaries/x86_64/THIRD-PARTY-NOTICES.txt
           bash scripts/release/package-macos.sh "$VERSION" binaries/arm64/sheprd binaries/x86_64/sheprd dist binaries/arm64/THIRD-PARTY-NOTICES.txt
       - name: Sign and notarize app and DMG (never launch the app)
@@ -659,7 +684,10 @@ jobs:
           APPLE_API_KEY_ID: ${{ vars.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER_ID: ${{ vars.APPLE_API_ISSUER_ID }}
           MACOS_SIGNING_IDENTITY: ${{ vars.MACOS_SIGNING_IDENTITY }}
-        run: bash scripts/release/sign-macos.sh "$VERSION" dist/Sheprd.app dist
+        run: |
+          bash scripts/release/sign-macos.sh "$VERSION" dist/Sheprd.app dist \
+            "host-agents/sheprd-relay-agent-$VERSION-aarch64-apple-darwin" \
+            "host-agents/sheprd-relay-agent-$VERSION-x86_64-apple-darwin"
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: linux-package-x86_64-unknown-linux-gnu
@@ -676,6 +704,14 @@ jobs:
         with:
           name: linux-host-chat-aarch64-unknown-linux-gnu
           path: host-chats
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: linux-host-agent-x86_64-unknown-linux-gnu
+          path: host-agents
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: linux-host-agent-aarch64-unknown-linux-gnu
+          path: host-agents
       # The Authenticode-signed installers, so the Windows manifest lists the
       # exact bytes users download and the in-app updater runs; the tested
       # unsigned ones while signing is not set up, which no build's updater
@@ -690,6 +726,7 @@ jobs:
           path: windows
       - name: Generate and verify signed update manifest
         env:
+          MACOS_SIGNING_IDENTITY: ${{ vars.MACOS_SIGNING_IDENTITY }}
           HERDR_UPDATE_PUBLIC_KEY: ${{ vars.HERDR_UPDATE_PUBLIC_KEY }}
           HERDR_UPDATE_SIGNING_KEY: ${{ secrets.HERDR_UPDATE_SIGNING_KEY }}
         run: |
@@ -747,6 +784,25 @@ jobs:
           test "$(wc -c < host-chats/host-chat-manifest.sig | tr -d ' ')" = 64
           python3 scripts/update-manifest.py pack-host-chats host-chats "$VERSION"
           mv "host-chats/sheprd-acp-$VERSION-linux-musl.tar.gz" dist/
+          # sheprd-relay-agent, for machines shared as a fleet's plain host,
+          # gets a sixth manifest (schema 6), packed with all four builds
+          # into one archive the same way.
+          # The Linux builds share this folder: check the Mac builds are
+          # still the thin, Developer ID signed ones before listing them.
+          for pair in aarch64:arm64 x86_64:x86_64; do
+            agent="host-agents/sheprd-relay-agent-$VERSION-${pair%%:*}-apple-darwin"
+            test "$(lipo -archs "$agent")" = "${pair#*:}"
+            codesign --verify --strict "$agent"
+            codesign -dvv "$agent" 2>&1 | grep -Fqx "Authority=$MACOS_SIGNING_IDENTITY"
+          done
+          python3 scripts/update-manifest.py create host-agents "$VERSION" --host-agents
+          "$OPENSSL" pkeyutl -sign -rawin -inkey "$KEY_DIR/private.pem" -passin pass: \
+            -in host-agents/host-agent-manifest.json -out host-agents/host-agent-manifest.sig
+          "$OPENSSL" pkeyutl -verify -rawin -pubin -inkey "$KEY_DIR/public.pem" \
+            -in host-agents/host-agent-manifest.json -sigfile host-agents/host-agent-manifest.sig
+          test "$(wc -c < host-agents/host-agent-manifest.sig | tr -d ' ')" = 64
+          python3 scripts/update-manifest.py pack-host-agents host-agents "$VERSION"
+          mv "host-agents/sheprd-relay-agent-$VERSION.tar.gz" dist/
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: macos-signed
@@ -762,6 +818,7 @@ jobs:
             dist/host-manifest.json
             dist/host-manifest.sig
             dist/sheprd-acp-${{ needs.validate.outputs.version }}-linux-musl.tar.gz
+            dist/sheprd-relay-agent-${{ needs.validate.outputs.version }}.tar.gz
           if-no-files-found: error
           retention-days: 7
 
@@ -832,7 +889,7 @@ jobs:
       - uses: ./.github/actions/sign-artifacts # zizmor: ignore[self-repository]
         with:
           working-directory: dist
-          files: Sheprd-${{ needs.validate.outputs.version }}-universal-apple-darwin.dmg Sheprd-${{ needs.validate.outputs.version }}-x86_64-unknown-linux-gnu.tar.gz Sheprd-${{ needs.validate.outputs.version }}-x86_64-unknown-linux-gnu.deb Sheprd-${{ needs.validate.outputs.version }}-x86_64-unknown-linux-gnu.rpm Sheprd-${{ needs.validate.outputs.version }}-x86_64-unknown-linux-gnu.pkg.tar.zst Sheprd-${{ needs.validate.outputs.version }}-aarch64-unknown-linux-gnu.tar.gz Sheprd-${{ needs.validate.outputs.version }}-aarch64-unknown-linux-gnu.deb Sheprd-${{ needs.validate.outputs.version }}-aarch64-unknown-linux-gnu.rpm Sheprd-${{ needs.validate.outputs.version }}-aarch64-unknown-linux-gnu.pkg.tar.zst Sheprd-${{ needs.validate.outputs.version }}-x86_64-pc-windows-msvc.zip Sheprd-${{ needs.validate.outputs.version }}-aarch64-pc-windows-msvc.zip Sheprd-${{ needs.validate.outputs.version }}-x86_64-pc-windows-msvc-setup.exe Sheprd-${{ needs.validate.outputs.version }}-aarch64-pc-windows-msvc-setup.exe Sheprd-${{ needs.validate.outputs.version }}.cdx.json sheprd-${{ needs.validate.outputs.version }}-macos-universal.app.tar.gz sheprd-${{ needs.validate.outputs.version }}-x86_64-unknown-linux-gnu-update.tar.gz sheprd-${{ needs.validate.outputs.version }}-aarch64-unknown-linux-gnu-update.tar.gz update-manifest.json update-manifest.sig package-manifest.json package-manifest.sig windows-manifest.json windows-manifest.sig sheprd-remote-control-${{ needs.validate.outputs.version }}-x86_64-unknown-linux-musl sheprd-remote-control-${{ needs.validate.outputs.version }}-aarch64-unknown-linux-musl host-manifest.json host-manifest.sig sheprd-acp-${{ needs.validate.outputs.version }}-linux-musl.tar.gz
+          files: Sheprd-${{ needs.validate.outputs.version }}-universal-apple-darwin.dmg Sheprd-${{ needs.validate.outputs.version }}-x86_64-unknown-linux-gnu.tar.gz Sheprd-${{ needs.validate.outputs.version }}-x86_64-unknown-linux-gnu.deb Sheprd-${{ needs.validate.outputs.version }}-x86_64-unknown-linux-gnu.rpm Sheprd-${{ needs.validate.outputs.version }}-x86_64-unknown-linux-gnu.pkg.tar.zst Sheprd-${{ needs.validate.outputs.version }}-aarch64-unknown-linux-gnu.tar.gz Sheprd-${{ needs.validate.outputs.version }}-aarch64-unknown-linux-gnu.deb Sheprd-${{ needs.validate.outputs.version }}-aarch64-unknown-linux-gnu.rpm Sheprd-${{ needs.validate.outputs.version }}-aarch64-unknown-linux-gnu.pkg.tar.zst Sheprd-${{ needs.validate.outputs.version }}-x86_64-pc-windows-msvc.zip Sheprd-${{ needs.validate.outputs.version }}-aarch64-pc-windows-msvc.zip Sheprd-${{ needs.validate.outputs.version }}-x86_64-pc-windows-msvc-setup.exe Sheprd-${{ needs.validate.outputs.version }}-aarch64-pc-windows-msvc-setup.exe Sheprd-${{ needs.validate.outputs.version }}.cdx.json sheprd-${{ needs.validate.outputs.version }}-macos-universal.app.tar.gz sheprd-${{ needs.validate.outputs.version }}-x86_64-unknown-linux-gnu-update.tar.gz sheprd-${{ needs.validate.outputs.version }}-aarch64-unknown-linux-gnu-update.tar.gz update-manifest.json update-manifest.sig package-manifest.json package-manifest.sig windows-manifest.json windows-manifest.sig sheprd-remote-control-${{ needs.validate.outputs.version }}-x86_64-unknown-linux-musl sheprd-remote-control-${{ needs.validate.outputs.version }}-aarch64-unknown-linux-musl host-manifest.json host-manifest.sig sheprd-acp-${{ needs.validate.outputs.version }}-linux-musl.tar.gz sheprd-relay-agent-${{ needs.validate.outputs.version }}.tar.gz
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
@@ -864,6 +921,7 @@ jobs:
             dist/host-manifest.json
             dist/host-manifest.sig
             dist/sheprd-acp-${{ needs.validate.outputs.version }}-linux-musl.tar.gz
+            dist/sheprd-relay-agent-${{ needs.validate.outputs.version }}.tar.gz
       - run: python3 scripts/release/artifact-manifest.py create "$VERSION" dist
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

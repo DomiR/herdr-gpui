@@ -34,6 +34,30 @@ def host_chat_name(release, target):
 
 def host_chat_archive(release):
     return f"sheprd-acp-{release}-linux-musl.tar.gz"
+
+
+# sheprd-relay-agent, which Sheprd installs over SSH on a machine it shares
+# as a plain host: static on Linux, Developer ID signed on each Mac
+# architecture. One archive with its signed manifest (schema 6) inside
+# (release/host_agent.rs).
+HOST_AGENT_TARGETS = ("x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl",
+                      "x86_64-apple-darwin", "aarch64-apple-darwin")
+HOST_AGENT_MANIFEST = ("host-agent-manifest.json", "host-agent-manifest.sig")
+
+
+def host_agent_name(release, target):
+    return f"sheprd-relay-agent-{release}-{target}"
+
+
+def host_agent_archive(release):
+    return f"sheprd-relay-agent-{release}.tar.gz"
+
+
+# The packed families: (schema, manifest, program, archive name).
+PACKS = {
+    "host-chats": (5, HOST_CHAT_MANIFEST, "sheprd-acp", host_chat_archive),
+    "host-agents": (6, HOST_AGENT_MANIFEST, "sheprd-relay-agent", host_agent_archive),
+}
 ED25519_SPKI = bytes.fromhex("302a300506032b6570032100")
 
 
@@ -161,13 +185,15 @@ def package_linux(binary, target, release, destination):
 
 
 def create(directory, release, require_all_targets=False, packages=False, windows=False, hosts=False,
-           host_chats=False):
+           host_chats=False, host_agents=False):
     """Schema 1 lists the standalone archives, schema 2 the Linux packages,
-    schema 3 the Windows installers, schema 4 the host builds, and schema 5
-    the host builds' sheprd-acp; each family has its own manifest so a client
-    never meets a target its schema does not know."""
-    if packages + windows + hosts + host_chats > 1:
-        raise ValueError("a manifest lists one family: packages, Windows installers, host builds, or host chats")
+    schema 3 the Windows installers, schema 4 the host builds, schema 5
+    the host builds' sheprd-acp, and schema 6 sheprd-relay-agent; each family
+    has its own manifest so a client never meets a target its schema does
+    not know."""
+    if packages + windows + hosts + host_chats + host_agents > 1:
+        raise ValueError("a manifest lists one family: packages, Windows installers, host builds, "
+                         "host chats, or host agents")
     directory = Path(directory)
     assets = []
     version(release)
@@ -188,6 +214,9 @@ def create(directory, release, require_all_targets=False, packages=False, window
     if host_chats:
         names = [(target, host_chat_name(release, target)) for target in HOST_TARGETS]
         schema, output = 5, HOST_CHAT_MANIFEST[0]
+    if host_agents:
+        names = [(target, host_agent_name(release, target)) for target in HOST_AGENT_TARGETS]
+        schema, output = 6, HOST_AGENT_MANIFEST[0]
     for target, name in names:
         path = directory / name
         if schema == 1 and not require_all_targets and not path.exists() and not path.is_symlink() and target != TARGETS[0]:
@@ -210,41 +239,50 @@ def create(directory, release, require_all_targets=False, packages=False, window
     return payload
 
 
-def pack_host_chats(directory, release):
-    """Packs the host builds' sheprd-acp with their signed manifest into one
-    archive, the manifest and its signature first, so a client checks them
-    before it reads a program. Removes what it packed."""
+def pack(directory, release, family):
+    """Packs a family's builds with their signed manifest into one archive,
+    the manifest and its signature first, so a client checks them before it
+    reads a program. Removes what it packed."""
+    schema, names, program, archive_name = PACKS[family]
     directory = Path(directory)
-    manifest, signature = (directory / name for name in HOST_CHAT_MANIFEST)
+    manifest, signature = (directory / name for name in names)
     if signature.stat().st_size != 64:
-        raise ValueError("host chat signature must be raw 64-byte Ed25519")
+        raise ValueError(f"{family} signature must be raw 64-byte Ed25519")
     listed = json.loads(manifest.read_bytes())
-    if listed.get("schema") != 5 or listed.get("version") != version(release):
-        raise ValueError("host chat manifest does not match this release")
+    if listed.get("schema") != schema or listed.get("version") != version(release):
+        raise ValueError(f"{family} manifest does not match this release")
     members = [(manifest, manifest.name), (signature, signature.name)]
     for asset in listed["assets"]:
         path = directory / asset["name"]
         if path.is_symlink() or not path.is_file() or path.stat().st_size != asset["size"]:
-            raise ValueError(f"host chat build does not match its manifest: {asset['name']}")
+            raise ValueError(f"{family} build does not match its manifest: {asset['name']}")
         # Bytes changed since the manifest was written would be refused by
         # every client: refuse them here, before anything is deleted.
         with path.open("rb") as source:
             if hashlib.file_digest(source, "sha256").hexdigest() != asset["sha256"]:
-                raise ValueError(f"host chat build does not match its manifest: {asset['name']}")
-        members.append((path, f"{asset['target']}/sheprd-acp"))
-    output = directory / host_chat_archive(release)
+                raise ValueError(f"{family} build does not match its manifest: {asset['name']}")
+        members.append((path, f"{asset['target']}/{program}"))
+    output = directory / archive_name(release)
     with output.open("xb") as raw, gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as compressed:
         with tarfile.open(fileobj=compressed, mode="w", format=tarfile.PAX_FORMAT) as archive:
             for path, name in members:
                 info = tarfile.TarInfo(name)
                 info.size = path.stat().st_size
-                info.mode = 0o755 if name.endswith("/sheprd-acp") else 0o644
+                info.mode = 0o755 if name.endswith(f"/{program}") else 0o644
                 info.mtime = 0
                 with path.open("rb") as source:
                     archive.addfile(info, source)
     for path, _ in members:
         path.unlink()
     return output
+
+
+def pack_host_chats(directory, release):
+    return pack(directory, release, "host-chats")
+
+
+def pack_host_agents(directory, release):
+    return pack(directory, release, "host-agents")
 
 
 def main():
@@ -267,9 +305,12 @@ def main():
     family.add_argument("--windows", action="store_true", help="write the separate signed Windows installer manifest; require both signed installers")
     family.add_argument("--hosts", action="store_true", help="write the separate signed host build manifest; require both sheprd-remote-control builds")
     family.add_argument("--host-chats", action="store_true", help="write the host builds' sheprd-acp manifest (schema 5); require both builds")
-    pack = commands.add_parser("pack-host-chats", help="pack the signed host chat manifest and both sheprd-acp builds into one archive")
-    pack.add_argument("directory")
-    pack.add_argument("version")
+    family.add_argument("--host-agents", action="store_true", help="write the sheprd-relay-agent manifest (schema 6); require all four builds")
+    for name, what in (("pack-host-chats", "both sheprd-acp builds"),
+                       ("pack-host-agents", "every sheprd-relay-agent build")):
+        packing = commands.add_parser(name, help=f"pack the signed manifest and {what} into one archive")
+        packing.add_argument("directory")
+        packing.add_argument("version")
     commands.add_parser("validate-public-key")
     key = commands.add_parser("check-key")
     key.add_argument("openssl")
@@ -282,9 +323,11 @@ def main():
             package_linux(args.binary, args.target, args.version, args.destination)
         elif args.command == "create":
             create(args.directory, args.version, args.require_all_targets, args.packages, args.windows, args.hosts,
-                   args.host_chats)
+                   args.host_chats, args.host_agents)
         elif args.command == "pack-host-chats":
             pack_host_chats(args.directory, args.version)
+        elif args.command == "pack-host-agents":
+            pack_host_agents(args.directory, args.version)
         elif args.command == "validate-public-key":
             public_key(os.environ.get("HERDR_UPDATE_PUBLIC_KEY", ""))
         else:

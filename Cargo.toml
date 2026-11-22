@@ -1,5 +1,5 @@
 [workspace]
-members  = ["crates/embed-resource", "crates/sheprd-acp", "crates/sheprd-apns", "crates/sheprd-automate", "crates/sheprd-automation", "crates/sheprd-backend", "crates/sheprd-chat-protocol", "crates/sheprd-client", "crates/sheprd-commands", "crates/sheprd-control-protocol", "crates/sheprd-core-client", "crates/sheprd-credentials", "crates/sheprd-diagnostics", "crates/sheprd-github", "crates/sheprd-gpui", "crates/sheprd-launcher", "crates/sheprd-i18n", "crates/sheprd-luau", "crates/sheprd-mcp", "crates/sheprd-memory", "crates/sheprd-mods", "crates/sheprd-nearby", "crates/sheprd-orchestrator", "crates/sheprd-protocol", "crates/sheprd-push-relay", "crates/sheprd-relay", "crates/sheprd-relay-agent", "crates/sheprd-remote", "crates/sheprd-remote-control", "crates/sheprd-session", "crates/sheprd-t3", "crates/sheprd-terminal", "crates/sheprd-traces", "crates/sheprd-tunnel", "crates/sheprd-updater", "crates/sheprd-usage", "crates/sheprd-vcs"]
+members  = ["crates/embed-resource", "crates/sheprd-acp", "crates/sheprd-apns", "crates/sheprd-automate", "crates/sheprd-automation", "crates/sheprd-backend", "crates/sheprd-chat-protocol", "crates/sheprd-client", "crates/sheprd-commands", "crates/sheprd-control-protocol", "crates/sheprd-core-client", "crates/sheprd-credentials", "crates/sheprd-dashboard", "crates/sheprd-diagnostics", "crates/sheprd-fleet-ffi", "crates/sheprd-github", "crates/sheprd-gpui", "crates/sheprd-launcher", "crates/sheprd-i18n", "crates/sheprd-luau", "crates/sheprd-mcp", "crates/sheprd-memory", "crates/sheprd-mods", "crates/sheprd-nearby", "crates/sheprd-orchestrator", "crates/sheprd-protocol", "crates/sheprd-push-relay", "crates/sheprd-relay", "crates/sheprd-relay-agent", "crates/sheprd-remote", "crates/sheprd-remote-control", "crates/sheprd-session", "crates/sheprd-t3", "crates/sheprd-terminal", "crates/sheprd-traces", "crates/sheprd-tunnel", "crates/sheprd-updater", "crates/sheprd-usage", "crates/sheprd-vcs"]
 resolver = "2"
 
 [workspace.package]
@@ -83,8 +83,8 @@ futures-lite         = "2"
 # Sends frames on sheprd-remote-control's WebSocket test client; axum already links it.
 futures-util         = { default-features = false, features = ["sink"], version = "0.3" }
 getrandom            = "0.4.3"
-gpui                 = { package = "gpui-pre", version = "=0.3.10" }
-gpui_platform        = { package = "gpui-pre-platform", version = "=0.3.10" }
+gpui                 = { package = "gpui-pre", version = "=0.3.12" }
+gpui_platform        = { package = "gpui-pre-platform", version = "=0.3.12" }
 # Reads local repositories for the orchestrator without starting `git`:
 # discovery, config with its includes and URL rewrites, refs, and rev-parse.
 gix                  = { default-features = false, features = ["sha1"], version = "0.90" }
@@ -100,6 +100,7 @@ sheprd-commands       = { path = "crates/sheprd-commands" }
 sheprd-control-protocol = { path = "crates/sheprd-control-protocol" }
 sheprd-core-client    = { path = "crates/sheprd-core-client" }
 sheprd-credentials    = { path = "crates/sheprd-credentials" }
+sheprd-dashboard      = { path = "crates/sheprd-dashboard" }
 sheprd-diagnostics    = { path = "crates/sheprd-diagnostics" }
 sheprd-github         = { path = "crates/sheprd-github" }
 sheprd-i18n           = { path = "crates/sheprd-i18n" }
@@ -111,6 +112,8 @@ sheprd-orchestrator   = { path = "crates/sheprd-orchestrator" }
 sheprd-protocol       = { path = "crates/sheprd-protocol" }
 sheprd-remote         = { default-features = false, path = "crates/sheprd-remote" }
 sheprd-relay          = { default-features = false, path = "crates/sheprd-relay" }
+# The fleet access file and removal frames, without the agent's runtime.
+sheprd-relay-agent    = { default-features = false, path = "crates/sheprd-relay-agent" }
 sheprd-remote-control         = { default-features = false, path = "crates/sheprd-remote-control" }
 sheprd-session        = { path = "crates/sheprd-session" }
 sheprd-t3             = { path = "crates/sheprd-t3" }
@@ -130,8 +133,8 @@ image                = { default-features = false, features = ["gif", "jpeg", "p
 # The sandboxed Luau interpreter behind automation scripts, built from source.
 mlua                 = { features = ["error-send", "luau"], version = "0.12.2" }
 # The `moonframe` feature of `sheprd-gpui` lays out the window in Luau; pinned to
-# moonframehq/moonframe#154 (rusqlite 0.41, as this workspace) until it merges.
-moonframe            = { default-features = false, git = "https://github.com/moonframehq/moonframe", rev = "623678ccf7519aabc9d10a33abbc41d68e94212c" }
+# a commit on moonframehq/moonframe's main.
+moonframe            = { default-features = false, git = "https://github.com/moonframehq/moonframe", rev = "210ebdbb81ec862aafc90e707c1acc0610034bb3" }
 # Mermaid fences in chat answers become diagrams: parse, lay out, and write
 # SVG in pure Rust; GPUI rasterizes the SVG. No CLI and no PNG writer.
 mermaid-rs-renderer  = { default-features = false, version = "0.3.1" }
@@ -273,8 +276,11 @@ zeroize              = "=1.9.1"
 [profile.dev]
 debug = "line-tables-only"
 
+[patch.crates-io]
+# GPUI still uses the 0.26 adapter; AccessKit #835 backported to it until GPUI
+# moves on (docs/macos-window-close.md).
+accesskit_macos = { git = "https://github.com/sheprd-labs/accesskit", rev = "d7919c53f9a9667486ba61e946c44be57c3dabe7" }
 # GPUI's build script embeds its own Windows manifest through embed-resource,
 # which would clash with Herdr's (crates/sheprd-gpui/windows.manifest); this
 # no-op stands in for it. See crates/embed-resource.
-[patch.crates-io]
 embed-resource = { path = "crates/embed-resource" }

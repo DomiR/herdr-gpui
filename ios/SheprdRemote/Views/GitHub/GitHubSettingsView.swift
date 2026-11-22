@@ -241,6 +241,8 @@ enum GitHubTimes {
 
 /// Settings' row leading to the GitHub page, with the account in use.
 struct GitHubSettingsRow: View {
+    /// GitHub's black, lifted in dark mode so the tile stands off the list.
+    private static let tile = Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 0.3, alpha: 1) : .black })
     @State private var login: String?
 
     var body: some View {
@@ -250,7 +252,7 @@ struct GitHubSettingsRow: View {
             LabeledContent {
                 if let login { Text(verbatim: login) }
             } label: {
-                Label("GitHub", systemImage: "arrow.triangle.pull")
+                Label { Text("GitHub") } icon: { SettingsIcon(symbol: "arrow.triangle.pull", color: Self.tile) }
             }
         }
         .task {

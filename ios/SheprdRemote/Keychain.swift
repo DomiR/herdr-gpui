@@ -32,22 +32,30 @@ enum Keychain {
         return query
     }
 
-    static func read(_ account: String) throws -> Data? {
-        try read(query(account))?.data
+    /// `group: nil` keeps an item in the app's own access group, out of
+    /// the extensions' reach.
+    static func read(_ account: String, group: String? = Keychain.group) throws -> Data? {
+        try read(query(account, group: group))?.data
     }
 
-    static func write(_ data: Data, account: String) throws {
+    static func write(_ data: Data, account: String, group: String? = Keychain.group) throws {
         let attributes: [String: Any] = [
             kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
         ]
-        let status = SecItemUpdate(query(account) as CFDictionary, attributes as CFDictionary)
+        let status = SecItemUpdate(query(account, group: group) as CFDictionary, attributes as CFDictionary)
         if status == errSecItemNotFound {
-            let added = SecItemAdd(query(account).merging(attributes) { $1 } as CFDictionary, nil)
+            let added = SecItemAdd(query(account, group: group).merging(attributes) { $1 } as CFDictionary, nil)
             guard added == errSecSuccess else { throw Failure.status(added) }
             return
         }
         guard status == errSecSuccess else { throw Failure.status(status) }
+    }
+
+    /// Removes an item; one that is not there is not an error.
+    static func delete(_ account: String, group: String? = Keychain.group) throws {
+        let status = SecItemDelete(query(account, group: group) as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else { throw Failure.status(status) }
     }
 
     /// Moves an item saved before the App Group held it: copied into the

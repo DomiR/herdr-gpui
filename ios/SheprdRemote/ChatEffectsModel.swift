@@ -13,6 +13,9 @@ final class ChatEffectsModel {
     nonisolated static let space = "chat-effects"
 
     private(set) var ledger = ChatEffects()
+    /// A screen shows the chat. Off screen nothing plays, so what arrives
+    /// meanwhile is left for `catchUp` when it opens.
+    @ObservationIgnored var onScreen = false
     /// Where each reply was last drawn, for the spotlight to find its own.
     /// Read each frame by the effect, so a change is no reason to redraw.
     @ObservationIgnored var frames: [EntryId: CGRect] = [:]
@@ -23,10 +26,25 @@ final class ChatEffectsModel {
         update { $0.history(transcript) }
     }
 
+    /// Notes a whole transcript's effects up to `mark`, leaving the newer
+    /// ones for `catchUp`.
+    func history(_ transcript: Transcript, epoch: UUID?, mark: ChatEffects.Mark?) {
+        update { $0.history(transcript, epoch: epoch, mark: mark) }
+    }
+
+    /// Plays the last reply's effects if they were missed, as the chat is
+    /// shown, with their sounds and taps.
+    func catchUp(_ transcript: Transcript) {
+        guard onScreen else { return }
+        var began: [ChatEffects.Began] = []
+        update { began = $0.catchUp(transcript, now: .now) }
+        Feedback.shared.play(began, in: self)
+    }
+
     /// Plays what is new in the entries a live update changed, with the
     /// sounds and taps of what begins.
     func live(_ transcript: Transcript, changed: [EntryId]) {
-        guard !changed.isEmpty else { return }
+        guard onScreen, !changed.isEmpty else { return }
         var began: [ChatEffects.Began] = []
         update { began = $0.live(transcript, changed: changed, now: .now) }
         Feedback.shared.play(began, in: self)

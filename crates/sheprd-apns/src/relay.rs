@@ -1,5 +1,5 @@
-//! The daemon's side of the push relay: what sends a push when the user has
-//! no APNs key of their own. Nothing here needs setting up again after the
+//! The daemon's side of the push relay: how a computer sends an iPhone push,
+//! since it holds no APNs key. Nothing here needs setting up again after the
 //! relay restarts: a push carries its own handle, so the relay needs nothing
 //! from an earlier call. A connection that dropped is opened again, and one
 //! failure is tried again a moment later.
@@ -8,9 +8,10 @@
 //! which shows once, since pushes for a chat share a collapse id.
 //!
 //! The hosts are compiled in, so nothing a device or a caller supplies can
-//! send a push anywhere else.
+//! send a push anywhere else. Only a [`SealedPush`] goes through, so the
+//! relay carries no plain text.
 
-use crate::{Error, Push, Result};
+use crate::{Error, Result, SealedPush};
 use http_body_util::Full;
 use hyper::{
     Method, Request, StatusCode,
@@ -21,7 +22,7 @@ use hyper::{
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use rustls::{ClientConfig, pki_types::ServerName};
 use secrecy::{ExposeSecret, SecretString};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{sync::Arc, time::Duration};
 use tokio::{net::TcpStream, sync::Mutex};
 use tokio_rustls::TlsConnector;
@@ -35,8 +36,10 @@ const RETRIES: [Duration; 2] = [Duration::from_millis(250), Duration::from_secs(
 const PUSH: &str = "/v1/push";
 const REVOKE: &str = "/v1/revoke";
 
-/// The relay for each APNs environment.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// The relay for each APNs environment, as a phone names its handles' one:
+/// `"production"` or `"sandbox"`, for Xcode builds.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum RelayHost {
     Production,
     Sandbox,
@@ -94,7 +97,8 @@ struct PushBody<'a> {
 }
 
 /// The body of a push for `handle`; `None` when its payload is not text.
-pub fn push_body(handle: &SecretString, push: &Push) -> Option<Result<Vec<u8>>> {
+pub fn push_body(handle: &SecretString, sealed: &SealedPush) -> Option<Result<Vec<u8>>> {
+    let push = sealed.push();
     let payload = std::str::from_utf8(&push.body).ok()?;
     Some(
         serde_json::to_vec(&PushBody {
@@ -163,7 +167,7 @@ impl RelayClient {
     }
 
     /// Sends `push` through the relay to the phone that made `handle`.
-    pub async fn post(&self, handle: &SecretString, push: &Push) -> RelayOutcome {
+    pub async fn post(&self, handle: &SecretString, push: &SealedPush) -> RelayOutcome {
         let Some(Ok(body)) = push_body(handle, push) else {
             return RelayOutcome::Invalid;
         };

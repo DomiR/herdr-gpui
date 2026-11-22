@@ -4,8 +4,6 @@
 //!
 //! `enroll` reads one [`Input`] from standard input and prints the host's
 //! [`Enrolled`] answer as JSON. On the way it:
-//! - saves the APNs key the other computer sent, so this host can notify
-//!   the phone too;
 //! - reads this host's Sheprd settings, refusing ones it could not change;
 //! - makes sure the daemon runs: it installs the user service unless one is
 //!   installed already, as Sheprd on this host would;
@@ -18,10 +16,16 @@
 //! rewrites the service for its own program, restarting the daemon, which
 //! must not happen under the steps above; and a pairing that failed must
 //! not leave remote control turned on for a later install.
+//!
+//! No APNs key travels: the host notifies the phone through the push relay,
+//! like every computer. Sheprd before that sent its own key as `apns`,
+//! which is ignored, and a copy an earlier enroll saved in the host's
+//! `apns/` directory is left there unused, since this host cannot tell it
+//! from a key its owner put there.
 
 use super::{
     config::RemoteConfig,
-    service::{self, Host, Manager, Outcome},
+    service::{self, Host, Manager},
 };
 use crate::control::{
     self, ErrorCode, Request, Response,
@@ -43,14 +47,10 @@ const START_POLL: Duration = Duration::from_millis(250);
 /// With [`START_WAIT`], well inside the idle limit of the SSH job.
 const SETTINGS_LOCK_WAIT: Duration = Duration::from_secs(10);
 const SETTINGS_LOCK_POLL: Duration = Duration::from_millis(50);
-/// The largest APNs config or key accepted; both are a few hundred bytes.
-const MAX_APNS_FILE: usize = 16 * 1024;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     // keep-sorted start
-    #[error("the APNs files sent are too large")]
-    ApnsSize,
     #[error("{} is not valid TOML", path.display())]
     Config {
         path: PathBuf,
@@ -70,45 +70,12 @@ pub enum Error {
     // keep-sorted end
 }
 
-/// What Sheprd sends `enroll` on standard input.
+/// What Sheprd sends `enroll` on standard input. Unknown fields are
+/// ignored, among them `apns`, the key an older Sheprd sent along.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Input {
     #[serde(flatten)]
     pub enroll: Enroll,
-    /// The other computer's APNs credentials, for this host to notify the
-    /// phone itself.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub apns: Option<Apns>,
-}
-
-/// The contents of a daemon's `apns/config.json` and `apns/AuthKey.p8`.
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct Apns {
-    pub config: String,
-    pub key: String,
-}
-
-impl std::fmt::Debug for Apns {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Apns").finish_non_exhaustive()
-    }
-}
-
-impl Apns {
-    /// Reads a daemon's APNs credentials from its state directory; `None`
-    /// when it has none. Blocking.
-    pub fn read(state_dir: &Path) -> Option<Self> {
-        let dir = state_dir.join("apns");
-        let read = |name| {
-            fs::read_to_string(dir.join(name))
-                .ok()
-                .filter(|text| text.len() <= MAX_APNS_FILE)
-        };
-        Some(Self {
-            config: read("config.json")?,
-            key: read("AuthKey.p8")?,
-        })
-    }
 }
 
 /// The state directory Sheprd on this host would give the daemon.
@@ -120,15 +87,11 @@ pub fn default_state_dir() -> Option<PathBuf> {
 /// first when it does not run. `program` is this executable, which a new
 /// service runs. Blocking.
 pub fn enroll(input: &Input, state_dir: &Path, program: PathBuf) -> super::Result<Enrolled> {
-    let apns_changed = match &input.apns {
-        Some(apns) => write_apns(state_dir, apns)?,
-        None => false,
-    };
     let settings = settings_path();
     enroll_then_keep(
         settings.as_deref(),
         state_dir,
-        |config| ensure_running(config, state_dir, program, apns_changed),
+        |config| ensure_running(config, state_dir, program),
         || add_phone(input, state_dir),
     )
 }
@@ -203,30 +166,7 @@ pub fn revoke(state_dir: &Path, device: control::DeviceId) -> super::Result<()> 
     }
 }
 
-/// Saves the APNs files unless this host has the same ones; says whether
-/// it wrote, so a running daemon is restarted to read them.
-fn write_apns(state_dir: &Path, apns: &Apns) -> super::Result<bool> {
-    if apns.config.len() > MAX_APNS_FILE || apns.key.len() > MAX_APNS_FILE {
-        return Err(Error::ApnsSize.into());
-    }
-    if Apns::read(state_dir).as_ref() == Some(apns) {
-        return Ok(false);
-    }
-    let dir = state_dir.join("apns");
-    private_dir(state_dir)?;
-    private_dir(&dir)?;
-    // The key first: a config without its key leaves APNs off, not broken.
-    write_private(&dir.join("AuthKey.p8"), apns.key.as_bytes())?;
-    write_private(&dir.join("config.json"), apns.config.as_bytes())?;
-    Ok(true)
-}
-
-fn ensure_running(
-    config: &RemoteConfig,
-    state_dir: &Path,
-    program: PathBuf,
-    restart: bool,
-) -> super::Result<()> {
+fn ensure_running(config: &RemoteConfig, state_dir: &Path, program: PathBuf) -> super::Result<()> {
     let manager = Manager::current()?;
     let home = sheprd_client::local_path::home_dir().ok_or(Error::NoHome)?;
     let config_home = sheprd_client::local_var("XDG_CONFIG_HOME")
@@ -250,28 +190,17 @@ fn ensure_running(
     let address = control::address(state_dir);
     let send = |request: &Request| control::request(&address, request);
     // Sheprd on this host installed its own service: keep it, and only
-    // start it, or restart it to read new APNs files.
+    // start it.
     let theirs = fs::read_to_string(&host.file)
         .is_ok_and(|text| !text.contains(&*program.to_string_lossy()));
-    let outcome = if theirs {
-        let steps = if restart {
-            host.manager.load(&host.file)
-        } else if send(&Request::Status).is_err() {
-            host.manager.start(&host.file)
-        } else {
-            Vec::new()
-        };
-        for step in &steps {
-            service::run(step)?;
+    if theirs {
+        if send(&Request::Status).is_err() {
+            for step in host.manager.start(&host.file) {
+                service::run(&step)?;
+            }
         }
-        Outcome::Started
     } else {
-        service::reconcile(config, &host, send, service::run)?
-    };
-    if restart && outcome == Outcome::Unchanged {
-        for step in host.manager.load(&host.file) {
-            service::run(&step)?;
-        }
+        service::reconcile(config, &host, send, service::run)?;
     }
     wait_for_daemon(&address)
 }
@@ -468,25 +397,6 @@ fn wait_for_daemon(address: &Path) -> super::Result<()> {
             Err(_) => thread::sleep(START_POLL),
         }
     }
-}
-
-fn private_dir(path: &Path) -> super::Result<()> {
-    let failed = |source| super::Error::Io {
-        operation: "create",
-        path: path.to_owned(),
-        source,
-    };
-    #[cfg(unix)]
-    let created = {
-        use std::os::unix::fs::DirBuilderExt;
-        fs::DirBuilder::new()
-            .recursive(true)
-            .mode(0o700)
-            .create(path)
-    };
-    #[cfg(not(unix))]
-    let created = fs::create_dir_all(path);
-    created.map_err(failed)
 }
 
 /// Writes `path` readable by this user alone.

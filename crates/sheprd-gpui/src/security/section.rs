@@ -151,23 +151,27 @@ impl SheprdWindow {
             .into_any_element()
     }
 
+    /// What the section says before any repository is read.
+    pub(super) fn security_empty(&self) -> String {
+        if self.security.busy() {
+            fl!("security-reading-repositories")
+        } else if !self.main_tokens().as_ref().is_some_and(super::reads_github) {
+            fl!("security-sign-in")
+        } else {
+            fl!("security-no-repository")
+        }
+    }
+
     fn security_body(&self, cx: &mut Context<Self>) -> Div {
         let theme = &self.theme;
         let mut body = div().p_5().flex().flex_col().gap_5();
         let repos = self.security.repos();
         if repos.is_empty() {
-            let text = if self.security.busy() {
-                fl!("security-reading-repositories")
-            } else if self.main_tokens().is_none() {
-                fl!("security-sign-in")
-            } else {
-                fl!("security-no-repository")
-            };
             return body.child(
                 div()
                     .debug_selector(|| "security-section-empty".into())
                     .text_color(rgb(theme.muted))
-                    .child(text),
+                    .child(self.security_empty()),
             );
         }
         let narrowed = self.security_search.narrows();

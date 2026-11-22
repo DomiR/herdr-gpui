@@ -101,10 +101,12 @@ fn another_live_program_in_the_checkout_keeps_it_after_the_run_ends() {
     let listing = format!(r#"{{"terminals":[{}]}}"#, live("t4", &inside));
     std::fs::write(dir.path().join("home/listing"), listing).unwrap();
     remove_is_refused(dir.path(), &site, id);
+    // A whole word: the run's `--cwd` holds the random temporary
+    // directory name, which can contain "t4".
     assert!(
         !core_calls(dir.path())
             .iter()
-            .any(|call| call.contains("t4"))
+            .any(|call| call.split(' ').any(|word| word == "t4"))
     );
 }
 

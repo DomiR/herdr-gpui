@@ -34,7 +34,7 @@ final class ChatStore {
         self.key = key
         transcript = cached?.transcript
         cursor = cached?.cursor
-        if let transcript { effects.history(transcript) }
+        if let transcript { effects.history(transcript, epoch: cursor?.epoch, mark: cached?.effects) }
     }
 
     #if DEBUG
@@ -44,15 +44,24 @@ final class ChatStore {
         transcript = sample
         connected = true
         stale = false
+        effects.onScreen = true
         effects.history(sample)
     }
     #endif
+
+    /// A screen shows the chat, or stopped showing it. Shown, the effects
+    /// of a reply that came while it was not play now.
+    func shown(_ onScreen: Bool) {
+        effects.onScreen = onScreen
+        if let transcript { effects.catchUp(transcript) }
+    }
 
     func apply(_ event: LiveEvent) {
         switch event {
         case let .chatSnapshot(snapshot):
             transcript = snapshot.transcript
-            effects.history(snapshot.transcript)
+            effects.history(snapshot.transcript, epoch: snapshot.cursor?.epoch, mark: effects.ledger.mark)
+            effects.catchUp(snapshot.transcript)
             cursor = snapshot.cursor
             connected = snapshot.connected
             stale = false

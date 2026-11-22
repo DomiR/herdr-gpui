@@ -54,6 +54,7 @@ fn base_repository_prefers_upstream_over_origin_and_falls_back_when_missing() {
     assert_eq!(
         base(),
         Base {
+            server: crate::Server::GitHub,
             owner: "base-owner".into(),
             repo: "project".into(),
             remote: Remote::Upstream,
@@ -73,7 +74,11 @@ fn base_repository_prefers_upstream_over_origin_and_falls_back_when_missing() {
     // Pushing still goes to the fork.
     assert_eq!(
         origin_repository(path, Instant::now() + TIMEOUT, &|| false).unwrap(),
-        ("contributor".into(), "project".into())
+        crate::Repo {
+            server: crate::Server::GitHub,
+            owner: "contributor".into(),
+            name: "project".into()
+        }
     );
 
     git(&[
@@ -130,6 +135,7 @@ fn a_new_pull_request_head_is_qualified_only_across_a_fork() {
     assert!(!own.is_own_base("feature", "main"));
 
     let fork = Base {
+        server: crate::Server::GitHub,
         owner: "base-owner".into(),
         repo: "project".into(),
         remote: Remote::Upstream,
@@ -331,9 +337,16 @@ fn fork_pull_request_matches_against_upstream_base_with_fork_head() {
         }
     });
 
-    let parsed = parse_graphql(graphql, "base-owner", "project", "feature", Some(&head))
-        .unwrap()
-        .unwrap();
+    let parsed = parse_graphql(
+        graphql,
+        &crate::Server::GitHub,
+        "base-owner",
+        "project",
+        "feature",
+        Some(&head),
+    )
+    .unwrap()
+    .unwrap();
 
     assert_eq!(parsed.number, 8);
     assert_eq!(parsed.url, "https://github.com/base-owner/project/pull/8");

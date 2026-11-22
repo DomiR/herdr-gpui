@@ -9,7 +9,7 @@ struct EntryView: View {
     var body: some View {
         switch entry.kind {
         case let .user(text, _):
-            SizedPlain(text: text).padding(12).frame(maxWidth: .infinity, alignment: .leading)
+            SizedPlain(text: PastedEnvelope.unwrap(text)).padding(12).frame(maxWidth: .infinity, alignment: .leading)
                 .background(.tint.opacity(0.1), in: .rect(cornerRadius: 16))
                 .textSelection(.enabled)
         case let .agent(text):

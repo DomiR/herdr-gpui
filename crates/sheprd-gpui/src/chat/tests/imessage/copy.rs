@@ -28,6 +28,7 @@ fn structured_message_copy_stays_below_the_last_table_cell_and_copies_exact_text
                     kind: EntryKind::User {
                         text: text.into(),
                         files: 0,
+                        note: None,
                     },
                 }
             } else {

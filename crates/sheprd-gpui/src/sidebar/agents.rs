@@ -16,6 +16,7 @@ use crate::{
 use gpui::{prelude::*, *};
 use sheprd_client::protocol::{AgentStatus, ClientShellAgent, ClientShellSnapshot};
 
+pub(crate) mod favorites;
 pub(crate) mod groups;
 pub(crate) mod listed;
 

@@ -227,14 +227,17 @@ impl<R: FnMut(Update)> Session<R> {
                 ..project::session(&id, &self.config.cwd)
             }),
         });
-        if let Some(modes) = modes {
-            self.emit(Change::Modes {
-                modes: Some(project::modes(modes)),
-            });
+        // The session's answer replaces whatever the chat showed while it
+        // started, the agent's known settings included, even when it
+        // offers none.
+        let modes = modes.map(project::modes);
+        if self.transcript.modes != modes {
+            self.emit(Change::Modes { modes });
         }
-        if !options.is_empty() {
+        if self.transcript.options != options {
             self.emit(Change::Options { options });
         }
+        self.learn(loaded);
         self.projector.close();
         self.hand_over(loaded);
         self.status(Status::Idle);
@@ -242,6 +245,7 @@ impl<R: FnMut(Update)> Session<R> {
             // A continued session keeps its own settings.
             self.config.settings = None;
         }
+        self.carry_deferred();
         self.carry_next();
         self.next_queued();
     }
@@ -343,13 +347,24 @@ impl<R: FnMut(Update)> Session<R> {
             && let Some((note, rest)) = crate::context::split(&content.text)
         {
             self.context.heard(note);
+            self.replayed_note = Some(note.to_owned());
             if rest.is_empty() {
                 return;
             }
             content.text = rest.to_owned();
         }
         self.commands.keep(&update);
-        let changes = self.projector.update(&self.transcript, update, now_ms());
+        let mut changes = self.projector.update(&self.transcript, update, now_ms());
+        // The note goes with the words that follow it, and with nothing
+        // after something else began.
+        for change in &mut changes {
+            if let Change::Push { entry } = change {
+                let note = self.replayed_note.take();
+                if let sheprd_chat_protocol::EntryKind::User { note: kept, .. } = &mut entry.kind {
+                    *kept = note.map(project::bounded);
+                }
+            }
+        }
         self.emit_all(changes);
     }
 

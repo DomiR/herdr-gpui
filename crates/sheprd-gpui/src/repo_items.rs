@@ -51,6 +51,7 @@ pub(crate) enum Forge {
 /// namespace (groups included) and `repo` its name.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Origin {
+    pub server: sheprd_github::Server,
     pub owner: String,
     pub repo: String,
     /// The remote that reaches this repository.
@@ -64,6 +65,7 @@ pub(crate) struct Origin {
 impl From<crate::pull_request::Base> for Origin {
     fn from(base: crate::pull_request::Base) -> Self {
         Self {
+            server: base.server,
             owner: base.owner,
             repo: base.repo,
             remote: base.remote,
@@ -74,6 +76,15 @@ impl From<crate::pull_request::Base> for Origin {
 }
 
 impl Origin {
+    /// `base` as an account on `server` reads it. An SSH remote names no
+    /// HTTPS port, so links use the account's server, which does.
+    pub(crate) fn read_on(base: crate::pull_request::Base, server: sheprd_github::Server) -> Self {
+        Self {
+            server,
+            ..Self::from(base)
+        }
+    }
+
     pub(crate) fn slug(&self) -> String {
         format!("{}/{}", self.owner, self.repo)
     }

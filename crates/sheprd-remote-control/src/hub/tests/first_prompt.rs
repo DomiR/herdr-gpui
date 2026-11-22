@@ -9,6 +9,7 @@ fn user(id: u64, text: &str) -> Entry {
         kind: EntryKind::User {
             text: text.into(),
             files: 0,
+            note: None,
         },
     }
 }

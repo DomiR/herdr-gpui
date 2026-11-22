@@ -28,6 +28,12 @@ pub use error::Error;
 pub(crate) use relay::*;
 pub(crate) use station::{Advert, Scanner, Station};
 
+/// Whether this platform's helper also scans for other computers, which
+/// Add Device > Nearby Sheprd needs: the Swift helper's `Central.swift` on
+/// macOS, and `crates/sheprd-nearby`'s BlueZ or WinRT central on Linux and
+/// Windows.
+pub(crate) const SCANS: bool = cfg!(any(target_os = "macos", target_os = "linux", windows));
+
 /// The computer's Bluetooth radio, as the helper last reported it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Radio {

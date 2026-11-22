@@ -1,6 +1,6 @@
 //! One relay: connect over QUIC, listen on the agent's route, name the
-//! authorized desktops' dial keys, and hand each dial to [`crate::serve`];
-//! reconnect with backoff when anything breaks.
+//! dial keys of the desktops and members admitted, and hand each dial to
+//! [`crate::serve`]; reconnect with backoff when anything breaks.
 
 use crate::{Error, Result, agent::Agent, agent::Relay, serve, status::RelayState};
 use sheprd_relay::client::{self, Listener};
@@ -54,8 +54,8 @@ fn random_byte() -> u8 {
 async fn session(agent: &Arc<Agent>, relay: &Relay, wait: &mut Duration) -> Result<()> {
     let connection = client::reach(&relay.endpoint).await?;
     let mut listener = Listener::listen(connection, &agent.keys.route, &relay.token).await?;
-    let mut authorized = agent.authorized();
-    let keys = authorized.borrow_and_update().dial_keys();
+    let mut admitted = agent.admitted();
+    let keys = admitted.borrow_and_update().dial_keys();
     listener.set_dial_keys(keys).await?;
     agent.set_state(&relay.endpoint, RelayState::Listening);
     tracing::info!(relay = %relay.endpoint, "listening on a relay");
@@ -64,16 +64,16 @@ async fn session(agent: &Arc<Agent>, relay: &Relay, wait: &mut Duration) -> Resu
     loop {
         tokio::select! {
             // Only taking the stream waits here, which is cancel-safe: its
-            // header is read in the session's own task, so a change to the
-            // desktops never drops a dial half read.
+            // header is read in the session's own task, so a change to who
+            // is admitted never drops a dial half read.
             pending = listener.next_stream() => {
                 tokio::spawn(serve::session(Arc::clone(agent), pending?, listener.route()));
             }
-            changed = authorized.changed() => {
+            changed = admitted.changed() => {
                 if changed.is_err() {
                     return Ok(());
                 }
-                let keys = authorized.borrow_and_update().dial_keys();
+                let keys = admitted.borrow_and_update().dial_keys();
                 listener.set_dial_keys(keys).await?;
             }
             error = listener.closed() => return Err(error.into()),

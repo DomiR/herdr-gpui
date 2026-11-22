@@ -4,13 +4,14 @@
 //! bytes between Bluetooth and this.
 
 use crate::{
+    central,
     framing::{Outcome, Reassembly},
+    ids::Ids,
     protocol::{Channel, Command, Event, Out},
 };
 use serde::Serialize;
 use std::{
     collections::{HashMap, HashSet},
-    hash::{BuildHasher, Hasher},
     sync::{
         Arc, Mutex, MutexGuard, PoisonError,
         mpsc::{Receiver, RecvTimeoutError},
@@ -48,15 +49,12 @@ pub(crate) struct Core {
     incoming: HashMap<(String, Channel), Reassembly>,
     /// The id Sheprd names each phone by, from the platform's own key
     /// (a BlueZ device path, a Windows device id).
-    ids: HashMap<String, String>,
-    /// The platform key for each id.
-    devices: HashMap<String, String>,
+    ids: Ids,
     /// The largest chunk each phone takes, as its link reported.
     chunk: HashMap<String, usize>,
     /// Phones that wrote on `presence`, which hear `disconnected` when
     /// they leave.
     present: HashSet<String>,
-    seed: u64,
 }
 
 #[derive(Serialize)]
@@ -74,19 +72,10 @@ impl Core {
             pairing: None,
             presence: false,
             incoming: HashMap::new(),
-            ids: HashMap::new(),
-            devices: HashMap::new(),
+            ids: Ids::new(seed),
             chunk: HashMap::new(),
             present: HashSet::new(),
-            seed,
         }
-    }
-
-    /// A seed no other run shares, so phone ids differ between runs.
-    pub(crate) fn random_seed() -> u64 {
-        let mut hasher = std::collections::hash_map::RandomState::new().build_hasher();
-        hasher.write_u32(std::process::id());
-        hasher.finish()
     }
 
     pub(crate) fn wants_advertising(&self) -> bool {
@@ -122,31 +111,12 @@ impl Core {
     /// The id Sheprd knows `device` by, shaped like the UUID Core
     /// Bluetooth gives a phone, made the first time it is seen.
     pub(crate) fn id(&mut self, device: &str) -> String {
-        if let Some(id) = self.ids.get(device) {
-            return id.clone();
-        }
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        hasher.write_u64(self.seed);
-        hasher.write(device.as_bytes());
-        let high = hasher.finish();
-        hasher.write_u64(high);
-        let low = hasher.finish();
-        let id = format!(
-            "{:08X}-{:04X}-4{:03X}-8{:03X}-{:012X}",
-            high >> 32,
-            (high >> 16) & 0xffff,
-            high & 0xfff,
-            (low >> 48) & 0xfff,
-            low & 0xffff_ffff_ffff,
-        );
-        self.ids.insert(device.to_owned(), id.clone());
-        self.devices.insert(id.clone(), device.to_owned());
-        id
+        self.ids.id(device)
     }
 
     /// The platform key of the phone Sheprd calls `id`.
     pub(crate) fn device(&self, id: &str) -> Option<&str> {
-        self.devices.get(id).map(String::as_str)
+        self.ids.device(id)
     }
 
     /// The link's largest write or notification for `device`.
@@ -205,6 +175,8 @@ impl Core {
             Command::Advertise { name, fingerprint } => self.pairing = Some((name, fingerprint)),
             Command::Presence(on) => self.presence = on,
             Command::Stop => self.pairing = None,
+            // `serve` hands these to the scanning side before they get here.
+            Command::Central(_) => return Step::Nothing,
             Command::Frame {
                 central,
                 channel,
@@ -247,13 +219,15 @@ pub(crate) fn lock(core: &Shared) -> MutexGuard<'_, Core> {
 }
 
 /// Applies Sheprd's commands until its input ends, and reports the
-/// desktop's idle time every [`IDLE_EVERY`] while presence is on. The lock
-/// is never held while the backend works, as its callbacks take it too.
+/// desktop's idle time every [`IDLE_EVERY`] while presence is on. The
+/// scanning side's commands go to `scan`. The lock is never held while the
+/// backend works, as its callbacks take it too.
 pub(crate) fn serve(
     core: &Shared,
     backend: &impl Backend,
     commands: &Receiver<Command>,
     out: &Out,
+    mut scan: impl FnMut(central::Command),
 ) {
     let mut next_idle: Option<Instant> = None;
     loop {
@@ -261,6 +235,7 @@ pub(crate) fn serve(
             at.saturating_duration_since(Instant::now())
         });
         match commands.recv_timeout(wait) {
+            Ok(Command::Central(command)) => scan(command),
             Ok(command) => {
                 let (step, presence_was, presence) = {
                     let mut core = lock(core);

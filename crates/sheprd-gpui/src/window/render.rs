@@ -114,6 +114,7 @@ impl SheprdWindow {
 impl Render for SheprdWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.core_terminals.start_frame();
+        self.chat_turns.next_frame();
         self.restore_menu_focus(window, cx);
         self.leave_vanished_region(window, cx);
         self.sync_backdrop(window, cx);
@@ -936,6 +937,9 @@ impl Render for SheprdWindow {
                 root.extend(banner.map(IntoElement::into_any_element));
             }
             self.append_overlays(&mut root, window, cx);
+        } else {
+            // After every chat, which record where they are as they paint.
+            root.extend([self.chat_turns_sweep(cx).into_any_element()]);
         }
         crate::titlebar::frame(window, self.theme.active, root)
     }

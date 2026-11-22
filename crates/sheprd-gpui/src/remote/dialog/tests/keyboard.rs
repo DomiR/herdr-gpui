@@ -98,6 +98,7 @@ fn address_keys_do_not_act_on_a_claimed_pairing(cx: &mut TestAppContext) {
                 code: "123456".into(),
                 app: None,
                 ssh: false,
+                fleet: None,
             })),
             now,
         );
