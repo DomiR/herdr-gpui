@@ -2,14 +2,14 @@
 use super::{Context, Output, caller, notes_daemon, rejected, send, tabs, unexpected};
 use crate::{
     browser::{LocalFile, WebUrl},
-    cli::control::{BrowserCommand, Placement, ZoomChange},
+    cli::control::{BrowserCommand, Placement, ScriptSource, ZoomChange},
     control::protocol::{
         BrowserOpen, Caller, ErrorCode, FeedbackRequest, MAX_WAIT_SECONDS, OpenedIn, Page, Request,
         Response,
-        tabs::{Reply, TabOp},
+        tabs::{ConsoleEntry, MAX_EVAL_SCRIPT_BYTES, Reply, TabOp},
     },
 };
-use std::path::Path;
+use std::{io::Read as _, path::Path};
 
 /// The explainer kit's example, which the agent skill points to.
 pub(super) const EXAMPLE: &str =
@@ -150,6 +150,101 @@ fn text(id: u64, context: &Context) -> crate::Result<Output> {
     }
 }
 
+/// The script to run: as given, or read from `input` for `-`, refused
+/// when empty or over the bound before anything is sent.
+fn script_text(script: ScriptSource, input: impl std::io::Read) -> crate::Result<String> {
+    let text = match script {
+        ScriptSource::Inline(text) => text,
+        ScriptSource::Stdin => {
+            let mut text = String::new();
+            input
+                .take(MAX_EVAL_SCRIPT_BYTES as u64 + 1)
+                .read_to_string(&mut text)?;
+            text
+        }
+    };
+    let refused = |message: String| crate::control::Error::Rejected {
+        code: ErrorCode::InvalidRequest,
+        message,
+    };
+    if text.trim().is_empty() {
+        return Err(refused("The script is empty".into()).into());
+    }
+    if text.len() > MAX_EVAL_SCRIPT_BYTES {
+        return Err(refused(format!(
+            "The script is over {} KiB",
+            MAX_EVAL_SCRIPT_BYTES / 1024
+        ))
+        .into());
+    }
+    Ok(text)
+}
+
+/// Runs a script in a page tab and prints its value.
+fn eval(id: u64, script: ScriptSource, wait: u64, context: &Context) -> crate::Result<Output> {
+    let script = script_text(script, std::io::stdin().lock())?;
+    evaluated(
+        id,
+        context.call(
+            Request::Tab,
+            TabOp::Eval {
+                id,
+                script,
+                wait_seconds: wait,
+            },
+        )?,
+    )
+}
+
+/// A script's value: a string as it is, anything else as JSON.
+fn evaluated(id: u64, response: Response) -> crate::Result<Output> {
+    let Response::Tab {
+        reply: Reply::Eval { value },
+    } = response
+    else {
+        return Err(unexpected(response));
+    };
+    let text = match &value {
+        None => "undefined (a script of statements hands back a value with `return`)".to_owned(),
+        Some(serde_json::Value::String(text)) => text.clone(),
+        Some(value) => serde_json::to_string_pretty(value)?,
+    };
+    Output::data(text, &serde_json::json!({ "id": id, "value": value }))
+}
+
+fn logs(id: u64, clear: bool, context: &Context) -> crate::Result<Output> {
+    console(id, context.call(Request::Tab, TabOp::Logs { id, clear })?)
+}
+
+/// A page's console, one entry a line, as `LEVEL TEXT`; exits 4 when the
+/// page wrote nothing.
+fn console(id: u64, response: Response) -> crate::Result<Output> {
+    let Response::Tab {
+        reply: Reply::Logs { entries, dropped },
+    } = response
+    else {
+        return Err(unexpected(response));
+    };
+    let json = serde_json::json!({ "id": id, "entries": entries, "dropped": dropped });
+    if entries.is_empty() && dropped == 0 {
+        return Ok(Output::data(
+            format!("Tab {id}'s page wrote nothing to its console"),
+            &json,
+        )?
+        .nothing());
+    }
+    let mut lines: Vec<String> = Vec::with_capacity(entries.len() + 1);
+    if dropped > 0 {
+        lines.push(format!("({dropped} older entries were dropped)"));
+    }
+    lines.extend(
+        entries
+            .iter()
+            .map(|ConsoleEntry { level, text, .. }| format!("{:<5} {text}", level.name())),
+    );
+    Output::data(lines.join("\n"), &json)
+}
+
 /// Zooms a page tab.
 fn zoom(id: u64, change: ZoomChange, context: &Context) -> crate::Result<Output> {
     zoomed(context.call(Request::Tab, TabOp::Zoom { id, change })?)
@@ -208,6 +303,9 @@ pub(super) fn run(command: BrowserCommand, context: &Context) -> crate::Result<O
         BrowserCommand::Back { id } => context.act(Request::Tab, TabOp::Back { id }),
         BrowserCommand::Forward { id } => context.act(Request::Tab, TabOp::Forward { id }),
         BrowserCommand::Text { id } => text(id, context),
+        BrowserCommand::Eval { id, script, wait } => eval(id, script, wait, context),
+        BrowserCommand::Logs { id, clear } => logs(id, clear, context),
+        BrowserCommand::ClearData { id } => context.act(Request::Tab, TabOp::ClearData { id }),
         BrowserCommand::Screenshot { id, path } => screenshot(id, &path, context),
         BrowserCommand::Zoom { id, change } => zoom(id, change, context),
     }

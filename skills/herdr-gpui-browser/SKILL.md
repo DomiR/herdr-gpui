@@ -105,6 +105,12 @@ sheprd browser open http://localhost:3000
   `sheprd browser zoom TAB 150` (or `+`, `-`, `reset`), with `TAB` from
   `sheprd browser list`. The tab keeps its zoom; the user zooms with
   the font size keys (Cmd-=, Cmd--, and Cmd-0 on macOS).
+- To see what a page does, run JavaScript in it: `sheprd browser eval TAB
+  'document.title'`, or statements that `return` a value (`await` works).
+  `sheprd browser logs TAB` prints its console and uncaught errors since it
+  loaded. When a dev server's page looks stale (old cache, service worker,
+  storage), `sheprd browser clear-data TAB` forgets the site's data, then
+  `sheprd browser reload`. macOS only.
 - Bare hosts work: `localhost:3000` becomes `http://localhost:3000/`, and
   `example.com/docs` becomes `https://example.com/docs`. Only `http`,
   `https`, and local files open.

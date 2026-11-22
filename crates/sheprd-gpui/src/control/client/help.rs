@@ -39,6 +39,21 @@ sheprd browser zoom TAB +|-|reset|PERCENT
     as the font size keys do while it is focused. The tab keeps its zoom.
 sheprd browser screenshot TAB PATH
     Save a PNG of the page (macOS).
+sheprd browser eval TAB [--wait SECONDS] SCRIPT|-
+    Run JavaScript in the page and print what it returns: a string as it is,
+    anything else as JSON. SCRIPT is an expression (document.title) or the
+    statements of an async function that return a value; await works in
+    both, and a returned promise is awaited for up to SECONDS (default 15,
+    at most 600). - reads SCRIPT from standard input (at most 128 KiB). A
+    script that throws exits 1 with the exception (macOS).
+sheprd browser logs TAB [--clear]
+    Print what the page wrote to its console since it loaded, with errors
+    nobody caught: the newest 500 entries. --clear empties it after reading.
+    Exits 4 when there is nothing (macOS).
+sheprd browser clear-data TAB
+    Forget what WebKit keeps for the page's site (cache, cookies, storage,
+    service workers) on every port of its host, then reload to start fresh
+    (macOS).
 sheprd browser skill
     Print the agent skill that explains these commands.
 sheprd browser example

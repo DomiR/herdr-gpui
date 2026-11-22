@@ -26,7 +26,7 @@ pub use crate::control::{
 };
 pub use app::{AppCommand, UiCommand, WindowCommand};
 pub use batch::BatchCommand;
-pub use browser::{BrowserCommand, Placement};
+pub use browser::{BrowserCommand, Placement, ScriptSource};
 pub use chat::{ChatCommand, ChatPrCommand};
 pub use exec::ExecCommand;
 pub use hosts::{

@@ -144,6 +144,9 @@ Sheprd** entry, which both Windows installers add, runs this command through
 | `browser zoom ID +\|-\|reset\|PERCENT` | Zoom a page tab a step, back to 100%, or to 50-300%; the tab keeps it |
 | `browser text ID` | The page's visible text |
 | `browser screenshot ID PATH` | A PNG of the visible page, at most 2000 px a side (macOS) |
+| `browser eval ID [--wait SECONDS] SCRIPT\|-` | Run JavaScript in the page and print its value (a string as is, anything else as JSON). `SCRIPT` is an expression or the statements of an async function that `return` a value; a returned promise is awaited up to `--wait` (default 15, at most 600 seconds); `-` reads it from standard input (at most 128 KiB). A script that throws exits 1 with the exception (macOS) |
+| `browser logs ID [--clear]` | What the page wrote to its console since it loaded, plus uncaught errors and unhandled rejections, newest 500 kept; `--clear` empties it after reading. Exits 4 when empty (macOS) |
+| `browser clear-data ID` | Forget what WebKit keeps for the page's site (HTTP cache, cookies, storage, service workers) on every port of its host; reload afterwards (macOS) |
 | `code open FILE[:LINE]` | A read-only code tab at a line |
 | `code edit FILE[:LINE]` | Your terminal editor, in a new pane beside yours |
 | `devices` | The Devices overview |

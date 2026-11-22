@@ -2,6 +2,7 @@
 pub use sheprd_control_protocol::Placement;
 
 use super::{Args, CliError, ZoomChange};
+use sheprd_control_protocol::protocol::{MAX_WAIT_SECONDS, tabs::PAGE_WAIT_SECONDS};
 use std::ffi::OsString;
 
 /// `sheprd browser ...`, answered by the running app.
@@ -41,6 +42,20 @@ pub enum BrowserCommand {
     Text {
         id: u64,
     },
+    /// Runs a script in the page, waiting up to `wait` seconds for it.
+    Eval {
+        id: u64,
+        script: ScriptSource,
+        wait: u64,
+    },
+    Logs {
+        id: u64,
+        clear: bool,
+    },
+    /// Forgets what WebKit keeps for the page's site.
+    ClearData {
+        id: u64,
+    },
     Screenshot {
         id: u64,
         path: std::path::PathBuf,
@@ -49,6 +64,40 @@ pub enum BrowserCommand {
         id: u64,
         change: ZoomChange,
     },
+}
+
+/// Where `browser eval` takes its script from.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ScriptSource {
+    Inline(String),
+    /// `-`: read when the command runs, not while parsing.
+    Stdin,
+}
+
+/// `browser eval TAB [--wait SECONDS] SCRIPT|-`.
+fn eval(mut args: impl Iterator<Item = OsString>) -> Result<BrowserCommand, CliError> {
+    let id = tab_id(args.next())?;
+    let (mut script, mut wait) = (None, PAGE_WAIT_SECONDS);
+    while let Some(arg) = args.next() {
+        match arg.to_str() {
+            Some("--help" | "-h") => return Ok(BrowserCommand::Help),
+            Some("--wait") => {
+                wait = args
+                    .next()
+                    .and_then(|value| value.to_str()?.parse::<u64>().ok())
+                    .filter(|seconds| (1..=MAX_WAIT_SECONDS).contains(seconds))
+                    .ok_or(CliError::InvalidWait)?;
+            }
+            Some("-") if script.is_none() => script = Some(ScriptSource::Stdin),
+            _ if script.is_none() => script = Some(ScriptSource::Inline(utf8(arg)?)),
+            _ => return Err(CliError::UnexpectedArgument(arg)),
+        }
+    }
+    let script = script.ok_or(CliError::MissingArgument {
+        command: "browser eval",
+        what: "SCRIPT (or - to read it from standard input)",
+    })?;
+    Ok(BrowserCommand::Eval { id, script, wait })
 }
 
 fn utf8(value: OsString) -> Result<String, CliError> {
@@ -105,15 +154,29 @@ pub(super) fn parse(args: &mut Args) -> Result<BrowserCommand, CliError> {
         Some("example") => return none_left(BrowserCommand::Example, args),
         Some("reload") => return none_left(BrowserCommand::Reload, args),
         Some("list") => return none_left(BrowserCommand::List, args),
-        Some(verb @ ("close" | "back" | "forward" | "text")) => {
+        Some(verb @ ("close" | "back" | "forward" | "text" | "clear-data")) => {
             let id = tab_id(args.next())?;
             let command = match verb {
                 "close" => BrowserCommand::Close { id },
                 "back" => BrowserCommand::Back { id },
                 "forward" => BrowserCommand::Forward { id },
+                "clear-data" => BrowserCommand::ClearData { id },
                 _ => BrowserCommand::Text { id },
             };
             return none_left(command, args);
+        }
+        Some("eval") => return eval(args),
+        Some("logs") => {
+            let id = tab_id(args.next())?;
+            let mut clear = false;
+            for arg in args {
+                match arg.to_str() {
+                    Some("--help" | "-h") => return Ok(BrowserCommand::Help),
+                    Some("--clear") => clear = true,
+                    _ => return Err(CliError::UnexpectedArgument(arg)),
+                }
+            }
+            return Ok(BrowserCommand::Logs { id, clear });
         }
         Some("navigate") => {
             let id = tab_id(args.next())?;

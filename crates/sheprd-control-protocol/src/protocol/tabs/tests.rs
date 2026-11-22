@@ -2,6 +2,7 @@
 use super::*;
 use crate::protocol::{Call, Caller, Request, Response};
 
+mod eval;
 mod machine_agent;
 
 fn round_trip(op: TabOp) {

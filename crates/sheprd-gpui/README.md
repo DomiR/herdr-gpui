@@ -3355,8 +3355,10 @@ come back after a restart; closing a workspace in Herdr removes its tabs.
   (so `file:` and applications' custom URL schemes stay closed), downloads are
   refused, and a page's new windows open as new browser tabs. The only
   messages a page can send the app are annotation picks, which fill a draft
-  note and nothing else, and its icon, which shows on its tab; the app runs
-  only its own scripts in pages. On
+  note and nothing else, and its icon, which shows on its tab. The app runs
+  its own scripts in pages, and on macOS an agent's: `sheprd browser eval`
+  runs one, `sheprd browser logs` reads the console every page keeps, and
+  `sheprd browser clear-data` forgets what WebKit stores for a page's site. On
   Windows, a frame inside a page that links to an application's URL scheme
   gets WebView2's own confirmation prompt rather than being refused outright.
 - Pages are native web views (WebKit on macOS, WebView2 on Windows). On

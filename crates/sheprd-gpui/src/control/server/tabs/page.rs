@@ -16,7 +16,7 @@ use gpui::App;
 #[cfg(any(target_os = "macos", windows))]
 mod embedded;
 #[cfg(target_os = "macos")]
-pub(super) use embedded::screenshot;
+pub(super) use embedded::{clear_data, eval, logs, screenshot};
 #[cfg(any(target_os = "macos", windows))]
 pub(super) use embedded::{history, text};
 
@@ -142,6 +142,52 @@ pub(super) fn history(_: &Caller, _: u64, _: bool, _: &mut App) -> Response {
 #[cfg(not(any(target_os = "macos", windows)))]
 pub(super) fn text(_: Caller, _: u64, incoming: socket::Incoming, _: &mut Watches, _: &mut App) {
     incoming.respond(no_pages());
+}
+
+/// Scripts, console logs, and site data go through WebKit's own calls,
+/// which only macOS builds make.
+#[cfg(not(target_os = "macos"))]
+fn needs_webkit() -> Response {
+    Response::error(
+        ErrorCode::Unsupported,
+        "Scripts, console logs, and site data of pages need the macOS build",
+    )
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(super) fn eval(
+    _: Caller,
+    _: u64,
+    _: String,
+    _: u64,
+    incoming: socket::Incoming,
+    _: &mut Watches,
+    _: &mut App,
+) {
+    incoming.respond(needs_webkit());
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(super) fn logs(
+    _: Caller,
+    _: u64,
+    _: bool,
+    incoming: socket::Incoming,
+    _: &mut Watches,
+    _: &mut App,
+) {
+    incoming.respond(needs_webkit());
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(super) fn clear_data(
+    _: Caller,
+    _: u64,
+    incoming: socket::Incoming,
+    _: &mut Watches,
+    _: &mut App,
+) {
+    incoming.respond(needs_webkit());
 }
 
 /// WebKit's snapshot is the one way to picture a page, and only macOS

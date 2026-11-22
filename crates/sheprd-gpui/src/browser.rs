@@ -49,6 +49,8 @@ mod page;
 #[cfg(target_os = "macos")]
 mod page_keys;
 #[cfg(target_os = "macos")]
+pub(crate) mod page_script;
+#[cfg(target_os = "macos")]
 mod parking;
 #[cfg(target_os = "macos")]
 mod popup;

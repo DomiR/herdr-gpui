@@ -181,6 +181,9 @@ fn with_handlers<'a>(
     outbox: &Outbox,
 ) -> wry::WebViewBuilder<'a> {
     let (title, loaded, popup) = (outbox.sender.clone(), outbox.sender.clone(), outbox.clone());
+    // Every page keeps its console for `browser logs`.
+    #[cfg(target_os = "macos")]
+    let builder = builder.with_initialization_script(super::page_script::CONSOLE);
     builder
         .with_devtools(cfg!(debug_assertions))
         .with_navigation_handler(|url| navigable(&url))

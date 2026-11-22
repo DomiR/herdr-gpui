@@ -2,6 +2,7 @@ use super::*;
 use control::BrowserCommand;
 
 mod automation;
+mod browser_eval;
 mod browser_zoom;
 mod chat;
 mod chat_pull_requests;
@@ -137,8 +138,8 @@ fn browser_commands_never_start_the_gui() {
     for (args, expected) in [
         (&["browser"][..], CliError::MissingBrowserCommand),
         (
-            &["browser", "eval"],
-            CliError::UnknownBrowserCommand("eval".into()),
+            &["browser", "evaluate"],
+            CliError::UnknownBrowserCommand("evaluate".into()),
         ),
         (&["browser", "open"], CliError::MissingUrl),
         (

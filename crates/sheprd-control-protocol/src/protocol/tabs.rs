@@ -8,6 +8,8 @@ pub const PAGE_WAIT_SECONDS: u64 = 15;
 /// How long the window may take to switch to the caller's workspace before
 /// opening a tab there.
 pub const ARRIVE_WAIT_SECONDS: u64 = 5;
+/// The most a script `browser eval` runs in a page may take, in bytes.
+pub const MAX_EVAL_SCRIPT_BYTES: usize = 128 * 1024;
 /// The most text `machine type` posts at once.
 pub const MAX_MACHINE_TYPE_CHARS: usize = 4096;
 /// The pause Sheprd Agent takes after each character it types, so apps see
@@ -49,6 +51,25 @@ pub enum TabOp {
     /// The page's visible text, as the user would select it.
     Text {
         id: u64,
+    },
+    /// Run `script` in the page and hand back its value as JSON, waiting
+    /// up to `wait_seconds` for a promise it returns.
+    Eval {
+        id: u64,
+        script: String,
+        wait_seconds: u64,
+    },
+    /// Forget what WebKit keeps for the page's site: its cache, cookies,
+    /// storage, and service workers, on every port of its host.
+    ClearData {
+        id: u64,
+    },
+    /// What the page wrote to its console since it loaded, emptied after
+    /// reading when `clear` is set.
+    Logs {
+        id: u64,
+        #[serde(default)]
+        clear: bool,
     },
     /// A PNG of the page, written to `path`.
     Screenshot {
@@ -191,7 +212,11 @@ pub enum OrchestratorRun {
 impl TabOp {
     pub fn wait_seconds(&self) -> u64 {
         match self {
-            Self::Text { .. } | Self::Screenshot { .. } => PAGE_WAIT_SECONDS,
+            Self::Text { .. }
+            | Self::Screenshot { .. }
+            | Self::Logs { .. }
+            | Self::ClearData { .. } => PAGE_WAIT_SECONDS,
+            Self::Eval { wait_seconds, .. } => (*wait_seconds).min(super::MAX_WAIT_SECONDS),
             Self::MachineExec { wait_seconds, .. } => {
                 wait_seconds.saturating_add(MACHINE_AGENT_WAIT_SECONDS)
             }
@@ -341,6 +366,21 @@ pub enum Reply {
     Text {
         text: String,
     },
+    /// What a script run in a page returned, or `None` for `undefined`.
+    Eval {
+        #[serde(
+            default,
+            deserialize_with = "present",
+            skip_serializing_if = "Option::is_none"
+        )]
+        value: Option<serde_json::Value>,
+    },
+    /// A page's console, oldest first, and how many older entries were
+    /// dropped to stay within bounds.
+    Logs {
+        entries: Vec<ConsoleEntry>,
+        dropped: u64,
+    },
     /// The zoom a page tab draws at now, in percent.
     Zoom {
         id: u64,
@@ -361,6 +401,49 @@ pub enum Reply {
         width: u32,
         height: u32,
     },
+}
+
+/// A field that is there, `null` included: only a missing field is `None`.
+fn present<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<serde_json::Value>, D::Error> {
+    serde_json::Value::deserialize(deserializer).map(Some)
+}
+
+/// One line a page wrote to its console, or an error nobody caught.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConsoleEntry {
+    pub level: ConsoleLevel,
+    pub text: String,
+    /// When, in milliseconds since the Unix epoch, by the page's clock.
+    pub at: u64,
+}
+
+/// The console method that wrote an entry. Uncaught errors and unhandled
+/// promise rejections are `Error`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConsoleLevel {
+    // keep-sorted start
+    Debug,
+    Error,
+    Info,
+    Log,
+    Warn,
+    // keep-sorted end
+}
+
+impl ConsoleLevel {
+    /// The level as `--json` spells it, for the text listing.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Debug => "debug",
+            Self::Error => "error",
+            Self::Info => "info",
+            Self::Log => "log",
+            Self::Warn => "warn",
+        }
+    }
 }
 
 /// What Sheprd Agent inside a virtual Mac reports.

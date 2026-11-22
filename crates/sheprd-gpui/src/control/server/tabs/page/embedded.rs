@@ -134,6 +134,10 @@ pub(in crate::control::server::tabs) fn text(
 
 #[cfg(target_os = "macos")]
 pub(in crate::control::server::tabs) use picture::screenshot;
+#[cfg(target_os = "macos")]
+pub(in crate::control::server::tabs) use script::{clear_data, eval, logs};
 
 #[cfg(target_os = "macos")]
 mod picture;
+#[cfg(target_os = "macos")]
+mod script;

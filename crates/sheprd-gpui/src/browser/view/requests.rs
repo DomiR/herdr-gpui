@@ -1,6 +1,8 @@
 //! Browser tabs a control request asks for, through the Unix control socket.
 
 use super::scope;
+#[cfg(target_os = "macos")]
+use crate::browser::page_script;
 use crate::{
     SheprdWindow,
     browser::{
@@ -387,6 +389,68 @@ impl SheprdWindow {
             return false;
         };
         crate::browser::snapshot::capture(view, rect, done);
+        true
+    }
+
+    /// Runs a caller's script in tab `id`'s page, handing `done` what it
+    /// returned or threw. Whether the window has the page.
+    pub(crate) fn page_eval(
+        &self,
+        id: TabId,
+        script: &str,
+        done: impl FnOnce(Result<page_script::Outcome, page_script::Error>) + 'static,
+    ) -> bool {
+        let Some(view) = self.browser.pages.page(id).and_then(|page| page.web()) else {
+            return false;
+        };
+        page_script::run(view, script, done);
+        true
+    }
+
+    /// Reads tab `id`'s console, emptying it when `clear` is set.
+    /// Whether the window has the page.
+    pub(crate) fn page_console(
+        &self,
+        id: TabId,
+        clear: bool,
+        done: impl FnOnce(Result<page_script::Outcome, page_script::Error>) + 'static,
+    ) -> bool {
+        let Some(view) = self.browser.pages.page(id).and_then(|page| page.web()) else {
+            return false;
+        };
+        page_script::console(view, clear, done);
+        true
+    }
+
+    /// Forgets what WebKit keeps for the site tab `id`'s page shows,
+    /// handing `done` the site's host and the records cleared. Whether the
+    /// window has the page.
+    pub(crate) fn page_clear_site(
+        &self,
+        id: TabId,
+        done: impl FnOnce(Result<(String, Vec<String>), page_script::Error>) + 'static,
+    ) -> bool {
+        let Some(view) = self.browser.pages.page(id).and_then(|page| page.web()) else {
+            return false;
+        };
+        let url = match view.url() {
+            Ok(url) => url,
+            Err(error) => {
+                done(Err(page_script::Error::Url(error)));
+                return true;
+            }
+        };
+        let Some(host) = url::Url::parse(&url)
+            .ok()
+            .and_then(|url| url.host_str().map(str::to_owned))
+        else {
+            done(Err(page_script::Error::NoSite { url }));
+            return true;
+        };
+        let site = host.clone();
+        page_script::clear_site(view, &host, move |cleared| {
+            done(cleared.map(|records| (site, records)));
+        });
         true
     }
 }
