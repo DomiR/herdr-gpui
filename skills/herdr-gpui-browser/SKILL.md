@@ -85,9 +85,9 @@ sheprd browser open http://localhost:3000
   and the keyboard stays with your pane, so they can keep talking to you
   while the page updates. Later files you open join the same split.
 - A web address opens as a tab in your own workspace (`HERDR_WORKSPACE_ID`,
-  which Herdr sets in every pane, or the workspace of your Herdr 2 tab) and the window switches to it. The
-  terminal keeps running underneath; the user returns to it by clicking its
-  tab.
+  which Herdr sets in every pane, or the workspace of your Herdr 2 tab). The
+  window does not switch to it: the user may be working in another
+  workspace, and their keystrokes must not land in your page.
 - Add `--tab` to open a file as a tab instead, or `--beside` to put a web
   address in the split.
 - A local file is served with the other files in its folder, so relative
@@ -99,8 +99,17 @@ sheprd browser open http://localhost:3000
   images load. Links to other Markdown files in the folder open rendered too.
 - Opening the same page again from the same pane reuses and reloads its tab.
   After editing a file, run `sheprd browser reload` instead.
-- Add `--no-focus` to add the tab without switching to it, for example when
-  the user is typing in your pane.
+- Browser commands never take the user's focus on their own: `open`,
+  `navigate`, `reload`, `text`, and `screenshot` leave the window on the
+  workspace and tab the user is in, and the keyboard where it is. Add
+  `--focus` to `open`, `text`, or `screenshot` only when the user asked
+  to see the page now. `--no-focus`, the old way to ask for this, is
+  accepted and changes nothing.
+- `sheprd browser text TAB` reads a page in the background, loading it out
+  of sight if need be. `sheprd browser screenshot TAB PATH` pictures the page
+  as it shows, so it works only while the page is on screen (beside your
+  terminal, or the tab the user is looking at) and otherwise exits 5. Do not
+  retry it with `--focus` in a loop; ask the user, or read the text.
 - When the user finds a page too small or too large, zoom its tab:
   `sheprd browser zoom TAB 150` (or `+`, `-`, `reset`), with `TAB` from
   `sheprd browser list`. The tab keeps its zoom; the user zooms with
@@ -360,6 +369,7 @@ what Sheprd shows or keeps.
 
 | To | Run |
 | --- | --- |
+| Read or picture a page tab you opened, without taking the user's focus | `sheprd browser text TAB`, `sheprd browser screenshot TAB PATH` (`--focus` shows the tab first) |
 | Show a file at a line, read-only | `sheprd code open src/main.rs:42` |
 | Open the review of your uncommitted changes | `sheprd review` |
 | Ask the user to restart an owned orchestrator run, or adopt a legacy run's current process | `sheprd orchestrator restart RUN` / `sheprd orchestrator adopt RUN` (loaded project; confirmation required) |

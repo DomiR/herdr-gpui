@@ -12,7 +12,7 @@ Exit status: 0 done, 1 refused, 2 invalid arguments, 3 Sheprd not running,
 7 timed out, 8 unsupported on this platform or by this app version.";
 
 const BROWSER: &str = "\
-sheprd browser open URL|FILE [--workspace ID] [--no-focus] [--beside|--tab]
+sheprd browser open URL|FILE [--workspace ID] [--focus] [--beside|--tab]
     Show a web address, or a local HTML file, in a browser tab of the running
     Sheprd. The tab joins the caller's own workspace (HERDR_WORKSPACE_ID),
     or the frontmost one outside Herdr. Showing the same page again from the
@@ -22,6 +22,9 @@ sheprd browser open URL|FILE [--workspace ID] [--no-focus] [--beside|--tab]
     next to that terminal,
     which stays in view and keeps the keyboard; a web address takes a tab of
     the group in use. --beside and --tab choose instead.
+    Browser commands work in the background: the tab is added without
+    switching the window to it or taking the keyboard. --focus switches to
+    it; --no-focus, the default, is accepted.
 sheprd browser reload
     Reload the pages this pane opened, for example after editing the file.
 sheprd browser feedback [--wait SECONDS]
@@ -30,15 +33,19 @@ sheprd browser feedback [--wait SECONDS]
     Notes are otherwise typed into this pane as a prompt once it is idle.
 sheprd browser list
     List page tabs with their IDs.
-sheprd browser close|back|forward|text TAB
-    Close a page tab, go back or forward in it, or print its visible text.
+sheprd browser close|back|forward TAB
+    Close a page tab, or go back or forward in it.
+sheprd browser text TAB [--focus]
+    Print a page tab's visible text, loading its page out of sight when no
+    window has it. --focus shows the tab first.
 sheprd browser navigate TAB URL
     Load another web address in a page tab.
 sheprd browser zoom TAB +|-|reset|PERCENT
     Zoom a page tab in or out a step, back to 100%, or to PERCENT (50-300),
     as the font size keys do while it is focused. The tab keeps its zoom.
-sheprd browser screenshot TAB PATH
-    Save a PNG of the page (macOS).
+sheprd browser screenshot TAB PATH [--focus]
+    Save a PNG of the page as it shows on screen (macOS). Without --focus,
+    a page the user does not see exits 5; --focus shows its tab first.
 sheprd browser skill
     Print the agent skill that explains these commands.
 sheprd browser example

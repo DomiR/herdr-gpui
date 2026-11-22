@@ -242,7 +242,8 @@ impl Via {
 pub struct BrowserOpen {
     pub page: Page,
     pub caller: Caller,
-    /// Whether the window switches to the tab.
+    /// Whether the window switches to the tab. `sheprd browser open` asks
+    /// only with `--focus`; otherwise the tab is added in the background.
     pub focus: bool,
     #[serde(default, skip_serializing_if = "is_tab")]
     pub placement: Placement,

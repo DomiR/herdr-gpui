@@ -1,10 +1,12 @@
 //! The page commands of builds that show pages. A page lives in a window
-//! once that window has shown its tab; a command for a page no window has
-//! made shows the tab first, and the answer waits for the page.
+//! once that window has made it: when it showed the tab, or out of sight
+//! for a command that reads a page no window had. Commands act in the
+//! background unless the caller asks to focus, which shows the tab first;
+//! the answer waits for the page either way.
 use super::{MAX_TEXT_JSON, bounded_text, page_tab};
 use crate::window::main_window::MainWindow;
 use crate::{
-    browser::TabId,
+    browser::{Tab, TabId},
     control::{
         protocol::{
             Caller, ErrorCode, Response,
@@ -12,7 +14,7 @@ use crate::{
         },
         server::{
             Watches, socket,
-            tabs::{reveal, windows},
+            tabs::{closed, reveal, showing, unlisted, windows},
         },
     },
 };
@@ -64,11 +66,34 @@ pub(in crate::control::server::tabs) fn history(
     })
 }
 
+/// Readies `tab`'s page for a request that reads it. Asked to `focus`,
+/// the window shows the tab, switching to its workspace. Otherwise, when no
+/// window has the page, one listing its workspace makes it out of sight,
+/// where it loads as a shown page does, and the user's view and keyboard
+/// stay where they are.
+fn prepare(caller: &Caller, tab: &Tab, focus: bool, cx: &mut App) -> Result<(), Response> {
+    if focus {
+        return reveal(caller, tab, cx);
+    }
+    if holder(caller, tab.id, cx).is_some() {
+        return Ok(());
+    }
+    let Some((handle, _)) = showing(caller, tab, cx) else {
+        return Err(unlisted(tab));
+    };
+    handle
+        .update(cx, |view, window, cx| {
+            view.make_requested_page(tab.id, window, cx);
+        })
+        .map_err(|_| closed())
+}
+
 /// Reads the page's visible text once it has loaded, asking again on every
 /// tick while it reports it is still loading.
 pub(in crate::control::server::tabs) fn text(
     caller: Caller,
     id: u64,
+    focus: bool,
     incoming: socket::Incoming,
     watches: &mut Watches,
     cx: &mut App,
@@ -77,9 +102,7 @@ pub(in crate::control::server::tabs) fn text(
         Ok(tab) => tab,
         Err(response) => return incoming.respond(response),
     };
-    if holder(&caller, tab.id, cx).is_none()
-        && let Err(response) = reveal(&caller, &tab, cx)
-    {
+    if let Err(response) = prepare(&caller, &tab, focus, cx) {
         return incoming.respond(response);
     }
     // The page answers on a platform callback, which may be any thread.

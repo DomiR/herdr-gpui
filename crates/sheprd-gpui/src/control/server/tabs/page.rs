@@ -140,7 +140,14 @@ pub(super) fn history(_: &Caller, _: u64, _: bool, _: &mut App) -> Response {
 }
 
 #[cfg(not(any(target_os = "macos", windows)))]
-pub(super) fn text(_: Caller, _: u64, incoming: socket::Incoming, _: &mut Watches, _: &mut App) {
+pub(super) fn text(
+    _: Caller,
+    _: u64,
+    _: bool,
+    incoming: socket::Incoming,
+    _: &mut Watches,
+    _: &mut App,
+) {
     incoming.respond(no_pages());
 }
 
@@ -151,6 +158,7 @@ pub(super) fn screenshot(
     _: Caller,
     _: u64,
     _: String,
+    _: bool,
     incoming: socket::Incoming,
     _: &mut Watches,
     _: &mut App,

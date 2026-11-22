@@ -49,6 +49,7 @@ pub(super) const TOOLS: &[Spec] = &[
         build: |arguments| {
             Ok(ControlCommand::Browser(BrowserCommand::Text {
                 id: arguments.required_number("id", 0..=u64::MAX)?,
+                focus: false,
             }))
         },
     },

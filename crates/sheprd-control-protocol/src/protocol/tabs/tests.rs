@@ -2,6 +2,7 @@
 use super::*;
 use crate::protocol::{Call, Caller, Request, Response};
 
+mod focus;
 mod machine_agent;
 
 fn round_trip(op: TabOp) {
@@ -25,10 +26,14 @@ fn tab_operations_round_trip() {
         },
         TabOp::Back { id: 3 },
         TabOp::Forward { id: 3 },
-        TabOp::Text { id: 3 },
+        TabOp::Text {
+            id: 3,
+            focus: false,
+        },
         TabOp::Screenshot {
             id: 3,
             path: "/tmp/a.png".into(),
+            focus: false,
         },
         TabOp::Zoom {
             id: 3,
@@ -118,11 +123,18 @@ fn page_and_arrival_operations_extend_the_answer_timeout() {
         })
         .wait_seconds()
     };
-    assert_eq!(wait(TabOp::Text { id: 1 }), PAGE_WAIT_SECONDS);
+    assert_eq!(
+        wait(TabOp::Text {
+            id: 1,
+            focus: false
+        }),
+        PAGE_WAIT_SECONDS
+    );
     assert_eq!(
         wait(TabOp::Screenshot {
             id: 1,
-            path: "/a.png".into()
+            path: "/a.png".into(),
+            focus: true
         }),
         PAGE_WAIT_SECONDS
     );

@@ -244,6 +244,21 @@ fn new_window(
     wry::NewWindowResponse::Deny
 }
 
+/// Runs `build`, which makes a page, leaving the app as active as it was.
+/// wry activates the app whenever it makes a web view, but a page is also
+/// made for an agent's request while the user works in another app, which
+/// must stay in front.
+#[cfg(target_os = "macos")]
+fn keep_activation<T>(build: impl FnOnce() -> T) -> T {
+    let app = objc2::MainThreadMarker::new().map(objc2_app_kit::NSApplication::sharedApplication);
+    let inactive = app.as_ref().is_some_and(|app| !app.isActive());
+    let built = build();
+    if let Some(app) = app.filter(|_| inactive) {
+        app.deactivate();
+    }
+    built
+}
+
 /// Pages leave only for web addresses and the preview scheme. Anything
 /// else, such as `file:` or an application's custom scheme, stays unopened
 /// rather than reaching the OS.
@@ -365,6 +380,10 @@ impl Pages {
             ""
         };
         let builder = with_handlers(wry::WebViewBuilder::new(), Source::Tab(id), &self.outbox)
+            // A new page stays out of the keyboard's way: WebView2 would
+            // otherwise move focus into it as it is made, away from the
+            // terminal the user types in. The user's click focuses it.
+            .with_focused(false)
             .with_initialization_script(bridge)
             .with_url(location.page_url())
             .with_asynchronous_custom_protocol(
@@ -386,7 +405,7 @@ impl Pages {
         #[cfg(target_os = "macos")]
         {
             let _ = cx;
-            let view = builder.build_as_child(&handle)?;
+            let view = keep_activation(|| builder.build_as_child(&handle))?;
             super::page_keys::install();
             self.add(id, view, window)
         }

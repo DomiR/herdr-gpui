@@ -345,7 +345,7 @@ pub(crate) fn run() -> std::process::ExitCode {
         Err(error) => {
             eprintln!(
                 // i18n: data
-                "{error}\nUsage: sheprd [--classic] [--socket CLIENT_SOCKET | --session NAME [--dev]]\n       sheprd browser open URL [--workspace ID] [--no-focus]\n       sheprd COMMAND ... (see sheprd --help)"
+                "{error}\nUsage: sheprd [--classic] [--socket CLIENT_SOCKET | --session NAME [--dev]]\n       sheprd browser open URL [--workspace ID] [--focus]\n       sheprd COMMAND ... (see sheprd --help)"
             );
             return std::process::ExitCode::from(2);
         }

@@ -137,13 +137,13 @@ Sheprd** entry, which both Windows installers add, runs this command through
 | --- | --- |
 | `tab [list]` | Pages, code, reviews, and Devices tabs with IDs |
 | `tab focus\|close ID` | |
-| `browser open\|reload\|feedback` | See [browser tabs](../crates/sheprd-gpui/README.md#browser-tabs) |
+| `browser open\|reload\|feedback` | See [browser tabs](../crates/sheprd-gpui/README.md#browser-tabs). `open` adds the tab in the background; `--focus` switches the window to it (`--no-focus`, the default, is accepted) |
 | `browser list` | Page tabs only |
 | `browser navigate ID URL` | Load another address in a page tab |
 | `browser back\|forward ID` | |
 | `browser zoom ID +\|-\|reset\|PERCENT` | Zoom a page tab a step, back to 100%, or to 50-300%; the tab keeps it |
-| `browser text ID` | The page's visible text |
-| `browser screenshot ID PATH` | A PNG of the visible page, at most 2000 px a side (macOS) |
+| `browser text ID [--focus]` | The page's visible text. A page no window has loaded is loaded out of sight; `--focus` shows the tab first |
+| `browser screenshot ID PATH [--focus]` | A PNG of the visible page, at most 2000 px a side (macOS). Without `--focus`, a page that is not on screen exits 5; `--focus` shows its tab first |
 | `code open FILE[:LINE]` | A read-only code tab at a line |
 | `code edit FILE[:LINE]` | Your terminal editor, in a new pane beside yours |
 | `devices` | The Devices overview |

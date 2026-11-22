@@ -3614,15 +3614,18 @@ Agents running in the app's panes can open a page for you:
 ```sh
 sheprd browser open http://localhost:3000   # macOS: /Applications/Herdr.app/Contents/MacOS/Herdr
 sheprd browser open design/mockup.html      # in a split beside the agent's terminal
-sheprd browser open --no-focus https://example.com/docs
+sheprd browser open --focus https://example.com/docs # and switch to it
 sheprd browser open --tab design/mockup.html # a tab, like a web address
 sheprd browser reload                       # reload the pages this pane opened
 sheprd browser feedback --wait 600          # wait for the notes you send it
 sheprd browser --help
 ```
 
-The tab joins the caller's own workspace, which Herdr names in the pane's
-`HERDR_WORKSPACE_ID`, and remembers the caller's `HERDR_PANE_ID` so notes on
+Browser commands act in the background: the window does not switch to the
+tab and the page does not take the keyboard, unless the command is given
+`--focus` (`--no-focus`, once needed for this, is still accepted). The tab
+joins the caller's own
+workspace, which Herdr names in the pane's `HERDR_WORKSPACE_ID`, and remembers the caller's `HERDR_PANE_ID` so notes on
 the page go back to it. The command talks to the running app over a socket at
 `$XDG_STATE_HOME/herdr/gpui/control.sock`, readable only by you, and exits with
 3 when the app is not running. On Windows it is a named pipe only your user
@@ -3639,7 +3642,7 @@ and opens the page in that workspace, once per request:
 
 ```sh
 ~/.local/state/herdr/gpui/bin/sheprd browser open localhost:3000
-~/.local/state/herdr/gpui/bin/sheprd browser open --no-focus https://example.com/docs
+~/.local/state/herdr/gpui/bin/sheprd browser open --focus https://example.com/docs
 ~/.local/state/herdr/gpui/bin/sheprd browser reload
 ```
 

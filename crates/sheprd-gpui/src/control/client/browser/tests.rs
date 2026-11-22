@@ -1,5 +1,6 @@
 use super::*;
 
+mod focus;
 mod zoom;
 
 fn caller(pane_id: Option<&str>) -> Caller {

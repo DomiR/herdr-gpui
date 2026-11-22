@@ -2,6 +2,7 @@ use super::*;
 use control::BrowserCommand;
 
 mod automation;
+mod browser_focus;
 mod browser_zoom;
 mod chat;
 mod chat_brief;
@@ -76,7 +77,7 @@ fn browser_commands_never_start_the_gui() {
         browser(BrowserCommand::Open {
             target: "localhost:3000".into(),
             workspace: None,
-            focus: true,
+            focus: false,
             placement: None,
         })
     );
@@ -85,7 +86,7 @@ fn browser_commands_never_start_the_gui() {
         browser(BrowserCommand::Open {
             target: "demo.html".into(),
             workspace: None,
-            focus: true,
+            focus: false,
             placement: Some(control::Placement::Beside),
         })
     );
@@ -94,7 +95,7 @@ fn browser_commands_never_start_the_gui() {
         browser(BrowserCommand::Open {
             target: "demo.html".into(),
             workspace: None,
-            focus: true,
+            focus: false,
             placement: Some(control::Placement::Tab),
         })
     );

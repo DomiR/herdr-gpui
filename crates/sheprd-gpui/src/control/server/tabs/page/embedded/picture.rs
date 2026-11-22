@@ -1,10 +1,15 @@
-//! `browser screenshot`: WebKit pictures the page as it shows on screen, so
-//! the tab is shown first; the picture becomes a PNG and is written off the
-//! UI thread, replacing the file at the path in one step.
-use super::{holder, page_tab};
+//! `browser screenshot`: WebKit pictures the page as it shows on screen,
+//! so only a page the user sees is pictured, unless the caller asks to
+//! focus, which shows the tab first. The picture becomes a PNG and is
+//! written off the UI thread, replacing the file at the path in one step.
+use super::page_tab;
+use crate::browser::TabId;
 use crate::control::{
     protocol::{Caller, ErrorCode, Response, tabs::PAGE_WAIT_SECONDS},
-    server::{Watches, socket, tabs::reveal},
+    server::{
+        Watches, socket,
+        tabs::{reveal, windows},
+    },
 };
 use gpui::App;
 use std::{
@@ -54,10 +59,20 @@ pub(super) fn save_png(tiff: &[u8], path: &Path) -> crate::Result<()> {
     Ok(())
 }
 
+/// Whether a window the caller may act in shows tab `id`'s page now.
+fn on_screen(caller: &Caller, id: TabId, cx: &App) -> bool {
+    windows(caller, cx).into_iter().any(|handle| {
+        handle
+            .read_with(cx, |view, _| view.page_on_screen(id))
+            .unwrap_or(false)
+    })
+}
+
 pub(in crate::control::server::tabs) fn screenshot(
     caller: Caller,
     id: u64,
     path: String,
+    focus: bool,
     incoming: socket::Incoming,
     watches: &mut Watches,
     cx: &mut App,
@@ -72,9 +87,20 @@ pub(in crate::control::server::tabs) fn screenshot(
         Ok(tab) => tab,
         Err(response) => return incoming.respond(response),
     };
-    // Only a page on screen can be pictured.
-    if let Err(response) = reveal(&caller, &tab, cx) {
-        return incoming.respond(response);
+    // Only a page on screen can be pictured: shown first when asked, else
+    // one the user already sees, so their view and keyboard stay put.
+    if focus {
+        if let Err(response) = reveal(&caller, &tab, cx) {
+            return incoming.respond(response);
+        }
+    } else if !on_screen(&caller, tab.id, cx) {
+        return incoming.respond(Response::error(
+            ErrorCode::NotFound,
+            format!(
+                "Tab {id} is not on screen, and a screenshot pictures the page as it shows; \
+                 add --focus to show the tab first"
+            ),
+        ));
     }
     let tab_id = tab.id;
     let mut phase = Phase::Showing;
@@ -83,14 +109,18 @@ pub(in crate::control::server::tabs) fn screenshot(
         Duration::from_secs(PAGE_WAIT_SECONDS),
         move |cx| match &phase {
             Phase::Showing => {
-                let handle = holder(&caller, tab_id, cx)?;
                 let landed = Rc::new(RefCell::new(None));
-                let slot = landed.clone();
-                let asked = handle
-                    .read_with(cx, |view, _| {
-                        view.page_screenshot(tab_id, move |tiff| *slot.borrow_mut() = Some(tiff))
-                    })
-                    .unwrap_or(false);
+                // Pictured by a window it is on screen in.
+                let asked = windows(&caller, cx).into_iter().any(|handle| {
+                    let slot = landed.clone();
+                    handle
+                        .read_with(cx, |view, _| {
+                            view.page_screenshot(tab_id, move |tiff| {
+                                *slot.borrow_mut() = Some(tiff);
+                            })
+                        })
+                        .unwrap_or(false)
+                });
                 if asked {
                     phase = Phase::Capturing(landed);
                 }
